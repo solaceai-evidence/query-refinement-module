@@ -1,0 +1,139 @@
+pico_population_subdimensions:
+  # POPULATION SUBDIMENSIONS
+  
+  - id: population_demographics
+    name: Population Demographics
+    description: |
+      Clarifies basic demographic characteristics: age, gender, ethnicity, geographic location.
+    analysis_prompt: |
+      # TASK: Demographic Characteristics Analysis
+      
+      Analyze if the query specifies the target population's basic demographic profile.
+      
+      Query: {query}
+      
+      Focus ONLY on demographic dimensions:
+      1. Age range or age groups
+      2. Gender/sex specification
+      3. Ethnicity or racial groups (if relevant)
+      4. Geographic region or population setting
+      
+      [Focused prompt continues...]
+    response_format:
+      additional_fields:
+        age_specified: boolean
+        gender_specified: boolean
+        ethnicity_relevant: boolean
+        geographic_scope_clear: boolean
+    allow_follow_up: true
+    max_follow_ups: 2
+    metadata:
+      domain: clinical_research
+      framework: PICO
+      pico_component: Population
+      subdimension: Demographics
+      priority: high
+      typical_order: 1
+
+  - id: population_clinical_condition
+    name: Clinical Condition Specification
+    description: |
+      Clarifies the primary health condition, disease stage, and severity.
+    analysis_prompt: |
+      # TASK: Clinical Condition Analysis
+      
+      Analyze if the query adequately specifies the target clinical condition.
+      
+      Query: {query}
+      
+      Focus ONLY on clinical condition dimensions:
+      1. Primary diagnosis or health condition
+      2. Disease stage or phase (early, advanced, acute, chronic)
+      3. Severity level or classification
+      4. Diagnostic criteria used
+      
+      [Focused prompt continues...]
+    response_format:
+      additional_fields:
+        diagnosis_specificity: string
+        stage_specified: boolean
+        severity_clear: boolean
+        diagnostic_criteria_mentioned: boolean
+    allow_follow_up: true
+    max_follow_ups: 2
+    metadata:
+      domain: clinical_research
+      framework: PICO
+      pico_component: Population
+      subdimension: Clinical_Condition
+      priority: critical
+      typical_order: 2
+
+  - id: population_comorbidities
+    name: Comorbidities & Medical History
+    description: |
+      Clarifies concurrent conditions, prior treatments, and relevant medical history.
+    analysis_prompt: |
+      # TASK: Comorbidities and Medical History Analysis
+      
+      [Focused prompt on comorbidities only...]
+    response_format:
+      additional_fields:
+        comorbidity_considerations: array
+        prior_treatment_relevance: boolean
+        treatment_history_specified: boolean
+    allow_follow_up: true
+    max_follow_ups: 2
+    metadata:
+      domain: clinical_research
+      framework: PICO
+      pico_component: Population
+      subdimension: Comorbidities_History
+      priority: medium
+      typical_order: 3
+
+  - id: population_eligibility_criteria
+    name: Inclusion/Exclusion Criteria
+    description: |
+      Clarifies specific eligibility parameters, biomarkers, and contraindications.
+    analysis_prompt: |
+      # TASK: Eligibility Criteria Analysis
+      
+      [Focused prompt on specific inclusion/exclusion criteria...]
+    response_format:
+      additional_fields:
+        inclusion_criteria_specified: array
+        exclusion_criteria_specified: array
+        biomarker_requirements_clear: boolean
+    allow_follow_up: true
+    max_follow_ups: 3
+    metadata:
+      domain: clinical_research
+      framework: PICO
+      pico_component: Population
+      subdimension: Eligibility_Criteria
+      priority: medium
+      typical_order: 4
+
+  - id: population_special_considerations
+    name: Special Populations & Study Setting
+    description: |
+      Clarifies special population groups and recruitment/study setting.
+    analysis_prompt: |
+      # TASK: Special Populations and Setting Analysis
+      
+      [Focused prompt on special populations and logistics...]
+    response_format:
+      additional_fields:
+        special_populations_relevant: array
+        recruitment_setting_specified: boolean
+        sample_size_implications: string
+    allow_follow_up: true
+    max_follow_ups: 1
+    metadata:
+      domain: clinical_research
+      framework: PICO
+      pico_component: Population
+      subdimension: Special_Populations_Setting
+      priority: low
+      typical_order: 5
