@@ -221,8 +221,10 @@ class TracingInterface(ABC):
 #TODO: Session storage interface
 
 __all__ = [
+    # core interfaces
     "LLMProviderInterface",
-    "LLMCompletionResult",
     "QueryAnalyzerInterface",
     "TracingInterface",
+    # result type
+    "LLMCompletionResult",
 ]
