@@ -1,24 +1,25 @@
 # Custom Schema Guide
 
-This guide explains how to add your own custom refinement schemas without modifying the source code.
+This guide explains how to create custom refinement schemas using YAML configuration files.
 
 ## Overview
 
-The query refinement module allows you to define custom schemas externally via a YAML file. This enables you to:
+The query refinement module uses custom schemas defined in YAML format. This enables you to:
 
-- Add domain-specific refinement dimensions
+- Define domain-specific refinement dimensions
 - Customize the refinement process for your use case
 - Share schemas across teams without code changes
-- Override built-in schemas with your own versions
+- Create reusable templates for different research domains
+- Maintain clear, readable prompt engineering
 
 ## Quick Start
 
-1. Create a file named `custom_schemas.yaml` (or `custom_schemas.yml`)
-2. Place it in one of these locations (in order of priority):
-   - Path specified in `QUERY_REFINEMENT_SCHEMAS_PATH` environment variable
-   - Current working directory
-   - `~/.query_refinement/custom_schemas.yaml` (in your home directory)
-3. Define your schemas following the format below
+1. Create a YAML file with your custom schemas (e.g., `custom_schemas.yaml`)
+2. Set the `CUSTOM_SCHEMAS_PATH` environment variable to point to your file:
+   ```bash
+   export CUSTOM_SCHEMAS_PATH=/path/to/your/custom_schemas.yaml
+   ```
+3. Define your schemas following the `RefinementDimension` format below
 
 ## Prerequisites
 
@@ -30,7 +31,9 @@ pip install pyyaml
 
 ## Schema File Format
 
-The `custom_schemas.yaml` file should contain schema definitions where each top-level key is a schema name and each value is a list of refinement dimensions:
+Custom schemas are defined in YAML format. Each top-level key is a schema name, and each value is a list of `RefinementDimension` objects.
+
+**Basic structure:**
 
 ```yaml
 schema_name:
@@ -42,6 +45,14 @@ schema_name:
       
       Use the pipe (|) character for multi-line strings.
       No escaping needed for special characters!
+    
+    # Optional: Define response format for structured outputs
+    response_format:
+      additional_fields:
+        field_name: field_type  # e.g., priority: string, confidence: float
+      field_descriptions:
+        field_name: "Description of what this field contains"
+    
     allow_follow_up: false
     max_follow_ups: 2
     metadata:
@@ -51,20 +62,29 @@ schema_name:
 
 ### Required Fields
 
+Every dimension must have:
+
 - **`id`** (string): Unique identifier for the dimension within the schema
 - **`name`** (string): Human-readable name for the dimension
 - **`description`** (string): Brief description of what this dimension refines
 - **`analysis_prompt`** (string): Template for analyzing if this dimension needs refinement
-  - Must include `{query}` placeholder where the user's query will be inserted
+  - **Must include `{query}` placeholder** where the user's query will be inserted
   - Should guide the LLM on how to analyze and what to ask
-  - Use `|` for multi-line prompts
+  - Use `|` for multi-line prompts (highly recommended for readability)
 
 ### Optional Fields
 
+- **`response_format`** (object): Defines expected response structure
+  - `additional_fields`: Dict mapping field names to types (string, boolean, integer, float, array, object)
+  - `field_descriptions`: Dict providing descriptions for custom fields
+  - Base fields (needs_refinement, reason, suggested_question) are always included automatically
+  
 - **`allow_follow_up`** (boolean, default: `false`): Whether this dimension supports follow-up questions
+
 - **`max_follow_ups`** (integer, default: `2`): Maximum number of follow-up rounds if enabled
+
 - **`metadata`** (object, default: `{}`): Additional metadata for extensibility
-  - Common fields: `domain`, `priority`, `framework`, `examples`
+  - Common fields: `domain`, `priority`, `framework`, `examples`, `medical_specialty`
 
 ## Example: Simple Custom Schema
 
@@ -112,26 +132,28 @@ project_scoping:
       priority: medium
 ```
 
-## Using Environment Variable
+## Setting Up Custom Schemas
 
-For team or production deployments, you can specify the schema file location via environment variable:
+### Environment Variable (Required)
 
+You **must** set the `CUSTOM_SCHEMAS_PATH` environment variable to point to your YAML schema file:
+
+**Linux/macOS:**
 ```bash
-export QUERY_REFINEMENT_SCHEMAS_PATH="/path/to/your/custom_schemas.yaml"
+export CUSTOM_SCHEMAS_PATH=/path/to/your/custom_schemas.yaml
 ```
 
-Or in a `.env` file:
-
+**Windows (PowerShell):**
+```powershell
+$env:CUSTOM_SCHEMAS_PATH="C:\path\to\your\custom_schemas.yaml"
 ```
-QUERY_REFINEMENT_SCHEMAS_PATH=/path/to/your/custom_schemas.yaml
+
+**Using a `.env` file:**
+```env
+CUSTOM_SCHEMAS_PATH=/path/to/your/custom_schemas.yaml
 ```
 
-You can also point to a directory:
-
-```bash
-export QUERY_REFINEMENT_SCHEMAS_PATH="/path/to/config/directory"
-# Will look for custom_schemas.yaml or custom_schemas.yml in that directory
-```
+**Important:** The path must point to a **file**, not a directory. The module will only load schemas from this single file.
 
 ## Example: Complex Schema with Multi-line Prompts
 
@@ -337,35 +359,98 @@ analysis_prompt: |
 ```
 
 
-## Overriding Built-in Schemas
+## Designing Effective Dimensions: When to Split vs. Combine
 
-You can override the built-in schemas (`pico`, `spider`, `climate_humanitarian`, `legal`) by using the same schema name in your custom file:
+### The Subdimension Strategy
+
+When designing schemas, you may face the question: should a broad concept be one dimension or split into multiple subdimensions?
+
+**Example:** In the PICO framework, "Population" could be:
+- **Option A**: One comprehensive dimension covering all population aspects
+- **Option B**: Multiple focused subdimensions (Demographics, Clinical Condition, Comorbidities, Eligibility Criteria, Special Populations)
+
+### Benefits of Splitting into Subdimensions
+
+Splitting a high-level dimension into focused subdimensions provides several advantages:
+
+1. **More Focused Prompts**
+   - Each subdimension has a clearer, more specific task
+   - Easier for the LLM to analyze one aspect deeply without getting overwhelmed
+   - Reduces cognitive load and improves response quality
+
+2. **Better Granularity and Control**
+   - Users can be asked about demographics separately from clinical characteristics
+   - Different follow-up strategies for each subdimension
+   - Some aspects may not need refinement while others do
+   - Skip irrelevant subdimensions entirely (e.g., "Special Populations" may not apply to all studies)
+
+3. **Improved Validation and Tracking**
+   - Custom response fields more relevant to each subdimension
+   - Easier to track which specific aspect needs clarification
+   - Better metrics (e.g., "age_clarity_score" vs. generic "population_score")
+   - More actionable analytics on where queries commonly need refinement
+
+4. **Flexible Workflows**
+   - Process subdimensions in a logical order (demographics first, then clinical details)
+   - Parallel processing of independent subdimensions
+   - Better alignment with how domain experts actually think about the problem
+
+5. **Cleaner Maintenance**
+   - Easier to update one focused prompt than one massive prompt
+   - Each subdimension can have specific priority levels
+   - More precise metadata and domain expert assignments
+
+### When to Split
+
+Consider splitting when:
+- ✅ The dimension covers multiple distinct categories
+- ✅ Each subdimension has its own set of considerations and edge cases
+- ✅ Users may need different levels of detail for different aspects
+- ✅ The prompt becomes too long (>100 lines) or complex
+- ✅ Different subdimensions have different follow-up needs
+
+### When to Keep Combined
+
+Keep dimensions combined when:
+- ✅ The aspects are highly interconnected and can't be considered separately
+- ✅ Splitting would create artificial boundaries
+- ✅ The dimension is already focused and specific
+- ✅ Users need to consider all aspects together to make sense
+
+### Implementation Example
 
 ```yaml
-pico:
-  - id: custom_population
-    name: Population (Custom)
-    description: My custom population dimension
-    analysis_prompt: |
-      Custom analysis for population...
-      
-      Query: {query}
-      
-      ...
+# Instead of one large "population" dimension:
+pico_clinical:
+  - id: population_demographics
+    name: Demographics
+    # Focused prompt on age, gender, ethnicity...
+    metadata:
+      subdimension: Demographics
+      typical_order: 1
+  
+  - id: population_clinical_condition
+    name: Clinical Condition
+    # Focused prompt on diagnosis, disease stage...
+    metadata:
+      subdimension: Clinical_Condition
+      typical_order: 2
+  
+  # More subdimensions...
 ```
 
-When a custom schema has the same name as a built-in schema, the custom version takes precedence.
+See `examples/pico_template.yaml` for a complete subdimension example.
 
 ## Using Custom Schemas in Code
 
-Once defined, custom schemas work exactly like built-in ones:
+Once defined, your custom schemas are automatically loaded when the module initializes:
 
 ```python
 from query_refinement.schemas import get_schema, list_schemas
 
-# List all available schemas (including custom ones)
+# List all available schemas
 all_schemas = list_schemas()
-print(all_schemas)  # ['pico', 'spider', 'my_custom_schema', ...]
+print(all_schemas)  # ['my_custom_schema', 'pico_clinical', ...]
 
 # Get your custom schema
 my_schema = get_schema("my_custom_schema")
@@ -379,118 +464,80 @@ result = refiner.refine("My query about...")
 
 The module validates custom schemas on load:
 
-- **Required fields**: All required fields must be present
-- **Placeholder validation**: `analysis_prompt` must include `{query}`
+- **Required fields**: All required fields (`id`, `name`, `description`, `analysis_prompt`) must be present
+- **Placeholder validation**: `analysis_prompt` must include `{query}` placeholder
+- **Response format validation**: If `response_format` is provided:
+  - `additional_fields` types must be valid (string, boolean, integer, float, array, object)
+  - Field descriptions are checked for consistency
 - **Type checking**: Fields must match expected types
 - **Error logging**: Invalid dimensions are logged and skipped
+
+If a dimension fails validation, it will be logged and skipped, but other valid dimensions will still load.
 
 ## Troubleshooting
 
 ### Schema Not Loading
 
-1. Check file location matches one of the search paths
-2. Verify YAML syntax is valid (use a YAML validator or linter)
-3. Check application logs for error messages
-4. Ensure file permissions allow reading
-5. Ensure PyYAML is installed: `pip install pyyaml`
+If your schema doesn't appear in `list_schemas()`:
+
+1. **Check environment variable**: Ensure `CUSTOM_SCHEMAS_PATH` is set correctly
+2. **Verify file path**: The path must point to an existing **file**, not a directory
+3. **YAML syntax**: Validate your YAML syntax using an online validator
+4. **File permissions**: Ensure the file is readable
+5. **PyYAML installed**: Run `pip install pyyaml`
+6. **Check logs**: Look for error messages in application logs
 
 ### YAML Syntax Errors
 
-Common issues:
+Common YAML issues:
 
-- **Indentation**: YAML uses spaces (not tabs) for indentation
+- **Indentation**: Use spaces (not tabs); be consistent (2 or 4 spaces)
 - **Missing colons**: Keys need `:` after them
-- **Inconsistent indentation**: Use 2 or 4 spaces consistently
-- **List items**: Start with `-` and a space
+- **List items**: Must start with `- ` (dash and space)
+- **Quotes**: Usually not needed, but use for strings with special chars
 
-Use an online YAML validator to check your syntax.
-
-### Dimension Skipped
-
-Check logs for validation errors:
-
-- Missing required fields
-- Invalid field types
-- Missing `{query}` placeholder in prompt
-
-### Schema Not Found
-
-Use `list_schemas()` to see what's actually loaded:
-
-```python
-from query_refinement.schemas import list_schemas
-print(list_schemas())
-```
-
-## Complete Example File
-
-See `examples/custom_schemas.yaml` for a complete, working example with:
-
-## Using Custom Schemas in Code
-
-Once defined, custom schemas work exactly like built-in ones:
-
-```python
-from query_refinement.schemas import get_schema, list_schemas
-
-# List all available schemas (including custom ones)
-all_schemas = list_schemas()
-print(all_schemas)  # ['pico', 'spider', 'my_custom_schema', ...]
-
-# Get your custom schema
-my_schema = get_schema("my_custom_schema")
-
-# Use it in refinement
-refiner = QueryRefiner(dimensions=my_schema)
-result = refiner.refine("My query about...")
-```
-
-## Validation
-
-The module validates custom schemas on load:
-
-- **Required fields**: All required fields must be present
-- **Placeholder validation**: `analysis_prompt` must include `{query}`
-- **Type checking**: Fields must match expected types
-- **Error logging**: Invalid dimensions are logged and skipped
-
-## Troubleshooting
-
-### Schema Not Loading
-
-1. Check file location matches one of the search paths
-2. Verify JSON syntax is valid (use a JSON validator)
-3. Check application logs for error messages
-4. Ensure file permissions allow reading
+Use an online YAML validator to check syntax.
 
 ### Dimension Skipped
 
-Check logs for validation errors:
-- Missing required fields
+If a dimension is skipped during loading, check logs for:
+
+- Missing required fields (`id`, `name`, `description`, `analysis_prompt`)
 - Invalid field types
-- Missing `{query}` placeholder in prompt
+- Missing `{query}` placeholder in `analysis_prompt`
+- Invalid response format field types
 
-### Schema Not Found
+### Schema Not Found at Runtime
 
-Use `list_schemas()` to see what's actually loaded:
+If you get "Unknown schema" errors:
+
 ```python
 from query_refinement.schemas import list_schemas
-print(list_schemas())
+print(list_schemas())  # See what's actually loaded
 ```
 
-## Complete Example File
+Make sure the schema name you're requesting matches exactly (case-sensitive).
 
-See `examples/custom_schemas.json` for a complete, working example with:
-- Multiple schemas
-- Various dimension types
-- Different follow-up configurations
-- Rich metadata
-- Well-crafted prompts
-- Complex multi-line analysis prompts
+## Complete Example Files
+
+See the `examples/` directory for complete, working examples:
+
+- **`custom_schemas.yaml`**: Multiple schemas demonstrating various patterns
+- **`pico_template.yaml`**: Comprehensive PICO framework with best practices
+- **`custom_schemas_with_response_format.yaml`**: Examples using response_format feature
+
+Each example demonstrates:
+
+- Proper prompt engineering
+- Multiple dimensions per schema
+- Different priority levels
+- Domain-specific considerations
+- Follow-up configurations
+- Response format specifications
 
 ## Additional Resources
 
 - [YAML Syntax Guide](https://yaml.org/spec/1.2/spec.html)
 - [Online YAML Validator](https://www.yamllint.com/)
-- [Prompt Engineering Guide](./prompt_engineering.md)
-- [API Documentation](./api.md)
+- [Response Format Guide](./response_format_guide.md)
+- [YAML Reference](../YAML_REFERENCE.md)
