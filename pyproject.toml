@@ -1,23 +1,33 @@
-[build-system]
-requires = ["setuptools>=61.0", "wheel"]
-build-backend = "setuptools.build_meta"
-
 [project]
-name = "query_refinement_chatbot"
+name = "query-refinement-module"
 version = "0.1.0"
-description = "An AI-powered domain-agnostic chatbot that refines user queries for better search results using a refinement schema."
-authors = [{name = "Jesus Dominguez", email = "jesus.dominguez@kcl.ac.uk"}]
-readme = "README.md"
+description = "An AI-powered, domain-agnostic query refinement system for scientific literature search."
+authors = [
+    {name = "Jesus Dominguez",email = "jesus.dominguez@kcl.ac.uk"}
+]
+keywords = [
+    "query refinement",
+    "information retrieval",
+    "conversational AI",
+    "scientific search",
+    "literature search",
+    "domain-agnostic",
+    "LLM",
+    "chatbot"
+]
 license = {text = "MIT"}
-keywords = ["chatbot", "AI", "query refinement", "search optimization"]
-requires-python = ">=3.8"
+readme = "README.md"
+requires-python = ">=3.12"
 dependencies = [
-
+    "pyyaml (>=6.0.3,<7.0.0)"
 ]
 
-[project.optional-dependencies]
-testing = [
-    "pytest>=7.4.0",
-    "httpx>=0.24.0",
-    "black>=23.7.0"
+
+[build-system]
+requires = ["poetry-core>=2.0.0,<3.0.0"]
+build-backend = "poetry.core.masonry.api"
+
+[dependency-groups]
+dev = [
+    "pytest (>=8.4.2,<9.0.0)"
 ]

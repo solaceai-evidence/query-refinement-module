@@ -1,0 +1,2 @@
+# Custom schema support
+pyyaml>=6.0
