@@ -1,0 +1,155 @@
+# ============================================================================
+# BASIC EXAMPLE: Using only base fields (needs_refinement, reason, suggested_question)
+# ============================================================================
+basic_schema:
+  - id: temporal_scope
+    name: Temporal Scope
+    description: Clarifies the time period relevant to the query
+    analysis_prompt: |
+      Analyze the following query for temporal clarity:
+      
+      Query: {query}
+      
+      Determine if the time scope is clear or needs clarification.
+    
+    # No response_format specified = uses base fields only
+    allow_follow_up: true
+    metadata:
+      domain: general
+
+# ============================================================================
+# INTERMEDIATE EXAMPLE: Adding a few custom fields
+# ============================================================================
+intermediate_schema:
+  - id: geographic_scope
+    name: Geographic Scope
+    description: Identifies the geographic scope of the query
+    analysis_prompt: |
+      Analyze the following query for geographic clarity:
+      
+      Query: {query}
+      
+      Determine if the location/region is clear or needs clarification.
+    
+    response_format:
+      type: json
+      additional_fields:
+        priority: string          # high, medium, low
+        detected_locations: array # list of locations mentioned
+      field_descriptions:
+        priority: "Urgency of clarification (high/medium/low)"
+        detected_locations: "List of geographic locations detected in the query"
+    
+    allow_follow_up: false
+    metadata:
+      domain: general
+
+# ============================================================================
+# ADVANCED EXAMPLE: Multiple custom fields for research methodology
+# ============================================================================
+research_methodology:
+  - id: study_design
+    name: Study Design
+    description: Clarifies research methodology requirements
+    analysis_prompt: |
+      Analyze the query for research methodology clarity:
+      
+      Query: {query}
+      
+      Assess if the study design or methodology is specified or needs clarification.
+    
+    response_format:
+      type: json
+      additional_fields:
+        confidence_score: float           # 0.0-1.0
+        detected_methodologies: array     # list of methodologies found
+        recommended_methodologies: array  # suggested methodologies
+        complexity_level: string          # simple, moderate, complex
+      field_descriptions:
+        confidence_score: "Confidence in the assessment (0.0 = uncertain, 1.0 = certain)"
+        detected_methodologies: "List of research methodologies mentioned in the query"
+        recommended_methodologies: "Suggested methodologies based on query context"
+        complexity_level: "Assessment of methodological complexity (simple/moderate/complex)"
+    
+    allow_follow_up: true
+    max_follow_ups: 3
+    metadata:
+      domain: academic_research
+      priority: high
+
+# ============================================================================
+# LEGAL RESEARCH EXAMPLE: Domain-specific custom fields
+# ============================================================================
+legal_research:
+  - id: source_type
+    name: Legal Source Type
+    description: Identifies the type of legal source needed
+    analysis_prompt: |
+      The query doesn't specify the type of legal source needed.
+      
+      Current query: {query}
+      
+      What type of legal source are you looking for? Please consider:
+      - Case law (judicial opinions)?
+      - Statutes or regulations?
+      - Secondary sources (law review articles, treatises)?
+      - Legislative history?
+      - Administrative decisions?
+    
+    response_format:
+      type: json
+      additional_fields:
+        detected_source_types: array    # sources mentioned
+        suggested_source_types: array   # recommended sources
+        jurisdiction_clarity: string    # clear, unclear, missing
+        temporal_clarity: string        # clear, unclear, missing
+      field_descriptions:
+        detected_source_types: "Legal source types detected in the query"
+        suggested_source_types: "Recommended legal source types for this query"
+        jurisdiction_clarity: "Assessment of jurisdiction clarity (clear/unclear/missing)"
+        temporal_clarity: "Assessment of temporal scope clarity (clear/unclear/missing)"
+    
+    allow_follow_up: true
+    max_follow_ups: 2
+    metadata:
+      domain: legal_research
+      priority: high
+      related_dimensions:
+        - jurisdiction
+        - temporal_scope
+
+# ============================================================================
+# MEDICAL/PICO EXAMPLE: Structured clinical research fields
+# ============================================================================
+medical_pico:
+  - id: population
+    name: Population/Patient
+    description: Clarifies the target population or patient group
+    analysis_prompt: |
+      Analyze the query for population/patient clarity:
+      
+      Query: {query}
+      
+      Assess if the target population is clearly specified.
+    
+    response_format:
+      type: json
+      additional_fields:
+        detected_population_characteristics: array  # age, gender, conditions, etc.
+        missing_characteristics: array              # what's not specified
+        specificity_score: float                    # 0.0-1.0
+        inclusion_criteria_clarity: string          # clear, partial, missing
+        exclusion_criteria_clarity: string          # clear, partial, missing
+      field_descriptions:
+        detected_population_characteristics: "Population characteristics found in query (age, gender, conditions, etc.)"
+        missing_characteristics: "Important population characteristics not specified"
+        specificity_score: "How specific the population definition is (0.0 = vague, 1.0 = very specific)"
+        inclusion_criteria_clarity: "Clarity of inclusion criteria (clear/partial/missing)"
+        exclusion_criteria_clarity: "Clarity of exclusion criteria (clear/partial/missing)"
+    
+    allow_follow_up: true
+    max_follow_ups: 2
+    metadata:
+      domain: medical_research
+      framework: PICO
+      priority: critical

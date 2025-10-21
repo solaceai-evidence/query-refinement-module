@@ -1,0 +1,462 @@
+# Example Custom Schemas with Response Format Specification
+
+my_enhanced_schema:
+  - id: temporal_scope
+    name: Temporal Scope
+    description: Clarifies the time period or timeframe relevant to the query
+    
+    # Keep analysis logic separate from response format
+    analysis_prompt: |
+      Analyze the query for temporal clarity:
+      
+      Query: {query}
+      
+      **Analysis Steps:**
+      1. Check if a specific time period is mentioned (e.g., '2020-2023', 'last decade')
+      2. Identify temporal terms needing clarification (e.g., 'recent', 'current', 'historical')
+      3. Determine if time scope is implied by context (e.g., 'COVID-19 pandemic' = 2019-present)
+      4. Assess if specifying a time period would significantly improve the query
+      
+      **Decision Logic:**
+      - CLEAR: Specific dates/ranges mentioned → needs_refinement = false
+      - AMBIGUOUS: Terms like "recent", "modern" → needs_refinement = true
+      - MISSING: No temporal indicators → needs_refinement = true
+      - IMPLIED: Context makes it obvious → needs_refinement = false
+      
+      **Example Questions:**
+      - "What time period are you interested in?"
+      - "Are you looking for recent research (last 5 years) or historical studies?"
+      - "Should we focus on a specific decade or date range?"
+    
+    # Response format defined separately for consistency
+    response_format:
+      type: json
+      schema:
+        needs_refinement: true
+        reason: "Brief explanation"
+        suggested_question: "Question to ask user"
+        confidence: 0.85
+      field_descriptions:
+        needs_refinement: "Boolean indicating if this dimension needs user clarification"
+        reason: "Brief explanation of why refinement is or isn't needed"
+        suggested_question: "Specific question to ask the user (null if needs_refinement is false)"
+        confidence: "Confidence score 0.0-1.0 for the analysis (optional)"
+    
+    allow_follow_up: true
+    max_follow_ups: 2
+    metadata:
+      domain: general
+      priority: high
+      examples:
+        - What time period should we focus on?
+        - Are you interested in historical data or recent trends?
+
+  - id: geographic_scope
+    name: Geographic Scope
+    description: Identifies the geographic region, location, or spatial scope
+    
+    analysis_prompt: |
+      Analyze geographic scope in the query:
+      
+      Query: {query}
+      
+      **Check for:**
+      1. Specific locations (country, region, city, coordinates)
+      2. Geographic scope terms (global, regional, local, urban/rural)
+      3. Implied locations from context
+      4. Ambiguous geographic terms
+      
+      **When to refine:**
+      - Query mentions "local" without specifying location
+      - Terms like "regional" without clear boundaries
+      - Study area not specified when location-dependent
+      - Comparative studies without specified comparisons
+      
+      **When NOT to refine:**
+      - Specific location clearly stated
+      - Global/worldwide study explicitly mentioned
+      - Location irrelevant to query topic
+    
+    response_format:
+      type: json
+      schema:
+        needs_refinement: false
+        reason: "string"
+        suggested_question: null
+        identified_locations: []
+      field_descriptions:
+        needs_refinement: "Whether geographic scope needs clarification"
+        reason: "Explanation of the analysis"
+        suggested_question: "Question for the user (null if not needed)"
+        identified_locations: "List of any locations mentioned in the query"
+    
+    allow_follow_up: false
+    max_follow_ups: 1
+    metadata:
+      domain: general
+      priority: medium
+
+  - id: field_of_study
+    name: Research Field
+    description: Clarifies the academic discipline or research domain
+    
+    analysis_prompt: |
+      Determine if the research field needs clarification:
+      
+      Query: {query}
+      
+      **Field Analysis:**
+      - Extract keywords suggesting specific disciplines
+      - Identify interdisciplinary terms
+      - Detect domain-specific jargon
+      - Check if field is implicit from methodology or concepts
+      
+      **Status Categories:**
+      - CLEAR: Field obvious from terminology (e.g., "RCT" → medical research)
+      - AMBIGUOUS: Could span multiple fields (e.g., "social media impact")
+      - MISSING: No clear field indicators
+      
+      **Smart Question Generation:**
+      - Infer likely fields from query keywords
+      - Suggest interdisciplinary if query spans domains
+      - Offer specific subfields when relevant
+      - Provide context-aware options
+    
+    response_format:
+      type: json
+      schema:
+        needs_refinement: true
+        reason: "string"
+        status: "CLEAR"
+        suggested_question: "string"
+        inferred_fields: []
+      field_descriptions:
+        needs_refinement: "Whether field clarification is needed"
+        reason: "Analysis explanation"
+        status: "One of: CLEAR, AMBIGUOUS, MISSING"
+        suggested_question: "Question with field options"
+        inferred_fields: "List of fields inferred from the query"
+    
+    allow_follow_up: true
+    max_follow_ups: 2
+    metadata:
+      domain: academic_research
+      priority: high
+      examples:
+        - Which field perspective interests you most?
+        - Is this interdisciplinary or focused on one discipline?
+
+# ============================================================================
+# PICO Schema with Response Format
+# ============================================================================
+
+pico_enhanced:
+  - id: population
+    name: Population
+    description: Defines the patient population or study participants
+    
+    analysis_prompt: |
+      Analyze population specification in the query:
+      
+      Query: {query}
+      
+      **PICO-P Analysis:**
+      Check for:
+      - Demographics (age, sex, ethnicity)
+      - Health condition or disease state
+      - Clinical setting (inpatient, outpatient, primary care)
+      - Specific subgroups or vulnerable populations
+      - Inclusion/exclusion criteria
+      
+      **Domain Knowledge:**
+      - Medical queries often imply adult population unless specified
+      - Pediatric studies need explicit mention
+      - "Patients" usually means clinical population
+      
+      **When to ask:**
+      - Population too broad (e.g., just "people")
+      - Age group unclear when relevant
+      - Disease stage not specified
+    
+    response_format:
+      type: json
+      schema:
+        needs_refinement: false
+        reason: "string"
+        suggested_question: null
+        identified_population: "string or null"
+        specificity_level: "specific"
+      field_descriptions:
+        needs_refinement: "Whether population needs clarification"
+        reason: "Explanation of the population analysis"
+        suggested_question: "Question to refine population definition"
+        identified_population: "The population identified in the query (if any)"
+        specificity_level: "One of: specific, moderate, vague, missing"
+    
+    allow_follow_up: true
+    max_follow_ups: 2
+    metadata:
+      domain: biomedical
+      framework: PICO
+      priority: critical
+
+  - id: intervention
+    name: Intervention
+    description: Defines the treatment, exposure, or intervention
+    
+    analysis_prompt: |
+      Analyze intervention specification:
+      
+      Query: {query}
+      
+      **Intervention Elements:**
+      - Type (drug, procedure, behavioral, diagnostic)
+      - Dosage, duration, frequency
+      - Administration method
+      - Timing and sequence
+      
+      **Assessment:**
+      - Is intervention explicitly named?
+      - Are critical details specified?
+      - Is comparison implicit or explicit?
+    
+    response_format:
+      type: json
+      schema:
+        needs_refinement: true
+        reason: "string"
+        suggested_question: "string"
+        intervention_type: "treatment"
+        details_provided: {}
+      field_descriptions:
+        needs_refinement: "Whether intervention needs clarification"
+        reason: "Analysis explanation"
+        suggested_question: "Question about intervention details"
+        intervention_type: "Type of intervention (drug, procedure, behavioral, etc.)"
+        details_provided: "Dict of intervention details found (dosage, duration, etc.)"
+    
+    allow_follow_up: true
+    max_follow_ups: 2
+    metadata:
+      domain: biomedical
+      framework: PICO
+      priority: critical
+
+  - id: outcome
+    name: Outcome
+    description: Defines the outcome measures or endpoints
+    
+    analysis_prompt: |
+      Analyze outcome specification:
+      
+      Query: {query}
+      
+      **Outcome Analysis:**
+      - Primary outcome stated?
+      - Secondary outcomes mentioned?
+      - Patient-reported vs. clinical outcomes
+      - Time frame for measurement
+      - Outcome type (mortality, morbidity, QoL, symptoms)
+      
+      **Refinement Needed When:**
+      - Outcome is vague (e.g., "effects", "impact")
+      - Multiple possible outcomes not prioritized
+      - Time frame for outcome unclear
+    
+    response_format:
+      type: json
+      schema:
+        needs_refinement: false
+        reason: "string"
+        suggested_question: null
+        identified_outcomes: []
+        outcome_specificity: "specific"
+      field_descriptions:
+        needs_refinement: "Whether outcome needs clarification"
+        reason: "Explanation of outcome analysis"
+        suggested_question: "Question about outcome measures"
+        identified_outcomes: "List of outcomes mentioned in query"
+        outcome_specificity: "One of: specific, moderate, vague, missing"
+    
+    allow_follow_up: true
+    max_follow_ups: 2
+    metadata:
+      domain: biomedical
+      framework: PICO
+      priority: critical
+
+# ============================================================================
+# Legal Research Schema with Response Format
+# ============================================================================
+
+legal_enhanced:
+  - id: jurisdiction
+    name: Jurisdiction
+    description: Clarifies the legal jurisdiction
+    
+    analysis_prompt: |
+      Analyze jurisdiction specification:
+      
+      Query: {query}
+      
+      **Jurisdiction Analysis:**
+      - Federal vs. State vs. International
+      - Specific court system level
+      - Geographic scope (nationwide, specific states, etc.)
+      - Temporal aspect (current law vs. historical)
+      
+      **Inference Rules:**
+      - "Federal" statutes → US federal jurisdiction
+      - "Supreme Court" → need to clarify which (US, state, other country)
+      - State names → that state's jurisdiction
+      - Statute citations → can infer jurisdiction
+      
+      **Edge Cases:**
+      - Comparative law (multiple jurisdictions)
+      - Conflicts of law issues
+      - International treaties
+    
+    response_format:
+      type: json
+      schema:
+        needs_refinement: true
+        reason: "string"
+        suggested_question: "string"
+        identified_jurisdiction: null
+        jurisdiction_level: "unspecified"
+        confidence: 0.5
+      field_descriptions:
+        needs_refinement: "Whether jurisdiction needs clarification"
+        reason: "Analysis explanation"
+        suggested_question: "Question about jurisdiction"
+        identified_jurisdiction: "Jurisdiction inferred from query (if any)"
+        jurisdiction_level: "One of: federal, state, local, international, unspecified"
+        confidence: "Confidence in jurisdiction inference (0.0-1.0)"
+    
+    allow_follow_up: true
+    max_follow_ups: 2
+    metadata:
+      domain: legal
+      priority: critical
+
+  - id: source_type
+    name: Legal Source Type
+    description: Identifies the type of legal source needed
+    
+    analysis_prompt: |
+      Determine legal source type needed:
+      
+      Query: {query}
+      
+      **Source Type Categories:**
+      - Primary law:
+        * Case law (judicial opinions)
+        * Statutes/codes
+        * Regulations
+        * Constitutional provisions
+      - Secondary sources:
+        * Law review articles
+        * Treatises and hornbooks
+        * Practice guides
+        * Legal encyclopedias
+      - Other:
+        * Legislative history
+        * Administrative decisions
+        * Legal commentary
+      
+      **Inference Clues:**
+      - "case about..." → case law
+      - "statute on..." → statutory law
+      - "research on..." → secondary sources
+      - "analysis of..." → secondary or case law
+      
+      **Generate Smart Question:**
+      - Tailor options to query context
+      - Suggest relevant source types
+      - Explain why each might be useful
+    
+    response_format:
+      type: json
+      schema:
+        needs_refinement: true
+        reason: "string"
+        suggested_question: "string"
+        likely_source_types: []
+        requires_multiple_sources: false
+      field_descriptions:
+        needs_refinement: "Whether source type needs clarification"
+        reason: "Analysis explanation"
+        suggested_question: "Question about source types with context-aware options"
+        likely_source_types: "List of probable source types based on query"
+        requires_multiple_sources: "Whether query likely needs multiple source types"
+    
+    allow_follow_up: true
+    max_follow_ups: 2
+    metadata:
+      domain: legal
+      priority: high
+
+# ============================================================================
+# Structured (non-JSON) Response Format Example
+# ============================================================================
+
+structured_response_example:
+  - id: methodology
+    name: Research Methodology
+    description: Clarifies research methods or study design
+    
+    analysis_prompt: |
+      Analyze methodology specification:
+      
+      Query: {query}
+      
+      Check for mentions of:
+      - Study design (RCT, cohort, case-control, qualitative, etc.)
+      - Data collection methods
+      - Analysis approaches
+      - Sample size requirements
+    
+    # Alternative: structured text response format
+    response_format:
+      type: structured
+      fields:
+        - name: needs_refinement
+          type: boolean
+          required: true
+          description: "Whether methodology needs clarification"
+        
+        - name: methodology_found
+          type: string
+          required: false
+          description: "Any methodology mentioned in the query"
+        
+        - name: suggested_question
+          type: string
+          required: true
+          description: "Question to ask about methodology"
+        
+        - name: relevant_methods
+          type: list
+          required: false
+          description: "List of methodology types relevant to this query"
+    
+    allow_follow_up: true
+    max_follow_ups: 2
+    metadata:
+      domain: academic_research
+      priority: high
+
+# ============================================================================
+# Benefits of Separate Response Format:
+# ============================================================================
+#
+# 1. **Consistency**: All dimensions return the same structure
+# 2. **Validation**: Can validate responses against the schema
+# 3. **Maintainability**: Update format in one place
+# 4. **Clarity**: Prompts focus on analysis logic, not formatting
+# 5. **Type Safety**: Clear field types and requirements
+# 6. **Documentation**: Field descriptions explain expected values
+# 7. **Extensibility**: Easy to add new fields across all dimensions
+# 8. **Testing**: Can test format compliance automatically
+#
+# ============================================================================
