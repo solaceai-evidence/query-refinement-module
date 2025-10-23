@@ -57,9 +57,9 @@ __all__ = [
     # core class
     "RefinementDimension",
     # schema loading functions
-    "list_schemas",
-    "get_schema",
-    "describe_schema"
+    "list_frameworks",
+    "get_framework",
+    "describe_refinement_framework"
 ]
 
 
@@ -644,86 +644,59 @@ def _load_custom_schemas() -> Dict[str, List[RefinementDimension]]:
 # ===============
 
 # Load custom schemas from CUSTOM_SCHEMAS_PATH
-SCHEMA_REGISTRY: Dict[str, List[RefinementDimension]] = _load_custom_schemas()
+REFINEMENT_FRAMEWORK_STORE: Dict[str, List[RefinementDimension]] = _load_custom_schemas()
 
-def list_schemas() -> List[str]:
+def list_frameworks() -> List[str]:
     """
-    List all available custom schema names loaded from CUSTOM_SCHEMAS_PATH.
+    List all available custom framework names loaded from CUSTOM_SCHEMAS_PATH.
 
     Returns:
-        List of schema names
-
-    Example:
-        >>> from query_refinement.schemas import list_schemas
-        >>> list_schemas()
-        ['my_schema', 'legal_research', 'medical_pico']
+        List of framework names
     """
-    return list(SCHEMA_REGISTRY.keys())
+    return list(REFINEMENT_FRAMEWORK_STORE.keys())
 
-def get_schema(schema_name: str) -> List[RefinementDimension]:
+def get_framework(framework_name: str) -> List[RefinementDimension]:
     """
-    Retrieve a custom schema by name.
+    Retrieve a custom framework by name.
 
     Args:
-        schema_name: Name of the schema as defined in your custom_schemas.yaml file
+        framework_name: Name of the framework as defined in your custom_schemas.yaml file
 
     Returns:
-        List of RefinementDimension objects for the schema
+        List of RefinementDimension objects for the framework
 
     Raises:
-        ValueError: If schema_name is not found in the loaded schemas
-
-    Example:
-        >>> from query_refinement.schemas import get_schema
-        >>> my_schema = get_schema("my_custom_schema")
-        >>> len(my_schema)
-        3
+        ValueError: If framework_name is not found in the loaded frameworks
     """
-    if schema_name not in SCHEMA_REGISTRY:
-        available = ", ".join(SCHEMA_REGISTRY.keys()) if SCHEMA_REGISTRY else "none"
+    if framework_name not in REFINEMENT_FRAMEWORK_STORE:
+        available = ", ".join(REFINEMENT_FRAMEWORK_STORE.keys()) if REFINEMENT_FRAMEWORK_STORE else "none"
         raise ValueError(
-            f"Unknown schema '{schema_name}'. Available schemas: {available}. "
+            f"Unknown framework '{framework_name}'. Available frameworks: {available}. "
             f"Make sure CUSTOM_SCHEMAS_PATH is set and points to a valid YAML file."
         )
-    return SCHEMA_REGISTRY[schema_name]
+    return REFINEMENT_FRAMEWORK_STORE[framework_name]
 
-def describe_schema(schema_name: str) -> Dict[str, Any]:
+def describe_refinement_framework(refinement_framework_name: str) -> Dict[str, Any]:
     """
-    Get detailed description of a schema including all dimensions.
+    Get detailed description of a refinement framework including all dimensions.
 
     Args:
-        schema_name: Name of the schema
+        refinement_framework_name: Name of the refinement framework
 
     Returns:
-        Dictionary with schema metadata and dimension details
-
-    Example:
-        >>> from query_refinement.schemas import describe_schema
-        >>> info = describe_schema("my_custom_schema")
-        >>> print(info['framework'])
-        'Custom Framework'
-        >>> print(len(info['dimensions']))
-        3
+        Dictionary with refinement framework metadata and dimension details
     """
-    schema = get_schema(schema_name)
-    
-    # Get framework from first dimension's metadata if available
-    framework = schema[0].metadata.get("framework", schema_name) if schema else schema_name
-    domain = schema[0].metadata.get("domain", "general") if schema else "general"
+    refinement_framework = get_framework(refinement_framework_name)
 
     return {
-        "name": schema_name,
-        "framework": framework,
-        "domain": domain,
-        "num_dimensions": len(schema),
+        "name": refinement_framework_name,
+        "num_dimensions": len(refinement_framework),
         "dimensions": [
             {
                 "id": dim.id,
                 "name": dim.name,
-                "description": dim.description,
-                "priority": dim.metadata.get("priority", "medium"),
-                "examples": dim.metadata.get("examples", []),
+                "description": dim.description
             }
-            for dim in schema
+            for dim in refinement_framework
         ],
     }
