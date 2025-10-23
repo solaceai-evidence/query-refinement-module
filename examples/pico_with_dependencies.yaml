@@ -1,0 +1,115 @@
+pico:
+  - id: population
+    name: Population
+    description: The target group or patients being studied
+    depends_on: []  # No dependencies - analyzed first
+    
+    system_prompt: |
+      You are a clinical research expert specializing in population definition.
+      Your role is to ensure the target population is clearly specified.
+    
+    analysis_prompt: |
+      Analyze the query: {query}
+      
+      Determine if the population/participants are clearly defined.
+      Consider: age groups, health conditions, demographics, inclusion/exclusion criteria.
+      
+      If the population is vague or missing, suggest ONE specific question to clarify it.
+    
+    response_format:
+      type: json
+      schema:
+        needs_refinement: boolean
+        reason: string
+        suggested_question: string
+    
+    allow_follow_up: true
+    max_follow_ups: 2
+
+  - id: intervention
+    name: Intervention
+    description: The treatment, exposure, or action being studied
+    depends_on: [population]  # Depends on population context
+    
+    system_prompt: |
+      You are a clinical research expert specializing in interventions and treatments.
+      Consider the target population when evaluating intervention appropriateness.
+    
+    analysis_prompt: |
+      Analyze the query: {query}
+      
+      Determine if the intervention/treatment/exposure is clearly specified.
+      Consider: type of intervention, dosage, duration, frequency, delivery method.
+      
+      Ensure the intervention is appropriate for the specified population.
+      
+      If the intervention is vague or missing, suggest ONE specific question to clarify it.
+    
+    response_format:
+      type: json
+      schema:
+        needs_refinement: boolean
+        reason: string
+        suggested_question: string
+    
+    allow_follow_up: true
+    max_follow_ups: 2
+
+  - id: comparison
+    name: Comparison
+    description: The alternative or control condition being compared
+    depends_on: [population, intervention]  # Depends on both
+    
+    system_prompt: |
+      You are a clinical research expert specializing in study design and comparisons.
+      Consider the population and intervention when evaluating appropriate comparisons.
+    
+    analysis_prompt: |
+      Analyze the query: {query}
+      
+      Determine if there is a comparison/control condition specified or implied.
+      Consider: placebo, standard care, alternative treatments, no treatment.
+      
+      The comparison should be appropriate for the population and intervention context.
+      
+      If comparison is needed but unclear, suggest ONE specific question to clarify it.
+      Note: Some queries may not require a comparison (descriptive studies).
+    
+    response_format:
+      type: json
+      schema:
+        needs_refinement: boolean
+        reason: string
+        suggested_question: string
+    
+    allow_follow_up: true
+    max_follow_ups: 1
+
+  - id: outcome
+    name: Outcome
+    description: The measured results or endpoints of interest
+    depends_on: [population, intervention]  # Depends on population and intervention
+    
+    system_prompt: |
+      You are a clinical research expert specializing in outcome measurement.
+      Consider the population and intervention when evaluating outcome appropriateness.
+    
+    analysis_prompt: |
+      Analyze the query: {query}
+      
+      Determine if the outcome/endpoint is clearly specified.
+      Consider: what is being measured, measurement tools, timeframe, clinical significance.
+      
+      Ensure the outcome is appropriate and measurable for the specified population and intervention.
+      
+      If the outcome is vague or missing, suggest ONE specific question to clarify it.
+    
+    response_format:
+      type: json
+      schema:
+        needs_refinement: boolean
+        reason: string
+        suggested_question: string
+    
+    allow_follow_up: true
+    max_follow_ups: 2

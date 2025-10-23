@@ -39,6 +39,7 @@ schema_name:
     
     allow_follow_up: false  # optional, default=false
     max_follow_ups: 2       # optional, default=2
+    depends_on: []           # optional, default=[], list of dimension IDs this dimension depends on (for context)
     metadata:               # optional
       domain: general
       priority: high
@@ -100,6 +101,7 @@ class RefinementDimension:
         system_prompt: Optional system-level prompt defining the AI's role/persona for this dimension
         analysis_prompt: Prompt template for analyzing the query (must include {query})
         response_format: Expected response structure (optional, for structured responses)
+        depends_on: List of dimension IDs this dimension depends on (for context)
         allow_follow_up: Whether follow-up questions are allowed
         max_follow_ups: Maximum number of follow-up rounds
         metadata: Additional metadata for extensibility
@@ -118,6 +120,10 @@ class RefinementDimension:
     # Optional: Define expected response format separately from the prompt
     # This allows for consistent response structures and validation
     response_format: Optional[Dict[str, Any]] = None
+    
+    # Dependencies: List of dimension IDs this dimension depends on
+    # Only declared dependencies will be included in the analysis context
+    depends_on: List[str] = field(default_factory=list)
     
     # Should this dimension support follow-ups?
     allow_follow_up: bool = False
@@ -435,6 +441,111 @@ class RefinementDimension:
         return cls(**data)
 
 # ===============
+# Dependency Validation and Ordering
+# ===============
+
+def validate_dependencies(refinement_framework: List[RefinementDimension]) -> None:
+    """
+    Validate dimension dependencies for a refinement framework.
+    
+    Checks for:
+    - Non-existent dimension references
+    - Circular dependencies
+    
+    Args:
+        refinement_framework: List of RefinementDimension objects to validate
+
+    Raises:
+        ValueError: If dependencies are invalid
+    """
+    dimension_ids = {dim.id for dim in refinement_framework}
+
+    # Check for non-existent dependencies
+    for dim in refinement_framework:
+        for dep_id in dim.depends_on:
+            if dep_id not in dimension_ids:
+                raise ValueError(
+                    f"Dimension '{dim.id}' depends on non-existent dimension '{dep_id}'. "
+                    f"Available dimensions: {', '.join(sorted(dimension_ids))}"
+                )
+    
+    # Check for circular dependencies using DFS
+    def has_cycle(node_id: str, visited: set, rec_stack: set, dep_graph: Dict[str, List[str]]) -> bool:
+        """Detect cycle in dependency graph using DFS."""
+        visited.add(node_id)
+        rec_stack.add(node_id)
+        
+        for neighbor in dep_graph.get(node_id, []):
+            if neighbor not in visited:
+                if has_cycle(neighbor, visited, rec_stack, dep_graph):
+                    return True
+            elif neighbor in rec_stack:
+                return True
+        
+        rec_stack.remove(node_id)
+        return False
+    
+    # Build dependency graph
+    dep_graph = {dim.id: dim.depends_on for dim in dimensions}
+    
+    visited: set[str] = set()
+    rec_stack: set[str] = set()
+    
+    for dim in refinement_framework:
+        if dim.id not in visited:
+            if has_cycle(dim.id, visited, rec_stack, dep_graph):
+                raise ValueError(
+                    f"Circular dependency detected in schema involving dimension '{dim.id}'"
+                )
+
+
+def sort_dimensions_by_dependencies(refinement_framework: List[RefinementDimension]) -> List[RefinementDimension]:
+    """
+    Sort dimensions by their dependencies using topological sort.
+    
+    Dimensions with no dependencies come first, followed by those that depend on them, etc.
+    
+    Args:
+        refinement_framework: List of RefinementDimension objects to sort
+
+    Returns:
+        Sorted list of dimensions (dependencies satisfied in order)
+        
+    Raises:
+        ValueError: If circular dependencies exist
+    """
+    # Validate first
+    validate_dependencies(refinement_framework)
+    
+    # Build dependency graph
+    dim_map = {dim.id: dim for dim in refinement_framework}
+    in_degree = {dim.id: len(dim.depends_on) for dim in refinement_framework}
+    
+    # Topological sort using Kahn's algorithm
+    queue = [dim_id for dim_id, degree in in_degree.items() if degree == 0]
+    sorted_dims = []
+    
+    while queue:
+        # Sort queue to ensure deterministic ordering when multiple nodes have in-degree 0
+        queue.sort()
+        current_id = queue.pop(0)
+        sorted_dims.append(dim_map[current_id])
+        
+        # Reduce in-degree for dimensions that depend on current
+        for dim in refinement_framework:
+            if current_id in dim.depends_on:
+                in_degree[dim.id] -= 1
+                if in_degree[dim.id] == 0:
+                    queue.append(dim.id)
+    
+    if len(sorted_dims) != len(refinement_framework):
+        # Should not happen if validate_dependencies passed, but check anyway
+        raise ValueError("Unable to sort dimensions - circular dependency detected")
+    
+    return sorted_dims
+
+
+# ===============
 # Custom Schema Loading
 # ===============
 
@@ -506,8 +617,16 @@ def _load_custom_schemas() -> Dict[str, List[RefinementDimension]]:
                     continue
             
             if dimensions:
-                custom_schemas[schema_name] = dimensions
-                logger.info(f"Loaded schema '{schema_name}' with {len(dimensions)} dimensions")
+                # Validate dependencies
+                try:
+                    validate_dependencies(dimensions)
+                    # Sort by dependencies
+                    dimensions = sort_dimensions_by_dependencies(dimensions)
+                    custom_schemas[schema_name] = dimensions
+                    logger.info(f"Loaded schema '{schema_name}' with {len(dimensions)} dimensions (validated and sorted)")
+                except ValueError as e:
+                    logger.error(f"Invalid dependencies in schema '{schema_name}': {e}")
+                    continue
         
         if not custom_schemas:
             logger.warning(f"No valid schemas found in {schema_path}")
