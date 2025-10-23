@@ -147,7 +147,7 @@ class QueryAnalyzerInterface(ABC):
 # ===========
 # Tracing Interface
 # ===========
-class TracingInterface(ABC):
+class TracingProviderInterface(ABC):
     """
     Abstract interface for tracing systems.
 
@@ -224,7 +224,7 @@ __all__ = [
     # core interfaces
     "LLMProviderInterface",
     "QueryAnalyzerInterface",
-    "TracingInterface",
+    "TracingProviderInterface",
     # result type
     "LLMCompletionResult",
 ]
