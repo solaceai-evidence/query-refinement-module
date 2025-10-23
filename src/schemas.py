@@ -13,6 +13,12 @@ schema_name:
   - id: dimension_id
     name: Dimension Name
     description: Description of the dimension
+    
+    # Optional: System prompt defining AI's role/persona for this dimension
+    system_prompt: |
+      You are a [domain] expert specializing in [aspect].
+      Your role is to [purpose].
+    
     analysis_prompt: |
       Analyze the query: {query}
       
@@ -91,6 +97,7 @@ class RefinementDimension:
         id: Unique identifier for the dimension
         name: Human-readable name
         description: Brief description of what this dimension refines
+        system_prompt: Optional system-level prompt defining the AI's role/persona for this dimension
         analysis_prompt: Prompt template for analyzing the query (must include {query})
         response_format: Expected response structure (optional, for structured responses)
         allow_follow_up: Whether follow-up questions are allowed
@@ -100,9 +107,13 @@ class RefinementDimension:
     id: str
     name: str
     description: str
-
+    
     # Analysis prompt - should focus on analysis logic, not response format
     analysis_prompt: str
+    
+    # Optional: System prompt defining AI role/persona for this dimension
+    # Example: "You are a clinical research expert specializing in population definition."
+    system_prompt: Optional[str] = None
     
     # Optional: Define expected response format separately from the prompt
     # This allows for consistent response structures and validation
@@ -197,13 +208,15 @@ class RefinementDimension:
 
     def get_full_prompt(self, query: str) -> str:
         """
-        Generate the full prompt including response format instructions.
+        Generate the full user prompt including response format instructions.
+        
+        For system prompt, use get_system_prompt() or get_prompts() for both.
         
         Args:
             query: The user's query to analyze
             
         Returns:
-            Complete prompt with query inserted and response format appended
+            Complete user prompt with query inserted and response format appended
         """
         prompt = self.analysis_prompt.format(query=query)
         
@@ -211,6 +224,37 @@ class RefinementDimension:
         prompt += "\n\n" + self._format_response_instructions()
         
         return prompt
+    
+    def get_system_prompt(self) -> str:
+        """
+        Get the system prompt for this dimension.
+        
+        Returns:
+            System prompt if defined, otherwise a generic default with description
+        """
+        if self.system_prompt:
+            return self.system_prompt
+        
+        # Default system prompt
+        return (
+            f"You are an expert assistant helping to refine scientific user queries.\n\n"
+            f"Your specific focus: {self.name}\n"
+            f"What this means: {self.description}\n\n"
+            f"Your task is to analyze whether this aspect of the query is missing, incomplete, or ambiguous. "
+            f"If clarification is needed, ask ONE specific, helpful question to gather the missing or unclear information."
+        )
+    
+    def get_prompts(self, query: str) -> tuple[str, str]:
+        """
+        Get both system and user prompts for this dimension.
+        
+        Args:
+            query: The user's query to analyze
+            
+        Returns:
+            Tuple of (system_prompt, user_prompt)
+        """
+        return self.get_system_prompt(), self.get_full_prompt(query)
     
     def _format_response_instructions(self) -> str:
         """

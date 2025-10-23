@@ -61,13 +61,37 @@ class RefinementStep:
             **kwargs,
     )-> str:
         """
-        Format the analysis prompt for this dimension using the current query and any additional context (TODO).
+        Format the user prompt for this dimension using the current query and any additional context.
+        
+        For system prompt, use get_system_prompt() or get_prompts() for both.
         """
         prompt = self.dimension.get_full_prompt(
             query=query,
             **kwargs,
         )
         return prompt
+    
+    def get_system_prompt(self) -> str:
+        """
+        Get the system prompt for this dimension.
+        
+        Returns:
+            System prompt string (from dimension or default)
+        """
+        return self.dimension.get_system_prompt()
+    
+    def get_prompts(self, query: str, **kwargs) -> tuple[str, str]:
+        """
+        Get both system and user prompts for this dimension.
+        
+        Args:
+            query: The query to analyze
+            **kwargs: Additional context for prompt formatting
+            
+        Returns:
+            Tuple of (system_prompt, user_prompt)
+        """
+        return self.dimension.get_prompts(query)
     
     def can_ask_followup(self) -> bool:
         """
@@ -316,3 +340,40 @@ class RefinementSession:
             ],
             "metadata": self.metadata,
         }
+    
+#=====
+# Refinement Process Orchestration
+#=====
+
+class QueryRefinementManager:
+    """
+    Orchestrates the multi-step query refinement process using provided LLM, tracing, and query analysis interfaces.
+
+    Refinement logic is domain-agnostic and driven by the provided schema dimensions.
+    All methods work with RefinementSession objects, allowing external management of state and persistence (files/Redis/databases).
+
+    Key responsibilities:
+    - Detecting wich dimensions need refinement based on the initial query
+    - Generating questions for each dimension using the query analyzer
+    - Processing user responses and managing follow-up questions
+    - Synthesizing the final refined query
+    - Maintaining conversation history and session state
+    - Tracing and logging interactions for debugging and analysis
+
+    Attributes:
+        llm_provider (LLMProviderInterface): Interface for interacting with the LLM.
+        tracing_provider (TracingProviderInterface): Interface for tracing and logging.
+        query_analyzer (QueryAnalyzerInterface): Interface for analyzing queries against schemas.
+    """
+
+    def __init__(
+        self,
+        llm_provider: LLMProviderInterface,
+        tracing_provider: TracingProviderInterface,
+        query_analyzer: QueryAnalyzerInterface,
+    ):
+        self.llm_provider = llm_provider
+        self.tracing_provider = tracing_provider
+        self.query_analyzer = query_analyzer
+
+    
