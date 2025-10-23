@@ -1,77 +1,29 @@
 """
-This module provides custom refinement schemas loaded from an external YAML file.
+Core data model for query refinement aspects.
 
-Users must specify the path to their custom schemas YAML file using the 
-CUSTOM_SCHEMAS_PATH environment variable.
-
-Set the environment variable:
-    export CUSTOM_SCHEMAS_PATH=/path/to/your/custom_schemas.yaml
-
-The YAML file should follow this format:
-
-schema_name:
-  - id: dimension_id
-    name: Dimension Name
-    description: Description of the dimension
-    
-    # Optional: System prompt defining AI's role/persona for this dimension
-    system_prompt: |
-      You are a [domain] expert specializing in [aspect].
-      Your role is to [purpose].
-    
-    analysis_prompt: |
-      Analyze the query: {query}
-      
-      Focus on analysis logic here, not response format.
-      The response format is specified separately below.
-    
-    # Optional: Define expected response format (recommended for consistency)
-    response_format:
-      type: json  # or "structured"
-      schema:
-        needs_refinement: boolean
-        reason: string
-        suggested_question: string
-      field_descriptions:
-        needs_refinement: Whether this dimension needs clarification
-        reason: Brief explanation of why refinement is or isn't needed
-        suggested_question: The question to ask the user (if needs_refinement is true)
-    
-    allow_follow_up: false  # optional, default=false
-    max_follow_ups: 2       # optional, default=2
-    depends_on: []           # optional, default=[], list of dimension IDs this dimension depends on (for context)
-    metadata:               # optional
-      domain: general
-      priority: high
+This module defines the RefinementAspect class which represents a single
+characteristic along which a query can be refined.
 """
 
-import os
-from pathlib import Path
 from dataclasses import dataclass, field, asdict
 from typing import List, Optional, Any, Dict
 import logging
+import json
 
 logger = logging.getLogger(__name__)
 
-__all__ = [
-    # core class
-    "RefinementDimension",
-    # schema loading functions
-    "list_frameworks",
-    "get_framework",
-    "describe_refinement_framework"
-]
+__all__ = ["RefinementAspect"]
 
 
 @dataclass
-class RefinementDimension:
+class RefinementAspect:
     """ 
-    A dimension along which a query can be refined.
+    A refinement aspect along which a query can be refined.
 
-    Each dimension represents a specific aspect or characteristic of the query that may need 
+    Each aspect represents a specific characteristic of the query that may need 
     clarification, such as temporal scope, target population, methodology, etc.
 
-    The dimension includes:
+    The aspect includes:
     - An analysis prompt to determine if refinement is needed
     - A response format specification for consistent, structured responses
     - Optional follow-up configuration
@@ -95,13 +47,13 @@ class RefinementDimension:
         }
 
     Attributes:
-        id: Unique identifier for the dimension
+        id: Unique identifier for the refinement aspect
         name: Human-readable name
-        description: Brief description of what this dimension refines
-        system_prompt: Optional system-level prompt defining the AI's role/persona for this dimension
+        description: Brief description of what this refinement aspect refines
+        system_prompt: Optional system-level prompt defining the AI's role/persona for this refinement aspect
         analysis_prompt: Prompt template for analyzing the query (must include {query})
         response_format: Expected response structure (optional, for structured responses)
-        depends_on: List of dimension IDs this dimension depends on (for context)
+        depends_on: List of refinement aspect IDs this refinement aspect depends on (for context)
         allow_follow_up: Whether follow-up questions are allowed
         max_follow_ups: Maximum number of follow-up rounds
         metadata: Additional metadata for extensibility
@@ -113,7 +65,7 @@ class RefinementDimension:
     # Analysis prompt - should focus on analysis logic, not response format
     analysis_prompt: str
     
-    # Optional: System prompt defining AI role/persona for this dimension
+    # Optional: System prompt defining AI role/persona for this refinement aspect
     # Example: "You are a clinical research expert specializing in population definition."
     system_prompt: Optional[str] = None
     
@@ -121,17 +73,17 @@ class RefinementDimension:
     # This allows for consistent response structures and validation
     response_format: Optional[Dict[str, Any]] = None
     
-    # Dependencies: List of dimension IDs this dimension depends on
+    # Dependencies: List of refinement aspect IDs this refinement aspect depends on
     # Only declared dependencies will be included in the analysis context
     depends_on: List[str] = field(default_factory=list)
     
-    # Should this dimension support follow-ups?
+    # Should this refinement aspect support follow-ups?
     allow_follow_up: bool = False
-    # Maximum number of follow-ups allowed (if follow-ups are allowed) default = 2
-    max_follow_ups: Optional[int] = 2  
+    # Maximum number of follow-ups allowed (if follow-ups are allowed) default = 3
+    max_follow_ups: int = 3  
 
     # Optional metadata for extensibility
-    # e.g., domain, priority, related dimensions, examples, options, etc.
+    # e.g., domain, priority, examples, options, etc.
     metadata: Dict[str, Any] = field(default_factory=dict)  
 
     # Base schema fields that are always required
@@ -142,7 +94,7 @@ class RefinementDimension:
     }
     
     BASE_FIELD_DESCRIPTIONS = {
-        "needs_refinement": "Whether this dimension needs clarification (true/false)",
+        "needs_refinement": "Whether this refinement aspect needs clarification (true/false)",
         "reason": "Brief explanation of why refinement is or isn't needed",
         "suggested_question": "The question to ask the user (if needs_refinement is true, otherwise can be empty)"
     }
@@ -233,7 +185,7 @@ class RefinementDimension:
     
     def get_system_prompt(self) -> str:
         """
-        Get the system prompt for this dimension.
+        Get the system prompt for this refinement aspect.
         
         Returns:
             System prompt if defined, otherwise a generic default with description
@@ -250,7 +202,7 @@ class RefinementDimension:
     
     def get_prompts(self, query: str) -> tuple[str, str]:
         """
-        Get both system and user prompts for this dimension.
+        Get both system and user prompts for this refinement aspect.
         
         Args:
             query: The user's query to analyze
@@ -281,7 +233,6 @@ class RefinementDimension:
             complete_descriptions.update(custom_descriptions)
         
         # Format the schema as JSON example
-        import json
         schema_example = {field: f"<{ftype}>" for field, ftype in complete_schema.items()}
         instructions.append(f"\n```json\n{json.dumps(schema_example, indent=2)}\n```")
         
@@ -432,271 +383,10 @@ class RefinementDimension:
         return True, None, warnings
 
     def to_dict(self) -> Dict[str, Any]:
-        """Convert dimension to dictionary for serialization."""
+        """Convert refinement aspect to dictionary for serialization."""
         return asdict(self)
 
     @classmethod
-    def from_dict(cls, data: Dict[str, Any]) -> "RefinementDimension":
-        """Create RefinementDimension from dictionary."""
+    def from_dict(cls, data: Dict[str, Any]) -> "RefinementAspect":
+        """Create RefinementAspect from dictionary."""
         return cls(**data)
-
-# ===============
-# Dependency Validation and Ordering
-# ===============
-
-def validate_dependencies(refinement_framework: List[RefinementDimension]) -> None:
-    """
-    Validate dimension dependencies for a refinement framework.
-    
-    Checks for:
-    - Non-existent dimension references
-    - Circular dependencies
-    
-    Args:
-        refinement_framework: List of RefinementDimension objects to validate
-
-    Raises:
-        ValueError: If dependencies are invalid
-    """
-    dimension_ids = {dim.id for dim in refinement_framework}
-
-    # Check for non-existent dependencies
-    for dim in refinement_framework:
-        for dep_id in dim.depends_on:
-            if dep_id not in dimension_ids:
-                raise ValueError(
-                    f"Dimension '{dim.id}' depends on non-existent dimension '{dep_id}'. "
-                    f"Available dimensions: {', '.join(sorted(dimension_ids))}"
-                )
-    
-    # Check for circular dependencies using DFS
-    def has_cycle(node_id: str, visited: set, rec_stack: set, dep_graph: Dict[str, List[str]]) -> bool:
-        """Detect cycle in dependency graph using DFS."""
-        visited.add(node_id)
-        rec_stack.add(node_id)
-        
-        for neighbor in dep_graph.get(node_id, []):
-            if neighbor not in visited:
-                if has_cycle(neighbor, visited, rec_stack, dep_graph):
-                    return True
-            elif neighbor in rec_stack:
-                return True
-        
-        rec_stack.remove(node_id)
-        return False
-    
-    # Build dependency graph
-    dep_graph = {dim.id: dim.depends_on for dim in dimensions}
-    
-    visited: set[str] = set()
-    rec_stack: set[str] = set()
-    
-    for dim in refinement_framework:
-        if dim.id not in visited:
-            if has_cycle(dim.id, visited, rec_stack, dep_graph):
-                raise ValueError(
-                    f"Circular dependency detected in schema involving dimension '{dim.id}'"
-                )
-
-
-def sort_dimensions_by_dependencies(refinement_framework: List[RefinementDimension]) -> List[RefinementDimension]:
-    """
-    Sort dimensions by their dependencies using topological sort.
-    
-    Dimensions with no dependencies come first, followed by those that depend on them, etc.
-    
-    Args:
-        refinement_framework: List of RefinementDimension objects to sort
-
-    Returns:
-        Sorted list of dimensions (dependencies satisfied in order)
-        
-    Raises:
-        ValueError: If circular dependencies exist
-    """
-    # Validate first
-    validate_dependencies(refinement_framework)
-    
-    # Build dependency graph
-    dim_map = {dim.id: dim for dim in refinement_framework}
-    in_degree = {dim.id: len(dim.depends_on) for dim in refinement_framework}
-    
-    # Topological sort using Kahn's algorithm
-    queue = [dim_id for dim_id, degree in in_degree.items() if degree == 0]
-    sorted_dims = []
-    
-    while queue:
-        # Sort queue to ensure deterministic ordering when multiple nodes have in-degree 0
-        queue.sort()
-        current_id = queue.pop(0)
-        sorted_dims.append(dim_map[current_id])
-        
-        # Reduce in-degree for dimensions that depend on current
-        for dim in refinement_framework:
-            if current_id in dim.depends_on:
-                in_degree[dim.id] -= 1
-                if in_degree[dim.id] == 0:
-                    queue.append(dim.id)
-    
-    if len(sorted_dims) != len(refinement_framework):
-        # Should not happen if validate_dependencies passed, but check anyway
-        raise ValueError("Unable to sort dimensions - circular dependency detected")
-    
-    return sorted_dims
-
-
-# ===============
-# Custom Schema Loading
-# ===============
-
-def _load_custom_schemas() -> Dict[str, List[RefinementDimension]]:
-    """
-    Load custom schemas from external YAML file specified by CUSTOM_SCHEMAS_PATH.
-    
-    The CUSTOM_SCHEMAS_PATH environment variable must point to a YAML file containing
-    schema definitions.
-    
-    Returns:
-        Dictionary mapping schema names to lists of RefinementDimension objects
-    """
-    custom_schemas: Dict[str, List[RefinementDimension]] = {}
-    
-    # Check if PyYAML is available
-    try:
-        import yaml
-    except ImportError:
-        logger.error(
-            "PyYAML not installed. Custom schemas require PyYAML. "
-            "Install with: pip install pyyaml"
-        )
-        return custom_schemas
-    
-    # Get path from environment variable
-    env_path = os.getenv("CUSTOM_SCHEMAS_PATH")
-    if not env_path:
-        logger.error(
-            "CUSTOM_SCHEMAS_PATH environment variable not set. "
-            "Please set it to the path of your custom schemas YAML file."
-        )
-        return custom_schemas
-    
-    schema_path = Path(env_path)
-    
-    # Check if file exists
-    if not schema_path.exists():
-        logger.error(f"Custom schemas file not found: {schema_path}")
-        return custom_schemas
-    
-    if not schema_path.is_file():
-        logger.error(f"CUSTOM_SCHEMAS_PATH must point to a file, not a directory: {schema_path}")
-        return custom_schemas
-    
-    # Load and parse YAML file
-    try:
-        logger.info(f"Loading custom schemas from: {schema_path}")
-        with open(schema_path, 'r', encoding='utf-8') as f:
-            data = yaml.safe_load(f)
-        
-        if not isinstance(data, dict):
-            logger.error(f"Invalid YAML format in {schema_path}: expected dictionary at root level")
-            return custom_schemas
-        
-        # Validate and convert to RefinementDimension objects
-        for schema_name, dimensions_data in data.items():
-            if not isinstance(dimensions_data, list):
-                logger.warning(f"Skipping schema '{schema_name}': expected list of dimensions")
-                continue
-            
-            dimensions = []
-            for dim_data in dimensions_data:
-                try:
-                    dimension = RefinementDimension.from_dict(dim_data)
-                    dimensions.append(dimension)
-                except (TypeError, ValueError) as e:
-                    logger.warning(f"Skipping invalid dimension in schema '{schema_name}': {e}")
-                    continue
-            
-            if dimensions:
-                # Validate dependencies
-                try:
-                    validate_dependencies(dimensions)
-                    # Sort by dependencies
-                    dimensions = sort_dimensions_by_dependencies(dimensions)
-                    custom_schemas[schema_name] = dimensions
-                    logger.info(f"Loaded schema '{schema_name}' with {len(dimensions)} dimensions (validated and sorted)")
-                except ValueError as e:
-                    logger.error(f"Invalid dependencies in schema '{schema_name}': {e}")
-                    continue
-        
-        if not custom_schemas:
-            logger.warning(f"No valid schemas found in {schema_path}")
-            
-    except yaml.YAMLError as e:
-        logger.error(f"Error parsing YAML from {schema_path}: {e}")
-    except Exception as e:
-        logger.error(f"Error loading custom schemas from {schema_path}: {e}")
-    
-    return custom_schemas
-
-
-# ===============
-# Schema Registry
-# ===============
-
-# Load custom schemas from CUSTOM_SCHEMAS_PATH
-REFINEMENT_FRAMEWORK_STORE: Dict[str, List[RefinementDimension]] = _load_custom_schemas()
-
-def list_frameworks() -> List[str]:
-    """
-    List all available custom framework names loaded from CUSTOM_SCHEMAS_PATH.
-
-    Returns:
-        List of framework names
-    """
-    return list(REFINEMENT_FRAMEWORK_STORE.keys())
-
-def get_framework(framework_name: str) -> List[RefinementDimension]:
-    """
-    Retrieve a custom framework by name.
-
-    Args:
-        framework_name: Name of the framework as defined in your custom_schemas.yaml file
-
-    Returns:
-        List of RefinementDimension objects for the framework
-
-    Raises:
-        ValueError: If framework_name is not found in the loaded frameworks
-    """
-    if framework_name not in REFINEMENT_FRAMEWORK_STORE:
-        available = ", ".join(REFINEMENT_FRAMEWORK_STORE.keys()) if REFINEMENT_FRAMEWORK_STORE else "none"
-        raise ValueError(
-            f"Unknown framework '{framework_name}'. Available frameworks: {available}. "
-            f"Make sure CUSTOM_SCHEMAS_PATH is set and points to a valid YAML file."
-        )
-    return REFINEMENT_FRAMEWORK_STORE[framework_name]
-
-def describe_refinement_framework(refinement_framework_name: str) -> Dict[str, Any]:
-    """
-    Get detailed description of a refinement framework including all dimensions.
-
-    Args:
-        refinement_framework_name: Name of the refinement framework
-
-    Returns:
-        Dictionary with refinement framework metadata and dimension details
-    """
-    refinement_framework = get_framework(refinement_framework_name)
-
-    return {
-        "name": refinement_framework_name,
-        "num_dimensions": len(refinement_framework),
-        "dimensions": [
-            {
-                "id": dim.id,
-                "name": dim.name,
-                "description": dim.description
-            }
-            for dim in refinement_framework
-        ],
-    }

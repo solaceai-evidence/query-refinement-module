@@ -8,7 +8,7 @@ from dataclasses import dataclass
 from typing import TYPE_CHECKING, Any, Dict, Optional, List
 
 if TYPE_CHECKING:
-    from schemas import RefinementDimension
+    from .schema import RefinementAspect
 
 # ===========
 # LLM Provider Interface
@@ -29,7 +29,7 @@ class LLMCompletionResult:
     model: str
     total_tokens: Optional[int] = None
     cost: Optional[float] = None
-    metadata: Dict[str, Any] = None
+    metadata: Optional[Dict[str, Any]] = None
 
     def __post_init__(self):
         if self.metadata is None:
@@ -109,31 +109,25 @@ class QueryAnalyzerInterface(ABC):
     """
 
     @abstractmethod
-    def analyze_query_completeness(
+    def analyze_query(
         self,
         query: str,
-        schema: List["RefinementDimension"],
-        llm_provider: Optional[LLMProviderInterface] = None,
-    ) -> List["RefinementDimension"]:
+        refinement_framework: List["RefinementAspect"],
+        **kwargs
+    ) -> List["RefinementAspect"]:
         """
-        Analyze the user query in the context of the provided schema to determine which dimensions need refinement.
-
+        Analyzes a query to identify which dimensions require refinement.
+        
         Args:
-            query (str): The user query to analyze.
-            schema (List[RefinementDimension]): List of refinement dimensions to consider.
-            llm_provider (Optional[LLMProviderInterface]): An optional LLM provider for analysis.
+            query (str): The query to analyze.
+            refinement_framework (List[RefinementAspect]): List of refinement dimensions to consider.
+            **kwargs: Additional keyword arguments to pass to the analyzer.
         
         Returns:
-            List[RefinementDimension]: A list of dimensions that require refinement.
-            Empty list means no refinement needed.
-        
-        Raises:
-            NotImplementedError: If the method is not implemented by the subclass.
-            Exception: For any errors during the analysis process (implementation-specific).
+            List[RefinementAspect]: A list of dimensions that require refinement.
         """
         pass
-        raise NotImplementedError("QueryAnalyzerInterface.analyze_query_completeness() must be implemented by subclasses.") 
-    
+        
     def supports_llm_analysis(self) -> bool:
         """
         Indicates whether the analyzer supports LLM-based analysis.
