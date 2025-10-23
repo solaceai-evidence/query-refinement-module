@@ -29,6 +29,11 @@ schema_name:
   - id: dimension_id                    # Required: unique ID
     name: Dimension Name                # Required: display name
     description: What this refines      # Required: brief description
+    
+    depends_on: []                      # Optional: list of dimension IDs this depends on
+                                        # Default: [] (no dependencies)
+                                        # Example: [population, intervention]
+    
     analysis_prompt: |                  # Required: must include {query}
       Analyze the query: {query}
       

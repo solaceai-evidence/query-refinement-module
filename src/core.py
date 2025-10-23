@@ -39,13 +39,13 @@ These commands are detected via is_user_command() and processed via parse_user_c
 """
 
 import logging
-import re
 from dataclasses import dataclass, field
 from enum import Enum
+from time import time
 from typing import Any, Dict, List, Optional, Tuple
 
-from interfaces import LLMProviderInterface, TracingProviderInterface, QueryAnalyzerInterface
-from schemas import RefinementDimension
+from .interfaces import LLMProviderInterface, TracingProviderInterface, QueryAnalyzerInterface
+from .schemas import RefinementDimension
 
 logger = logging.getLogger(__name__)
 
@@ -258,18 +258,53 @@ class RefinementStep:
         """
         return self.dimension.get_system_prompt()
     
-    def get_prompts(self, query: str, **kwargs) -> tuple[str, str]:
+    def get_prompts(self, query: str, dependency_context: Optional[Dict[str, str]] = None, **kwargs) -> tuple[str, str]:
         """
-        Get both system and user prompts for this dimension.
+        Get both system and user prompts for this dimension with dependency context.
         
         Args:
             query: The query to analyze
+            dependency_context: Dictionary mapping dimension IDs to their final values
             **kwargs: Additional context for prompt formatting
             
         Returns:
             Tuple of (system_prompt, user_prompt)
         """
-        return self.dimension.get_prompts(query)
+        system_prompt = self.dimension.get_system_prompt()
+        
+        # Build user prompt with dependency context
+        user_prompt_parts = []
+        
+        # Add dependency context if provided
+        if dependency_context and self.dimension.depends_on:
+            missing_deps = []
+            context_lines = []
+            
+            for dep_id in self.dimension.depends_on:
+                if dep_id in dependency_context and dependency_context[dep_id]:
+                    # Find dimension name for more readable output
+                    dep_name = dep_id.replace("_", " ").title()
+                    context_lines.append(f"- {dep_name}: {dependency_context[dep_id]}")
+                else:
+                    missing_deps.append(dep_id)
+            
+            if context_lines:
+                user_prompt_parts.append("Previous refinements:")
+                user_prompt_parts.extend(context_lines)
+                user_prompt_parts.append("")  # Blank line
+            
+            if missing_deps:
+                import logging
+                logger = logging.getLogger(__name__)
+                logger.warning(
+                    f"Dimension '{self.dimension.id}' depends on {missing_deps} but they have no values. "
+                    "Continuing without that context."
+                )
+        
+        # Add main analysis prompt
+        user_prompt_parts.append(self.dimension.get_full_prompt(query=query, **kwargs))
+        
+        return system_prompt, "\n".join(user_prompt_parts)
     
     def can_ask_followup(self) -> bool:
         """
@@ -335,11 +370,11 @@ class RefinementSession:
 
     Accepts a list of RefinementDimension defining what aspects can be refined (domain-agnostic).
 
-    Stores the original query, dimensions, current query state, conversation history, and all refinement steps taken, and metadata.
+    Stores the original query, refinement_framework, current query state, conversation history, and all refinement steps taken, and metadata.
     """
 
     original_query: str
-    dimensions: List[RefinementDimension]
+    refinement_framework: List[RefinementDimension]
     current_query: str = "" # Updated query as refinements are made
     conversation_history: List[Dict[str, str]] = field(default_factory=list)
     steps: List[RefinementStep] = field(default_factory=list)
@@ -380,6 +415,38 @@ class RefinementSession:
             if not step.is_complete:
                 return step
         return None
+    
+    def get_dependency_context(self, target_dimension_id: str) -> Dict[str, str]:
+        """
+        Build dependency context for a specific dimension.
+        
+        Only includes dependencies declared by the target dimension.
+        
+        Args:
+            target_dimension_id: The dimension ID that needs dependency context
+            
+        Returns:
+            Dictionary mapping dependency IDs to their final values
+        """
+        context = {}
+        
+        # Find the target dimension's dependencies
+        target_dim = None
+        for step in self.steps:
+            if step.dimension.id == target_dimension_id:
+                target_dim = step.dimension
+                break
+        
+        if not target_dim or not target_dim.depends_on:
+            return context
+        
+        # Collect final values for declared dependencies
+        for step in self.steps:
+            if step.dimension.id in target_dim.depends_on:
+                if step.final_value:
+                    context[step.dimension.id] = step.final_value
+        
+        return context
     
     def add_to_history(
             self,
@@ -531,8 +598,36 @@ class RefinementSession:
         
         return {"success": False, "message": f"Command {command.name} not implemented"}
     
+    def _invalidate_dependents(self, changed_dimension_id: str) -> List[str]:
+        """
+        Invalidate all dimensions that depend on the changed dimension.
+        
+        Args:
+            changed_dimension_id: The dimension ID that was changed
+            
+        Returns:
+            List of invalidated dimension names
+        """
+        invalidated = []
+        
+        for step in self.steps:
+            if changed_dimension_id in step.dimension.depends_on:
+                # Mark dependent as incomplete and clear its data
+                step.is_complete = False
+                step.user_response = None
+                step.final_value = None
+                step.follow_up_count = 0
+                step.follow_up_history = []
+                invalidated.append(step.dimension.name)
+                
+                # Recursively invalidate dependents of this step
+                sub_invalidated = self._invalidate_dependents(step.dimension.id)
+                invalidated.extend(sub_invalidated)
+        
+        return invalidated
+    
     def _go_back(self) -> Dict[str, Any]:
-        """Navigate to the previous step."""
+        """Navigate to the previous step and invalidate dependent dimensions."""
         active = self.get_active_step()
         if not active:
             return {"success": False, "message": "No active step to go back from"}
@@ -551,15 +646,23 @@ class RefinementSession:
         prev_step.is_complete = False
         prev_step.final_value = None
         
+        # Invalidate dimensions that depend on the previous step
+        invalidated = self._invalidate_dependents(prev_step.dimension.id)
+        
+        message = f"Returned to step {active_idx}: {prev_step.dimension.name}"
+        if invalidated:
+            message += f". Invalidated dependent dimensions: {', '.join(invalidated)}"
+        
         return {
             "success": True,
-            "message": f"Returned to step {active_idx}: {prev_step.dimension.name}",
+            "message": message,
             "step_index": active_idx - 1,
             "step": prev_step,
+            "invalidated": invalidated,
         }
     
     def _go_to_step(self, step_number: int) -> Dict[str, Any]:
-        """Navigate to a specific step by number (1-indexed)."""
+        """Navigate to a specific step and invalidate dependent dimensions."""
         if step_number < 1 or step_number > len(self.steps):
             return {
                 "success": False,
@@ -569,18 +672,35 @@ class RefinementSession:
         step_idx = step_number - 1
         target_step = self.steps[step_idx]
         
-        # Mark target and all following steps as incomplete
-        for i in range(step_idx, len(self.steps)):
+        # Mark target as incomplete
+        target_step.is_complete = False
+        target_step.final_value = None
+        
+        # Invalidate all dependents of the target dimension
+        invalidated = self._invalidate_dependents(target_step.dimension.id)
+        
+        # Also invalidate all steps after the target (they come after in sequence)
+        for i in range(step_idx + 1, len(self.steps)):
+            if not self.steps[i].is_complete:
+                continue  # Already incomplete
             self.steps[i].is_complete = False
+            self.steps[i].user_response = None
             self.steps[i].final_value = None
-            if i > step_idx:
-                self.steps[i].user_response = None
+            self.steps[i].follow_up_count = 0
+            self.steps[i].follow_up_history = []
+            if self.steps[i].dimension.name not in invalidated:
+                invalidated.append(self.steps[i].dimension.name)
+        
+        message = f"Jumped to step {step_number}: {target_step.dimension.name}"
+        if invalidated:
+            message += f". Invalidated: {', '.join(invalidated)}"
         
         return {
             "success": True,
-            "message": f"Jumped to step {step_number}: {target_step.dimension.name}",
+            "message": message,
             "step_index": step_idx,
             "step": target_step,
+            "invalidated": invalidated,
         }
     
     def _restart(self) -> Dict[str, Any]:
@@ -672,7 +792,7 @@ class RefinementSession:
         
         lines = ["Refinement Steps:"]
         for i, step in enumerate(self.steps, 1):
-            status = "✓" if step.is_complete else ("→" if step == active else "○")
+            status = "completed" if step.is_complete else ("currently active" if step == active else "not started")
             followups = f" ({step.follow_up_count} follow-ups)" if step.follow_up_count > 0 else ""
             lines.append(f"  {status} {i}. {step.dimension.name}{followups}")
         
@@ -691,7 +811,7 @@ class RefinementSession:
         """
         return {
             "original_query": self.original_query,
-            "dimensions": [dim.name for dim in self.dimensions],
+            "dimensions": [dim.name for dim in self.refinement_framework],
             "current_query": self.current_query,
             "conversation_history": self.conversation_history,
             "steps": [
@@ -739,16 +859,87 @@ class QueryRefinementManager:
         llm_provider (LLMProviderInterface): Interface for interacting with the LLM.
         tracing_provider (TracingProviderInterface): Interface for tracing and logging.
         query_analyzer (QueryAnalyzerInterface): Interface for analyzing queries against schemas.
+    
+    Args:
+        llm_provider: LLM provider for question generation and synthesis
+        query_analyzer: Analyzer for detecting missing dimensions
+                    (if None, will assume all dimensions need refinement)
+        tracing_provider: Tracing provider for observability
+            (if None, will use no-op implementation)
     """
 
     def __init__(
         self,
         llm_provider: LLMProviderInterface,
-        tracing_provider: TracingProviderInterface,
         query_analyzer: QueryAnalyzerInterface,
+        tracing_provider: TracingProviderInterface,
     ):
-        self.llm_provider = llm_provider
-        self.tracing_provider = tracing_provider
-        self.query_analyzer = query_analyzer
+        """Initialize the manager with injected dependencies
 
-    
+        Args:
+            llm_provider (LLMProviderInterface): LLM provider for question generation and synthesis
+            query_analyzer (QueryAnalyzerInterface): Analyzer for detecting missing dimensions
+                    (if None, will assume all dimensions need refinement)
+            tracing_provider (TracingProviderInterface): Tracing provider for observability
+                    (if None, will use no-op implementation)
+        """
+        self.llm_provider = llm_provider
+        self.query_analyzer = query_analyzer
+        self.tracing_provider = tracing_provider
+
+        #Lazy import to avoid circular dependencies
+        if tracing_provider is None:
+            from .providers import NoOpTracingProvider
+            self.tracing_provider = NoOpTracingProvider()
+        
+        logger.info("QueryRefinementManager initialized with "
+                    "LLM provider: %s, Query Analyzer: %s, Tracing Provider: %s",
+                    llm_provider.__class__.__name__, query_analyzer.__class__.__name__ if query_analyzer else "None", tracing_provider.__class__.__name__ if tracing_provider else "disabled")
+        
+        def initialize(
+            self,
+            original_query: str,
+            refinement_framework: List[RefinementDimension],
+            **kwargs,
+        ) -> RefinementSession:
+            """
+            Initialize a new refinement session for the given query and dimensions.
+
+            Analyzes the query against the refinement framework to determine which ones need refinement, then creates a session with appropriate steps.
+
+            Args:
+                original_query (str): The original query to refine.
+                refinement_framework (List[RefinementDimension]): The dimensions to consider for refinement.
+                **kwargs: Additional keyword arguments to pass to the session.
+
+            Returns:
+                RefinementSession: Initialized refinement session with steps for needed dimensions.
+            """
+            with self.tracing_provider.start_trace("initialize_refinement_session") as trace:
+                trace.add_attribute("original_query", original_query)
+                trace.add_attribute("num_refinement_dimensions", len(refinement_framework))
+
+                init_start_time = time()
+
+                logger.info("Initializing refinement session for query: %s", original_query)
+                logger.debug("Refinement framework dimensions: %s",
+                             [dim.name for dim in refinement_framework])
+                
+                #create a new session
+                session = RefinementSession(
+                    original_query=original_query,
+                    refinement_framework=refinement_framework,
+                )
+                session.metadata.update(kwargs)
+
+                # Analyze which dimensions need refinement
+                dimensions_to_refine = self.query_analyzer.analyze_query(
+                    query=original_query,
+                    refinement_framework=refinement_framework,
+                    llm_provider=(
+                        self.llm_provider
+                        if self.query_analyzer.supports_llm_integration
+                        else None   
+                    )
+                )
+                return session
