@@ -4,39 +4,7 @@ Interactive query refinement module - Domain-agnostic, schema-based architecture
 This module helps users improve their queries through iterative refinement,
 working with ANY user-defined schema across ANY research domain.
 
-Architecture Overview:
-================================================
-
-┌─────────────────────────────────────────────────────────────────┐
-│                  QueryRefinementManager                          │
-│  (Main orchestrator with dependency injection)                   │
-│  - llm_provider: LLMProvider                                     │
-│  - query_analyzer: QueryAnalyzer                                │
-│  - tracing: TracingProvider                                      │
-└───────────────────────────┬─────────────────────────────────────┘
-                            │
-                            ├──> RefinementSession
-                            │    ├── original_query
-                            │    ├── schema: List[RefinementDimension]
-                            │    ├── current_query
-                            │    ├── conversation_history
-                            │    └── steps: List[RefinementStep]
-                            │
-                            └──> RefinementStep
-                                 ├── dimension: RefinementDimension
-                                 ├── question_generated
-                                 ├── user_response
-                                 └── is_complete
-
-Key Design Principles:
-======================
-1. **Domain-Agnostic**: No hard-coded refinement types or domain knowledge
-2. **Schema-Based**: Works with any user-defined List[RefinementDimension]
-3. **Dependency Injection**: LLM, analyzer, tracing injected via constructor
-4. **Zero Hard-Coded Dependencies**: All logic driven by schema definitions
-5. **Stateless Methods**: Session passed as parameter for flexible storage
-
-Flow:
+Pipeline Flow:
 =====
 1. User provides initial query + schema (e.g., PICO_SCHEMA, CLIMATE_SCHEMA, custom)
 2. Manager.initialize() uses query_analyzer to detect missing dimensions and generate questions using dimensions' analysis_prompt
@@ -72,7 +40,7 @@ class RefinementStep:
     """
 
     dimension: RefinementDimension
-    # Initi question/response pair
+    # Init question/response pair
     question_generated: Optional[str] = None
     user_response: Optional[str] = None
 
@@ -105,11 +73,8 @@ class RefinementStep:
         """
         Determines if a follow-up question can be asked based on the dimension's max_follow_ups.
         """
-        if not self.dimension.allow_follow_ups:
-            return False
-        
-        return self.follow_up_count < self.dimension.max_follow_ups
-    
+        return self.dimension.allow_follow_up and (self.follow_up_count < self.dimension.max_follow_ups)
+
     def add_follow_up(self, question: str, response: str):
         """
         Adds a follow-up question/response pair to the history and increments the follow-up count.
@@ -128,15 +93,15 @@ class RefinementStep:
             return "no previous follow-up questions."
         
         history_lines = []
-        for idx, qa in enumerate(self.follow_up_history, start=1):
-            history_lines.append(f"Follow-up {idx}:")
+        for i, qa in enumerate(self.follow_up_history, start=0):
+            history_lines.append(f"Follow-up {i+1}:") # i+1 to make it human-friendly
             history_lines.append(f" Q: {qa['question']}")
             history_lines.append(f" A: {qa['answer']}")
         return "\n".join(history_lines)
     
-    def format_follow_up_prompt(
+    def format_follow_up_prompt_template(
             self,
-            original_query: str,
+            original_query: str, 
             latest_answer: str,
     ) -> str:
         """
@@ -168,12 +133,12 @@ class RefinementSession:
 
     Accepts a list of RefinementDimension defining what aspects can be refined (domain-agnostic).
 
-    Stores the original query, schema, current query state, conversation history, and all refinement steps taken, and metadata.
+    Stores the original query, dimensions, current query state, conversation history, and all refinement steps taken, and metadata.
     """
 
     original_query: str
-    schema: List[RefinementDimension]
-    current_query: str = ""
+    dimensions: List[RefinementDimension]
+    current_query: str = "" # Updated query as refinements are made
     conversation_history: List[Dict[str, str]] = field(default_factory=list)
     steps: List[RefinementStep] = field(default_factory=list)
     metadata: Dict[str, Any] = field(default_factory=dict)
@@ -233,24 +198,118 @@ class RefinementSession:
         """
         return all(step.is_complete for step in self.steps)
     
+    def get_total_follow_ups(self) -> int:
+        """
+        Get total number of follow-up questions across all steps.
+        
+        Returns:
+            Total count of follow-up questions asked in this session.
+        """
+        return sum(step.follow_up_count for step in self.steps)
+    
+    def get_step_summary(self) -> Dict[str, Any]:
+        """
+        Get a summary of all steps with their follow-up status.
+        
+        Returns:
+            Dictionary with step statistics and status.
+        """
+        completed = sum(1 for step in self.steps if step.is_complete)
+        in_progress = sum(1 for step in self.steps if not step.is_complete)
+        total_followups = self.get_total_follow_ups()
+        
+        return {
+            "total_steps": len(self.steps),
+            "completed": completed,
+            "in_progress": in_progress,
+            "total_follow_ups": total_followups,
+            "steps": [
+                {
+                    "dimension": step.dimension.name,
+                    "is_complete": step.is_complete,
+                    "follow_up_count": step.follow_up_count,
+                    "has_final_value": step.final_value is not None,
+                }
+                for step in self.steps
+            ]
+        }
+    
+    def add_interaction(
+        self, 
+        step: RefinementStep,
+        question: str,
+        answer: Optional[str] = None,
+        is_follow_up: bool = False
+    ):
+        """
+        Add an interaction to both the step and session-level conversation history.
+        
+        Args:
+            step: The refinement step this interaction belongs to
+            question: The question asked
+            answer: The user's answer (None if not yet answered)
+            is_follow_up: Whether this is a follow-up question
+        """
+        interaction_type = "follow_up" if is_follow_up else "initial"
+        
+        # Add to session-level history
+        self.add_to_history(
+            role="assistant",
+            content=f"[{step.dimension.name}] [{interaction_type}] {question}"
+        )
+        
+        if answer:
+            self.add_to_history(
+                role="user",
+                content=f"[{step.dimension.name}] [{interaction_type}] {answer}"
+            )
+    
+    def get_full_conversation(self) -> str:
+        """
+        Get the complete conversation as formatted text.
+        
+        Returns:
+            Human-readable conversation history.
+        """
+        lines = [f"Original Query: {self.original_query}", ""]
+        
+        for msg in self.conversation_history:
+            role_label = "Assistant" if msg["role"] == "assistant" else "User"
+            lines.append(f"{role_label}: {msg['content']}")
+        
+        if self.current_query != self.original_query:
+            lines.append("")
+            lines.append(f"Refined Query: {self.current_query}")
+        
+        return "\n".join(lines)
+    
     def to_dict(self) -> Dict[str, Any]:
         """
-        Serializes the session to a dictionary.
+        Serializes the session to a dictionary, including all follow-up data.
 
         Returns:
             Dict[str, Any]: The serialized session.
         """
         return {
             "original_query": self.original_query,
-            "schema": [dim.name for dim in self.schema],
+            "dimensions": [dim.name for dim in self.dimensions],
             "current_query": self.current_query,
             "conversation_history": self.conversation_history,
             "steps": [
                 {
-                    "dimension_id": step.dimension.name,
+                    "dimension_id": step.dimension.id,
+                    "dimension_name": step.dimension.name,
+                    "dimension_description": step.dimension.description,
+                    # Initial question/response
                     "question_generated": step.question_generated,
                     "user_response": step.user_response,
+                    # Follow-up tracking
+                    "follow_up_count": step.follow_up_count,
+                    "follow_up_history": step.follow_up_history,
+                    # Completion
                     "is_complete": step.is_complete,
+                    "final_value": step.final_value,
+                    # Context
                     "context": step.context,
                 }
                 for step in self.steps
