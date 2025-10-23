@@ -42,10 +42,10 @@ import logging
 from dataclasses import dataclass, field
 from enum import Enum
 from time import time
-from typing import Any, Dict, List, Optional, Tuple
+from typing import Any, Dict, List, Optional
 
 from .interfaces import LLMProviderInterface, TracingProviderInterface, QueryAnalyzerInterface
-from .schemas import RefinementDimension
+from .schema import RefinementAspect
 
 logger = logging.getLogger(__name__)
 
@@ -203,21 +203,20 @@ Examples:
   /back                 - Go to previous step
 """
 
-logger = logging.getLogger(__name__)
 
 # =======
 # Data Classes
 # =======
 
 @dataclass
-class RefinementStep:
+class AspectRefinement:
     """
-    Represents a single query refinement interaction in the dialogue.
-    Stores a single RefinementDimension, the generated question (optional), user response (optional), and completion status, and context.
+    Represents the query refinement process for a single refinement aspect interaction in the dialogue.
+    Stores a single RefinementAspect, the generated question (optional), user response (optional), and completion status, and context.
     Additionally, it supports multi-turn follow-up questions for deeper clarification.
     """
 
-    dimension: RefinementDimension
+    dimension: RefinementAspect
     # Init question/response pair
     question_generated: Optional[str] = None
     user_response: Optional[str] = None
@@ -268,12 +267,12 @@ class RefinementStep:
             **kwargs: Additional context for prompt formatting
             
         Returns:
-            Tuple of (system_prompt, user_prompt)
+            Tuple of (system_prompt, analysis_prompt)
         """
         system_prompt = self.dimension.get_system_prompt()
         
         # Build user prompt with dependency context
-        user_prompt_parts = []
+        analysis_prompt_context = []
         
         # Add dependency context if provided
         if dependency_context and self.dimension.depends_on:
@@ -289,9 +288,9 @@ class RefinementStep:
                     missing_deps.append(dep_id)
             
             if context_lines:
-                user_prompt_parts.append("Previous refinements:")
-                user_prompt_parts.extend(context_lines)
-                user_prompt_parts.append("")  # Blank line
+                analysis_prompt_context.append("Previous refinements:")
+                analysis_prompt_context.extend(context_lines)
+                analysis_prompt_context.append("")  # Blank line
             
             if missing_deps:
                 import logging
@@ -302,9 +301,9 @@ class RefinementStep:
                 )
         
         # Add main analysis prompt
-        user_prompt_parts.append(self.dimension.get_full_prompt(query=query, **kwargs))
+        analysis_prompt_context.append(self.dimension.get_full_prompt(query=query, **kwargs))
         
-        return system_prompt, "\n".join(user_prompt_parts)
+        return system_prompt, "\n".join(analysis_prompt_context)
     
     def can_ask_followup(self) -> bool:
         """
@@ -345,11 +344,11 @@ class RefinementStep:
         Format the follow-up prompt for this dimension using the current query and latest answer.
         Uses UNIVERSAL_FOLLOWUP_ANALYSIS_PROMPT, and includes previous follow-up history.
         """
-        from .followup_prompt import UNIVERSAL_FOLLOWUP_ANALYSIS_PROMPT
+        from .prompt.followup_prompt import UNIVERSAL_FOLLOWUP_PROMPT
 
         conversation_history = self.get_conversation_history_text()
 
-        prompt = UNIVERSAL_FOLLOWUP_ANALYSIS_PROMPT.format(
+        prompt = UNIVERSAL_FOLLOWUP_PROMPT.format(
             original_query=original_query,
             dimension_name=self.dimension.name,
             dimension_description=self.dimension.description,
@@ -368,16 +367,16 @@ class RefinementSession:
     """
     Represents an entire query refinement session with conversation history.
 
-    Accepts a list of RefinementDimension defining what aspects can be refined (domain-agnostic).
+    Accepts a list of RefinementAspect defining what aspects can be refined (domain-agnostic).
 
     Stores the original query, refinement_framework, current query state, conversation history, and all refinement steps taken, and metadata.
     """
 
     original_query: str
-    refinement_framework: List[RefinementDimension]
+    refinement_framework: List[RefinementAspect]
     current_query: str = "" # Updated query as refinements are made
-    conversation_history: List[Dict[str, str]] = field(default_factory=list)
-    steps: List[RefinementStep] = field(default_factory=list)
+    conversation_history: List[Dict[str, Any]] = field(default_factory=list)
+    steps: List[AspectRefinement] = field(default_factory=list)
     metadata: Dict[str, Any] = field(default_factory=dict)
 
     def __post_init__(self):
@@ -387,27 +386,27 @@ class RefinementSession:
 
     def add_step(
             self,
-            dimension: RefinementDimension,
+            dimension: RefinementAspect,
             context: Optional[Dict[str, Any]] = None,
-        ) -> RefinementStep:
+        ) -> AspectRefinement:
         """
         Adds a new refinement step to the session for a dimension.
 
         Args:
-            dimension (RefinementDimension): The dimension being refined.
+            dimension (RefinementAspect): The dimension being refined.
             context (Optional[Dict[str, Any]]): Additional context for prompt formatting.
         
         Returns:
-            RefinementStep: The newly created refinement step.
+            AspectRefinement: The newly created refinement step.
         """
-        step = RefinementStep(
+        step = AspectRefinement(
             dimension=dimension,
             context=context or {},
         )
         self.steps.append(step)
         return step
     
-    def get_active_step(self) -> Optional[RefinementStep]:
+    def get_active_step(self) -> Optional[AspectRefinement]:
         """
         Returns the current active refinement step (the last one that is not complete).
         """
@@ -428,7 +427,7 @@ class RefinementSession:
         Returns:
             Dictionary mapping dependency IDs to their final values
         """
-        context = {}
+        context: Dict[str, str] = {}
         
         # Find the target dimension's dependencies
         target_dim = None
@@ -448,18 +447,49 @@ class RefinementSession:
         
         return context
     
-    def add_to_history(
-            self,
-            role: str,
-            content: str
+    def add_interaction(
+        self, 
+        step: AspectRefinement,
+        question: str,
+        answer: Optional[str] = None,
+        is_follow_up: bool = False,
+        system_prompt: Optional[str] = None,
+        analysis_prompt: Optional[str] = None,
+        dependency_context: Optional[Dict[str, str]] = None,
     ):
         """
-        Adds a message to the conversation history.
+        Add an interaction to conversation history with full prompt context.
+        
+        Stores complete information needed to reconstruct exact prompts sent to LLM
+        for debugging, auditing, and potential context reconstruction.
+        
+        Args:
+            step: The refinement step this interaction belongs to
+            question: The question asked (extracted from LLM response)
+            answer: The user's answer (None if not yet answered)
+            is_follow_up: Whether this is a follow-up question
+            system_prompt: The system prompt used (if None, will fetch from step)
+            analysis_prompt: The formatted analysis prompt sent to LLM (with dependencies injected)
+            dependency_context: The dependency context that was injected into the prompt
         """
-        self.conversation_history.append({
-            "role": role,
-            "content": content
-        })
+        interaction = {
+            # Core Q&A
+            "dimension_id": step.dimension.id,
+            "dimension_name": step.dimension.name,
+            "type": "follow_up" if is_follow_up else "initial",
+            "question": question,  # Question extracted from LLM response
+            "answer": answer,
+            
+            # Full prompt reconstruction - what was actually sent to LLM
+            "system_prompt": system_prompt or step.get_system_prompt(),
+            "analysis_prompt": analysis_prompt,  # The formatted prompt with dependencies
+            "dependency_context": dependency_context or {},
+            
+            # Metadata
+            "timestamp": time(),
+        }
+        
+        self.conversation_history.append(interaction)
     
     def is_complete(self) -> bool:
         """
@@ -503,36 +533,6 @@ class RefinementSession:
             ]
         }
     
-    def add_interaction(
-        self, 
-        step: RefinementStep,
-        question: str,
-        answer: Optional[str] = None,
-        is_follow_up: bool = False
-    ):
-        """
-        Add an interaction to both the step and session-level conversation history.
-        
-        Args:
-            step: The refinement step this interaction belongs to
-            question: The question asked
-            answer: The user's answer (None if not yet answered)
-            is_follow_up: Whether this is a follow-up question
-        """
-        interaction_type = "follow_up" if is_follow_up else "initial"
-        
-        # Add to session-level history
-        self.add_to_history(
-            role="assistant",
-            content=f"[{step.dimension.name}] [{interaction_type}] {question}"
-        )
-        
-        if answer:
-            self.add_to_history(
-                role="user",
-                content=f"[{step.dimension.name}] [{interaction_type}] {answer}"
-            )
-    
     def get_full_conversation(self) -> str:
         """
         Get the complete conversation as formatted text.
@@ -542,12 +542,19 @@ class RefinementSession:
         """
         lines = [f"Original Query: {self.original_query}", ""]
         
-        for msg in self.conversation_history:
-            role_label = "Assistant" if msg["role"] == "assistant" else "User"
-            lines.append(f"{role_label}: {msg['content']}")
+        for interaction in self.conversation_history:
+            dim_name = interaction.get("dimension_name", "Unknown")
+            interaction_type = interaction.get("type", "unknown")
+            question = interaction.get("question", "")
+            answer = interaction.get("answer")
+            
+            lines.append(f"[{dim_name}] [{interaction_type}]")
+            lines.append(f"  Q: {question}")
+            if answer:
+                lines.append(f"  A: {answer}")
+            lines.append("")  # Blank line between interactions
         
         if self.current_query != self.original_query:
-            lines.append("")
             lines.append(f"Refined Query: {self.current_query}")
         
         return "\n".join(lines)
@@ -899,7 +906,7 @@ class QueryRefinementManager:
         def initialize(
             self,
             original_query: str,
-            refinement_framework: List[RefinementDimension],
+            refinement_framework: List[RefinementAspect],
             **kwargs,
         ) -> RefinementSession:
             """
@@ -909,7 +916,7 @@ class QueryRefinementManager:
 
             Args:
                 original_query (str): The original query to refine.
-                refinement_framework (List[RefinementDimension]): The dimensions to consider for refinement.
+                refinement_framework (List[RefinementAspect]): The dimensions to consider for refinement.
                 **kwargs: Additional keyword arguments to pass to the session.
 
             Returns:

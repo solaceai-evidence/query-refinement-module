@@ -1,9 +1,9 @@
-UNIVERSAL_FOLLOWUP_ANALYSIS_PROMPT = """You are evaluating whether a user's answer provides sufficient information for query refinement.
+UNIVERSAL_FOLLOWUP_PROMPT = """You are evaluating whether a user's answer provides sufficient information for query refinement.
 
 **Context:**
 Original Query: "{original_query}"
-Dimension Being Refined: {dimension_name}
-Dimension Description: {dimension_description}
+Aspect Being Refined: {aspect_name}
+Aspect Description: {aspect_description}
 
 **Conversation History:**
 {conversation_history}
@@ -14,7 +14,7 @@ Dimension Description: {dimension_description}
 
 **Your Task:**
 
-Evaluate if the user's latest answer provides clear, actionable information for {dimension_name}, or if a follow-up question is needed.
+Evaluate if the user's latest answer provides clear, actionable information for {aspect_name}, or if a follow-up question is needed.
 
 **Evaluation Criteria:**
 
@@ -28,7 +28,7 @@ Evaluate if the user's latest answer provides clear, actionable information for 
    ✗ Answer is vague or imprecise (e.g., "recent", "a few", "some")
    ✗ Answer is too broad and could be narrowed (e.g., "Africa" → which part?)
    ✗ Answer conflicts with query context
-   ✗ Answer partially addresses the dimension but leaves gaps
+   ✗ Answer partially addresses the Aspect but leaves gaps
    ✗ Answer uses ambiguous terms that need clarification
 
 3. **CANNOT IMPROVE** - Accept answer if:
@@ -40,44 +40,44 @@ Evaluate if the user's latest answer provides clear, actionable information for 
 
 - Be practical: Don't pursue perfect precision if answer is "good enough"
 - Respect user effort: If they've tried to be specific, accept it
-- Stay focused: Follow-up should only address {dimension_name}, not introduce new dimensions
+- Stay focused: Follow-up should only address {aspect_name}, not introduce new aspects
 - Be helpful: If you ask a follow-up, make it easy to answer with concrete options
 - Know when to stop: After 2-3 exchanges, accept what you have
 
 **Examples:**
 
 Example 1 - SUFFICIENT:
-Dimension: Time Period
+Aspect: Time Period
 Latest Answer: "2020-2023"
 → {{"is_complete": true, "final_value": "2020-2023", "reasoning": "Specific date range provided"}}
 
 Example 2 - NEEDS FOLLOW-UP (vague):
-Dimension: Time Period
+Aspect: Time Period
 Latest Answer: "recent studies"
 → {{"is_complete": false, "reasoning": "'Recent' is ambiguous", 
     "followup_question": "How recent? For example: past year, past 2-3 years, or past 5 years?"}}
 
 Example 3 - NEEDS FOLLOW-UP (too broad):
-Dimension: Geographic Focus
+Aspect: Geographic Focus
 Latest Answer: "Africa"
 → {{"is_complete": false, "reasoning": "Africa is broad, could be narrowed",
     "followup_question": "Would you like to focus on a specific region (e.g., Sub-Saharan Africa, North Africa, West Africa) or the entire continent?"}}
 
 Example 4 - NEEDS FOLLOW-UP (conflict):
 Original Query: "COVID-19 vaccine studies"
-Dimension: Time Period
+Aspect: Time Period
 Latest Answer: "past 10 years"
 → {{"is_complete": false, "reasoning": "Timeframe conflicts with topic (COVID-19 vaccines emerged in 2020)",
     "followup_question": "COVID-19 vaccines were developed in 2020. Did you mean 2020-present, or are you interested in earlier coronavirus vaccine research?"}}
 
 Example 5 - SUFFICIENT (context makes it clear):
 Original Query: "machine learning for protein folding"
-Dimension: Research Field
+Aspect: Research Field
 Latest Answer: "computational biology"
 → {{"is_complete": true, "final_value": "computational biology", "reasoning": "Clear field specification that matches query context"}}
 
 Example 6 - NEEDS FOLLOW-UP (partial answer):
-Dimension: Research Field
+Aspect: Research Field
 Latest Answer: "interdisciplinary"
 → {{"is_complete": false, "reasoning": "Interdisciplinary is valid but vague",
     "followup_question": "Which fields specifically? For example: computer science + biology, social science + public health, or others?"}}
@@ -113,7 +113,7 @@ Return JSON with this structure:
 **Important:**
 - If is_complete=true: MUST provide final_value, followup_question should be null
 - If is_complete=false: MUST provide followup_question, final_value should be null
-- Keep followup_question focused on {dimension_name} only
+- Keep followup_question focused on {aspect_name} only
 - Make followup_question easy to answer (provide options when helpful)
 - Be concise and practical in your evaluation
 
@@ -123,7 +123,7 @@ Now evaluate the latest answer:"""
 UNIVERSAL_FOLLOWUP_ANALYSIS_PROMPT_CONCISE = """Evaluate if this answer is sufficient for query refinement.
 
 Original Query: "{original_query}"
-Dimension: {dimension_name} - {dimension_description}
+Aspect: {aspect_name} - {aspect_description}
 
 Conversation:
 {conversation_history}
