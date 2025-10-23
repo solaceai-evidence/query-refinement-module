@@ -235,13 +235,11 @@ class RefinementDimension:
         if self.system_prompt:
             return self.system_prompt
         
-        # Default system prompt
+        # Default system prompt (concise to save tokens)
         return (
-            f"You are an expert assistant helping to refine scientific user queries.\n\n"
-            f"Your specific focus: {self.name}\n"
-            f"What this means: {self.description}\n\n"
-            f"Your task is to analyze whether this aspect of the query is missing, incomplete, or ambiguous. "
-            f"If clarification is needed, ask ONE specific, helpful question to gather the missing or unclear information."
+            f"You refine scientific queries by analyzing: {self.name} ({self.description}).\n"
+            f"Determine if this aspect is missing, incomplete, or ambiguous. "
+            f"If yes, ask ONE specific question to clarify."
         )
     
     def get_prompts(self, query: str) -> tuple[str, str]:
