@@ -14,16 +14,194 @@ Pipeline Flow:
    c. Check if follow-ups are needed; if so, repeat
 4. Synthesize all refinements into improved query (natural language, structured, etc.)
 5. Return refined query for processing
+
+User Control Commands:
+=====================
+Users can use these commands to control the refinement flow:
+
+Navigation:
+- /back or /prev          - Go back to previous step
+- /goto <step_number>     - Jump to specific step (e.g., /goto 2)
+- /restart               - Start refinement from beginning
+
+Control:
+- /skip                  - Skip current dimension entirely
+- /done                  - Mark current step as complete (stop follow-ups)
+- /continue              - Continue with remaining steps
+- /finish                - Complete session with current refinements
+
+Information:
+- /status                - Show session progress
+- /help                  - Show available commands
+- /steps                 - List all refinement steps
+
+These commands are detected via is_user_command() and processed via parse_user_command().
 """
 
 import logging
-from contextlib import contextmanager
+import re
 from dataclasses import dataclass, field
-from time import time
-from typing import Any, Dict, List, Optional
+from enum import Enum
+from typing import Any, Dict, List, Optional, Tuple
 
 from interfaces import LLMProviderInterface, TracingProviderInterface, QueryAnalyzerInterface
 from schemas import RefinementDimension
+
+logger = logging.getLogger(__name__)
+
+# =======
+# User Control Commands
+# =======
+
+class UserCommand(Enum):
+    """Commands users can issue to control refinement flow."""
+    # Navigation
+    BACK = "back"
+    PREVIOUS = "prev"
+    GOTO = "goto"
+    RESTART = "restart"
+    
+    # Control
+    SKIP = "skip"
+    DONE = "done"
+    CONTINUE = "continue"
+    FINISH = "finish"
+    
+    # Information
+    STATUS = "status"
+    HELP = "help"
+    STEPS = "steps"
+    
+    # Not a command
+    NONE = "none"
+
+
+@dataclass
+class CommandResult:
+    """Result of parsing and validating a user command."""
+    command: UserCommand
+    argument: Optional[str] = None
+    is_valid: bool = True
+    error_message: Optional[str] = None
+
+
+def is_user_command(user_input: str) -> bool:
+    """
+    Check if user input is a control command (starts with /).
+    
+    Args:
+        user_input: The user's input string
+        
+    Returns:
+        True if input is a command, False otherwise
+    """
+    if not user_input:
+        return False
+    return user_input.strip().startswith("/")
+
+
+def parse_user_command(user_input: str) -> CommandResult:
+    """
+    Parse user input into a command.
+    
+    Args:
+        user_input: The user's input string
+        
+    Returns:
+        CommandResult with parsed command and validation status
+        
+    Examples:
+        >>> parse_user_command("/back")
+        CommandResult(command=UserCommand.BACK, ...)
+        
+        >>> parse_user_command("/goto 3")
+        CommandResult(command=UserCommand.GOTO, argument="3", ...)
+    """
+    if not is_user_command(user_input):
+        return CommandResult(command=UserCommand.NONE, is_valid=False)
+    
+    # Remove leading slash and split
+    parts = user_input.strip()[1:].split(maxsplit=1)
+    cmd_str = parts[0].lower()
+    argument = parts[1] if len(parts) > 1 else None
+    
+    # Map command string to enum
+    command_map = {
+        "back": UserCommand.BACK,
+        "prev": UserCommand.PREVIOUS,
+        "previous": UserCommand.PREVIOUS,
+        "goto": UserCommand.GOTO,
+        "restart": UserCommand.RESTART,
+        "skip": UserCommand.SKIP,
+        "done": UserCommand.DONE,
+        "continue": UserCommand.CONTINUE,
+        "finish": UserCommand.FINISH,
+        "status": UserCommand.STATUS,
+        "help": UserCommand.HELP,
+        "steps": UserCommand.STEPS,
+    }
+    
+    if cmd_str not in command_map:
+        return CommandResult(
+            command=UserCommand.NONE,
+            is_valid=False,
+            error_message=f"Unknown command: /{cmd_str}. Type /help for available commands."
+        )
+    
+    command = command_map[cmd_str]
+    
+    # Validate arguments for specific commands
+    if command == UserCommand.GOTO:
+        if not argument:
+            return CommandResult(
+                command=command,
+                is_valid=False,
+                error_message="/goto requires a step number. Example: /goto 2"
+            )
+        if not argument.isdigit():
+            return CommandResult(
+                command=command,
+                argument=argument,
+                is_valid=False,
+                error_message=f"Step number must be an integer, got: {argument}"
+            )
+    
+    return CommandResult(command=command, argument=argument, is_valid=True)
+
+
+def get_help_text() -> str:
+    """
+    Get help text explaining all available commands.
+    
+    Returns:
+        Formatted help text string
+    """
+    return """
+Available Commands:
+==================
+
+NAVIGATION:
+  /back, /prev          Go back to previous step
+  /goto <number>        Jump to specific step (e.g., /goto 2)
+  /restart              Start refinement from beginning
+
+CONTROL:
+  /skip                 Skip current dimension entirely
+  /done                 Mark current step complete (stop follow-ups)
+  /continue             Continue with remaining steps
+  /finish               Complete session with current refinements
+
+INFORMATION:
+  /status               Show session progress
+  /steps                List all refinement steps
+  /help                 Show this help message
+
+Examples:
+  /goto 1               - Jump to first step
+  /skip                 - Skip current question
+  /done                 - Accept current answer, no more follow-ups
+  /back                 - Go to previous step
+"""
 
 logger = logging.getLogger(__name__)
 
@@ -306,6 +484,203 @@ class RefinementSession:
             lines.append(f"Refined Query: {self.current_query}")
         
         return "\n".join(lines)
+    
+    def handle_command(self, cmd_result: CommandResult) -> Dict[str, Any]:
+        """
+        Execute a user command and return the result.
+        
+        Args:
+            cmd_result: Parsed command result from parse_user_command()
+            
+        Returns:
+            Dict with 'success', 'message', and optional command-specific data
+        """
+        if not cmd_result.is_valid:
+            return {
+                "success": False,
+                "message": cmd_result.error_message or "Invalid command",
+            }
+        
+        command = cmd_result.command
+        
+        # Navigation commands
+        if command == UserCommand.BACK or command == UserCommand.PREVIOUS:
+            return self._go_back()
+        elif command == UserCommand.GOTO:
+            if cmd_result.argument is None:
+                return {"success": False, "message": "/goto requires step number"}
+            return self._go_to_step(int(cmd_result.argument))
+        elif command == UserCommand.RESTART:
+            return self._restart()
+        
+        # Control commands
+        elif command == UserCommand.SKIP:
+            return self._skip_current()
+        elif command == UserCommand.DONE or command == UserCommand.FINISH:
+            return self._finish_current()
+        elif command == UserCommand.CONTINUE:
+            return {"success": True, "message": "Continuing with current step"}
+        
+        # Information commands
+        elif command == UserCommand.STATUS:
+            return self._get_status()
+        elif command == UserCommand.STEPS:
+            return self._list_steps()
+        elif command == UserCommand.HELP:
+            return {"success": True, "message": get_help_text()}
+        
+        return {"success": False, "message": f"Command {command.name} not implemented"}
+    
+    def _go_back(self) -> Dict[str, Any]:
+        """Navigate to the previous step."""
+        active = self.get_active_step()
+        if not active:
+            return {"success": False, "message": "No active step to go back from"}
+        
+        active_idx = self.steps.index(active)
+        if active_idx == 0:
+            return {"success": False, "message": "Already at first step"}
+        
+        # Mark current as incomplete and clear its data
+        active.is_complete = False
+        active.user_response = None
+        active.final_value = None
+        
+        # Reactivate previous step
+        prev_step = self.steps[active_idx - 1]
+        prev_step.is_complete = False
+        prev_step.final_value = None
+        
+        return {
+            "success": True,
+            "message": f"Returned to step {active_idx}: {prev_step.dimension.name}",
+            "step_index": active_idx - 1,
+            "step": prev_step,
+        }
+    
+    def _go_to_step(self, step_number: int) -> Dict[str, Any]:
+        """Navigate to a specific step by number (1-indexed)."""
+        if step_number < 1 or step_number > len(self.steps):
+            return {
+                "success": False,
+                "message": f"Invalid step number. Valid range: 1-{len(self.steps)}",
+            }
+        
+        step_idx = step_number - 1
+        target_step = self.steps[step_idx]
+        
+        # Mark target and all following steps as incomplete
+        for i in range(step_idx, len(self.steps)):
+            self.steps[i].is_complete = False
+            self.steps[i].final_value = None
+            if i > step_idx:
+                self.steps[i].user_response = None
+        
+        return {
+            "success": True,
+            "message": f"Jumped to step {step_number}: {target_step.dimension.name}",
+            "step_index": step_idx,
+            "step": target_step,
+        }
+    
+    def _restart(self) -> Dict[str, Any]:
+        """Restart the entire refinement session."""
+        # Mark all steps incomplete and clear data
+        for step in self.steps:
+            step.is_complete = False
+            step.user_response = None
+            step.final_value = None
+            step.follow_up_count = 0
+            step.follow_up_history = []
+        
+        # Reset query to original
+        self.current_query = self.original_query
+        
+        # Clear conversation history
+        self.conversation_history = []
+        
+        return {
+            "success": True,
+            "message": "Session restarted. All progress cleared.",
+        }
+    
+    def _skip_current(self) -> Dict[str, Any]:
+        """Skip the current dimension without providing a value."""
+        active = self.get_active_step()
+        if not active:
+            return {"success": False, "message": "No active step to skip"}
+        
+        # Mark as complete without setting final_value
+        active.is_complete = True
+        active.final_value = None  # Explicitly no value
+        
+        return {
+            "success": True,
+            "message": f"Skipped dimension: {active.dimension.name}",
+            "step": active,
+        }
+    
+    def _finish_current(self) -> Dict[str, Any]:
+        """Finish the current step with the last response as final value."""
+        active = self.get_active_step()
+        if not active:
+            return {"success": False, "message": "No active step to finish"}
+        
+        if not active.user_response:
+            return {
+                "success": False,
+                "message": "Cannot finish: no response provided yet",
+            }
+        
+        # Mark complete with current response as final value
+        active.is_complete = True
+        active.final_value = active.user_response
+        
+        return {
+            "success": True,
+            "message": f"Completed dimension: {active.dimension.name}",
+            "step": active,
+        }
+    
+    def _get_status(self) -> Dict[str, Any]:
+        """Get current session status."""
+        active = self.get_active_step()
+        summary = self.get_step_summary()
+        
+        status_lines = [
+            "Session Status:",
+            f"  Steps: {summary['completed']}/{summary['total_steps']} complete",
+            f"  Follow-ups asked: {summary['total_follow_ups']}",
+        ]
+        
+        if active:
+            active_idx = self.steps.index(active) + 1
+            status_lines.append(f"  Current: Step {active_idx} - {active.dimension.name}")
+        else:
+            status_lines.append("  Current: Session complete")
+        
+        return {
+            "success": True,
+            "message": "\n".join(status_lines),
+            "summary": summary,
+            "active_step": active,
+        }
+    
+    def _list_steps(self) -> Dict[str, Any]:
+        """List all steps with their status."""
+        active = self.get_active_step()
+        
+        lines = ["Refinement Steps:"]
+        for i, step in enumerate(self.steps, 1):
+            status = "✓" if step.is_complete else ("→" if step == active else "○")
+            followups = f" ({step.follow_up_count} follow-ups)" if step.follow_up_count > 0 else ""
+            lines.append(f"  {status} {i}. {step.dimension.name}{followups}")
+        
+        return {
+            "success": True,
+            "message": "\n".join(lines),
+            "steps": self.steps,
+        }
     
     def to_dict(self) -> Dict[str, Any]:
         """
