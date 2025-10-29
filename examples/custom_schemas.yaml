@@ -1,810 +1,562 @@
-# Example Custom Schemas for Query Refinement
-# 
-# This file demonstrates how to define custom refinement schemas using YAML.
-# Place this file in the path specified in CUSTOM_SCHEMAS_PATH environment variable
-
-# ============================================================================
-# Best structure for a Custom Schema using Research Field as example
-# ============================================================================
-id: field_of_study
-name: Research Field
-description: Clarify academic discipline
-
-analysis_prompt: |
-  Analyze the research field(s) and generate a refinement question if needed.
-
-  Query: {query}
-
-  **Step 1: Analyze**
-  - MISSING: Query doesn't indicate which academic field(s)
-  - AMBIGUOUS: Could span multiple fields or interdisciplinary
-  - CLEAR: Field is obvious from terminology/context
-
-  **Step 2: Generate Smart Question**
-
-  Tailor options to the query:
-  - Look at keywords to infer likely fields
-  - Suggest interdisciplinary if query spans domains
-  - Offer specific subfields if relevant
-
-  Examples:
-
-  Query: "machine learning for protein folding"
-  Status: CLEAR (Computer Science + Biology)
-  Question: null
-
-  Query: "impact of social media"
-  Status: AMBIGUOUS
-  Question: "Social media impact could be studied from multiple angles. Which field perspective are you most interested in: Psychology/behavioral (individual effects), Sociology (social dynamics), Communication studies (information spread), Public health (mental health), or Political science (democracy/polarization)?"
-
-  Query: "resilience in urban systems"
-  Status: AMBIGUOUS
-  Question: "Urban resilience is studied across disciplines. Which field perspective matters most for your search: Urban planning/design, Environmental science (climate adaptation), Sociology (community resilience), Engineering (infrastructure), or Economics (recovery capacity)?"
-
-  Query: "neural networks"
-  Status: MISSING
-  Question: "What field perspective on neural networks? Options: Computer science/AI (algorithms/architectures), Neuroscience (biological neural networks), Cognitive science (computational models of cognition), or Applied fields (specific applications)?"
-
-  Return JSON:
-  {{
-    "needs_refinement": true/false,
-    "confidence": 0.0-1.0,
-    "reasoning": "explanation",
-    "status": "MISSING" / "AMBIGUOUS" / "CLEAR",
-    "question": "field-specific question or null",
-    "suggested_options": ["context-aware fields"]
-  }}
-
-metadata:
-  priority: medium
-
-# ============================================================================
-# General Purpose Schema
-# ============================================================================
-my_custom_schema:
-  - id: temporal_scope
-    name: Temporal Scope
-    description: Clarifies the time period or timeframe relevant to the query
+pico_advanced:
+  # ========================================
+  # ADVANCED PICO FRAMEWORK SCHEMA
+  # ========================================
+  # Comprehensive clinical research query refinement framework
+  # Demonstrates: dependencies, rich examples, custom response formats,
+  # field descriptions, metadata, and multi-turn follow-ups
+  
+  # ========================================
+  # P - POPULATION
+  # ========================================
+  
+  - id: population_demographics
+    name: Population Demographics
+    description: |
+      Defines the target population's basic demographic characteristics including
+      age range, gender, ethnicity, and geographic location. This forms the
+      foundation for all other PICO dimensions.
+    
     analysis_prompt: |
-      Analyze the following query to determine if it needs temporal clarification:
+      **Query to Analyze:** "{query}"
       
-      Query: {query}
+      # TASK: Demographic Specification Analysis
       
-      Consider:
-      1. Is a specific time period mentioned (e.g., '2020-2023', 'last decade')?
-      2. Are there temporal terms that need clarification (e.g., 'recent', 'current', 'historical')?
-      3. Is the time scope implied by context (e.g., 'COVID-19 pandemic' implies 2019-present)?
-      4. Would specifying a time period significantly improve the query?
+      You are analyzing a clinical research query to determine if the target population's
+      demographic characteristics are sufficiently specified.
       
-      Respond in JSON format:
-      {
-        "needs_refinement": true/false,
-        "reason": "Brief explanation",
-        "suggested_question": "Question to ask the user if refinement needed"
-      }
-    allow_follow_up: true
-    max_follow_ups: 2
-    metadata:
-      domain: general
-      priority: high
-      examples:
-        - What time period should we focus on?
-        - Are you interested in historical data or recent trends?
+      ## Required Demographic Dimensions
+      
+      1. **Age Range**: Is there a specific age range or age group mentioned?
+         - Examples: "18-65 years", "adults", "elderly 75+", "pediatric"
+         - Red flags: vague terms like "older", "younger" without numbers
+      
+      2. **Gender/Sex**: Is gender specification necessary and if so, is it provided?
+         - Consider: Is gender relevant to the research question?
+         - Examples: "postmenopausal women", "male athletes"
+      
+      3. **Ethnicity/Race**: Is ethnicity mentioned when relevant?
+         - Consider: Does the condition have ethnic disparities?
+         - Examples: "African American populations", "Asian populations"
+      
+      4. **Geographic/Setting**: Is the population setting specified?
+         - Examples: "urban areas", "rural communities", "nursing homes"
+      
+      ## Analysis Framework
+      
+      For each dimension:
+      - ✓ CLEAR: Specific, measurable, unambiguous
+      - ⚠ PARTIAL: Some specification but needs refinement
+      - ✗ MISSING: Not specified when relevant
+      - ? AMBIGUOUS: Mentioned but vague or unclear
+      
+      Determine if the demographic specification is sufficient for:
+      1. Study replication
+      2. Results generalization
+      3. Ethical review requirements
+    
+    examples:
+      clear:
+        - query: "Efficacy of metformin in adults aged 40-65 with BMI > 30"
+          explanation: "Age range precisely defined (40-65), specific population characteristic (BMI > 30)"
+        
+        - query: "Postmenopausal women aged 50-70 in urban clinical settings"
+          explanation: "Age (50-70), gender (women), life stage (postmenopausal), setting (urban clinical) all clearly specified"
+        
+        - query: "African American males aged 18-45 with hypertension in community health centers"
+          explanation: "Complete demographic profile: ethnicity, gender, age range, condition, and recruitment setting"
+      
+      needs_refinement:
+        - query: "Does exercise reduce depression in adults?"
+          issue: "'Adults' is too broad - could range from 18 to 100+ years"
+          missing: "Specific age range, gender considerations, geographic scope"
+          suggested_question: "What age range are you targeting? For example: young adults (18-35), middle-aged (36-64), or older adults (65+)?"
+        
+        - query: "Study on diabetes management in elderly patients"
+          issue: "'Elderly' is ambiguous - definitions vary from 60+ to 80+"
+          missing: "Precise age threshold, gender, setting"
+          suggested_question: "What specific age threshold defines 'elderly' for your study? (e.g., 65+, 70+, 75+)"
+        
+        - query: "Treatment outcomes in minority populations"
+          issue: "'Minority populations' is vague and could mean multiple groups"
+          missing: "Specific ethnic/racial groups, age, gender"
+          suggested_question: "Which specific population groups are you focusing on? (e.g., Hispanic/Latino, African American, Asian, Native American)"
+      
+      partial:
+        - query: "Women over 40 with cardiovascular disease"
+          has: "Gender (women) and minimum age (40)"
+          missing: "Upper age limit, ethnicity (if CVD disparities relevant), geographic setting"
+          suggested_question: "Is there an upper age limit? Are you focusing on specific ethnic groups given CVD disparities?"
+        
+        - query: "Pediatric patients in tertiary care hospitals"
+          has: "Age category (pediatric) and setting (tertiary care)"
+          missing: "Specific age range within pediatrics (neonates, infants, children, adolescents?)"
+          suggested_question: "What age range within pediatrics? (0-1 year, 1-12 years, 12-18 years, or all pediatric ages)"
+      
+      ambiguous:
+        - query: "Middle-aged adults in diverse communities"
+          issue: "Both 'middle-aged' (typically 40-65 but varies) and 'diverse' are ambiguous"
+          suggested_question: "Can you specify: 1) Exact age range for 'middle-aged', and 2) What dimensions of diversity matter (ethnic, socioeconomic, geographic)?"
+        
+        - query: "Study in representative population sample"
+          issue: "'Representative' is context-dependent - representative of what population?"
+          suggested_question: "What population should this sample represent? Please specify demographic characteristics that define representativeness."
 
-  - id: geographic_scope
-    name: Geographic Scope
-    description: Identifies the geographic region, location, or spatial scope of the query
+  - id: population_clinical_profile
+    name: Clinical Profile & Health Status
+    description: |
+      Specifies the primary health condition, disease stage, severity, comorbidities,
+      and relevant medical history. Critical for defining study eligibility and
+      expected treatment responses.
+    
+    depends_on:
+      - population_demographics
+    
     analysis_prompt: |
-      Analyze the following query to determine if geographic scope needs clarification:
+      **Query to Analyze:** "{query}"
       
-      Query: {query}
+      # TASK: Clinical Profile Analysis
       
-      Consider:
-      1. Is a specific location mentioned (e.g., country, region, city)?
-      2. Is the geographic scope implied (e.g., 'local policy' without specifying location)?
-      3. Would specifying a location improve the query precision?
-      4. Are there ambiguous location terms (e.g., 'global', 'regional')?
+      Analyze the clinical characteristics and health status specification.
       
-      Respond in JSON format:
-      {
-        "needs_refinement": true/false,
-        "reason": "Brief explanation",
-        "suggested_question": "Question to ask the user if refinement needed"
-      }
-    allow_follow_up: false
-    max_follow_ups: 1
-    metadata:
-      domain: general
-      priority: medium
+      ## Clinical Profile Dimensions
+      
+      1. **Primary Condition/Diagnosis**
+         - Is the main health condition clearly identified?
+         - Is it specific enough? (e.g., "Type 2 diabetes" vs "diabetes")
+      
+      2. **Disease Stage/Phase**
+         - Is staging mentioned when relevant?
+         - Examples: early-stage, advanced, acute, chronic, remission
+      
+      3. **Severity Level**
+         - Is severity specified?
+         - Examples: mild, moderate, severe, or quantified measures
+      
+      4. **Comorbidities**
+         - Are concurrent conditions mentioned?
+         - Are exclusions for contraindicated comorbidities specified?
+      
+      5. **Treatment History**
+         - Is prior treatment status mentioned?
+         - Examples: treatment-naive, refractory, previously treated
+      
+      6. **Diagnostic Criteria**
+         - Are diagnostic standards mentioned?
+         - Examples: ICD codes, clinical guidelines, biomarker thresholds
+      
+      Evaluate whether the clinical profile enables:
+      - Accurate patient identification and recruitment
+      - Appropriate treatment selection
+      - Valid outcome interpretation
+    
+    examples:
+      clear:
+        - query: "Efficacy of SGLT2 inhibitors in Type 2 diabetes patients with HbA1c 7.5-10%, treatment-naive"
+          explanation: "Specific condition (Type 2 diabetes), severity marker (HbA1c 7.5-10%), treatment history (naive)"
+        
+        - query: "Outcomes of immunotherapy in stage IIIB non-small cell lung cancer, ECOG performance status 0-1"
+          explanation: "Precise diagnosis, stage (IIIB), cancer type (NSCLC), functional status (ECOG 0-1)"
+        
+        - query: "Management of acute severe asthma exacerbations requiring emergency department care"
+          explanation: "Condition (asthma), phase (acute), severity (severe), setting context (ED care required)"
+      
+      needs_refinement:
+        - query: "Treatment for diabetic patients"
+          issue: "Diabetes type not specified - Type 1, Type 2, gestational, MODY, etc. have different treatments"
+          missing: "Disease type, severity, duration, complications"
+          suggested_question: "What type of diabetes? (Type 1, Type 2, gestational) And what level of glycemic control? (e.g., HbA1c range)"
+        
+        - query: "Study on cancer treatment outcomes"
+          issue: "No cancer type, stage, or histology specified"
+          missing: "Cancer type, stage, grade, molecular markers"
+          suggested_question: "Which cancer type and stage are you studying? Are there specific histological or molecular characteristics?"
+        
+        - query: "Intervention in patients with heart problems"
+          issue: "'Heart problems' is far too vague - hundreds of cardiac conditions exist"
+          missing: "Specific cardiac diagnosis, severity, functional class"
+          suggested_question: "What specific cardiac condition? (e.g., heart failure, coronary artery disease, arrhythmia) And what severity?"
+      
+      partial:
+        - query: "Effects of statins in patients with moderate hyperlipidemia"
+          has: "Condition (hyperlipidemia) and severity (moderate)"
+          missing: "Specific lipid ranges defining 'moderate', comorbidities, prior treatment attempts"
+          suggested_question: "What LDL or total cholesterol range defines 'moderate' for your study? Any relevant comorbidities or prior statin use?"
+        
+        - query: "Study in hypertensive patients with diabetes"
+          has: "Two conditions specified (hypertension, diabetes)"
+          missing: "BP range, diabetes type, severity of both conditions, other comorbidities"
+          suggested_question: "What BP range defines hypertension in your study? What type and control level of diabetes?"
+      
+      ambiguous:
+        - query: "Treatment in patients with refractory disease"
+          issue: "'Refractory' to which treatments? How many prior treatment failures?"
+          suggested_question: "Refractory to which specific treatments? How many prior treatment lines? What defines 'refractory' in your protocol?"
+        
+        - query: "Study in high-risk cardiovascular patients"
+          issue: "'High-risk' is subjective - needs risk score or specific criteria"
+          suggested_question: "What defines 'high-risk'? (e.g., Framingham score, specific risk factors, prior events)"
 
-# ============================================================================
-# Research Methodology Schema
-# ============================================================================
-research_methodology:
-  - id: study_design
-    name: Study Design
-    description: Specifies the type of research methodology or study design
+
+  # ========================================
+  # I - INTERVENTION
+  # ========================================
+  
+  - id: intervention_specification
+    name: Intervention Specification
+    description: |
+      Details the treatment, procedure, or exposure being studied including
+      specific agents, dosing, duration, frequency, and delivery method.
+    
+    depends_on:
+      - population_demographics
+      - population_clinical_profile
+    
     analysis_prompt: |
-      Analyze if the query specifies or needs clarification on research methodology:
+      **Query to Analyze:** "{query}"
       
-      Query: {query}
+      # TASK: Intervention Specification Analysis
       
-      Consider:
-      1. Is a specific study design mentioned (RCT, cohort, case-control, meta-analysis)?
-      2. Are there methodology requirements implied by the domain?
-      3. Would specifying methodology improve result quality?
+      Analyze whether the intervention is sufficiently detailed for study replication.
       
-      Respond in JSON format:
-      {
-        "needs_refinement": true/false,
-        "reason": "Brief explanation",
-        "suggested_question": "Question to ask the user if refinement needed"
-      }
-    allow_follow_up: true
-    max_follow_ups: 3
-    metadata:
-      domain: academic_research
-      priority: high
-      framework: Research Design
+      ## Intervention Dimensions
+      
+      1. **Intervention Type**
+         - Pharmacological (drug, biologic)
+         - Procedural (surgery, device)
+         - Behavioral (therapy, lifestyle)
+         - Diagnostic (test, screening)
+      
+      2. **Specific Agent/Method**
+         - Generic/brand name for drugs
+         - Specific procedure or technique
+         - Defined behavioral protocol
+      
+      3. **Dosing/Intensity** (if applicable)
+         - Dose amount and units
+         - Frequency (daily, weekly)
+         - Timing (morning, with meals)
+      
+      4. **Duration**
+         - Treatment length
+         - Follow-up period
+      
+      5. **Delivery Method**
+         - Route (oral, IV, subcutaneous)
+         - Setting (inpatient, outpatient, home)
+         - Provider type
+      
+      6. **Adjunct Treatments**
+         - Concurrent therapies
+         - Background medications
+         - Supportive care protocols
+    
+    examples:
+      clear:
+        - query: "Metformin 1000mg twice daily for 6 months vs placebo in newly diagnosed Type 2 diabetes"
+          explanation: "Drug (metformin), dose (1000mg), frequency (twice daily), duration (6 months), comparison (placebo)"
+        
+        - query: "Laparoscopic Roux-en-Y gastric bypass performed by experienced bariatric surgeons"
+          explanation: "Specific surgical technique (laparoscopic Roux-en-Y), provider qualification (experienced bariatric surgeons)"
+        
+        - query: "Cognitive Behavioral Therapy, 12 weekly 60-minute sessions delivered by licensed clinical psychologists"
+          explanation: "Therapy type (CBT), frequency (weekly), duration (12 sessions), session length (60 min), provider (licensed psychologists)"
+      
+      needs_refinement:
+        - query: "Effects of medication on blood pressure"
+          issue: "No medication specified, no dosing information"
+          missing: "Drug name, dose, frequency, duration, route"
+          suggested_question: "Which medication are you studying? Please specify the drug name, dose, frequency, and treatment duration."
+        
+        - query: "Study on surgery outcomes"
+          issue: "Type of surgery not specified"
+          missing: "Surgical procedure, approach (open vs laparoscopic), setting"
+          suggested_question: "What specific surgical procedure? What surgical approach? (e.g., open, laparoscopic, robotic)"
+        
+        - query: "Exercise intervention for weight loss"
+          issue: "Exercise type, intensity, frequency, duration all unspecified"
+          missing: "Exercise modality, intensity level, frequency, session duration, total program length"
+          suggested_question: "What type of exercise? (aerobic, resistance, both) What intensity, frequency, and program duration?"
+      
+      partial:
+        - query: "Atorvastatin treatment for hyperlipidemia"
+          has: "Drug name (atorvastatin), indication (hyperlipidemia)"
+          missing: "Dose, frequency, treatment duration, titration protocol"
+          suggested_question: "What dose of atorvastatin? (10mg, 20mg, 40mg, 80mg) What frequency and treatment duration?"
+        
+        - query: "Physical therapy twice weekly for knee osteoarthritis"
+          has: "Intervention type (physical therapy), frequency (twice weekly), condition"
+          missing: "Specific PT protocol, session duration, total treatment length, therapy components"
+          suggested_question: "What specific PT protocol? How long are sessions? What is the total treatment duration?"
+      
+      ambiguous:
+        - query: "High-dose vitamin D supplementation"
+          issue: "'High-dose' is relative - could be 2,000 IU or 50,000 IU depending on context"
+          suggested_question: "What specific dose of vitamin D? (e.g., 2,000 IU daily, 50,000 IU weekly)"
+        
+        - query: "Intensive glycemic control in diabetes"
+          issue: "'Intensive' is subjective - needs target HbA1c or glucose range"
+          suggested_question: "What target defines 'intensive control'? (e.g., HbA1c <6.5%, fasting glucose 80-110 mg/dL)"
 
-# ============================================================================
-# Legal Research Schema (Demonstrates complex prompts)
-# ============================================================================
-legal_research:
-  - id: source_type
-    name: Legal Source Type
-    description: Identifies the type of legal source needed
+  # ========================================
+  # C - COMPARISON
+  # ========================================
+  
+  - id: comparison_group
+    name: Comparison/Control Group
+    description: |
+      Defines what the intervention is compared against: placebo, standard care,
+      alternative treatment, or no treatment. Critical for establishing causality.
+    
+    depends_on:
+      - intervention_specification
+    
     analysis_prompt: |
-      The query doesn't specify the type of legal source needed.
+      **Query to Analyze:** "{query}"
       
-      Current query: {query}
+      # TASK: Comparison Group Analysis
       
-      What type of legal source are you looking for? Please consider:
-      - Case law (judicial opinions)?
-        * Federal courts (District, Circuit, Supreme Court)
-        * State courts (various levels)
-        * Administrative decisions
-      - Statutes or regulations?
-        * Federal (U.S.C., C.F.R.)
-        * State statutes
-        * Local ordinances
-      - Secondary sources (law review articles, treatises)?
-        * Peer-reviewed journals
-        * Legal encyclopedias
-        * Practice guides
-      - Legislative history?
-        * Committee reports
-        * Floor debates
-        * Bill analyses
-      - Administrative decisions?
-        * Agency rulings
-        * ALJ decisions
+      Analyze whether an appropriate comparison/control group is specified.
       
-      IMPORTANT NOTES:
-      - Multiple source types may be relevant
-      - "Recent" in law might mean last 5-10 years
-      - Consider jurisdiction-specific sources
+      ## Comparison Types
       
-      Generate ONE concise question to clarify the source type.
+      1. **Placebo Control**
+         - Inert substance/sham procedure
+         - Blinding considerations
       
-      Format your response as JSON:
-      {
-        "needs_refinement": true/false,
-        "primary_concern": "brief explanation",
-        "suggested_question": "your question here"
-      }
-    allow_follow_up: true
-    max_follow_ups: 2
-    metadata:
-      domain: legal_research
-      priority: high
-      related_dimensions:
-        - jurisdiction
-        - temporal_scope
+      2. **Standard Care/Treatment**
+         - Current guideline-recommended treatment
+         - Usual care protocols
+      
+      3. **Alternative Active Treatment**
+         - Different drug/dose/intervention
+         - Head-to-head comparison
+      
+      4. **No Treatment**
+         - Watchful waiting
+         - Natural history observation
+      
+      5. **Dose Comparison**
+         - Different doses of same intervention
+      
+      ## Key Questions
+      
+      - Is a comparator mentioned?
+      - Is the comparator appropriate for the research question?
+      - Is the comparator as well-defined as the intervention?
+      - Are ethical considerations addressed (especially for no-treatment controls)?
+    
+    examples:
+      clear:
+        - query: "Metformin vs placebo in prediabetic adults"
+          explanation: "Clear active intervention (metformin) vs inert control (placebo)"
+        
+        - query: "New anticoagulant compared to warfarin (standard care) in atrial fibrillation"
+          explanation: "Novel treatment vs established standard of care explicitly stated"
+        
+        - query: "High-intensity statins vs moderate-intensity statins in secondary prevention"
+          explanation: "Head-to-head comparison of two active dose strategies"
+      
+      needs_refinement:
+        - query: "Effects of new drug on blood pressure"
+          issue: "No comparison group mentioned"
+          missing: "Comparator specification"
+          suggested_question: "What will you compare the new drug against? (e.g., placebo, current standard treatment, another active drug)"
+        
+        - query: "Study of surgical intervention"
+          issue: "No comparison - surgery vs what?"
+          missing: "Control/comparison group"
+          suggested_question: "What is the comparison? (e.g., surgery vs medical management, surgery vs observation, one surgical technique vs another)"
+      
+      partial:
+        - query: "Cognitive therapy vs usual care in depression"
+          has: "Intervention (cognitive therapy) and comparison type (usual care)"
+          missing: "'Usual care' not defined - varies by setting and provider"
+          suggested_question: "Can you specify what 'usual care' includes in your setting? (e.g., medications only, supportive counseling, monitoring frequency)"
+        
+        - query: "New treatment compared to current options"
+          has: "Comparison concept mentioned"
+          missing: "Specific comparator not identified"
+          suggested_question: "What specific current treatment(s) will serve as the comparator? (e.g., specific drug names, specific procedures)"
+      
+      ambiguous:
+        - query: "Drug A versus control in hypertension"
+          issue: "'Control' could mean placebo, standard care, or no treatment"
+          suggested_question: "What does 'control' mean in your study? (placebo, standard antihypertensive therapy, or no treatment)"
+        
+        - query: "Intervention vs standard therapy"
+          issue: "'Standard therapy' varies by geography, guidelines, and time period"
+          suggested_question: "What specific treatment(s) constitute 'standard therapy' in your context? (e.g., specific drugs, specific guidelines)"
+    
 
-  - id: jurisdiction
-    name: Jurisdiction
-    description: Clarifies the legal jurisdiction applicable to the query
+  # ========================================
+  # O - OUTCOMES
+  # ========================================
+  
+  - id: primary_outcomes
+    name: Primary Outcomes
+    description: |
+      Specifies the main outcomes of interest including measurement methods,
+      timepoints, and clinical significance thresholds.
+    
+    depends_on:
+      - intervention_specification
+      - population_clinical_profile
+    
     analysis_prompt: |
-      Analyze the query for jurisdiction clarity:
+      **Query to Analyze:** "{query}"
       
-      Query: {query}
+      # TASK: Primary Outcome Analysis
       
-      Jurisdiction considerations:
-      1. Is the jurisdiction explicitly stated?
-         - Federal vs. State vs. International
-         - Specific circuit or state if applicable
-         - Local/municipal level if relevant
+      Analyze whether primary outcomes are adequately specified.
       
-      2. Are there conflicts of law issues?
-         - Multiple jurisdictions involved
-         - Choice of law considerations
-         - Interstate/international matters
+      ## Outcome Dimensions
       
-      3. Is the jurisdiction implied by context?
-         - Specific statutes (e.g., "ADA" implies federal US law)
-         - Geographic references (e.g., "California" implies CA law)
+      1. **Outcome Type**
+         - Clinical outcomes (mortality, morbidity)
+         - Surrogate/biomarker outcomes
+         - Patient-reported outcomes (PROs)
+         - Functional outcomes
+         - Safety/adverse events
       
-      If jurisdiction is unclear or ambiguous, ask for clarification.
+      2. **Measurement Method**
+         - Specific instruments/scales
+         - Laboratory tests
+         - Imaging modalities
+         - Validated questionnaires
       
-      Respond in JSON format:
-      {
-        "needs_refinement": true/false,
-        "reason": "Brief explanation",
-        "suggested_question": "Question to ask if clarification needed"
-      }
-    allow_follow_up: true
-    max_follow_ups: 2
-    metadata:
-      domain: legal_research
-      priority: high
-      examples:
-        - Which jurisdiction's law applies?
-        - Are you looking for federal or state law?
-        - Is this a specific circuit or nationwide?
-
-# =============================================================================
-# CLIMATE AND HUMANITARIAN CRISIS RESEARCH SCHEMA
-# =============================================================================
-
-climate_humanitarian_schema:
-  - id: temporal_scope
-    name: Time Period
-    description: Clarify the temporal scope of research interest
-    prompt_template: |
-      The current query doesn't specify a time frame for the research.
-
-      Current query: {query}
-
-      To help narrow the search, I need to understand the temporal scope. Please consider:
-      - Are you interested in recent studies (e.g., past 2-3 years)?
-      - A specific historical period (e.g., post-2015 Paris Agreement)?
-      - Seminal works regardless of publication date?
-      - Research covering a specific time range of events (e.g., 2010-2020 climate data)?
-
-      Generate ONE concise question to clarify the temporal scope.
-    analysis_hint: check_for_year_range
-    metadata:
-      domain: climate_humanitarian
-      priority: high
-      examples:
-        - past 5 years
-        - since 2015
-        - 2010-2020
-        - recent studies
-
-  - id: venue_specificity
-    name: Publication Venue
-    description: Clarify preferences for publication types and venues
-    prompt_template: |
-      The query doesn't specify publication venue preferences.
-
-      Current query: {query}
-
-      Understanding venue preferences helps refine the search. Please consider:
-      - Do you prefer peer-reviewed journals over conference proceedings?
-      - Are there specific high-impact venues you're interested in (e.g., Nature Climate Change, The Lancet Planetary Health)?
-      - Should I include gray literature (reports, working papers)?
-      - Any quality tier preferences (e.g., top-tier journals only)?
-
-      Generate ONE concise question to clarify venue preferences.
-    analysis_hint: check_for_venue_mention
-    metadata:
-      domain: climate_humanitarian
-      priority: medium
-      examples:
-        - peer-reviewed journals
-        - Nature
-        - conference papers
-        - top-tier venues
-
-  - id: field_of_study
-    name: Research Field
-    description: Clarify the academic discipline or interdisciplinary focus
-    prompt_template: |
-      The query doesn't clearly specify the research field or discipline.
-
-      Current query: {query}
-
-      For climate and humanitarian research, which often spans multiple fields, please consider:
-      - Primary discipline (e.g., atmospheric science, public health, economics, social science)?
-      - Interdisciplinary focus (e.g., climate-health nexus, climate-migration)?
-      - Specific subfield (e.g., climate modeling, disaster risk reduction, adaptation studies)?
-      - Applied vs. theoretical research?
-
-      Generate ONE concise question to clarify the field of study.
-    analysis_hint: check_for_field_mention
-    metadata:
-      domain: climate_humanitarian
-      priority: high
-      examples:
-        - public health
-        - climate science
-        - economics
-        - interdisciplinary
-
-  - id: methodology
-    name: Research Methodology
-    description: Clarify preferred research methods or study types
-    prompt_template: |
-      The query doesn't specify methodological preferences.
-
-      Current query: {query}
-
-      {context}
-
-      Understanding methodology helps identify relevant research. Please consider:
-      - Empirical studies (observational, experimental)?
-      - Modeling or simulation studies?
-      - Systematic reviews or meta-analyses?
-      - Case studies or qualitative research?
-      - Mixed-methods approaches?
-
-      Generate ONE concise question to clarify methodological preferences.
-    analysis_hint: check_for_methodology_keywords
-    metadata:
-      domain: climate_humanitarian
-      priority: medium
-      examples:
-        - empirical studies
-        - climate models
-        - systematic review
-        - case studies
-      requires_context: true
-
-  - id: geographic_scope
-    name: Geographic Focus
-    description: Clarify geographic region or scale of interest
-    prompt_template: |
-      The query doesn't specify a geographic focus.
-
-      Current query: {query}
-
-      Climate and humanitarian research often has strong geographic components. Please consider:
-      - Global vs. regional studies?
-      - Specific countries or regions (e.g., Sub-Saharan Africa, Small Island Developing States)?
-      - Urban vs. rural contexts?
-      - Developed vs. developing countries?
-
-      Generate ONE concise question to clarify the geographic scope.
-    analysis_hint: check_for_geographic_terms
-    metadata:
-      domain: climate_humanitarian
-      priority: high
-      examples:
-        - global
-        - Sub-Saharan Africa
-        - coastal regions
-        - urban areas
-
-  - id: research_context
-    name: Research Context
-    description: Clarify the broader context or application area
-    prompt_template: |
-      The query could benefit from additional context about the research focus.
-
-      Current query: {query}
-
-      {context}
-
-      For climate and humanitarian research, context matters. Please consider:
-      - Policy-oriented vs. fundamental science?
-      - Specific humanitarian context (e.g., conflict zones, natural disasters, displacement)?
-      - Climate aspect (e.g., mitigation, adaptation, resilience, impacts)?
-      - Stakeholder focus (e.g., vulnerable populations, policymakers, practitioners)?
-
-      Generate ONE concise question to clarify the research context.
-    analysis_hint: check_for_context_keywords
-    metadata:
-      domain: climate_humanitarian
-      priority: medium
-      examples:
-        - adaptation
-        - vulnerable populations
-        - policy recommendations
-        - disaster response
-      requires_context: true
-
-  - id: ambiguity_resolution
-    name: Ambiguity Resolution
-    description: Resolve ambiguous or underspecified terms in the query
-    prompt_template: |
-      The query contains terms that could be interpreted in multiple ways.
-
-      Current query: {query}
-
-      Ambiguous terms identified: {ambiguous_terms}
-
-      {context}
-
-      To ensure accurate results, I need clarification on these terms. Please consider:
-      - Specific definitions or interpretations you have in mind
-      - Technical vs. colloquial usage
-      - Scope or boundaries of the concept
-
-      Generate ONE concise question to resolve the most critical ambiguity.
-    analysis_hint: detect_ambiguous_terms
-    metadata:
-      domain: climate_humanitarian
-      priority: high
-      examples:
-        - resilience
-        - sustainability
-        - vulnerability
-        - adaptation
-      requires_ambiguous_terms: true
-      requires_context: true
-
-# =============================================================================
-# PICO SCHEMA (Biomedical/Clinical Research)
-# =============================================================================
-
-pico_schema:
-  - id: population
-    name: Population (P)
-    description: Define the patient population or participants
-    prompt_template: |
-      The query doesn't clearly define the target population.
-
-      Current query: {query}
-
-      In medical research, the population is critical. Please consider:
-      - Patient demographics (age, sex, ethnicity)?
-      - Health condition or disease state?
-      - Clinical setting (inpatient, outpatient, primary care)?
-      - Inclusion/exclusion criteria?
-      - Specific subgroups or vulnerable populations?
-
-      Generate ONE concise question to clarify the population of interest.
-    analysis_hint: check_population_terms
-    metadata:
-      domain: biomedical
-      framework: PICO
-      priority: critical
-      examples:
-        - adults with type 2 diabetes
-        - pediatric patients
-        - pregnant women
-
-  - id: intervention
-    name: Intervention (I)
-    description: Define the intervention, treatment, or exposure
-    prompt_template: |
-      The query doesn't clearly specify the intervention or exposure.
-
-      Current query: {query}
-
-      The intervention is a key component of clinical research. Please consider:
-      - Specific treatment or therapy (drug, procedure, behavioral intervention)?
-      - Dosage, duration, or frequency?
-      - Comparison with standard care or placebo?
-      - Diagnostic test or screening method?
-      - Risk factor or exposure of interest?
-
-      Generate ONE concise question to clarify the intervention.
-    analysis_hint: check_intervention_terms
-    metadata:
-      domain: biomedical
-      framework: PICO
-      priority: critical
-      examples:
-        - aspirin 100mg daily
-        - cognitive behavioral therapy
-        - MRI screening
-
-  - id: comparison
-    name: Comparison (C)
-    description: Define the comparison or control group
-    prompt_template: |
-      The query doesn't specify what the intervention should be compared against.
-
-      Current query: {query}
-
-      Understanding the comparison helps identify relevant studies. Please consider:
-      - Placebo or no treatment?
-      - Standard of care or usual treatment?
-      - Alternative intervention?
-      - Different dosage or timing?
-      - No specific comparison needed?
-
-      Generate ONE concise question to clarify the comparison.
-    analysis_hint: check_comparison_terms
-    metadata:
-      domain: biomedical
-      framework: PICO
-      priority: high
-      examples:
-        - placebo
-        - standard care
-        - alternative treatment
-        - no comparison
-
-  - id: outcome
-    name: Outcome (O)
-    description: Define the outcome measures or endpoints
-    prompt_template: |
-      The query doesn't clearly specify the outcome of interest.
-
-      Current query: {query}
-
-      Outcome measures are essential for clinical research. Please consider:
-      - Primary outcome (main effect you're interested in)?
-      - Secondary outcomes?
-      - Patient-reported outcomes (quality of life, symptoms)?
-      - Clinical endpoints (mortality, morbidity, disease progression)?
-      - Time frame for measuring outcomes?
-
-      Generate ONE concise question to clarify the outcome measures.
-    analysis_hint: check_outcome_terms
-    metadata:
-      domain: biomedical
-      framework: PICO
-      priority: critical
-      examples:
-        - mortality rate
-        - symptom improvement
-        - quality of life scores
-
-  - id: study_design
-    name: Study Design
-    description: Clarify preferred study design or evidence type
-    prompt_template: |
-      The query doesn't specify a preferred study design.
-
-      Current query: {query}
-
-      Study design affects evidence quality. Please consider:
-      - Randomized controlled trials (RCTs)?
-      - Observational studies (cohort, case-control)?
-      - Systematic reviews or meta-analyses?
-      - Clinical guidelines?
-      - Any study type acceptable?
-
-      Generate ONE concise question to clarify study design preferences.
-    analysis_hint: check_study_design_terms
-    metadata:
-      domain: biomedical
-      framework: PICO
-      priority: high
-      examples:
-        - RCTs
-        - systematic reviews
-        - cohort studies
-        - meta-analyses
-
-  - id: timeframe
-    name: Timeframe
-    description: Clarify the temporal scope of research
-    prompt_template: |
-      The query doesn't specify a timeframe for the research.
-
-      Current query: {query}
-
-      For clinical research, recency often matters. Please consider:
-      - Recent evidence (past 5 years)?
-      - Specific date range?
-      - Landmark studies regardless of date?
-      - Most current guidelines or recommendations?
-
-      Generate ONE concise question to clarify the timeframe.
-    analysis_hint: check_for_year_range
-    metadata:
-      domain: biomedical
-      framework: PICO
-      priority: medium
-      examples:
-        - past 5 years
-        - since 2015
-        - recent guidelines
-
-# =============================================================================
-# SPIDER SCHEMA (Sample, Phenomenon of Interest, Design, Evaluation, Research type)
-# For qualitative and mixed-methods systematic reviews
-# =============================================================================
-
-spider_schema:
-  - id: sample
-    name: Sample (S)
-    description: Define the sample or participants
-    prompt_template: |
-      The query doesn't clearly define the sample or participants.
-
-      Current query: {query}
-
-      For qualitative research, sample characteristics are important. Please consider:
-      - Who are the participants (patients, healthcare workers, caregivers)?
-      - Specific characteristics or demographics?
-      - Setting or context?
-      - Sample size or type (purposive, theoretical)?
-
-      Generate ONE concise question to clarify the sample.
-    analysis_hint: check_sample_terms
-    metadata:
-      domain: qualitative
-      framework: SPIDER
-      priority: high
-
-  - id: phenomenon
-    name: Phenomenon of Interest (PI)
-    description: Define the phenomenon being studied
-    prompt_template: |
-      The query doesn't clearly specify the phenomenon of interest.
-
-      Current query: {query}
-
-      What is the focus of the investigation? Please consider:
-      - Specific experience, behavior, or perception?
-      - Social or psychological phenomenon?
-      - Contextual factors or influences?
-      - Process or mechanism?
-
-      Generate ONE concise question to clarify the phenomenon.
-    analysis_hint: check_phenomenon_terms
-    metadata:
-      domain: qualitative
-      framework: SPIDER
-      priority: critical
-
-  - id: design
-    name: Design (D)
-    description: Specify the research design
-    prompt_template: |
-      The query doesn't specify a research design.
-
-      Current query: {query}
-
-      For qualitative research, design matters. Please consider:
-      - Qualitative design (phenomenology, ethnography, grounded theory)?
-      - Mixed-methods?
-      - Specific data collection method (interviews, focus groups, observations)?
-
-      Generate ONE concise question to clarify the design.
-    analysis_hint: check_design_terms
-    metadata:
-      domain: qualitative
-      framework: SPIDER
-      priority: medium
-
-  - id: evaluation
-    name: Evaluation (E)
-    description: Define the evaluation or outcome measures
-    prompt_template: |
-      The query doesn't specify what is being evaluated or measured.
-
-      Current query: {query}
-
-      What aspects are you interested in evaluating? Please consider:
-      - Themes or categories?
-      - Experiences or perceptions?
-      - Barriers or facilitators?
-      - Processes or mechanisms?
-
-      Generate ONE concise question to clarify the evaluation focus.
-    analysis_hint: check_evaluation_terms
-    metadata:
-      domain: qualitative
-      framework: SPIDER
-      priority: high
-
-  - id: research_type
-    name: Research Type (R)
-    description: Specify the type of research
-    prompt_template: |
-      The query doesn't specify the research type.
-
-      Current query: {query}
-
-      What type of research are you looking for? Please consider:
-      - Qualitative research?
-      - Quantitative research?
-      - Mixed-methods?
-      - Specific research tradition (e.g., grounded theory, case study)?
-
-      Generate ONE concise question to clarify the research type.
-    analysis_hint: check_research_type_terms
-    metadata:
-      domain: qualitative
-      framework: SPIDER
-      priority: high
-
-# =============================================================================
-# LEGAL RESEARCH SCHEMA
-# =============================================================================
-
-legal_research_schema:
-  - id: jurisdiction
-    name: Jurisdiction
-    description: Define the legal jurisdiction
-    prompt_template: |
-      The query doesn't specify a legal jurisdiction.
-
-      Current query: {query}
-
-      Jurisdiction is critical for legal research. Please consider:
-      - Federal vs. state/provincial law?
-      - Specific country or countries?
-      - International law?
-      - Specific court system (e.g., Supreme Court, appellate, district)?
-
-      Generate ONE concise question to clarify the jurisdiction.
-    analysis_hint: check_jurisdiction_terms
-    metadata:
-      domain: legal
-      priority: critical
-      examples:
-        - U.S. federal law
-        - California
-        - international human rights law
-
-  - id: area_of_law
-    name: Area of Law
-    description: Specify the legal domain or practice area
-    prompt_template: |
-      The query doesn't clearly specify the area of law.
-
-      Current query: {query}
-
-      What area of law is relevant? Please consider:
-      - Civil vs. criminal?
-      - Specific practice area (e.g., contract, tort, constitutional, employment)?
-      - Substantive vs. procedural law?
-      - Emerging areas (e.g., technology law, environmental law)?
-
-      Generate ONE concise question to clarify the area of law.
-    analysis_hint: check_legal_area_terms
-    metadata:
-      domain: legal
-      priority: critical
-      examples:
-        - contract law
-        - criminal procedure
-        - constitutional rights
-
-  - id: source_type
-    name: Source Type
-    description: Specify the type of legal source
-    prompt_template: |
-      The query doesn't specify the type of legal source needed.
-
-      Current query: {query}
-
-      What type of legal source are you looking for? Please consider:
-      - Case law (judicial opinions)?
-      - Statutes or regulations?
-      - Secondary sources (law review articles, treatises)?
-      - Legislative history?
-      - Administrative decisions?
-
-      Generate ONE concise question to clarify the source type.
-    analysis_hint: check_source_type_terms
-    metadata:
-      domain: legal
-      priority: high
-      examples:
-        - case law
-        - federal statutes
-        - law review articles
-
-  - id: time_period
-    name: Time Period
-    description: Clarify the relevant time period
-    prompt_template: |
-      The query doesn't specify a time period.
-
-      Current query: {query}
-
-      When is relevant for legal research? Please consider:
-      - Current law only?
-      - Historical analysis (specific date range)?
-      - Landmark cases regardless of date?
-      - Recent developments (e.g., past 5 years)?
-
-      Generate ONE concise question to clarify the time period.
-    analysis_hint: check_for_year_range
-    metadata:
-      domain: legal
-      priority: medium
-      examples:
-        - current law
-        - post-2010
-        - landmark cases
+      3. **Timepoint(s)**
+         - When outcomes measured
+         - Follow-up duration
+         - Multiple assessment points
+      
+      4. **Clinical Significance**
+         - Minimal clinically important difference (MCID)
+         - Target effect size
+         - Superiority vs non-inferiority
+      
+      5. **Primary vs Secondary**
+         - Is primary outcome identified?
+         - Are secondary outcomes distinguished?
+    
+    examples:
+      clear:
+        - query: "Effect of intervention on all-cause mortality at 5 years"
+          explanation: "Specific outcome (all-cause mortality), clear timepoint (5 years)"
+        
+        - query: "Change in HbA1c from baseline to 6 months, with target reduction ≥0.5%"
+          explanation: "Specific biomarker (HbA1c), timeframe (baseline to 6 months), clinical significance threshold (≥0.5%)"
+        
+        - query: "Quality of life measured by SF-36 at 3, 6, and 12 months post-intervention"
+          explanation: "Specific validated instrument (SF-36), multiple timepoints (3, 6, 12 months)"
+      
+      needs_refinement:
+        - query: "Study on treatment effectiveness"
+          issue: "'Effectiveness' not defined - needs specific measurable outcome"
+          missing: "Specific outcome measure, measurement method, timepoint"
+          suggested_question: "How will you measure effectiveness? (e.g., specific clinical outcomes, biomarkers, patient-reported measures)"
+        
+        - query: "Research on improving patient outcomes"
+          issue: "'Outcomes' is vague - could mean dozens of different measures"
+          missing: "Specific outcome(s), measurement tools, assessment timing"
+          suggested_question: "What specific outcome(s) will you measure? When will they be assessed?"
+        
+        - query: "Trial measuring quality of life improvement"
+          issue: "QOL mentioned but no instrument specified"
+          missing: "QOL instrument, measurement timepoints, MCID"
+          suggested_question: "Which quality of life instrument will you use? (e.g., SF-36, EQ-5D, disease-specific) When will you assess it?"
+      
+      partial:
+        - query: "Effect on blood pressure reduction"
+          has: "General outcome category (blood pressure)"
+          missing: "Specific BP parameter (systolic, diastolic, mean arterial), target reduction, measurement protocol, timepoint"
+          suggested_question: "Which BP parameter? (systolic, diastolic, or both) What measurement protocol? When will it be assessed?"
+        
+        - query: "Change in depression scores using validated scales"
+          has: "Outcome type (depression), mentions validation"
+          missing: "Specific scale, timepoints, MCID"
+          suggested_question: "Which depression scale? (PHQ-9, Beck Depression Inventory, HAM-D) At what timepoints? What change is clinically meaningful?"
+      
+      ambiguous:
+        - query: "Study on long-term outcomes of surgery"
+          issue: "'Long-term' is relative (could be 1 year or 10 years), 'outcomes' unspecified"
+          suggested_question: "What is the follow-up duration? What specific outcomes will you measure? (e.g., survival, complications, functional status)"
+        
+        - query: "Research on significant improvement in symptoms"
+          issue: "'Significant' (statistical vs clinical?) and 'symptoms' (which ones?) both vague"
+          suggested_question: "Which specific symptoms? How will you measure them? What defines a clinically meaningful improvement?"
+    
+    
+
+  # ========================================
+  # STUDY DESIGN & CONTEXT
+  # ========================================
+  
+  - id: study_design_context
+    name: Study Design & Methodological Context
+    description: |
+      Clarifies the intended study design, setting, sample size considerations,
+      and methodological approach. Helps determine feasibility and appropriate
+      statistical methods.
+    
+    depends_on:
+      - population_demographics
+      - intervention_specification
+      - comparison_group
+      - primary_outcomes
+    
+    analysis_prompt: |
+      **Query to Analyze:** "{query}"
+      
+      # TASK: Study Design & Context Analysis
+      
+      Analyze whether study design and methodological context are specified.
+      
+      ## Design Dimensions
+      
+      1. **Study Type**
+         - RCT (parallel, crossover, cluster)
+         - Observational (cohort, case-control)
+         - Systematic review/meta-analysis
+         - Pragmatic trial
+      
+      2. **Setting**
+         - Healthcare setting type
+         - Geographic scope
+         - Single-center vs multi-center
+      
+      3. **Sample Size**
+         - Target enrollment
+         - Sample size rationale
+         - Power considerations
+      
+      4. **Duration**
+         - Study timeline
+         - Recruitment period
+         - Follow-up length
+      
+      5. **Special Considerations**
+         - Blinding/masking
+         - Randomization method
+         - Statistical approach
+         - Interim analyses
+    
+    examples:
+      clear:
+        - query: "Multicenter RCT of drug A vs placebo in 500 patients with 12-month follow-up"
+          explanation: "Study type (RCT), setting (multicenter), sample size (500), duration (12 months) all specified"
+        
+        - query: "Double-blind placebo-controlled parallel-group trial across 20 US academic medical centers"
+          explanation: "Design details (double-blind, placebo-controlled, parallel), setting (20 academic centers, US location)"
+      
+      needs_refinement:
+        - query: "Study comparing two treatments"
+          issue: "Study design not specified"
+          missing: "Study type, setting, duration"
+          suggested_question: "What study design? (e.g., randomized controlled trial, observational cohort, systematic review)"
+      
+      partial:
+        - query: "RCT comparing interventions in hospital setting"
+          has: "Study type (RCT), general setting (hospital)"
+          missing: "Sample size, duration, specific hospital type, blinding approach"
+          suggested_question: "What is your target sample size? Study duration? Single-center or multi-center?"

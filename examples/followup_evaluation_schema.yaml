@@ -1,0 +1,163 @@
+# Follow-up Evaluation Schema
+# 
+# This schema defines how to evaluate user responses during follow-up question rounds.
+# It uses the RefinementAspect model to structure the evaluation prompts.
+
+followup_evaluation:
+  - id: followup_answer_evaluation
+    name: Follow-up Answer Evaluation
+    description: |
+      Evaluates whether a user's answer to a follow-up question provides sufficient 
+      information for query refinement, or if another follow-up is needed.
+    
+    system_prompt: |
+      **Context:**
+      You are evaluating whether the user's latest answer provides clear, actionable information for aspect {aspect_name} ({aspect_description}), or if a follow-up question is needed.
+
+      Original Query: "{original_query}"
+
+      **Conversation History:**
+      {conversation_history}
+
+      **Latest User Answer:** "{latest_answer}"
+      ---
+    
+    analysis_prompt: |
+      Evaluate if the user's latest answer is sufficient for refining the query regarding {aspect_name}.
+      
+      Consider:
+      ✓ Is the answer specific and actionable? (e.g., "2020-2023" not "recent")
+      ✓ Is it clear with no ambiguity?
+      ✓ Does it not conflict with the original query context?
+      
+      If the answer is sufficient, mark as complete.
+      If not, generate ONE focused follow-up question to clarify.
+      
+      Classify the answer into one of these categories:
+      - clear: Sufficient and specific
+      - needs_refinement: Vague or ambiguous, needs follow-up
+      - partial: Some useful info but incomplete
+      - ambiguous: User seems uncertain even after clarification
+      
+      Provide reasoning for your classification.
+    examples:
+      clear:
+        - query: "Aspect: Time Period, Latest Answer: '2020-2023'"
+          user_answer: "2020-2023"
+          explanation: "Specific date range provided - ready to use"
+        
+        - query: "machine learning for protein folding {Research Field}"
+          user_answer: "computational biology"
+          explanation: "Clear field specification that matches query context"
+        
+        - query: "After 2 follow-ups"
+          user_answer: "fairly recent, maybe 2-4 years"
+          explanation: "User has provided their best estimate after follow-up, accept it"
+      
+      needs_refinement:
+        - query: "Aspect: Time Period"
+          user_answer: "recent studies"
+          issue: "'Recent' is ambiguous - could mean past year or past decade"
+          suggested_question: "How recent? For example: past year, past 2-3 years, or past 5 years?"
+
+        - query: "Aspect: Geographic Focus"
+          user_answer: "Africa"
+          issue: "Africa is very broad and could be narrowed for better results"
+          suggested_question: "Would you like to focus on a specific region (e.g., Sub-Saharan Africa, North Africa, West Africa) or the entire continent?"
+        
+        - query: "Original Query: 'COVID-19 vaccine studies', Aspect: Time Period"
+          user_answer: "past 10 years"
+          issue: "Timeframe conflicts with topic (COVID-19 vaccines emerged in 2020)"
+          suggested_question: "COVID-19 vaccines were developed in 2020. Did you mean 2020-present, or are you interested in earlier coronavirus vaccine research?"
+      
+      partial:
+        - query: "Aspect: Research Field"
+          user_answer: "interdisciplinary"
+          has: "General category mentioned"
+          missing: "Specific fields involved"
+          suggested_question: "Which fields specifically? For example: computer science + biology, social science + public health, or others?"
+      
+      ambiguous:
+        - query: "After asking 'What geographic region?'"
+          user_answer: "not sure, maybe global?"
+          issue: "User seems genuinely uncertain about geographic scope"
+          explanation: "When user is genuinely uncertain after clarification, accept their preference rather than pushing further"
+    
+    response_format:
+      additional_fields:
+        is_complete: boolean
+        confidence: float
+        reasoning: string
+        final_value: string
+        followup_question: string
+        suggested_options: array
+      field_descriptions:
+        is_complete: "Whether the answer is sufficient (true) or needs follow-up (false)"
+        confidence: "Confidence score 0.0-1.0 in the evaluation decision"
+        reasoning: "Brief explanation of why answer is sufficient or needs follow-up"
+        final_value: "Clean, actionable value to integrate into query (only if is_complete=true, otherwise null)"
+        followup_question: "Specific, focused follow-up question (only if is_complete=false, otherwise null)"
+        suggested_options: "Optional array of example options to help user answer follow-up question"
+    
+    allow_follow_up: false  # This is a meta-evaluation, not a dimension that gets follow-ups
+    max_follow_ups: 0
+    
+    metadata:
+      domain: meta
+      purpose: followup_evaluation
+      version: detailed
+      token_estimate: 1500
+
+  # Concise version for token-constrained scenarios
+  - id: followup_answer_evaluation_concise
+    name: Follow-up Answer Evaluation (Concise)
+    description: |
+      Concise version of follow-up answer evaluation for token-constrained models.
+      Evaluates if answer is specific enough or needs clarification.
+    
+    system_prompt: |
+      Evaluate if user answers are specific enough for query refinement or need follow-up.
+    
+    analysis_prompt: |
+      **User Answer to Evaluate:** "{query}"
+      
+      Evaluate if this answer is sufficient for query refinement. Determine if complete, partial, ambiguous, or needs clarification.
+      
+      Is the answer:
+      ✓ Specific and actionable? (e.g., "2020-2023" not "recent")
+      ✓ Clear with no ambiguity?
+      ✓ Doesn't conflict with query context?
+      
+      If NO → Generate ONE focused follow-up question
+      If YES → Accept and provide final clean value
+    
+    examples:
+      clear:
+        - query: "Answer: '2020-2023'"
+          explanation: "Specific - accept"
+      
+      needs_refinement:
+        - query: "Answer: 'recent'"
+          issue: "Vague"
+          suggested_question: "How recent? Past year, 2-3 years, or 5 years?"
+    
+    response_format:
+      additional_fields:
+        is_complete: boolean
+        reasoning: string
+        final_value: string
+        followup_question: string
+      field_descriptions:
+        is_complete: "True if sufficient, false if needs follow-up"
+        reasoning: "Brief explanation"
+        final_value: "Clean value if complete, else null"
+        followup_question: "Specific question if incomplete, else null"
+    
+    allow_follow_up: false
+    max_follow_ups: 0
+    
+    metadata:
+      domain: meta
+      purpose: followup_evaluation
+      version: concise
+      token_estimate: 400
