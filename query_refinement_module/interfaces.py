@@ -11,6 +11,28 @@ if TYPE_CHECKING:
     from .schema import RefinementAspect
 
 # ===========
+# Analysis Result Types
+# ===========
+@dataclass
+class AspectAnalysisResult:
+    """
+    Result of analyzing a single aspect.
+    
+    This matches the structured output from LLM analysis (BASE_SCHEMA_FIELDS in RefinementAspect):
+    - needs_refinement: boolean
+    - reason: string (why refinement is/isn't needed)
+    - suggested_question: string (the question to ask if refinement needed)
+    
+    Attributes:
+        needs_refinement: Whether the aspect needs refinement.
+        reason: Explanation of why refinement is or isn't needed.
+        suggested_question: The question to ask the user (if needs_refinement=True).
+    """
+    needs_refinement: bool
+    reason: str
+    suggested_question: Optional[str] = None
+
+# ===========
 # LLM Provider Interface
 # ===========
 @dataclass
@@ -100,42 +122,84 @@ class QueryAnalyzerInterface(ABC):
     """
     Abstract interface for query analyzers.
 
-    This interface defines the contract for any query analysis implementation,
-    allowing different strategies for analyzing and refining user queries.
-    For instance:
-    - LLM-based analysis
-    - Rule-based analysis
-    - Hybrid approaches
+    Analyzes a query against a refinement framework to determine which aspects
+    are already clear vs. which aspects need refinement through user interaction.
+
+    Two analysis modes are supported:
+    1. Sequential (dependency-aware): Analyze aspects one-by-one with dependency context
+    2. Batch (fast): Analyze all aspects at once without dependency context
+
+    Implementations should provide at least one mode via the abstract method.
     """
 
     @abstractmethod
-    def analyze_query(
+    def analyze_aspect(
+        self,
+        query: str,
+        aspect: "RefinementAspect",
+        dependency_context: Optional[Dict[str, str]] = None,
+        llm_provider: Optional["LLMProviderInterface"] = None,
+    ) -> "AspectAnalysisResult":
+        """
+        Analyze a single aspect to determine if it needs refinement.
+
+        This method enables dependency-aware sequential analysis during initialization.
+        Each aspect is analyzed with context from previously analyzed dependencies.
+
+        Args:
+            query: The original query to analyze.
+            aspect: The specific refinement aspect to evaluate.
+            dependency_context: Values from dependency aspects (aspect_id -> value or query reference).
+            llm_provider: Optional LLM provider for LLM-based analysis.
+
+        Returns:
+            AspectAnalysisResult with:
+            - needs_refinement: bool indicating if refinement is needed
+            - reason: explanation of why (required for needs_refinement=True, optional otherwise)
+        """
+        pass
+    
+    def supports_batch_analysis(self) -> bool:
+        """
+        Indicates whether the analyzer can perform batch analysis.
+        
+        Batch analysis is faster (single LLM call) but less accurate since it
+        lacks dependency context. Useful for independent aspects or performance-critical scenarios.
+
+        Returns:
+            bool: True if batch analysis is available, False otherwise.
+        """
+        return False
+    
+    def batch_analyze(
         self,
         query: str,
         refinement_framework: List["RefinementAspect"],
-        **kwargs
-    ) -> List["RefinementAspect"]:
+        llm_provider: Optional["LLMProviderInterface"] = None,
+    ) -> Dict[str, "AspectAnalysisResult"]:
         """
-        Analyzes a query to identify which dimensions require refinement.
-        
+        Batch analyze all aspects at once (without dependency context).
+
+        This is an optimization for analyzers that can evaluate multiple aspects
+        in a single operation. It's faster but less accurate than sequential analysis.
+
+        Default implementation falls back to sequential analysis.
+
         Args:
-            query (str): The query to analyze.
-            refinement_framework (List[RefinementAspect]): List of refinement dimensions to consider.
-            **kwargs: Additional keyword arguments to pass to the analyzer.
-        
-        Returns:
-            List[RefinementAspect]: A list of dimensions that require refinement.
-        """
-        pass
-        
-    def supports_llm_analysis(self) -> bool:
-        """
-        Indicates whether the analyzer supports LLM-based analysis.
+            query: The query to analyze.
+            refinement_framework: All aspects to consider.
+            llm_provider: Optional LLM provider for LLM-based analysis.
 
         Returns:
-            bool: True if LLM-based analysis is supported, False otherwise.
+            Dictionary mapping aspect IDs to their analysis results.
         """
-        return False
+        # Default: fall back to sequential analysis without dependency context
+        results = {}
+        for aspect in refinement_framework:
+            results[aspect.id] = self.analyze_aspect(
+                query, aspect, dependency_context=None, llm_provider=llm_provider
+            )
+        return results
     
 
 # ===========
@@ -176,7 +240,7 @@ class TracingProviderInterface(ABC):
             Exception: For any errors during the tracing process (implementation-specific).
         """
         pass
-        raise NotImplementedError("TracingInterface.start_trace() must be implemented by subclasses.")
+        raise NotImplementedError("TracingProviderInterface.trace_operation() must be implemented by subclasses.")
 
     @abstractmethod
     def log_event(
@@ -212,13 +276,85 @@ class TracingProviderInterface(ABC):
         raise NotImplementedError("TracingInterface.is_enabled() must be implemented by subclasses.")   
 
 
-#TODO: Session storage interface
+# ===========
+# Session Storage Interface
+# ===========
+class SessionStorageInterface(ABC):
+    """
+    Abstract interface for session persistence.
+
+    Enables stateless API design by providing save/load operations for sessions.
+    Implementations can use various backends: Redis, PostgreSQL, File system, etc.
+    """
+
+    @abstractmethod
+    def save_session(self, session_id: str, session: Any) -> None:
+        """
+        Persist a refinement session.
+
+        Args:
+            session_id: Unique identifier for the session.
+            session: The QueryRefinementSession object to save.
+
+        Raises:
+            NotImplementedError: If not implemented by subclass.
+            Exception: For storage-specific errors (implementation-specific).
+        """
+        pass
+
+    @abstractmethod
+    def load_session(self, session_id: str) -> Any:
+        """
+        Retrieve a persisted refinement session.
+
+        Args:
+            session_id: Unique identifier for the session.
+
+        Returns:
+            The QueryRefinementSession object.
+
+        Raises:
+            NotImplementedError: If not implemented by subclass.
+            KeyError: If session_id doesn't exist.
+            Exception: For storage-specific errors (implementation-specific).
+        """
+        pass
+
+    @abstractmethod
+    def delete_session(self, session_id: str) -> None:
+        """
+        Delete a persisted session.
+
+        Args:
+            session_id: Unique identifier for the session.
+
+        Raises:
+            NotImplementedError: If not implemented by subclass.
+            Exception: For storage-specific errors (implementation-specific).
+        """
+        pass
+
+    @abstractmethod
+    def session_exists(self, session_id: str) -> bool:
+        """
+        Check if a session exists.
+
+        Args:
+            session_id: Unique identifier for the session.
+
+        Returns:
+            bool: True if session exists, False otherwise.
+        """
+        pass
+
 
 __all__ = [
     # core interfaces
     "LLMProviderInterface",
     "QueryAnalyzerInterface",
     "TracingProviderInterface",
-    # result type
+    "SessionStorageInterface",
+    # result types
     "LLMCompletionResult",
+    "AspectAnalysisResult",
 ]

@@ -124,7 +124,7 @@ class RefinementAspect:
     - Extensible metadata
 
     Response Format Structure:
-    - Base fields (always included): needs_refinement, reason, suggested_question
+    - Base fields (always included): needs_refinement, explanation, suggested_question
     - Custom fields: Add domain-specific fields via 'additional_fields'
     
     Example response_format:
@@ -189,14 +189,14 @@ class RefinementAspect:
     # Base schema fields that are always required in the response format
     BASE_SCHEMA_FIELDS = {
         "needs_refinement": "boolean",
-        "reason": "string",
+        "explanation": "string",
         "suggested_question": "string"
     }
 
     # Field descriptions for the base schema fields
     BASE_FIELD_DESCRIPTIONS = {
-        "needs_refinement": "Whether this refinement aspect needs clarification (true/false)",
-        "reason": "Brief explanation of why refinement is or isn't needed",
+        "needs_refinement": "Whether this query specification needs clarification (true/false)",
+        "explanation": "Brief explanation of why refinement is or isn't needed",
         "suggested_question": "The question to ask the user (if needs_refinement is true, otherwise can be empty)"
     }
 
@@ -523,8 +523,8 @@ class RefinementAspect:
         if not isinstance(response.get("needs_refinement"), bool):
             validation_errors.append("'needs_refinement' must be a boolean")
         
-        if not isinstance(response.get("reason"), str):
-            validation_errors.append("'reason' must be a string")
+        if not isinstance(response.get("explanation"), str):
+            validation_errors.append("'explanation' must be a string")
         
         if not isinstance(response.get("suggested_question"), str):
             validation_errors.append("'suggested_question' must be a string")
