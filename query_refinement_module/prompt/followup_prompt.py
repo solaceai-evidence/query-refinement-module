@@ -1,15 +1,14 @@
-UNIVERSAL_FOLLOWUP_PROMPT = """You are evaluating whether a user's answer provides sufficient information for query refinement.
+UNIVERSAL_FOLLOWUP_PROMPT = """
 
 **Context:**
+You are evaluating whether the user's latest answer provides clear, actionable information for aspect {aspect_name} ({aspect_description}), or if a follow-up question is needed.
+
 Original Query: "{original_query}"
-Aspect Being Refined: {aspect_name}
-Aspect Description: {aspect_description}
 
 **Conversation History:**
 {conversation_history}
 
 **Latest User Answer:** "{latest_answer}"
-
 ---
 
 **Your Task:**
@@ -120,7 +119,7 @@ Return JSON with this structure:
 Now evaluate the latest answer:"""
 
 # Shorter version for concise models (Token count matters)
-UNIVERSAL_FOLLOWUP_ANALYSIS_PROMPT_CONCISE = """Evaluate if this answer is sufficient for query refinement.
+UNIVERSAL_FOLLOWUP_PROMPT_CONCISE = """Evaluate if this answer is sufficient for query refinement.
 
 Original Query: "{original_query}"
 Aspect: {aspect_name} - {aspect_description}

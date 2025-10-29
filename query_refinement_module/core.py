@@ -6,9 +6,9 @@ working with ANY user-defined schema across ANY research domain.
 
 Pipeline Flow:
 =====
-1. User provides initial query + schema (e.g., PICO_SCHEMA, CLIMATE_SCHEMA, custom)
-2. Manager.initialize() uses query_analyzer to detect missing dimensions and generate questions using dimensions' analysis_prompt
-3. For each needed dimension:
+1. User provides initial query + schema (e.g., PICO, Solace-ai, etc)
+2. Manager.initialize() uses query_analyzer to detect missing refinement aspects and generate questions using refinement aspects' analysis_prompt
+3. For each needed refinement aspect:
    a. Present question to user
    b. Receive and store user's response
    c. Check if follow-ups are needed; if so, repeat
@@ -25,7 +25,7 @@ Navigation:
 - /restart               - Start refinement from beginning
 
 Control:
-- /skip                  - Skip current dimension entirely
+- /skip                  - Skip current refinement aspect entirely
 - /done                  - Mark current step as complete (stop follow-ups)
 - /continue              - Continue with remaining steps
 - /finish                - Complete session with current refinements
@@ -41,7 +41,6 @@ These commands are detected via is_user_command() and processed via parse_user_c
 import logging
 from dataclasses import dataclass, field
 from enum import Enum
-from time import time
 from typing import Any, Dict, List, Optional
 
 from .interfaces import LLMProviderInterface, TracingProviderInterface, QueryAnalyzerInterface
@@ -186,7 +185,7 @@ NAVIGATION:
   /restart              Start refinement from beginning
 
 CONTROL:
-  /skip                 Skip current dimension entirely
+  /skip                 Skip current refinement aspect entirely
   /done                 Mark current step complete (stop follow-ups)
   /continue             Continue with remaining steps
   /finish               Complete session with current refinements
@@ -209,28 +208,38 @@ Examples:
 # =======
 
 @dataclass
-class AspectRefinement:
+class QueryAspectRefiner:
     """
-    Represents the query refinement process for a single refinement aspect interaction in the dialogue.
-    Stores a single RefinementAspect, the generated question (optional), user response (optional), and completion status, and context.
-    Additionally, it supports multi-turn follow-up questions for deeper clarification.
+    Represents the complete refinement process for a single aspect.
+    
+    Tracks the multi-turn conversation (initial question + follow-ups) until
+    a final refined value for the aspect is obtained and accepted.
     """
 
-    dimension: RefinementAspect
-    # Init question/response pair
-    question_generated: Optional[str] = None
-    user_response: Optional[str] = None
-
-    # Follow-up tracking
-    follow_up_count: int = 0
+    refinement_aspect: RefinementAspect
+    
+    # Multi-turn conversation history (initial + all follow-ups)
+    # Each entry: {'question': '...', 'response': '...'}
     follow_up_history: List[Dict[str, str]] = field(default_factory=list)
-    # Each entry in follow_up_history is a dict with 'question' and 'response' keys
-
+    
+    # Completion status
     is_complete: bool = False
-    final_value: Optional[Any] = None # Final refined value after all Q&A
-
-    # Additional context for prompt formatting
-    context: Dict[str, Any] = field(default_factory=dict)
+    
+    # Review status - set when dependencies change, preserves history for review
+    needs_review: bool = False
+    
+    @property
+    def follow_up_count(self) -> int:
+        """Number of follow-up rounds completed."""
+        return len(self.follow_up_history)
+    
+    @property
+    def get_final_aspect_response(self) -> Optional[str]:
+        """Get the final aspect response from the last response in conversation history.
+            None means no refinement was required or provided. """
+        if not self.follow_up_history:
+            return None
+        return self.follow_up_history[-1]['response']
 
     def format_prompt(
             self,
@@ -238,11 +247,11 @@ class AspectRefinement:
             **kwargs,
     )-> str:
         """
-        Format the user prompt for this dimension using the current query and any additional context.
+        Format the user prompt for this refinement aspect using the current query and any additional context.
         
         For system prompt, use get_system_prompt() or get_prompts() for both.
         """
-        prompt = self.dimension.get_full_prompt(
+        prompt = self.refinement_aspect.get_user_prompt(
             query=query,
             **kwargs,
         )
@@ -250,38 +259,38 @@ class AspectRefinement:
     
     def get_system_prompt(self) -> str:
         """
-        Get the system prompt for this dimension.
+        Get the system prompt for this refinement aspect.
         
         Returns:
-            System prompt string (from dimension or default)
+            System prompt string (from refinement aspect or default)
         """
-        return self.dimension.get_system_prompt()
+        return self.refinement_aspect.get_system_prompt()
     
     def get_prompts(self, query: str, dependency_context: Optional[Dict[str, str]] = None, **kwargs) -> tuple[str, str]:
         """
-        Get both system and user prompts for this dimension with dependency context.
+        Get both system and user prompts for this refinement aspect with dependency context.
         
         Args:
             query: The query to analyze
-            dependency_context: Dictionary mapping dimension IDs to their final values
+            dependency_context: Dictionary mapping refinement aspect IDs to their final values
             **kwargs: Additional context for prompt formatting
             
         Returns:
             Tuple of (system_prompt, analysis_prompt)
         """
-        system_prompt = self.dimension.get_system_prompt()
+        system_prompt = self.refinement_aspect.get_system_prompt()
         
         # Build user prompt with dependency context
         analysis_prompt_context = []
         
         # Add dependency context if provided
-        if dependency_context and self.dimension.depends_on:
+        if dependency_context and self.refinement_aspect.depends_on:
             missing_deps = []
             context_lines = []
             
-            for dep_id in self.dimension.depends_on:
+            for dep_id in self.refinement_aspect.depends_on:
                 if dep_id in dependency_context and dependency_context[dep_id]:
-                    # Find dimension name for more readable output
+                    # Find refinement aspect name for more readable output
                     dep_name = dep_id.replace("_", " ").title()
                     context_lines.append(f"- {dep_name}: {dependency_context[dep_id]}")
                 else:
@@ -296,30 +305,31 @@ class AspectRefinement:
                 import logging
                 logger = logging.getLogger(__name__)
                 logger.warning(
-                    f"Dimension '{self.dimension.id}' depends on {missing_deps} but they have no values. "
+                    f"refinement aspect '{self.refinement_aspect.id}' depends on {missing_deps} but they have no values. "
                     "Continuing without that context."
                 )
         
         # Add main analysis prompt
-        analysis_prompt_context.append(self.dimension.get_full_prompt(query=query, **kwargs))
+        analysis_prompt_context.append(self.refinement_aspect.get_user_prompt(query=query, **kwargs))
         
         return system_prompt, "\n".join(analysis_prompt_context)
     
     def can_ask_followup(self) -> bool:
         """
-        Determines if a follow-up question can be asked based on the dimension's max_follow_ups.
+        Determines if a follow-up question can be asked based on the refinement aspect's max_follow_ups.
         """
-        return self.dimension.allow_follow_up and (self.follow_up_count < self.dimension.max_follow_ups)
+        return self.refinement_aspect.allow_follow_up and (self.follow_up_count < self.refinement_aspect.max_follow_ups)
 
     def add_follow_up(self, question: str, response: str):
         """
-        Adds a follow-up question/response pair to the history and increments the follow-up count.
+        Adds a follow-up question/response pair to the history.
+        
+        The last response in history becomes the refined_value.
         """
         self.follow_up_history.append({
             "question": question,
-            "answer": response
+            "response": response
         })
-        self.follow_up_count += 1
     
     def get_conversation_history_text(self) -> str:
         """
@@ -335,161 +345,115 @@ class AspectRefinement:
             history_lines.append(f" A: {qa['answer']}")
         return "\n".join(history_lines)
     
+    # TODO: revise for future use
     def format_follow_up_prompt_template(
             self,
-            original_query: str, 
             latest_answer: str,
+            include_examples: bool = True,
     ) -> str:
         """
-        Format the follow-up prompt for this dimension using the current query and latest answer.
-        Uses UNIVERSAL_FOLLOWUP_ANALYSIS_PROMPT, and includes previous follow-up history.
+        Format the follow-up prompt for this refinement aspect using the latest answer.
+        
+        Uses the same YAML-based prompt from the refinement aspect for consistency.
+        In the future, this can be replaced with a dedicated follow-up evaluation schema.
+        
+        Args:
+            latest_answer: The user's latest answer to evaluate
+            include_examples: Whether to include examples in the prompt
+            
+        Returns:
+            Formatted prompt string ready for LLM
         """
-        from .prompt.followup_prompt import UNIVERSAL_FOLLOWUP_PROMPT
-
-        conversation_history = self.get_conversation_history_text()
-
-        prompt = UNIVERSAL_FOLLOWUP_PROMPT.format(
-            original_query=original_query,
-            dimension_name=self.dimension.name,
-            dimension_description=self.dimension.description,
-            conversation_history=conversation_history,
-            latest_answer=latest_answer,
+        # For now, use the refinement aspect's own prompt format
+        # The {query} placeholder will contain the user's answer to evaluate
+        return self.refinement_aspect.get_user_prompt(
+            query=latest_answer,
+            include_examples=include_examples,
         )
-        return prompt
-    
-    def complete_with_value(self, final_value: str):
-        """Mark the step as complete with the final refined value."""
-        self.is_complete = True
-        self.final_value = final_value
     
 @dataclass
-class RefinementSession:
+class QueryRefinementSession:
     """
-    Represents an entire query refinement session with conversation history.
-
-    Accepts a list of RefinementAspect defining what aspects can be refined (domain-agnostic).
-
-    Stores the original query, refinement_framework, current query state, conversation history, and all refinement steps taken, and metadata.
+    Represents an entire query refinement session.
+    
+    Tracks the original query and the multi-step refinement process through
+    a list of AspectRefinementProcess objects, one per refinement aspect.
     """
 
     original_query: str
-    refinement_framework: List[RefinementAspect]
-    current_query: str = "" # Updated query as refinements are made
-    conversation_history: List[Dict[str, Any]] = field(default_factory=list)
-    steps: List[AspectRefinement] = field(default_factory=list)
-    metadata: Dict[str, Any] = field(default_factory=dict)
-
-    def __post_init__(self):
-        # Initialize current_query to original_query if not set
-        if not self.current_query:
-            self.current_query = self.original_query
+    steps: List[QueryAspectRefiner] = field(default_factory=list)
+    
+    @property
+    def refinement_framework(self) -> List[RefinementAspect]:
+        """Get the refinement framework from the steps."""
+        return [step.refinement_aspect for step in self.steps]
+    
+    @property
+    def current_query(self) -> str:
+        """
+        Get the coriginal user query.
+        """
+        return self.original_query
 
     def add_step(
             self,
-            dimension: RefinementAspect,
-            context: Optional[Dict[str, Any]] = None,
-        ) -> AspectRefinement:
+            refinement_aspect: RefinementAspect,
+        ) -> QueryAspectRefiner:
         """
-        Adds a new refinement step to the session for a dimension.
+        Adds a new refinement step to the session for a refinement aspect.
 
         Args:
-            dimension (RefinementAspect): The dimension being refined.
-            context (Optional[Dict[str, Any]]): Additional context for prompt formatting.
+            refinement_aspect (RefinementAspect): The refinement aspect being refined.
         
         Returns:
-            AspectRefinement: The newly created refinement step.
+            AspectRefinementProcess: The newly created refinement step.
         """
-        step = AspectRefinement(
-            dimension=dimension,
-            context=context or {},
+        step = QueryAspectRefiner(
+            refinement_aspect=refinement_aspect,
         )
         self.steps.append(step)
         return step
     
-    def get_active_step(self) -> Optional[AspectRefinement]:
+    def get_active_step(self) -> Optional[QueryAspectRefiner]:
         """
-        Returns the current active refinement step (the last one that is not complete).
+        Returns the current active refinement step (first incomplete or needs review).
         """
         for step in self.steps:
-            if not step.is_complete:
+            if not step.is_complete or step.needs_review:
                 return step
         return None
     
-    def get_dependency_context(self, target_dimension_id: str) -> Dict[str, str]:
+    def get_dependency_context(self, target_refinement_aspect_id: str) -> Dict[str, str]:
         """
-        Build dependency context for a specific dimension.
+        Build dependency context for a specific refinement aspect.
         
-        Only includes dependencies declared by the target dimension.
+        Only includes dependencies declared by the target refinement aspect.
         
         Args:
-            target_dimension_id: The dimension ID that needs dependency context
+            target_refinement aspect_id: The refinement aspect ID that needs dependency context
             
         Returns:
             Dictionary mapping dependency IDs to their final values
         """
         context: Dict[str, str] = {}
         
-        # Find the target dimension's dependencies
+        # Find the target refinement aspect's dependencies
         target_dim = None
         for step in self.steps:
-            if step.dimension.id == target_dimension_id:
-                target_dim = step.dimension
+            if step.refinement_aspect.id == target_refinement_aspect_id:
+                target_dim = step.refinement_aspect
                 break
         
         if not target_dim or not target_dim.depends_on:
             return context
         
-        # Collect final values for declared dependencies
+        # Collect refined values for declared dependencies
         for step in self.steps:
-            if step.dimension.id in target_dim.depends_on:
-                if step.final_value:
-                    context[step.dimension.id] = step.final_value
+            if step.refinement_aspect.id in target_dim.depends_on:
+                if step.get_final_aspect_response:
+                    context[step.refinement_aspect.id] = step.get_final_aspect_response
         
         return context
-    
-    def add_interaction(
-        self, 
-        step: AspectRefinement,
-        question: str,
-        answer: Optional[str] = None,
-        is_follow_up: bool = False,
-        system_prompt: Optional[str] = None,
-        analysis_prompt: Optional[str] = None,
-        dependency_context: Optional[Dict[str, str]] = None,
-    ):
-        """
-        Add an interaction to conversation history with full prompt context.
-        
-        Stores complete information needed to reconstruct exact prompts sent to LLM
-        for debugging, auditing, and potential context reconstruction.
-        
-        Args:
-            step: The refinement step this interaction belongs to
-            question: The question asked (extracted from LLM response)
-            answer: The user's answer (None if not yet answered)
-            is_follow_up: Whether this is a follow-up question
-            system_prompt: The system prompt used (if None, will fetch from step)
-            analysis_prompt: The formatted analysis prompt sent to LLM (with dependencies injected)
-            dependency_context: The dependency context that was injected into the prompt
-        """
-        interaction = {
-            # Core Q&A
-            "dimension_id": step.dimension.id,
-            "dimension_name": step.dimension.name,
-            "type": "follow_up" if is_follow_up else "initial",
-            "question": question,  # Question extracted from LLM response
-            "answer": answer,
-            
-            # Full prompt reconstruction - what was actually sent to LLM
-            "system_prompt": system_prompt or step.get_system_prompt(),
-            "analysis_prompt": analysis_prompt,  # The formatted prompt with dependencies
-            "dependency_context": dependency_context or {},
-            
-            # Metadata
-            "timestamp": time(),
-        }
-        
-        self.conversation_history.append(interaction)
     
     def is_complete(self) -> bool:
         """
@@ -513,21 +477,24 @@ class RefinementSession:
         Returns:
             Dictionary with step statistics and status.
         """
-        completed = sum(1 for step in self.steps if step.is_complete)
-        in_progress = sum(1 for step in self.steps if not step.is_complete)
+        completed = sum(1 for step in self.steps if step.is_complete and not step.needs_review)
+        needs_review = sum(1 for step in self.steps if step.needs_review)
+        in_progress = sum(1 for step in self.steps if not step.is_complete and not step.needs_review)
         total_followups = self.get_total_follow_ups()
         
         return {
             "total_steps": len(self.steps),
             "completed": completed,
+            "needs_review": needs_review,
             "in_progress": in_progress,
             "total_follow_ups": total_followups,
             "steps": [
                 {
-                    "dimension": step.dimension.name,
+                    "refinement_aspect": step.refinement_aspect.name,
                     "is_complete": step.is_complete,
+                    "needs_review": step.needs_review,
                     "follow_up_count": step.follow_up_count,
-                    "has_final_value": step.final_value is not None,
+                    "has_refined_value": step.get_final_aspect_response is not None,
                 }
                 for step in self.steps
             ]
@@ -537,22 +504,30 @@ class RefinementSession:
         """
         Get the complete conversation as formatted text.
         
+        Reconstructs the conversation from the step-by-step refinement history.
+        
         Returns:
             Human-readable conversation history.
         """
         lines = [f"Original Query: {self.original_query}", ""]
         
-        for interaction in self.conversation_history:
-            dim_name = interaction.get("dimension_name", "Unknown")
-            interaction_type = interaction.get("type", "unknown")
-            question = interaction.get("question", "")
-            answer = interaction.get("answer")
+        for step in self.steps:
+            if not step.follow_up_history:
+                continue
+                
+            lines.append(f"[{step.refinement_aspect.name}]")
             
-            lines.append(f"[{dim_name}] [{interaction_type}]")
-            lines.append(f"  Q: {question}")
-            if answer:
-                lines.append(f"  A: {answer}")
-            lines.append("")  # Blank line between interactions
+            for i, qa in enumerate(step.follow_up_history, 1):
+                interaction_type = "initial" if i == 1 else f"follow-up {i-1}"
+                lines.append(f"  [{interaction_type}]")
+                lines.append(f"  Q: {qa.get('question', '')}")
+                if qa.get('response'):
+                    lines.append(f"  A: {qa['response']}")
+                lines.append("")  # Blank line
+            
+            if step.get_final_aspect_response:
+                lines.append(f"  ✓ Final value: {step.get_final_aspect_response}")
+                lines.append("")
         
         if self.current_query != self.original_query:
             lines.append(f"Refined Query: {self.current_query}")
@@ -605,36 +580,35 @@ class RefinementSession:
         
         return {"success": False, "message": f"Command {command.name} not implemented"}
     
-    def _invalidate_dependents(self, changed_dimension_id: str) -> List[str]:
+    def _invalidate_dependents(self, changed_refinement_aspect_id: str) -> List[str]:
         """
-        Invalidate all dimensions that depend on the changed dimension.
+        Soft-invalidate all refinement aspects that depend on the changed refinement aspect.
+        
+        Preserves conversation history but marks steps for review.
         
         Args:
-            changed_dimension_id: The dimension ID that was changed
+            changed_refinement_aspect_id: The refinement aspect ID that was changed
             
         Returns:
-            List of invalidated dimension names
+            List of invalidated refinement aspect names
         """
         invalidated = []
         
         for step in self.steps:
-            if changed_dimension_id in step.dimension.depends_on:
-                # Mark dependent as incomplete and clear its data
+            if changed_refinement_aspect_id in step.refinement_aspect.depends_on:
+                # Soft invalidate: preserve history but mark for review
                 step.is_complete = False
-                step.user_response = None
-                step.final_value = None
-                step.follow_up_count = 0
-                step.follow_up_history = []
-                invalidated.append(step.dimension.name)
+                step.needs_review = True  # Flag for review, DON'T clear history
+                invalidated.append(step.refinement_aspect.name)
                 
                 # Recursively invalidate dependents of this step
-                sub_invalidated = self._invalidate_dependents(step.dimension.id)
+                sub_invalidated = self._invalidate_dependents(step.refinement_aspect.id)
                 invalidated.extend(sub_invalidated)
         
         return invalidated
     
     def _go_back(self) -> Dict[str, Any]:
-        """Navigate to the previous step and invalidate dependent dimensions."""
+        """Navigate to the previous step and soft-invalidate dependent refinement aspects."""
         active = self.get_active_step()
         if not active:
             return {"success": False, "message": "No active step to go back from"}
@@ -643,22 +617,22 @@ class RefinementSession:
         if active_idx == 0:
             return {"success": False, "message": "Already at first step"}
         
-        # Mark current as incomplete and clear its data
+        # Clear current step's data (hard clear - user is abandoning this)
         active.is_complete = False
-        active.user_response = None
-        active.final_value = None
+        active.follow_up_history = []
+        active.needs_review = False
         
-        # Reactivate previous step
+        # Reactivate previous step (don't clear its history)
         prev_step = self.steps[active_idx - 1]
         prev_step.is_complete = False
-        prev_step.final_value = None
+        prev_step.needs_review = False  # Being actively edited now
         
-        # Invalidate dimensions that depend on the previous step
-        invalidated = self._invalidate_dependents(prev_step.dimension.id)
+        # Soft-invalidate dependent steps (preserve their history for review)
+        invalidated = self._invalidate_dependents(prev_step.refinement_aspect.id)
         
-        message = f"Returned to step {active_idx}: {prev_step.dimension.name}"
+        message = f"Returned to step {active_idx}: {prev_step.refinement_aspect.name}"
         if invalidated:
-            message += f". Invalidated dependent dimensions: {', '.join(invalidated)}"
+            message += f". Marked for review: {', '.join(invalidated)}"
         
         return {
             "success": True,
@@ -669,7 +643,7 @@ class RefinementSession:
         }
     
     def _go_to_step(self, step_number: int) -> Dict[str, Any]:
-        """Navigate to a specific step and invalidate dependent dimensions."""
+        """Navigate to a specific step and soft-invalidate dependent refinement aspects."""
         if step_number < 1 or step_number > len(self.steps):
             return {
                 "success": False,
@@ -679,28 +653,25 @@ class RefinementSession:
         step_idx = step_number - 1
         target_step = self.steps[step_idx]
         
-        # Mark target as incomplete
+        # Clear target step's history (user is re-editing)
         target_step.is_complete = False
-        target_step.final_value = None
+        target_step.follow_up_history = []
+        target_step.needs_review = False
         
-        # Invalidate all dependents of the target dimension
-        invalidated = self._invalidate_dependents(target_step.dimension.id)
+        # Soft-invalidate all dependents of the target (preserve their history)
+        invalidated = self._invalidate_dependents(target_step.refinement_aspect.id)
         
-        # Also invalidate all steps after the target (they come after in sequence)
+        # Also soft-invalidate all steps after the target
         for i in range(step_idx + 1, len(self.steps)):
-            if not self.steps[i].is_complete:
-                continue  # Already incomplete
-            self.steps[i].is_complete = False
-            self.steps[i].user_response = None
-            self.steps[i].final_value = None
-            self.steps[i].follow_up_count = 0
-            self.steps[i].follow_up_history = []
-            if self.steps[i].dimension.name not in invalidated:
-                invalidated.append(self.steps[i].dimension.name)
+            if self.steps[i].is_complete or self.steps[i].follow_up_history:
+                self.steps[i].is_complete = False
+                self.steps[i].needs_review = True  # Preserve history, mark for review
+                if self.steps[i].refinement_aspect.name not in invalidated:
+                    invalidated.append(self.steps[i].refinement_aspect.name)
         
-        message = f"Jumped to step {step_number}: {target_step.dimension.name}"
+        message = f"Jumped to step {step_number}: {target_step.refinement_aspect.name}"
         if invalidated:
-            message += f". Invalidated: {', '.join(invalidated)}"
+            message += f". Marked for review: {', '.join(invalidated)}"
         
         return {
             "success": True,
@@ -711,20 +682,12 @@ class RefinementSession:
         }
     
     def _restart(self) -> Dict[str, Any]:
-        """Restart the entire refinement session."""
-        # Mark all steps incomplete and clear data
+        """Restart the entire refinement session (hard clear all data)."""
+        # Mark all steps incomplete and clear all data
         for step in self.steps:
             step.is_complete = False
-            step.user_response = None
-            step.final_value = None
-            step.follow_up_count = 0
             step.follow_up_history = []
-        
-        # Reset query to original
-        self.current_query = self.original_query
-        
-        # Clear conversation history
-        self.conversation_history = []
+            step.needs_review = False
         
         return {
             "success": True,
@@ -732,40 +695,39 @@ class RefinementSession:
         }
     
     def _skip_current(self) -> Dict[str, Any]:
-        """Skip the current dimension without providing a value."""
+        """Skip the current refinement aspect without providing a value."""
         active = self.get_active_step()
         if not active:
             return {"success": False, "message": "No active step to skip"}
         
-        # Mark as complete without setting final_value
+        # Mark as complete without adding to history (no refined value)
         active.is_complete = True
-        active.final_value = None  # Explicitly no value
         
         return {
             "success": True,
-            "message": f"Skipped dimension: {active.dimension.name}",
+            "message": f"Skipped refinement aspect: {active.refinement_aspect.name}",
             "step": active,
         }
     
     def _finish_current(self) -> Dict[str, Any]:
-        """Finish the current step with the last response as final value."""
+        """Finish the current step, accepting the current refined value."""
         active = self.get_active_step()
         if not active:
             return {"success": False, "message": "No active step to finish"}
         
-        if not active.user_response:
+        if not active.get_final_aspect_response:
             return {
                 "success": False,
-                "message": "Cannot finish: no response provided yet",
+                "message": "Cannot finish: no value has been provided yet",
             }
         
-        # Mark complete with current response as final value
+        # Mark as complete and clear review flag
         active.is_complete = True
-        active.final_value = active.user_response
+        active.needs_review = False
         
         return {
             "success": True,
-            "message": f"Completed dimension: {active.dimension.name}",
+            "message": f"Completed refinement aspect: {active.refinement_aspect.name}",
             "step": active,
         }
     
@@ -777,12 +739,15 @@ class RefinementSession:
         status_lines = [
             "Session Status:",
             f"  Steps: {summary['completed']}/{summary['total_steps']} complete",
+            f"  Needs review: {summary['needs_review']}",
+            f"  In progress: {summary['in_progress']}",
             f"  Follow-ups asked: {summary['total_follow_ups']}",
         ]
         
         if active:
             active_idx = self.steps.index(active) + 1
-            status_lines.append(f"  Current: Step {active_idx} - {active.dimension.name}")
+            status_tag = " (needs review)" if active.needs_review else ""
+            status_lines.append(f"  Current: Step {active_idx} - {active.refinement_aspect.name}{status_tag}")
         else:
             status_lines.append("  Current: Session complete")
         
@@ -799,9 +764,18 @@ class RefinementSession:
         
         lines = ["Refinement Steps:"]
         for i, step in enumerate(self.steps, 1):
-            status = "completed" if step.is_complete else ("currently active" if step == active else "not started")
+            # Determine status icon and text
+            if step.is_complete and not step.needs_review:
+                status = "✓ completed"
+            elif step.needs_review:
+                status = "⚠ needs review"
+            elif step == active:
+                status = "→ active"
+            else:
+                status = "○ not started"
+            
             followups = f" ({step.follow_up_count} follow-ups)" if step.follow_up_count > 0 else ""
-            lines.append(f"  {status} {i}. {step.dimension.name}{followups}")
+            lines.append(f"  {i}. [{status}] {step.refinement_aspect.name}{followups}")
         
         return {
             "success": True,
@@ -811,52 +785,40 @@ class RefinementSession:
     
     def to_dict(self) -> Dict[str, Any]:
         """
-        Serializes the session to a dictionary, including all follow-up data.
+        Serializes the session to a dictionary.
 
         Returns:
             Dict[str, Any]: The serialized session.
         """
         return {
             "original_query": self.original_query,
-            "dimensions": [dim.name for dim in self.refinement_framework],
-            "current_query": self.current_query,
-            "conversation_history": self.conversation_history,
+            "refinement_aspects": [aspect.name for aspect in self.refinement_framework],
             "steps": [
                 {
-                    "dimension_id": step.dimension.id,
-                    "dimension_name": step.dimension.name,
-                    "dimension_description": step.dimension.description,
-                    # Initial question/response
-                    "question_generated": step.question_generated,
-                    "user_response": step.user_response,
-                    # Follow-up tracking
-                    "follow_up_count": step.follow_up_count,
+                    "refinement_aspect_id": step.refinement_aspect.id,
+                    "refinement_aspect_name": step.refinement_aspect.name,
+                    "refinement_aspect_description": step.refinement_aspect.description,
+                    # Multi-turn conversation
                     "follow_up_history": step.follow_up_history,
-                    # Completion
+                    # Completion status
                     "is_complete": step.is_complete,
-                    "final_value": step.final_value,
-                    # Context
-                    "context": step.context,
+                    "refined_value": step.get_final_aspect_response,
                 }
                 for step in self.steps
             ],
-            "metadata": self.metadata,
         }
     
-#=====
-# Refinement Process Orchestration
-#=====
 
 class QueryRefinementManager:
     """
     Orchestrates the multi-step query refinement process using provided LLM, tracing, and query analysis interfaces.
 
-    Refinement logic is domain-agnostic and driven by the provided schema dimensions.
+    Refinement logic is domain-agnostic and driven by the provided schema refinement aspects.
     All methods work with RefinementSession objects, allowing external management of state and persistence (files/Redis/databases).
 
     Key responsibilities:
-    - Detecting wich dimensions need refinement based on the initial query
-    - Generating questions for each dimension using the query analyzer
+    - Detecting wich refinement aspects need refinement based on the initial query
+    - Generating questions for each refinement aspect using the query analyzer
     - Processing user responses and managing follow-up questions
     - Synthesizing the final refined query
     - Maintaining conversation history and session state
@@ -869,8 +831,8 @@ class QueryRefinementManager:
     
     Args:
         llm_provider: LLM provider for question generation and synthesis
-        query_analyzer: Analyzer for detecting missing dimensions
-                    (if None, will assume all dimensions need refinement)
+        query_analyzer: Analyzer for detecting missing refinement aspects
+                    (if None, will assume all refinement aspects need refinement)
         tracing_provider: Tracing provider for observability
             (if None, will use no-op implementation)
     """
@@ -879,74 +841,79 @@ class QueryRefinementManager:
         self,
         llm_provider: LLMProviderInterface,
         query_analyzer: QueryAnalyzerInterface,
-        tracing_provider: TracingProviderInterface,
+        tracing_provider: Optional[TracingProviderInterface] = None,
     ):
         """Initialize the manager with injected dependencies
 
         Args:
             llm_provider (LLMProviderInterface): LLM provider for question generation and synthesis
-            query_analyzer (QueryAnalyzerInterface): Analyzer for detecting missing dimensions
-                    (if None, will assume all dimensions need refinement)
+            query_analyzer (QueryAnalyzerInterface): Analyzer for detecting missing refinement aspects
+                    (if None, will assume all refinement aspects need refinement)
             tracing_provider (TracingProviderInterface): Tracing provider for observability
                     (if None, will use no-op implementation)
         """
         self.llm_provider = llm_provider
         self.query_analyzer = query_analyzer
-        self.tracing_provider = tracing_provider
-
-        #Lazy import to avoid circular dependencies
+        
+        # Use no-op tracing provider if none provided
         if tracing_provider is None:
-            from .providers import NoOpTracingProvider
-            self.tracing_provider = NoOpTracingProvider()
+            self.tracing_provider = _NoOpTracingProvider()
+        else:
+            self.tracing_provider = tracing_provider
         
         logger.info("QueryRefinementManager initialized with "
                     "LLM provider: %s, Query Analyzer: %s, Tracing Provider: %s",
-                    llm_provider.__class__.__name__, query_analyzer.__class__.__name__ if query_analyzer else "None", tracing_provider.__class__.__name__ if tracing_provider else "disabled")
-        
-        def initialize(
-            self,
-            original_query: str,
-            refinement_framework: List[RefinementAspect],
-            **kwargs,
-        ) -> RefinementSession:
-            """
-            Initialize a new refinement session for the given query and dimensions.
+                    llm_provider.__class__.__name__, 
+                    query_analyzer.__class__.__name__ if query_analyzer else "None", 
+                    self.tracing_provider.__class__.__name__)
+    
+    def initialize(
+        self,
+        original_query: str,
+        refinement_framework: List[RefinementAspect],
+    ) -> QueryRefinementSession:
+        """
+        Initialize a new refinement session for the given query and refinement aspects.
 
-            Analyzes the query against the refinement framework to determine which ones need refinement, then creates a session with appropriate steps.
+        Analyzes the query against the refinement framework to determine which ones need refinement, 
+        then creates a session with appropriate steps.
 
-            Args:
-                original_query (str): The original query to refine.
-                refinement_framework (List[RefinementAspect]): The dimensions to consider for refinement.
-                **kwargs: Additional keyword arguments to pass to the session.
+        Args:
+            original_query (str): The original query to refine.
+            refinement_framework (List[RefinementAspect]): The refinement aspects to consider for refinement.
 
-            Returns:
-                RefinementSession: Initialized refinement session with steps for needed dimensions.
-            """
-            with self.tracing_provider.start_trace("initialize_refinement_session") as trace:
+        Returns:
+            RefinementSession: Initialized refinement session with steps for needed refinement aspects.
+        """
+        with self.tracing_provider.trace_operation("initialize_refinement_session") as trace:
+            if hasattr(trace, 'add_attribute'):
                 trace.add_attribute("original_query", original_query)
-                trace.add_attribute("num_refinement_dimensions", len(refinement_framework))
+                trace.add_attribute("num_refinement_aspects", len(refinement_framework))
 
-                init_start_time = time()
+            logger.info("Initializing refinement session for query: %s", original_query)
+            logger.debug("Refinement framework aspects: %s",
+                         [aspect.name for aspect in refinement_framework])
+            
+            # Create a new session
+            session = QueryRefinementSession(
+                original_query=original_query,
+            )
 
-                logger.info("Initializing refinement session for query: %s", original_query)
-                logger.debug("Refinement framework dimensions: %s",
-                             [dim.name for dim in refinement_framework])
-                
-                #create a new session
-                session = RefinementSession(
-                    original_query=original_query,
-                    refinement_framework=refinement_framework,
+            # Analyze which refinement aspects need refinement
+            aspects_to_refine = self.query_analyzer.analyze_query(
+                query=original_query,
+                refinement_framework=refinement_framework,
+                llm_provider=(
+                    self.llm_provider
+                    if self.query_analyzer.supports_llm_integration
+                    else None   
                 )
-                session.metadata.update(kwargs)
-
-                # Analyze which dimensions need refinement
-                dimensions_to_refine = self.query_analyzer.analyze_query(
-                    query=original_query,
-                    refinement_framework=refinement_framework,
-                    llm_provider=(
-                        self.llm_provider
-                        if self.query_analyzer.supports_llm_integration
-                        else None   
-                    )
-                )
-                return session
+            )
+            
+            # Add steps for each aspect that needs refinement
+            for aspect in aspects_to_refine:
+                session.add_step(aspect)
+            
+            logger.info("Session initialized with %d refinement steps", len(session.steps))
+            
+            return session
