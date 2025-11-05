@@ -1005,6 +1005,41 @@ class QueryRefinementManager:
             
             return session
 
+    @staticmethod
+    def _dependencies_ready(
+        candidate: QueryAspectRefiner,
+        step_lookup: Dict[str, QueryAspectRefiner],
+    ) -> bool:
+        """Check whether all declared dependencies for a step are satisfied."""
+        dependencies = candidate.refinement_aspect.depends_on or []
+        if not dependencies:
+            return True
+
+        pending: List[str] = []
+
+        for dep_id in dependencies:
+            dep_step = step_lookup.get(dep_id)
+            if not dep_step:
+                logger.warning(
+                    "Aspect %s declares dependency on %s but it's not in the session",
+                    candidate.refinement_aspect.id,
+                    dep_id,
+                )
+                return False
+
+            if not dep_step.is_complete and not dep_step.final_response:
+                pending.append(dep_id)
+
+        if pending:
+            logger.debug(
+                "Aspect %s waiting on dependencies %s",
+                candidate.refinement_aspect.id,
+                pending,
+            )
+            return False
+
+        return True
+
     def process_next_step(self, session: QueryRefinementSession) -> Optional[Dict[str, Any]]:
         """
         Process the next incomplete refinement step with exactly ONE LLM interaction.
@@ -1023,38 +1058,13 @@ class QueryRefinementManager:
         with self.tracing_provider.trace_operation("process_next_step"):
             # Find the next step whose dependencies are satisfied (dependency-aware ordering)
             step: Optional[QueryAspectRefiner] = None
-            
+            step_lookup = {candidate.refinement_aspect.id: candidate for candidate in session.steps}
+
             for candidate in session.steps:
-                # Skip completed steps (unless they need review)
                 if candidate.is_complete and not candidate.needs_review:
                     continue
 
-                # Check if all declared dependencies are satisfied
-                deps = candidate.refinement_aspect.depends_on or []
-                deps_satisfied = True
-                
-                for dep_id in deps:
-                    # Find the dependency step
-                    dep_step = next(
-                        (s for s in session.steps if s.refinement_aspect.id == dep_id),
-                        None
-                    )
-
-                    if dep_step is None:
-                        # Dependency not in session - treat as unsatisfied
-                        logger.warning(
-                            "Aspect %s declares dependency on %s but it's not in the session",
-                            candidate.refinement_aspect.id, dep_id
-                        )
-                        deps_satisfied = False
-                        break
-
-                    # Dependency must be complete (either refined or marked clear)
-                    if not dep_step.is_complete and not dep_step.final_response:
-                        deps_satisfied = False
-                        break
-
-                if deps_satisfied:
+                if self._dependencies_ready(candidate, step_lookup):
                     step = candidate
                     break
 
