@@ -114,6 +114,7 @@ def load_framework(aspects):
 # Context building at runtime
 session = QueryRefinementSession(original_query="...")
 context = session.get_dependency_context(target_refinement_aspect_id="intervention")
+# {'population': {'name': 'Population', 'value': 'Adults aged 18-65 ...'}}
 
 # Cascade invalidation when answers change
 session._invalidate_dependents(changed_refinement_aspect_id="population")

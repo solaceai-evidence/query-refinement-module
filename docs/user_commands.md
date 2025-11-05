@@ -82,6 +82,7 @@ is_user_command("my answer")  # False
 Parses a command string and validates it.
 
 Returns a `CommandResult` with:
+
 - `command`: The `UserCommand` enum value
 - `argument`: Optional argument (e.g., step number for `/goto`)
 - `is_valid`: Whether the command is valid
@@ -115,6 +116,7 @@ Executes a parsed command and returns result dictionary:
 ### Navigation Behavior
 
 #### `/back` or `/prev`
+
 - Returns to the previous step
 - Marks current step as incomplete
 - Clears current step's response and final value
@@ -127,6 +129,7 @@ result = session.handle_command(parse_user_command("/back"))
 ```
 
 #### `/goto <number>`
+
 - Jumps to specific step (1-indexed)
 - Marks target step and all following steps as incomplete
 - Validates step number is in valid range
@@ -137,15 +140,16 @@ result = session.handle_command(parse_user_command("/goto 3"))
 ```
 
 #### `/restart`
+
 - Resets all steps to incomplete
 - Clears all responses and final values
 - Resets follow-up counts
-- Restores `current_query` to `original_query`
 - Clears conversation history
 
 ### Control Behavior
 
 #### `/skip`
+
 - Marks current step as complete
 - Sets `final_value` to `None` (explicitly skipped)
 - Moves to next step
@@ -156,6 +160,7 @@ result = session.handle_command(parse_user_command("/skip"))
 ```
 
 #### `/done` or `/finish`
+
 - Marks current step as complete
 - Sets `final_value` to `user_response`
 - Stops any follow-up questions for this dimension
@@ -170,7 +175,9 @@ result = session.handle_command(parse_user_command("/done"))
 ### Information Behavior
 
 #### `/status`
+
 Returns session progress:
+
 - Total steps and completion count
 - Total follow-up questions asked
 - Current active step
@@ -183,7 +190,9 @@ result = session.handle_command(parse_user_command("/status"))
 ```
 
 #### `/steps`
+
 Lists all steps with visual indicators:
+
 - `✓` = completed
 - `→` = active
 - `○` = not started
@@ -197,6 +206,7 @@ result = session.handle_command(parse_user_command("/steps"))
 ```
 
 #### `/help`
+
 Returns formatted help text with all commands and examples.
 
 ## Integration Pattern
@@ -213,8 +223,8 @@ def run_refinement_session(session: RefinementSession, llm_provider):
             break
         
         # Generate question if needed
-        if not active_step.user_response:
-            system_prompt, user_prompt = active_step.get_prompts(session.current_query)
+        if not active_step.final_response:
+            system_prompt, user_prompt = active_step.get_prompts(session.original_query)
             question = llm_provider.generate(system_prompt, user_prompt)
             print(f"\nAssistant: {question}")
         
@@ -289,6 +299,7 @@ if not handle_result['success']:
 ## Testing
 
 See `examples/test_user_commands.py` for comprehensive examples of:
+
 - Command parsing and validation
 - Navigation scenarios
 - Control flow management
