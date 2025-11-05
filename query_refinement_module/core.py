@@ -245,29 +245,12 @@ class QueryAspectRefiner:
         return len(self.follow_up_history)
     
     @property
-    def get_final_aspect_response(self) -> Optional[str]:
-        """Get the final aspect response from the last response in conversation history.
-            None means no refinement was required or provided. """
+    def final_response(self) -> Optional[str]:
+        """Return the last response recorded for this aspect, if any."""
         if not self.follow_up_history:
             return None
         return self.follow_up_history[-1]['response']
 
-    def format_prompt(
-            self,
-            query: str,
-            **kwargs,
-    )-> str:
-        """
-        Format the user prompt for this refinement aspect using the current query and any additional context.
-        
-        For system prompt, use get_system_prompt() or get_prompts() for both.
-        """
-        prompt = self.refinement_aspect.get_user_prompt(
-            query=query,
-            **kwargs,
-        )
-        return prompt
-    
     def get_system_prompt(self) -> str:
         """
         Get the system prompt for this refinement aspect.
@@ -283,7 +266,8 @@ class QueryAspectRefiner:
         
         Args:
             query: The query to analyze
-            dependency_context: Dictionary mapping refinement aspect IDs to their final values
+            dependency_context: Mapping of dependency IDs to dictionaries containing
+                human-readable names and values used for prompt context
             **kwargs: Additional context for prompt formatting
             
         Returns:
@@ -296,28 +280,27 @@ class QueryAspectRefiner:
         
         # Add dependency context if provided
         if dependency_context and self.refinement_aspect.depends_on:
-            missing_deps = []
-            context_lines = []
-            
+            missing_deps: List[str] = []
+            context_lines: List[str] = []
+
             for dep_id in self.refinement_aspect.depends_on:
-                if dep_id in dependency_context and dependency_context[dep_id]:
-                    # Find refinement aspect name for more readable output
-                    dep_name = dep_id.replace("_", " ").title()
-                    context_lines.append(f"- {dep_name}: {dependency_context[dep_id]}")
+                entry = dependency_context.get(dep_id)
+                if entry and entry.get("value"):
+                    dep_name = entry.get("name") or dep_id.replace("_", " ").title()
+                    context_lines.append(f"- {dep_name}: {entry['value']}")
                 else:
                     missing_deps.append(dep_id)
-            
+
             if context_lines:
                 analysis_prompt_context.append("Previous refinements:")
                 analysis_prompt_context.extend(context_lines)
                 analysis_prompt_context.append("")  # Blank line
-            
+
             if missing_deps:
-                import logging
-                logger = logging.getLogger(__name__)
                 logger.warning(
-                    f"refinement aspect '{self.refinement_aspect.id}' depends on {missing_deps} but they have no values. "
-                    "Continuing without that context."
+                    "refinement aspect '%s' depends on %s but they have no values. Continuing without that context.",
+                    self.refinement_aspect.id,
+                    missing_deps,
                 )
         
         # Add main analysis prompt
@@ -399,13 +382,6 @@ class QueryRefinementSession:
         """Get the refinement framework from the steps."""
         return [step.refinement_aspect for step in self.steps]
     
-    @property
-    def current_query(self) -> str:
-        """
-        Get the original user query.
-        """
-        return self.original_query
-
     def add_step(
             self,
             refinement_aspect: RefinementAspect,
@@ -435,7 +411,7 @@ class QueryRefinementSession:
                 return step
         return None
     
-    def get_dependency_context(self, target_refinement_aspect_id: str) -> Dict[str, str]:
+    def get_dependency_context(self, target_refinement_aspect_id: str) -> Dict[str, Dict[str, str]]:
         """
         Build dependency context for a specific refinement aspect.
         
@@ -445,36 +421,48 @@ class QueryRefinementSession:
         - Original query reference (for aspects that were already clear)
         
         Args:
-            target_refinement aspect_id: The refinement aspect ID that needs dependency context
+            target_refinement_aspect_id: The refinement aspect ID that needs dependency context
             
         Returns:
-            Dictionary mapping dependency IDs to their values or query references
+            Dictionary mapping dependency IDs to metadata containing the dependency name and value
         """
-        context: Dict[str, str] = {}
-        
-        # Find the target refinement aspect's dependencies
-        target_aspect = None
-        for step in self.steps:
-            if step.refinement_aspect.id == target_refinement_aspect_id:
-                target_aspect = step.refinement_aspect
-                break
-        # just return empty if no dependencies
-        if not target_aspect or not target_aspect.depends_on:
-            return context
-        
-        # Collect values for declared dependencies
-        for step in self.steps:
-            if step.refinement_aspect.id in target_aspect.depends_on:
-                if step.get_final_aspect_response:
-                    # Aspect was refined - use the refined value
-                    context[step.refinement_aspect.id] = step.get_final_aspect_response
-                elif step.is_complete:
-                    # Aspect was already clear - reference the original query
-                    # This avoids extraction cost and maintains source of truth
-                    context[step.refinement_aspect.id] = (
-                        f"[{step.refinement_aspect.name} is clear in original query: \"{self.original_query}\"]"
-                    )
-        
+        step_index = {step.refinement_aspect.id: step for step in self.steps}
+        target_step = step_index.get(target_refinement_aspect_id)
+        if not target_step:
+            logger.warning(
+                "Requested dependency context for unknown refinement aspect '%s'",
+                target_refinement_aspect_id,
+            )
+            return {}
+
+        dependencies = target_step.refinement_aspect.depends_on or []
+        if not dependencies:
+            return {}
+
+        context: Dict[str, Dict[str, str]] = {}
+        for dep_id in dependencies:
+            dep_step = step_index.get(dep_id)
+            if not dep_step:
+                logger.warning(
+                    "Refinement aspect '%s' declares dependency on missing aspect '%s'",
+                    target_refinement_aspect_id,
+                    dep_id,
+                )
+                continue
+
+            if dep_step.final_response:
+                context[dep_id] = {
+                    "name": dep_step.refinement_aspect.name,
+                    "value": dep_step.final_response,
+                }
+            elif dep_step.is_complete:
+                context[dep_id] = {
+                    "name": dep_step.refinement_aspect.name,
+                    "value": (
+                        f"[{dep_step.refinement_aspect.name} is clear in original query: \"{self.original_query}\"]"
+                    ),
+                }
+
         return context
     
     def is_complete(self) -> bool:
@@ -483,15 +471,6 @@ class QueryRefinementSession:
         """
         return all(step.is_complete for step in self.steps)
     
-    def get_total_follow_ups(self) -> int:
-        """
-        Get total number of follow-up questions across all steps.
-        
-        Returns:
-            Total count of follow-up questions asked in this session.
-        """
-        return sum(step.follow_up_count for step in self.steps)
-    
     def get_step_summary(self) -> Dict[str, Any]:
         """
         Get a summary of all steps with their follow-up status.
@@ -499,27 +478,36 @@ class QueryRefinementSession:
         Returns:
             Dictionary with step statistics and status.
         """
-        completed = sum(1 for step in self.steps if step.is_complete and not step.needs_review)
-        needs_review = sum(1 for step in self.steps if step.needs_review)
-        in_progress = sum(1 for step in self.steps if not step.is_complete and not step.needs_review)
-        total_followups = self.get_total_follow_ups()
-        
+        completed = needs_review = in_progress = 0
+        total_followups = 0
+        step_summaries = []
+
+        for step in self.steps:
+            total_followups += step.follow_up_count
+            if step.is_complete and not step.needs_review:
+                completed += 1
+            elif step.needs_review:
+                needs_review += 1
+            else:
+                in_progress += 1
+
+            step_summaries.append(
+                {
+                    "refinement_aspect": step.refinement_aspect.name,
+                    "is_complete": step.is_complete,
+                    "needs_review": step.needs_review,
+                    "follow_up_count": step.follow_up_count,
+                    "has_refined_value": step.final_response is not None,
+                }
+            )
+
         return {
             "total_steps": len(self.steps),
             "completed": completed,
             "needs_review": needs_review,
             "in_progress": in_progress,
             "total_follow_ups": total_followups,
-            "steps": [
-                {
-                    "refinement_aspect": step.refinement_aspect.name,
-                    "is_complete": step.is_complete,
-                    "needs_review": step.needs_review,
-                    "follow_up_count": step.follow_up_count,
-                    "has_refined_value": step.get_final_aspect_response is not None,
-                }
-                for step in self.steps
-            ]
+            "steps": step_summaries,
         }
     
     def get_full_conversation(self) -> str:
@@ -547,12 +535,9 @@ class QueryRefinementSession:
                     lines.append(f"  A: {qa['response']}")
                 lines.append("")  # Blank line
             
-            if step.get_final_aspect_response:
-                lines.append(f"  ✓ Final value: {step.get_final_aspect_response}")
+            if step.final_response:
+                lines.append(f"  ✓ Final value: {step.final_response}")
                 lines.append("")
-        
-        if self.current_query != self.original_query:
-            lines.append(f"Refined Query: {self.current_query}")
         
         return "\n".join(lines)
     
@@ -736,8 +721,7 @@ class QueryRefinementSession:
         active = self.get_active_step()
         if not active:
             return {"success": False, "message": "No active step to finish"}
-        
-        if not active.get_final_aspect_response:
+        if not active.final_response:
             return {
                 "success": False,
                 "message": "Cannot finish: no value has been provided yet",
@@ -824,7 +808,7 @@ class QueryRefinementSession:
                     "follow_up_history": step.follow_up_history,
                     # Completion status
                     "is_complete": step.is_complete,
-                    "refined_value": step.get_final_aspect_response,
+                    "refined_value": step.final_response,
                 }
                 for step in self.steps
             ],
@@ -955,6 +939,10 @@ class QueryRefinementManager:
                 
                 # Get dependency context from previously analyzed aspects
                 dependency_context = session.get_dependency_context(aspect.id)
+                analyzer_context = {
+                    dep_id: entry["value"]
+                    for dep_id, entry in dependency_context.items()
+                }
 
                 logger.debug(
                     "Analyzing aspect '%s' with dependency context keys: %s",
@@ -974,7 +962,7 @@ class QueryRefinementManager:
                 analysis_result = self.query_analyzer.analyze_aspect(
                     query=original_query,
                     aspect=aspect,
-                    dependency_context=dependency_context,
+                    dependency_context=analyzer_context,
                     llm_provider=self.llm_provider
                 )
 
@@ -1063,7 +1051,7 @@ class QueryRefinementManager:
                         break
 
                     # Dependency must be complete (either refined or marked clear)
-                    if not dep_step.is_complete and not dep_step.get_final_aspect_response:
+                    if not dep_step.is_complete and not dep_step.final_response:
                         deps_satisfied = False
                         break
 
