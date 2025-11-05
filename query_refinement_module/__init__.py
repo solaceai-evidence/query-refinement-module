@@ -20,16 +20,39 @@ The module is organized into several layers:
     - Type definitions and protocols
 
 3. **Providers** (providers.py):
-    - Implementation of LLM providers (OpenAI, Anthropic, etc.)
-    - LangSmith tracing integration
+    - Implementation of tracing providers and emitters
 
-4. **Core Refinement Logic** (refinement_logic.py):
+4. **Core Refinement Logic** (core.py):
     - Main classes and functions for query refinement (QueryRefinementManager)
     - Orchestration of the refinement process
-    - Session state management
+    - Session state management and command handling utilities
 
-5. **API Layer** (api.py, models.py):
-    - FastAPI endpoints for interacting with the refinement chatbot
-    - Pydantic models for request and response validation
-    - Session persistence
+5. **Service Layer** (service.py, api_models.py):
+    - Async-friendly service facade for integrations
+    - Typed request/response models for API exposure
+    - Session persistence via the storage interface
+
+
+from .core import QueryRefinementManager, QueryRefinementSession
+from .service import QueryRefinementService
+from .api_models import (
+    SessionCreateRequest,
+    SessionCreateResponse,
+    InteractionRequest,
+    InteractionResponse,
+    SessionStatusResponse,
+    NextPrompt,
+)
+
+__all__ = [
+    "QueryRefinementManager",
+    "QueryRefinementSession",
+    "QueryRefinementService",
+    "SessionCreateRequest",
+    "SessionCreateResponse",
+    "InteractionRequest",
+    "InteractionResponse",
+    "SessionStatusResponse",
+    "NextPrompt",
+]
 """
