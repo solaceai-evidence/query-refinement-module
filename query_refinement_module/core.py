@@ -43,7 +43,12 @@ from dataclasses import dataclass, field
 from enum import Enum
 from typing import Any, Dict, List, Optional
 
-from .interfaces import LLMProviderInterface, TracingProviderInterface, QueryAnalyzerInterface
+from .interfaces import (
+    LLMProviderInterface,
+    TracingProviderInterface,
+    QueryAnalyzerInterface,
+    AspectAnalysisResult,
+)
 from .schema import RefinementAspect
 
 logger = logging.getLogger(__name__)
@@ -222,11 +227,16 @@ class QueryAspectRefiner:
     # Each entry: {'question': '...', 'response': '...'}
     follow_up_history: List[Dict[str, str]] = field(default_factory=list)
     
-    # Completion status
+    # Completion status - set when refinement is accepted/skipped or not needed as info is clear
     is_complete: bool = False
     
     # Review status - set when dependencies change, preserves history for review
     needs_review: bool = False
+    
+    # Analysis result - stored from LLM's structured analysis output during initialize()
+    # Contains: reason (why refinement needed/not), suggested_question (what to ask)
+    analysis_reason: Optional[str] = None
+    analysis_suggested_question: Optional[str] = None
     
     @property
     def follow_up_count(self) -> int:
@@ -377,7 +387,7 @@ class QueryRefinementSession:
     Represents an entire query refinement session.
     
     Tracks the original query and the multi-step refinement process through
-    a list of AspectRefinementProcess objects, one per refinement aspect.
+    a list of QueryAspectRefiner objects, one per refinement aspect regardless of whether it needs refinement.
     """
 
     original_query: str
@@ -391,7 +401,7 @@ class QueryRefinementSession:
     @property
     def current_query(self) -> str:
         """
-        Get the coriginal user query.
+        Get the original user query.
         """
         return self.original_query
 
@@ -406,10 +416,11 @@ class QueryRefinementSession:
             refinement_aspect (RefinementAspect): The refinement aspect being refined.
         
         Returns:
-            AspectRefinementProcess: The newly created refinement step.
+            QueryAspectRefiner: The newly created query aspectrefiner.
         """
         step = QueryAspectRefiner(
             refinement_aspect=refinement_aspect,
+            is_complete=False,
         )
         self.steps.append(step)
         return step
@@ -428,12 +439,15 @@ class QueryRefinementSession:
         Build dependency context for a specific refinement aspect.
         
         Only includes dependencies declared by the target refinement aspect.
+        Values come from either:
+        - Refined values (for aspects that were refined through interaction)
+        - Original query reference (for aspects that were already clear)
         
         Args:
             target_refinement aspect_id: The refinement aspect ID that needs dependency context
             
         Returns:
-            Dictionary mapping dependency IDs to their final values
+            Dictionary mapping dependency IDs to their values or query references
         """
         context: Dict[str, str] = {}
         
@@ -447,11 +461,18 @@ class QueryRefinementSession:
         if not target_dim or not target_dim.depends_on:
             return context
         
-        # Collect refined values for declared dependencies
+        # Collect values for declared dependencies
         for step in self.steps:
             if step.refinement_aspect.id in target_dim.depends_on:
                 if step.get_final_aspect_response:
+                    # Aspect was refined - use the refined value
                     context[step.refinement_aspect.id] = step.get_final_aspect_response
+                elif step.is_complete:
+                    # Aspect was already clear - reference the original query
+                    # This avoids extraction cost and maintains source of truth
+                    context[step.refinement_aspect.id] = (
+                        f"[{step.refinement_aspect.name} is clear in original query: \"{self.original_query}\"]"
+                    )
         
         return context
     
@@ -857,7 +878,9 @@ class QueryRefinementManager:
         
         # Use no-op tracing provider if none provided
         if tracing_provider is None:
-            self.tracing_provider = _NoOpTracingProvider()
+            from .providers import NoOpTracingProvider
+
+            self.tracing_provider = NoOpTracingProvider()
         else:
             self.tracing_provider = tracing_provider
         
@@ -875,15 +898,30 @@ class QueryRefinementManager:
         """
         Initialize a new refinement session for the given query and refinement aspects.
 
-        Analyzes the query against the refinement framework to determine which ones need refinement, 
-        then creates a session with appropriate steps.
+        This method performs dependency-aware sequential analysis:
+        1. Creates a new session with the original query
+        2. For EACH aspect in dependency order:
+           a. Gets dependency context from previously analyzed aspects
+           b. Analyzes the aspect (with context) to determine if refinement is needed
+           c. Marks aspect as complete (clear) or incomplete (needs refinement and adds the LLM suggested query and explanation)
+        3. Returns the session with analysis complete
+
+        After initialization:
+        - If session.is_complete() == True: All aspects are clear, refinement not needed
+        - If session.is_complete() == False: Use process_next_step() to refine incomplete aspects
+        - Use session.get_step_summary() to see which aspects need refinement and why
+
+        This approach enables:
+        - Dependency-aware analysis (later aspects see earlier results)
+        - Complete initialization picture (API can show "3 aspects need work")
+        - More accurate determination of what needs refinement
 
         Args:
             original_query (str): The original query to refine.
-            refinement_framework (List[RefinementAspect]): The refinement aspects to consider for refinement.
+            refinement_framework (List[RefinementAspect]): The refinement aspects to consider.
 
         Returns:
-            RefinementSession: Initialized refinement session with steps for needed refinement aspects.
+            QueryRefinementSession: Session with analysis complete, ready for refinement.
         """
         with self.tracing_provider.trace_operation("initialize_refinement_session") as trace:
             if hasattr(trace, 'add_attribute'):
@@ -899,21 +937,232 @@ class QueryRefinementManager:
                 original_query=original_query,
             )
 
-            # Analyze which refinement aspects need refinement
-            aspects_to_refine = self.query_analyzer.analyze_query(
-                query=original_query,
-                refinement_framework=refinement_framework,
-                llm_provider=(
-                    self.llm_provider
-                    if self.query_analyzer.supports_llm_integration
-                    else None   
+            # Analyze each aspect sequentially in dependency order
+            # This allows later aspects to be analyzed with context from earlier ones
+            aspects_needing_refinement_count = 0
+            
+            for aspect in refinement_framework:
+                # Add the aspect as a step
+                step = session.add_step(aspect)
+                
+                # Get dependency context from previously analyzed aspects
+                dependency_context = session.get_dependency_context(aspect.id)
+                
+                # Analyze this specific aspect with its dependency context
+                analysis_result = self.query_analyzer.analyze_aspect(
+                    query=original_query,
+                    aspect=aspect,
+                    dependency_context=dependency_context,
+                    llm_provider=self.llm_provider
                 )
+                
+                # Store the analysis results (from LLM's structured output)
+                step.analysis_reason = analysis_result.reason
+                step.analysis_suggested_question = analysis_result.suggested_question
+                
+                if analysis_result.needs_refinement:
+                    # Aspect needs refinement - leave incomplete for process_next_step()
+                    step.is_complete = False
+                    aspects_needing_refinement_count += 1
+                    logger.debug("Aspect %s needs refinement: %s", aspect.name, analysis_result.reason)
+                else:
+                    # Aspect is already clear - mark complete, original query has the info
+                    step.is_complete = True
+                    logger.debug("Aspect %s is already clear in original query", aspect.name)
+            
+            logger.info(
+                "Session initialized with %d total steps (%d need refinement, %d already clear)", 
+                len(session.steps), 
+                aspects_needing_refinement_count,
+                len(session.steps) - aspects_needing_refinement_count
             )
             
-            # Add steps for each aspect that needs refinement
-            for aspect in aspects_to_refine:
-                session.add_step(aspect)
-            
-            logger.info("Session initialized with %d refinement steps", len(session.steps))
-            
             return session
+
+    def process_next_step(self, session: QueryRefinementSession) -> Optional[Dict[str, Any]]:
+        """
+        Process the next incomplete refinement step with exactly ONE LLM interaction.
+
+        Selects the next step whose dependencies are satisfied, builds dependency context
+        from completed steps (using refined values or original query references), calls
+        the LLM once, and stores the response.
+
+        Args:
+            session: The refinement session to process
+
+        Returns:
+            Dict with {"aspect_id", "aspect_name", "question", "response"} when a step was
+            processed, or None if there are no remaining steps.
+        """
+        with self.tracing_provider.trace_operation("process_next_step"):
+            # Find the next step whose dependencies are satisfied (dependency-aware ordering)
+            step: Optional[QueryAspectRefiner] = None
+            
+            for candidate in session.steps:
+                # Skip completed steps (unless they need review)
+                if candidate.is_complete and not candidate.needs_review:
+                    continue
+
+                # Check if all declared dependencies are satisfied
+                deps = candidate.refinement_aspect.depends_on or []
+                deps_satisfied = True
+                
+                for dep_id in deps:
+                    # Find the dependency step
+                    dep_step = next(
+                        (s for s in session.steps if s.refinement_aspect.id == dep_id),
+                        None
+                    )
+                    
+                    if dep_step is None:
+                        # Dependency not in session - treat as unsatisfied
+                        logger.warning(
+                            "Aspect %s declares dependency on %s but it's not in the session",
+                            candidate.refinement_aspect.id, dep_id
+                        )
+                        deps_satisfied = False
+                        break
+                    
+                    # Dependency must be complete (either refined or marked clear)
+                    if not dep_step.is_complete and not dep_step.get_final_aspect_response:
+                        deps_satisfied = False
+                        break
+
+                if deps_satisfied:
+                    step = candidate
+                    break
+
+            if step is None:
+                logger.debug("No active step with satisfied dependencies to process")
+                return None
+
+            aspect = step.refinement_aspect
+            
+            # Build dependency context from completed steps
+            dependency_context = session.get_dependency_context(aspect.id)
+
+            # Get prompts with dependency context
+            system_prompt, user_prompt = step.get_prompts(
+                query=session.original_query,
+                dependency_context=dependency_context
+            )
+
+            # Perform a SINGLE LLM interaction for this aspect
+            try:
+                result = self.llm_provider.complete(
+                    system_prompt=system_prompt,
+                    user_prompt=user_prompt
+                )
+            except Exception as e:
+                logger.exception("LLM call failed while processing aspect %s: %s", aspect.id, e)
+                # Store failure marker and mark complete to avoid infinite loops
+                error_msg = f"[LLM error: {str(e)}]"
+                step.add_follow_up(question=aspect.name, response=error_msg)
+                step.is_complete = True
+                return {
+                    "aspect_id": aspect.id,
+                    "aspect_name": aspect.name,
+                    "question": aspect.name,
+                    "response": error_msg,
+                    "error": True
+                }
+
+            # Extract response text from LLM result
+            response_text = result.context.strip()
+
+            # Store the interaction in follow_up_history
+            step.add_follow_up(question=aspect.name, response=response_text)
+
+            # Mark step as complete after this single interaction
+            # (For multi-round follow-ups, external code can set needs_review=True)
+            step.is_complete = True
+
+            logger.info(
+                "Processed aspect %s: %s",
+                aspect.id,
+                response_text[:80] + "..." if len(response_text) > 80 else response_text
+            )
+
+            return {
+                "aspect_id": aspect.id,
+                "aspect_name": aspect.name,
+                "question": aspect.name,
+                "response": response_text,
+                "error": False
+            }
+
+    def run_full_refinement(self, session: QueryRefinementSession, max_iterations: int = 100) -> QueryRefinementSession:
+        """
+        Run the full refinement session to completion (synchronous, blocking).
+
+        Processes steps one-by-one in the order they appear in the session. Each
+        step receives dependency context computed from previously completed/extracted steps.
+
+        Args:
+            session: The `QueryRefinementSession` to run.
+            max_iterations: Safety cap to avoid infinite loops.
+
+        Returns:
+            The completed (or partially completed if hit cap) session object.
+        """
+        iterations = 0
+        while not session.is_complete() and iterations < max_iterations:
+            processed = self.process_next_step(session)
+            if processed is None:
+                break
+            iterations += 1
+
+        if iterations >= max_iterations:
+            logger.warning("Reached max_iterations=%d while running refinement session", max_iterations)
+
+        return session
+    
+    def get_initialization_summary(self, session: QueryRefinementSession) -> Dict[str, Any]:
+        """
+        Get a user-friendly summary of the initialization analysis.
+
+        Use this after initialize() to present to the user what needs refinement.
+
+        Returns:
+            Dictionary with:
+            - is_complete: bool - whether all aspects are clear (no refinement needed)
+            - total_aspects: int - total number of aspects
+            - aspects_needing_refinement: int - count needing refinement
+            - aspects_clear: int - count already clear
+            - aspects: list of dicts with details per aspect:
+              - id: aspect identifier
+              - name: aspect name
+              - status: "clear" or "needs_refinement"
+              - description: aspect description
+              - reason: explanation of why refinement is needed (for needs_refinement only)
+        """
+        aspects_needing_refinement = []
+        aspects_clear = []
+        
+        for step in session.steps:
+            aspect_info = {
+                "id": step.refinement_aspect.id,
+                "name": step.refinement_aspect.name,
+                "description": step.refinement_aspect.description,
+                "status": "clear" if step.is_complete else "needs_refinement"
+            }
+            
+            # Add analysis details for aspects that need refinement
+            if not step.is_complete:
+                if step.analysis_reason:
+                    aspect_info["reason"] = step.analysis_reason
+                if step.analysis_suggested_question:
+                    aspect_info["suggested_question"] = step.analysis_suggested_question
+            
+            if step.is_complete:
+                aspects_clear.append(aspect_info)
+            else:
+                aspects_needing_refinement.append(aspect_info)
+        
+        return {
+            "is_complete": session.is_complete(),
+            "total_aspects": len(session.steps),
+            "aspects_needing_refinement": len(aspects_needing_refinement),
+            "aspects_clear": len(aspects_clear),
+            "aspects": aspects_needing_refinement + aspects_clear
+        }

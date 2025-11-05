@@ -25,15 +25,15 @@ def validate_dependencies(refinement_framework: List[RefinementAspect]) -> None:
     Raises:
         ValueError: If dependencies reference non-existent aspects
     """
-    dimension_ids = {dim.id for dim in refinement_framework}
+    aspects_ids = {ref_asp.id for ref_asp in refinement_framework}
 
     # Check for non-existent dependencies
-    for dim in refinement_framework:
-        for dep_id in dim.depends_on:
-            if dep_id not in dimension_ids:
+    for asp in refinement_framework:
+        for dep_id in asp.depends_on:
+            if dep_id not in aspects_ids:
                 raise ValueError(
-                    f"Refinement aspect '{dim.id}' depends on non-existent refinement aspect '{dep_id}'. "
-                    f"Available refinement aspects: {', '.join(sorted(dimension_ids))}"
+                    f"Refinement aspect '{asp.id}' depends on non-existent refinement aspect '{dep_id}'. "
+                    f"Available refinement aspects: {', '.join(sorted(aspects_ids))}"
                 )
 
 
@@ -57,7 +57,7 @@ def sort_aspects_by_dependencies(refinement_framework: List[RefinementAspect]) -
     validate_dependencies(refinement_framework)
     
     # Build dependency graph and perform topological sort
-    graph = {dim.id: dim.depends_on for dim in refinement_framework}
+    graph = {asp.id: asp.depends_on for asp in refinement_framework}
     
     try:
         ts = TopologicalSorter(graph)
@@ -66,5 +66,5 @@ def sort_aspects_by_dependencies(refinement_framework: List[RefinementAspect]) -
         raise ValueError(f"Circular dependency detected in schema: {e}") from e
     
     # Map back to RefinementAspect objects
-    dim_map = {dim.id: dim for dim in refinement_framework}
-    return [dim_map[dim_id] for dim_id in sorted_ids]
+    aspect_map = {asp.id: asp for asp in refinement_framework}
+    return [aspect_map[asp_id] for asp_id in sorted_ids]

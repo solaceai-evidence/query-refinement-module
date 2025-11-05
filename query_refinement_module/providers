@@ -1,0 +1,51 @@
+from contextlib import contextmanager
+from typing import Any, Optional, Dict
+
+__all__ = [
+    # Query Analyzers
+    "LLMQueryAnalyzer",
+    # LLM Providers
+    "GenericLLMProvider",
+    # Tracing
+    "NoOpTracingProvider",
+]
+
+from .interfaces import (TracingProviderInterface, QueryAnalyzerInterface, LLMProviderInterface)
+
+# ========
+# Tracing Providers
+# ========
+class NoOpTracingProvider(TracingProviderInterface):
+    """Simple no-op tracing provider for when tracing is disabled."""
+    
+    @contextmanager
+    def trace_operation(self, name, operation_type = "function", metadata = None):
+        yield
+    
+    def log_event(self, event_name, level = "info", metadata = None):
+        pass
+
+    def is_enabled(self) -> bool:
+        return False
+
+class ConsoleTracing(TracingProviderInterface):
+    """A simple tracing provider that logs tracing information to the console."""
+    
+    @contextmanager
+    def trace_operation(self, name: str, operation_type: str = "function", metadata: Optional[Dict[str, Any]] = None):
+        print(f"[TRACE START] {operation_type.upper()}: {name} | Metadata: {metadata}")
+        try:
+            yield
+            print(f"[TRACE END] {operation_type.upper()}: {name} - SUCCESS")
+        except Exception as e:
+            print(f"[TRACE END] {operation_type.upper()}: {name} - ERROR: {e}")
+            raise
+    
+    def log_event(self, event_name: str, level: str = "info", metadata: Optional[Dict[str, Any]] = None):
+        print(f"[EVENT] Level: {level.upper()} | Event: {event_name} | Metadata: {metadata}")
+
+    def is_enabled(self) -> bool:
+        return True
+    
+
+
