@@ -60,6 +60,23 @@ storage = RedisSessionStorage(redis_client)
 
 For environments without Redis, fall back to `InMemorySessionStorage` while acknowledging that sessions vanish on process restart.
 
+## LLM Provider Abstraction
+
+Use `LiteLLMProvider` together with `LLMQueryAnalyzer` for a vendor-neutral way to call OpenAI, Anthropic, Azure OpenAI, Groq, or any backend that [litellm](https://github.com/BerriAI/litellm) supports.
+
+```python
+from query_refinement_module import LiteLLMProvider, LLMQueryAnalyzer, QueryRefinementManager
+
+llm = LiteLLMProvider(
+    default_model="gpt-4o-mini",
+    # api_key=None -> picked up from OPENAI_API_KEY / ANTHROPIC_API_KEY etc.
+)
+analyzer = LLMQueryAnalyzer(llm, temperature=0.0)
+manager = QueryRefinementManager(llm_provider=llm, query_analyzer=analyzer)
+```
+
+Configure API keys via standard environment variables (`OPENAI_API_KEY`, `ANTHROPIC_API_KEY`, `AZURE_OPENAI_API_KEY`, etc.) or pass them directly into `LiteLLMProvider`. Optional kwargs such as `top_p`, `presence_penalty`, or `response_format` can be forwarded via the provider/analyzer constructors if your deployment needs custom settings.
+
 ## Extensibility
 
 - Additional endpoints (e.g., webhook registration, streaming events) can be layered on top without touching the core manager.
