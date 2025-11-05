@@ -1,16 +1,56 @@
+import logging
 from contextlib import contextmanager
 from typing import Any, Optional, Dict
 
 __all__ = [
-    # Query Analyzers
-    "LLMQueryAnalyzer",
-    # LLM Providers
-    "GenericLLMProvider",
-    # Tracing
     "NoOpTracingProvider",
+    "ConsoleTracing",
+    "TraceEventEmitter",
 ]
 
-from .interfaces import (TracingProviderInterface, QueryAnalyzerInterface, LLMProviderInterface)
+from .interfaces import TracingProviderInterface
+
+# ========
+# Tracing Utilities
+# ========
+logger = logging.getLogger(__name__)
+
+
+class TraceEventEmitter:
+    """Helper that safely emits events through a tracing provider implementation."""
+
+    def __init__(self, tracing_provider: Optional[TracingProviderInterface]) -> None:
+        self._provider = tracing_provider
+
+    def emit(
+        self,
+        event_name: str,
+        level: str = "info",
+        metadata: Optional[Dict[str, Any]] = None,
+    ) -> None:
+        provider = self._provider
+
+        if not provider:
+            return
+
+        if not hasattr(provider, "log_event") or not hasattr(provider, "is_enabled"):
+            logger.debug(
+                "Tracing provider %s does not support event logging",
+                type(provider).__name__,
+            )
+            return
+
+        try:
+            if provider.is_enabled():
+                provider.log_event(event_name, level=level, metadata=metadata)
+        except Exception:  # pragma: no cover - tracing must not break core logic
+            logger.debug(
+                "Tracing provider %s failed to log event '%s'",
+                type(provider).__name__,
+                event_name,
+                exc_info=True,
+            )
+
 
 # ========
 # Tracing Providers
