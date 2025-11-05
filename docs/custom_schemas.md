@@ -19,7 +19,7 @@ The query refinement module uses custom schemas defined in YAML format. This ena
    ```bash
    export CUSTOM_SCHEMAS_PATH=/path/to/your/custom_schemas.yaml
    ```
-3. Define your schemas following the `RefinementDimension` format below
+3. Define your schemas following the `RefinementAspect` format below
 
 ## Prerequisites
 
@@ -31,7 +31,7 @@ pip install pyyaml
 
 ## Schema File Format
 
-Custom schemas are defined in YAML format. Each top-level key is a schema name, and each value is a list of `RefinementDimension` objects.
+Custom schemas are defined in YAML format. Each top-level key is a schema name, and each value is a list of `RefinementAspect` objects.
 
 **Basic structure:**
 
@@ -78,13 +78,29 @@ Every dimension must have:
   - `additional_fields`: Dict mapping field names to types (string, boolean, integer, float, array, object)
   - `field_descriptions`: Dict providing descriptions for custom fields
   - Base fields (needs_refinement, reason, suggested_question) are always included automatically
+
+- **`examples`** (object): Example queries for few-shot learning (highly recommended)
+  - Helps the LLM understand what constitutes clear, incomplete, or ambiguous specifications
+  - **Structure**: Dictionary with four optional category keys, each with recommended fields:
+    - `clear`: Examples with complete information
+      - Recommended fields: `query` (required), `explanation`
+    - `needs_refinement`: Examples missing critical information
+      - Recommended fields: `query` (required), `issue`, `missing`, `suggested_question`
+    - `partial`: Examples with some but not all information
+      - Recommended fields: `query` (required), `has`, `missing`, `suggested_question`
+    - `ambiguous`: Examples with vague or unclear specifications
+      - Recommended fields: `query` (required), `issue`, `suggested_question`
+  - **All categories are optional** - include only those relevant to your dimension
+  - **Type Safety**: Each category has a specific TypedDict type (`ClearExample`, `NeedsRefinementExample`, `PartialExample`, `AmbiguousExample`) providing IDE autocomplete
+  - Examples are automatically formatted and injected into prompts
+  - **Validation**: Structure is validated at load time to catch errors early
   
 - **`allow_follow_up`** (boolean, default: `false`): Whether this dimension supports follow-up questions
 
 - **`max_follow_ups`** (integer, default: `2`): Maximum number of follow-up rounds if enabled
 
 - **`metadata`** (object, default: `{}`): Additional metadata for extensibility
-  - Common fields: `domain`, `priority`, `framework`, `examples`, `medical_specialty`
+  - Common fields: `domain`, `priority`, `framework`, `medical_specialty`
 
 ## Example: Simple Custom Schema
 
