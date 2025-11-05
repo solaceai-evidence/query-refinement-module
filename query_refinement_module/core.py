@@ -38,6 +38,7 @@ Information:
 These commands are detected via is_user_command() and processed via parse_user_command().
 """
 
+import json
 import logging
 from dataclasses import dataclass, field
 from enum import Enum
@@ -47,7 +48,6 @@ from .interfaces import (
     LLMProviderInterface,
     TracingProviderInterface,
     QueryAnalyzerInterface,
-    AspectAnalysisResult,
 )
 from .schema import RefinementAspect
 
@@ -452,18 +452,18 @@ class QueryRefinementSession:
         context: Dict[str, str] = {}
         
         # Find the target refinement aspect's dependencies
-        target_dim = None
+        target_aspect = None
         for step in self.steps:
             if step.refinement_aspect.id == target_refinement_aspect_id:
-                target_dim = step.refinement_aspect
+                target_aspect = step.refinement_aspect
                 break
-        
-        if not target_dim or not target_dim.depends_on:
+        # just return empty if no dependencies
+        if not target_aspect or not target_aspect.depends_on:
             return context
         
         # Collect values for declared dependencies
         for step in self.steps:
-            if step.refinement_aspect.id in target_dim.depends_on:
+            if step.refinement_aspect.id in target_aspect.depends_on:
                 if step.get_final_aspect_response:
                     # Aspect was refined - use the refined value
                     context[step.refinement_aspect.id] = step.get_final_aspect_response
@@ -889,6 +889,9 @@ class QueryRefinementManager:
                     llm_provider.__class__.__name__, 
                     query_analyzer.__class__.__name__ if query_analyzer else "None", 
                     self.tracing_provider.__class__.__name__)
+
+        # Maximum number of retries when enforcing structured response validation
+        self.validation_max_retries = 2
     
     def initialize(
         self,
@@ -1047,28 +1050,24 @@ class QueryRefinementManager:
                 dependency_context=dependency_context
             )
 
-            # Perform a SINGLE LLM interaction for this aspect
-            try:
-                result = self.llm_provider.complete(
-                    system_prompt=system_prompt,
-                    user_prompt=user_prompt
-                )
-            except Exception as e:
-                logger.exception("LLM call failed while processing aspect %s: %s", aspect.id, e)
-                # Store failure marker and mark complete to avoid infinite loops
-                error_msg = f"[LLM error: {str(e)}]"
-                step.add_follow_up(question=aspect.name, response=error_msg)
+            # Perform the LLM interaction with validation enforcement
+            response_text, parsed_payload, is_error, error_message = self._get_llm_response_with_validation(
+                aspect=aspect,
+                system_prompt=system_prompt,
+                user_prompt=user_prompt
+            )
+
+            if is_error:
+                failure_response = f"[Validation error: {error_message}]" if error_message else "[Validation error]"
+                step.add_follow_up(question=aspect.name, response=failure_response)
                 step.is_complete = True
                 return {
                     "aspect_id": aspect.id,
                     "aspect_name": aspect.name,
                     "question": aspect.name,
-                    "response": error_msg,
+                    "response": failure_response,
                     "error": True
                 }
-
-            # Extract response text from LLM result
-            response_text = result.context.strip()
 
             # Store the interaction in follow_up_history
             step.add_follow_up(question=aspect.name, response=response_text)
@@ -1088,8 +1087,114 @@ class QueryRefinementManager:
                 "aspect_name": aspect.name,
                 "question": aspect.name,
                 "response": response_text,
+                "structured_payload": parsed_payload,
                 "error": False
             }
+
+    def _get_llm_response_with_validation(
+        self,
+        aspect: RefinementAspect,
+        system_prompt: str,
+        user_prompt: str,
+    ) -> tuple[str, Optional[Dict[str, Any]], bool, Optional[str]]:
+        """Call the LLM and enforce structured response validation when required.
+
+        Returns:
+            Tuple of (normalized_response_text, parsed_payload, is_error, error_message)
+        """
+        prompt = user_prompt
+        base_prompt = user_prompt
+
+        for attempt in range(self.validation_max_retries + 1):
+            try:
+                result = self.llm_provider.complete(
+                    system_prompt=system_prompt,
+                    user_prompt=prompt
+                )
+            except Exception as exc:  # pragma: no cover - surface provider exceptions
+                logger.exception(
+                    "LLM call failed while processing aspect %s on attempt %d: %s",
+                    aspect.id,
+                    attempt + 1,
+                    exc,
+                )
+                return "", None, True, f"LLM error: {exc}"
+
+            response_text = (result.context or "").strip()
+
+            if not aspect.response_format:
+                # No structured schema required; return raw text
+                return response_text, None, False, None
+
+            # Parse structured response
+            try:
+                parsed_payload = json.loads(response_text)
+            except json.JSONDecodeError as json_error:
+                error_message = f"Response is not valid JSON: {json_error}"
+                logger.warning(
+                    "Aspect %s produced non-JSON response on attempt %d: %s",
+                    aspect.id,
+                    attempt + 1,
+                    error_message,
+                )
+                if attempt < self.validation_max_retries:
+                    prompt = self._augment_prompt_for_retry(base_prompt, error_message, attempt + 1, response_text)
+                    continue
+                return response_text, None, True, error_message
+
+            is_valid, validation_error, warnings = aspect.validate_response_strict(parsed_payload)
+
+            if is_valid:
+                if warnings:
+                    logger.warning(
+                        "Response validation warnings for aspect %s: %s",
+                        aspect.id,
+                        "; ".join(warnings),
+                    )
+
+                normalized_text = json.dumps(parsed_payload, ensure_ascii=False)
+                return normalized_text, parsed_payload, False, None
+
+            error_message = validation_error or "Structured response failed validation"
+            logger.warning(
+                "Aspect %s response failed schema validation on attempt %d: %s",
+                aspect.id,
+                attempt + 1,
+                error_message,
+            )
+
+            if attempt < self.validation_max_retries:
+                prompt = self._augment_prompt_for_retry(base_prompt, error_message, attempt + 1, response_text)
+                continue
+
+            return response_text, parsed_payload, True, error_message
+
+        # Should not be reached, but return safe fallback
+        return "", None, True, "Unknown validation failure"
+
+    @staticmethod
+    def _augment_prompt_for_retry(
+        base_prompt: str,
+        error_details: str,
+        attempt_number: int,
+        previous_response: Optional[str] = None,
+    ) -> str:
+        """Append remediation guidance to the original prompt for retry attempts."""
+        guidance_lines = [
+            "\n\n---",
+            f"ATTEMPT {attempt_number}: Your previous response did not satisfy the required JSON schema.",
+            f"Error details: {error_details}",
+            "Respond again with VALID JSON that matches the schema exactly.",
+            "Return ONLY the JSON object. Do not include markdown, code fences, or explanations.",
+        ]
+
+        if previous_response:
+            truncated_previous = previous_response[:400].replace("\n", " ")
+            guidance_lines.append(
+                f"Previous response (truncated): {truncated_previous}"
+            )
+
+        return base_prompt + "\n".join(guidance_lines)
 
     def run_full_refinement(self, session: QueryRefinementSession, max_iterations: int = 100) -> QueryRefinementSession:
         """
