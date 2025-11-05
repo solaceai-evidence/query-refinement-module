@@ -42,7 +42,7 @@ import json
 import logging
 from dataclasses import dataclass, field
 from enum import Enum
-from typing import Any, Dict, List, Optional
+from typing import Any, Callable, Dict, List, Optional
 
 from .interfaces import (
     LLMProviderInterface,
@@ -79,6 +79,25 @@ class UserCommand(Enum):
     
     # Not a command
     NONE = "none"
+
+
+COMMAND_ALIASES: Dict[str, UserCommand] = {
+    "back": UserCommand.BACK,
+    "prev": UserCommand.PREVIOUS,
+    "previous": UserCommand.PREVIOUS,
+    "goto": UserCommand.GOTO,
+    "restart": UserCommand.RESTART,
+    "skip": UserCommand.SKIP,
+    "done": UserCommand.DONE,
+    "continue": UserCommand.CONTINUE,
+    "finish": UserCommand.FINISH,
+    "status": UserCommand.STATUS,
+    "help": UserCommand.HELP,
+    "steps": UserCommand.STEPS,
+}
+
+
+COMMANDS_REQUIRING_ARGUMENT = {UserCommand.GOTO}
 
 
 @dataclass
@@ -128,42 +147,24 @@ def parse_user_command(user_input: str) -> CommandResult:
     # Remove leading slash and split
     parts = user_input.strip()[1:].split(maxsplit=1)
     cmd_str = parts[0].lower()
-    argument = parts[1] if len(parts) > 1 else None
-    
-    # Map command string to enum
-    command_map = {
-        "back": UserCommand.BACK,
-        "prev": UserCommand.PREVIOUS,
-        "previous": UserCommand.PREVIOUS,
-        "goto": UserCommand.GOTO,
-        "restart": UserCommand.RESTART,
-        "skip": UserCommand.SKIP,
-        "done": UserCommand.DONE,
-        "continue": UserCommand.CONTINUE,
-        "finish": UserCommand.FINISH,
-        "status": UserCommand.STATUS,
-        "help": UserCommand.HELP,
-        "steps": UserCommand.STEPS,
-    }
-    
-    if cmd_str not in command_map:
+    argument = parts[1].strip() if len(parts) > 1 else None
+
+    command = COMMAND_ALIASES.get(cmd_str)
+    if not command:
         return CommandResult(
             command=UserCommand.NONE,
             is_valid=False,
             error_message=f"Unknown command: /{cmd_str}. Type /help for available commands."
         )
-    
-    command = command_map[cmd_str]
-    
-    # Validate arguments for specific commands
-    if command == UserCommand.GOTO:
+
+    if command in COMMANDS_REQUIRING_ARGUMENT:
         if not argument:
             return CommandResult(
                 command=command,
                 is_valid=False,
-                error_message="/goto requires a step number. Example: /goto 2"
+                error_message=f"/{command.value} requires a step number. Example: /{command.value} 2"
             )
-        if not argument.isdigit():
+        if command is UserCommand.GOTO and not argument.isdigit():
             return CommandResult(
                 command=command,
                 argument=argument,
@@ -558,33 +559,31 @@ class QueryRefinementSession:
             }
         
         command = cmd_result.command
-        
-        # Navigation commands
-        if command == UserCommand.BACK or command == UserCommand.PREVIOUS:
-            return self._go_back()
-        elif command == UserCommand.GOTO:
+
+        if command == UserCommand.GOTO:
             if cmd_result.argument is None:
                 return {"success": False, "message": "/goto requires step number"}
             return self._go_to_step(int(cmd_result.argument))
-        elif command == UserCommand.RESTART:
-            return self._restart()
-        
-        # Control commands
-        elif command == UserCommand.SKIP:
-            return self._skip_current()
-        elif command == UserCommand.DONE or command == UserCommand.FINISH:
-            return self._finish_current()
-        elif command == UserCommand.CONTINUE:
+
+        if command == UserCommand.CONTINUE:
             return {"success": True, "message": "Continuing with current step"}
-        
-        # Information commands
-        elif command == UserCommand.STATUS:
-            return self._get_status()
-        elif command == UserCommand.STEPS:
-            return self._list_steps()
-        elif command == UserCommand.HELP:
-            return {"success": True, "message": get_help_text()}
-        
+
+        command_handlers: Dict[UserCommand, Callable[[], Dict[str, Any]]] = {
+            UserCommand.BACK: self._go_back,
+            UserCommand.PREVIOUS: self._go_back,
+            UserCommand.RESTART: self._restart,
+            UserCommand.SKIP: self._skip_current,
+            UserCommand.DONE: self._finish_current,
+            UserCommand.FINISH: self._finish_current,
+            UserCommand.STATUS: self._get_status,
+            UserCommand.STEPS: self._list_steps,
+            UserCommand.HELP: lambda: {"success": True, "message": get_help_text()},
+        }
+
+        handler = command_handlers.get(command)
+        if handler:
+            return handler()
+
         return {"success": False, "message": f"Command {command.name} not implemented"}
     
     def _invalidate_dependents(self, changed_refinement_aspect_id: str) -> List[str]:
