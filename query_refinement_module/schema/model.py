@@ -445,7 +445,7 @@ class RefinementAspect:
                     
                     # Add optional suggested question for refinement examples
                     if "suggested_question" in example:
-                        if include_user_answer in example:
+                        if include_user_answer and "user_answer" in example:
                             line_parts.append(f"Q: \"{example['suggested_question']}\"")
                         else:
                             line_parts.append(f"Ask: \"{example['suggested_question']}\"")
