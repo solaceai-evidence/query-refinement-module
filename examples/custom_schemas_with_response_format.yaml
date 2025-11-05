@@ -415,13 +415,13 @@ structured_response_example:
 # Benefits of Separate Response Format:
 # ============================================================================
 #
-# 1. **Consistency**: All dimensions return the same structure
+# 1. **Consistency**: All aspects return the same structure
 # 2. **Validation**: Can validate responses against the schema
 # 3. **Maintainability**: Update format in one place
 # 4. **Clarity**: Prompts focus on analysis logic, not formatting
 # 5. **Type Safety**: Clear field types and requirements
 # 6. **Documentation**: Field descriptions explain expected values
-# 7. **Extensibility**: Easy to add new fields across all dimensions
+# 7. **Extensibility**: Easy to add new fields across all aspects
 # 8. **Testing**: Can test format compliance automatically
 #
 # ============================================================================

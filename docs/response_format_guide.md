@@ -278,7 +278,7 @@ legal_research:
 
 ## Using Response Format in Code
 
-The `RefinementDimension` class automatically handles response format:
+The `RefinementAspect` class automatically handles response format:
 
 ```python
 from query_refinement.schemas import get_schema
