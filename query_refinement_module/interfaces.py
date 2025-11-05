@@ -20,7 +20,7 @@ class AspectAnalysisResult:
     
     This matches the structured output from LLM analysis (BASE_SCHEMA_FIELDS in RefinementAspect):
     - needs_refinement: boolean
-    - reason: string (why refinement is/isn't needed)
+    - explanation: string (why refinement is/isn't needed)
     - suggested_question: string (the question to ask if refinement needed)
     
     Attributes:
@@ -29,7 +29,7 @@ class AspectAnalysisResult:
         suggested_question: The question to ask the user (if needs_refinement=True).
     """
     needs_refinement: bool
-    reason: str
+    explanation: str
     suggested_question: Optional[str] = None
 
 # ===========
