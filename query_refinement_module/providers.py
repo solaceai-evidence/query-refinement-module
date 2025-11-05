@@ -10,14 +10,25 @@ __all__ = [
     "TraceEventEmitter",
     "InMemorySessionStorage",
     "RedisSessionStorage",
+    "LiteLLMProvider",
 ]
+
+try:  # pragma: no cover - optional dependency for LLM access
+    import litellm  # type: ignore[import]
+except ImportError:  # pragma: no cover - surfaced when provider is constructed
+    litellm = None
 
 try:  # pragma: no cover - validated at runtime when Redis storage is instantiated
     import redis  # type: ignore[import]
 except ImportError:  # pragma: no cover - handled with explicit runtime error
     redis = None
 
-from .interfaces import SessionStorageInterface, TracingProviderInterface
+from .interfaces import (
+    LLMCompletionResult,
+    LLMProviderInterface,
+    SessionStorageInterface,
+    TracingProviderInterface,
+)
 
 # ========
 # Tracing Utilities
@@ -158,6 +169,103 @@ class RedisSessionStorage(SessionStorageInterface):
 
     def session_exists(self, session_id: str) -> bool:
         return bool(self._client.exists(self._key(session_id)))
+
+
+class LiteLLMProvider(LLMProviderInterface):
+    """Generic LLM provider backed by `litellm` for multi-vendor support."""
+
+    def __init__(
+        self,
+        default_model: str,
+        *,
+        api_key: Optional[str] = None,
+        api_base: Optional[str] = None,
+        default_completion_kwargs: Optional[Dict[str, Any]] = None,
+    ) -> None:
+        if litellm is None:
+            raise RuntimeError(
+                "litellm package is required for LiteLLMProvider. Install with 'pip install litellm'."
+            )
+
+        if not default_model:
+            raise ValueError("default_model must be provided for LiteLLMProvider")
+
+        self._default_model = default_model
+        self._api_key = api_key
+        self._api_base = api_base
+        self._default_completion_kwargs = default_completion_kwargs or {}
+
+    def complete(
+        self,
+        user_prompt: str,
+        system_prompt: Optional[str] = None,
+        model: Optional[str] = None,
+        temperature: float = 0.0,
+        max_tokens: Optional[int] = None,
+        **kwargs: Any,
+    ) -> LLMCompletionResult:
+        if litellm is None:
+            raise RuntimeError(
+                "litellm package is required for LiteLLMProvider. Install with 'pip install litellm'."
+            )
+
+        target_model = model or self._default_model
+        if not target_model:
+            raise ValueError("Model must be supplied either at initialization or call time")
+
+        messages = []
+        if system_prompt:
+            messages.append({"role": "system", "content": system_prompt})
+        messages.append({"role": "user", "content": user_prompt})
+
+        completion_kwargs: Dict[str, Any] = {**self._default_completion_kwargs, **kwargs}
+        completion_kwargs.setdefault("temperature", temperature)
+        if max_tokens is not None and "max_tokens" not in completion_kwargs:
+            completion_kwargs["max_tokens"] = max_tokens
+
+        response = litellm.completion(
+            model=target_model,
+            messages=messages,
+            api_key=self._api_key,
+            api_base=self._api_base,
+            **completion_kwargs,
+        )
+
+        message = response["choices"][0]["message"].get("content", "")
+        usage = response.get("usage", {})
+        total_tokens = usage.get("total_tokens")
+
+        metadata = {
+            "provider": "litellm",
+            "model": target_model,
+            "usage": usage,
+            "response_id": response.get("id"),
+        }
+
+        return LLMCompletionResult(
+            context=message,
+            model=target_model,
+            total_tokens=total_tokens,
+            metadata=metadata,
+        )
+
+    def get_model_info(self, model: str) -> Dict[str, Any]:
+        if litellm is None:
+            raise RuntimeError(
+                "litellm package is required for LiteLLMProvider. Install with 'pip install litellm'."
+            )
+
+        info: Dict[str, Any] = {"model": model, "provider": "litellm"}
+
+        if hasattr(litellm, "get_model_cost"):
+            try:  # pragma: no cover - optional helper for supported metadata
+                cost = litellm.get_model_cost(model=model)
+                if cost:
+                    info["pricing"] = cost
+            except Exception:
+                pass
+
+        return info
     
 
 

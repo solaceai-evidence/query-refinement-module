@@ -16,6 +16,7 @@ pip install query-refinement-module
 - Built-in follow-up history, summaries, and conversation exports
 - Tracing hooks through `TraceEventEmitter` and providers
 - Session storage adapters (in-memory, Redis) for quick persistence choices
+- Local CLI wired to the same LLM/analyzer stack as remote deployments
 
 ## Quick Start
 
@@ -189,4 +190,44 @@ service = QueryRefinementService(manager, storage)
 ```
 
 When Redis is unavailable, substitute `InMemorySessionStorage()`, understanding sessions reset on process restart.
+
+## CLI Playground
+
+Explore the refinement flow locally without wiring an API:
+
+```bash
+poetry run query-refine --list-frameworks                    # Inspect available schemas
+poetry run query-refine --framework pico_clinical_research   # Launch interactive session
+poetry run query-refine --framework pico_clinical_research --model claude-3-sonnet
+```
+
+Set `REFINEMENT_FRAMEWORK_PATH` before running so the CLI can load your YAML definitions. During a session you can use commands such as `/help`, `/status`, `/back`, and `/goto 2` to navigate.
+
+### LLM Configuration
+
+The CLI and service layer share the same LLM plumbing via `LiteLLMProvider`, allowing you to target OpenAI, Anthropic, Azure OpenAI, and other vendors supported by [litellm](https://github.com/BerriAI/litellm).
+
+1. Install provider extras (already included when using Poetry in this repo).
+2. Export the provider-specific API key environment variable (e.g. `OPENAI_API_KEY`, `ANTHROPIC_API_KEY`, `AZURE_OPENAI_API_KEY`).
+3. Optionally override credentials with `--api-key`/`--api-base` flags.
+
+Common examples:
+
+```bash
+# OpenAI
+export OPENAI_API_KEY=sk-...
+poetry run query-refine --framework pico_clinical_research --model gpt-4o
+
+# Anthropic
+export ANTHROPIC_API_KEY=sk-ant-...
+poetry run query-refine --framework pico_clinical_research --model claude-3-sonnet
+
+# Azure OpenAI (custom endpoint)
+export AZURE_OPENAI_API_KEY=...
+poetry run query-refine --framework pico_clinical_research \
+  --model azure/gpt-4o \
+  --api-base https://my-resource.openai.azure.com
+```
+
+Add `--completion-arg top_p=0.8` or `--completion-arg response_format=json_schema` to forward provider-specific parameters through litellm.
 

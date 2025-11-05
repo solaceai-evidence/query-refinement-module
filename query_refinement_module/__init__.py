@@ -18,7 +18,7 @@ The module is organized into several layers:
     - Type definitions and protocols
 
 3. **Providers** (providers.py):
-    - Implementation of tracing providers, emitters, and session storage adapters
+    - Implementation of tracing providers, emitters, session storage, and LLM adapters
 
 4. **Core Refinement Logic** (core.py):
     - Main classes and functions for query refinement (QueryRefinementManager)
@@ -33,9 +33,11 @@ The module is organized into several layers:
 
 __version__ = "0.1.0"
 
+from .cli import build_manager as build_cli_manager, main as cli_main, run_cli
 from .core import QueryRefinementManager, QueryRefinementSession
-from .providers import InMemorySessionStorage, RedisSessionStorage
+from .providers import InMemorySessionStorage, LiteLLMProvider, RedisSessionStorage
 from .service import QueryRefinementService
+from .analyzers import LLMQueryAnalyzer
 from .api_models import (
     SessionCreateRequest,
     SessionCreateResponse,
@@ -51,6 +53,11 @@ __all__ = [
     "QueryRefinementService",
     "InMemorySessionStorage",
     "RedisSessionStorage",
+    "LiteLLMProvider",
+    "LLMQueryAnalyzer",
+    "cli_main",
+    "run_cli",
+    "build_cli_manager",
     "SessionCreateRequest",
     "SessionCreateResponse",
     "InteractionRequest",
