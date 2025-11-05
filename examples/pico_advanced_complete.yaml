@@ -1,0 +1,858 @@
+pico_advanced:
+  # ========================================
+  # ADVANCED PICO FRAMEWORK SCHEMA
+  # ========================================
+  # Comprehensive clinical research query refinement framework
+  # Demonstrates: dependencies, rich examples, custom response formats,
+  # field descriptions, metadata, and multi-turn follow-ups
+  
+  # ========================================
+  # P - POPULATION
+  # ========================================
+  
+  - id: population_demographics
+    name: Population Demographics
+    description: |
+      Defines the target population's basic demographic characteristics including
+      age range, gender, ethnicity, and geographic location. This forms the
+      foundation for all other PICO dimensions.
+    
+    analysis_prompt: |
+      **Query to Analyze:** "{query}"
+      
+      # TASK: Demographic Specification Analysis
+      
+      You are analyzing a clinical research query to determine if the target population's
+      demographic characteristics are sufficiently specified.
+      
+      ## Required Demographic Dimensions
+      
+      1. **Age Range**: Is there a specific age range or age group mentioned?
+         - Examples: "18-65 years", "adults", "elderly 75+", "pediatric"
+         - Red flags: vague terms like "older", "younger" without numbers
+      
+      2. **Gender/Sex**: Is gender specification necessary and if so, is it provided?
+         - Consider: Is gender relevant to the research question?
+         - Examples: "postmenopausal women", "male athletes"
+      
+      3. **Ethnicity/Race**: Is ethnicity mentioned when relevant?
+         - Consider: Does the condition have ethnic disparities?
+         - Examples: "African American populations", "Asian populations"
+      
+      4. **Geographic/Setting**: Is the population setting specified?
+         - Examples: "urban areas", "rural communities", "nursing homes"
+      
+      ## Analysis Framework
+      
+      For each dimension:
+      - ✓ CLEAR: Specific, measurable, unambiguous
+      - ⚠ PARTIAL: Some specification but needs refinement
+      - ✗ MISSING: Not specified when relevant
+      - ? AMBIGUOUS: Mentioned but vague or unclear
+      
+      Determine if the demographic specification is sufficient for:
+      1. Study replication
+      2. Results generalization
+      3. Ethical review requirements
+    
+    examples:
+      clear:
+        - query: "Efficacy of metformin in adults aged 40-65 with BMI > 30"
+          explanation: "Age range precisely defined (40-65), specific population characteristic (BMI > 30)"
+        
+        - query: "Postmenopausal women aged 50-70 in urban clinical settings"
+          explanation: "Age (50-70), gender (women), life stage (postmenopausal), setting (urban clinical) all clearly specified"
+        
+        - query: "African American males aged 18-45 with hypertension in community health centers"
+          explanation: "Complete demographic profile: ethnicity, gender, age range, condition, and recruitment setting"
+      
+      needs_refinement:
+        - query: "Does exercise reduce depression in adults?"
+          issue: "'Adults' is too broad - could range from 18 to 100+ years"
+          missing: "Specific age range, gender considerations, geographic scope"
+          suggested_question: "What age range are you targeting? For example: young adults (18-35), middle-aged (36-64), or older adults (65+)?"
+        
+        - query: "Study on diabetes management in elderly patients"
+          issue: "'Elderly' is ambiguous - definitions vary from 60+ to 80+"
+          missing: "Precise age threshold, gender, setting"
+          suggested_question: "What specific age threshold defines 'elderly' for your study? (e.g., 65+, 70+, 75+)"
+        
+        - query: "Treatment outcomes in minority populations"
+          issue: "'Minority populations' is vague and could mean multiple groups"
+          missing: "Specific ethnic/racial groups, age, gender"
+          suggested_question: "Which specific population groups are you focusing on? (e.g., Hispanic/Latino, African American, Asian, Native American)"
+      
+      partial:
+        - query: "Women over 40 with cardiovascular disease"
+          has: "Gender (women) and minimum age (40)"
+          missing: "Upper age limit, ethnicity (if CVD disparities relevant), geographic setting"
+          suggested_question: "Is there an upper age limit? Are you focusing on specific ethnic groups given CVD disparities?"
+        
+        - query: "Pediatric patients in tertiary care hospitals"
+          has: "Age category (pediatric) and setting (tertiary care)"
+          missing: "Specific age range within pediatrics (neonates, infants, children, adolescents?)"
+          suggested_question: "What age range within pediatrics? (0-1 year, 1-12 years, 12-18 years, or all pediatric ages)"
+      
+      ambiguous:
+        - query: "Middle-aged adults in diverse communities"
+          issue: "Both 'middle-aged' (typically 40-65 but varies) and 'diverse' are ambiguous"
+          suggested_question: "Can you specify: 1) Exact age range for 'middle-aged', and 2) What dimensions of diversity matter (ethnic, socioeconomic, geographic)?"
+        
+        - query: "Study in representative population sample"
+          issue: "'Representative' is context-dependent - representative of what population?"
+          suggested_question: "What population should this sample represent? Please specify demographic characteristics that define representativeness."
+    
+    response_format:
+      additional_fields:
+        is_complete: boolean
+        confidence: string
+        needs_user_input: boolean
+        age_range_specified: boolean
+        age_range_adequate: boolean
+        gender_relevant: boolean
+        gender_specified: boolean
+        ethnicity_relevant: boolean
+        ethnicity_specified: boolean
+        geographic_scope_clear: boolean
+        setting_specified: boolean
+        demographic_completeness_score: float
+      
+      field_descriptions:
+        needs_refinement: "Whether demographic details need additional clarification"
+        explanation: "Summary of the demographic assessment"
+        suggested_question: "Focused question to address the most critical demographic gap"
+        is_complete: "True when demographic specification is ready to use without further follow-up"
+        confidence: "Confidence in this assessment (e.g., high/medium/low)"
+        needs_user_input: "True if additional user input is required to proceed"
+        age_range_specified: "Whether any age information is mentioned in the query"
+        age_range_adequate: "Whether age specification is sufficiently precise for study design"
+        gender_relevant: "Whether gender is a relevant factor for this research question"
+        gender_specified: "Whether gender is clearly specified when relevant"
+        ethnicity_relevant: "Whether ethnicity is relevant (e.g., for conditions with known disparities)"
+        ethnicity_specified: "Whether ethnicity is specified when relevant"
+        geographic_scope_clear: "Whether geographic scope or setting is adequately described"
+        setting_specified: "Whether recruitment/study setting is mentioned"
+        demographic_completeness_score: "Overall completeness score from 0-10"
+    
+    allow_follow_up: true
+    max_follow_ups: 3
+    
+    metadata:
+      domain: clinical_research
+      framework: PICO
+      pico_component: Population
+      priority: critical
+      typical_order: 1
+      estimated_completion_time_seconds: 45
+      common_pitfalls:
+        - "Using vague age terms like 'elderly', 'young', 'older' without numeric ranges"
+        - "Assuming 'adults' is specific enough (spans 60+ years)"
+        - "Omitting gender when studying sex-specific conditions"
+        - "Not considering ethnic disparities in disease prevalence/treatment"
+
+  - id: population_clinical_profile
+    name: Clinical Profile & Health Status
+    description: |
+      Specifies the primary health condition, disease stage, severity, comorbidities,
+      and relevant medical history. Critical for defining study eligibility and
+      expected treatment responses.
+    
+    depends_on:
+      - population_demographics
+    
+    analysis_prompt: |
+      **Query to Analyze:** "{query}"
+      
+      # TASK: Clinical Profile Analysis
+      
+      Analyze the clinical characteristics and health status specification.
+      
+      ## Clinical Profile Dimensions
+      
+      1. **Primary Condition/Diagnosis**
+         - Is the main health condition clearly identified?
+         - Is it specific enough? (e.g., "Type 2 diabetes" vs "diabetes")
+      
+      2. **Disease Stage/Phase**
+         - Is staging mentioned when relevant?
+         - Examples: early-stage, advanced, acute, chronic, remission
+      
+      3. **Severity Level**
+         - Is severity specified?
+         - Examples: mild, moderate, severe, or quantified measures
+      
+      4. **Comorbidities**
+         - Are concurrent conditions mentioned?
+         - Are exclusions for contraindicated comorbidities specified?
+      
+      5. **Treatment History**
+         - Is prior treatment status mentioned?
+         - Examples: treatment-naive, refractory, previously treated
+      
+      6. **Diagnostic Criteria**
+         - Are diagnostic standards mentioned?
+         - Examples: ICD codes, clinical guidelines, biomarker thresholds
+      
+      Evaluate whether the clinical profile enables:
+      - Accurate patient identification and recruitment
+      - Appropriate treatment selection
+      - Valid outcome interpretation
+    
+    examples:
+      clear:
+        - query: "Efficacy of SGLT2 inhibitors in Type 2 diabetes patients with HbA1c 7.5-10%, treatment-naive"
+          explanation: "Specific condition (Type 2 diabetes), severity marker (HbA1c 7.5-10%), treatment history (naive)"
+        
+        - query: "Outcomes of immunotherapy in stage IIIB non-small cell lung cancer, ECOG performance status 0-1"
+          explanation: "Precise diagnosis, stage (IIIB), cancer type (NSCLC), functional status (ECOG 0-1)"
+        
+        - query: "Management of acute severe asthma exacerbations requiring emergency department care"
+          explanation: "Condition (asthma), phase (acute), severity (severe), setting context (ED care required)"
+      
+      needs_refinement:
+        - query: "Treatment for diabetic patients"
+          issue: "Diabetes type not specified - Type 1, Type 2, gestational, MODY, etc. have different treatments"
+          missing: "Disease type, severity, duration, complications"
+          suggested_question: "What type of diabetes? (Type 1, Type 2, gestational) And what level of glycemic control? (e.g., HbA1c range)"
+        
+        - query: "Study on cancer treatment outcomes"
+          issue: "No cancer type, stage, or histology specified"
+          missing: "Cancer type, stage, grade, molecular markers"
+          suggested_question: "Which cancer type and stage are you studying? Are there specific histological or molecular characteristics?"
+        
+        - query: "Intervention in patients with heart problems"
+          issue: "'Heart problems' is far too vague - hundreds of cardiac conditions exist"
+          missing: "Specific cardiac diagnosis, severity, functional class"
+          suggested_question: "What specific cardiac condition? (e.g., heart failure, coronary artery disease, arrhythmia) And what severity?"
+      
+      partial:
+        - query: "Effects of statins in patients with moderate hyperlipidemia"
+          has: "Condition (hyperlipidemia) and severity (moderate)"
+          missing: "Specific lipid ranges defining 'moderate', comorbidities, prior treatment attempts"
+          suggested_question: "What LDL or total cholesterol range defines 'moderate' for your study? Any relevant comorbidities or prior statin use?"
+        
+        - query: "Study in hypertensive patients with diabetes"
+          has: "Two conditions specified (hypertension, diabetes)"
+          missing: "BP range, diabetes type, severity of both conditions, other comorbidities"
+          suggested_question: "What BP range defines hypertension in your study? What type and control level of diabetes?"
+      
+      ambiguous:
+        - query: "Treatment in patients with refractory disease"
+          issue: "'Refractory' to which treatments? How many prior treatment failures?"
+          suggested_question: "Refractory to which specific treatments? How many prior treatment lines? What defines 'refractory' in your protocol?"
+        
+        - query: "Study in high-risk cardiovascular patients"
+          issue: "'High-risk' is subjective - needs risk score or specific criteria"
+          suggested_question: "What defines 'high-risk'? (e.g., Framingham score, specific risk factors, prior events)"
+    
+    response_format:
+      additional_fields:
+        is_complete: boolean
+        confidence: string
+        needs_user_input: boolean
+        primary_diagnosis_specified: boolean
+        diagnosis_specificity_adequate: boolean
+        disease_stage_specified: boolean
+        disease_stage_relevant: boolean
+        severity_specified: boolean
+        severity_quantified: boolean
+        comorbidities_mentioned: array
+        comorbidity_exclusions_specified: boolean
+        treatment_history_relevant: boolean
+        treatment_history_specified: boolean
+        diagnostic_criteria_mentioned: boolean
+        clinical_profile_completeness_score: float
+      
+      field_descriptions:
+        needs_refinement: "Whether the clinical profile needs further clarification"
+        explanation: "Summary of the clinical profile analysis"
+        suggested_question: "Key question to address the most critical clinical profile gap"
+        is_complete: "True if the clinical profile is sufficiently specified without more input"
+        confidence: "Confidence in this assessment (e.g., high/medium/low)"
+        needs_user_input: "True if clinician input is still required"
+        primary_diagnosis_specified: "Whether main health condition is identified"
+        diagnosis_specificity_adequate: "Whether diagnosis is specific enough (not just 'cancer' or 'heart disease')"
+        disease_stage_specified: "Whether disease stage/phase is mentioned"
+        disease_stage_relevant: "Whether staging is relevant to this condition"
+        severity_specified: "Whether severity level is indicated"
+        severity_quantified: "Whether severity uses measurable criteria (not just mild/moderate/severe)"
+        comorbidities_mentioned: "List of comorbid conditions mentioned"
+        comorbidity_exclusions_specified: "Whether contraindicated comorbidities are excluded"
+        treatment_history_relevant: "Whether prior treatment matters for this study"
+        treatment_history_specified: "Whether treatment history is described"
+        diagnostic_criteria_mentioned: "Whether specific diagnostic standards referenced"
+        clinical_profile_completeness_score: "Overall clinical specification score from 0-10"
+    
+    allow_follow_up: true
+    max_follow_ups: 3
+    
+    metadata:
+      domain: clinical_research
+      framework: PICO
+      pico_component: Population
+      priority: critical
+      typical_order: 2
+      estimated_completion_time_seconds: 60
+      common_pitfalls:
+        - "Using broad disease categories without specific subtypes"
+        - "Omitting severity when it impacts treatment choice"
+        - "Not specifying staging for progressive diseases"
+        - "Ignoring treatment history when studying second-line therapies"
+
+  # ========================================
+  # I - INTERVENTION
+  # ========================================
+  
+  - id: intervention_specification
+    name: Intervention Specification
+    description: |
+      Details the treatment, procedure, or exposure being studied including
+      specific agents, dosing, duration, frequency, and delivery method.
+    
+    depends_on:
+      - population_demographics
+      - population_clinical_profile
+    
+    analysis_prompt: |
+      **Query to Analyze:** "{query}"
+      
+      # TASK: Intervention Specification Analysis
+      
+      Analyze whether the intervention is sufficiently detailed for study replication.
+      
+      ## Intervention Dimensions
+      
+      1. **Intervention Type**
+         - Pharmacological (drug, biologic)
+         - Procedural (surgery, device)
+         - Behavioral (therapy, lifestyle)
+         - Diagnostic (test, screening)
+      
+      2. **Specific Agent/Method**
+         - Generic/brand name for drugs
+         - Specific procedure or technique
+         - Defined behavioral protocol
+      
+      3. **Dosing/Intensity** (if applicable)
+         - Dose amount and units
+         - Frequency (daily, weekly)
+         - Timing (morning, with meals)
+      
+      4. **Duration**
+         - Treatment length
+         - Follow-up period
+      
+      5. **Delivery Method**
+         - Route (oral, IV, subcutaneous)
+         - Setting (inpatient, outpatient, home)
+         - Provider type
+      
+      6. **Adjunct Treatments**
+         - Concurrent therapies
+         - Background medications
+         - Supportive care protocols
+    
+    examples:
+      clear:
+        - query: "Metformin 1000mg twice daily for 6 months vs placebo in newly diagnosed Type 2 diabetes"
+          explanation: "Drug (metformin), dose (1000mg), frequency (twice daily), duration (6 months), comparison (placebo)"
+        
+        - query: "Laparoscopic Roux-en-Y gastric bypass performed by experienced bariatric surgeons"
+          explanation: "Specific surgical technique (laparoscopic Roux-en-Y), provider qualification (experienced bariatric surgeons)"
+        
+        - query: "Cognitive Behavioral Therapy, 12 weekly 60-minute sessions delivered by licensed clinical psychologists"
+          explanation: "Therapy type (CBT), frequency (weekly), duration (12 sessions), session length (60 min), provider (licensed psychologists)"
+      
+      needs_refinement:
+        - query: "Effects of medication on blood pressure"
+          issue: "No medication specified, no dosing information"
+          missing: "Drug name, dose, frequency, duration, route"
+          suggested_question: "Which medication are you studying? Please specify the drug name, dose, frequency, and treatment duration."
+        
+        - query: "Study on surgery outcomes"
+          issue: "Type of surgery not specified"
+          missing: "Surgical procedure, approach (open vs laparoscopic), setting"
+          suggested_question: "What specific surgical procedure? What surgical approach? (e.g., open, laparoscopic, robotic)"
+        
+        - query: "Exercise intervention for weight loss"
+          issue: "Exercise type, intensity, frequency, duration all unspecified"
+          missing: "Exercise modality, intensity level, frequency, session duration, total program length"
+          suggested_question: "What type of exercise? (aerobic, resistance, both) What intensity, frequency, and program duration?"
+      
+      partial:
+        - query: "Atorvastatin treatment for hyperlipidemia"
+          has: "Drug name (atorvastatin), indication (hyperlipidemia)"
+          missing: "Dose, frequency, treatment duration, titration protocol"
+          suggested_question: "What dose of atorvastatin? (10mg, 20mg, 40mg, 80mg) What frequency and treatment duration?"
+        
+        - query: "Physical therapy twice weekly for knee osteoarthritis"
+          has: "Intervention type (physical therapy), frequency (twice weekly), condition"
+          missing: "Specific PT protocol, session duration, total treatment length, therapy components"
+          suggested_question: "What specific PT protocol? How long are sessions? What is the total treatment duration?"
+      
+      ambiguous:
+        - query: "High-dose vitamin D supplementation"
+          issue: "'High-dose' is relative - could be 2,000 IU or 50,000 IU depending on context"
+          suggested_question: "What specific dose of vitamin D? (e.g., 2,000 IU daily, 50,000 IU weekly)"
+        
+        - query: "Intensive glycemic control in diabetes"
+          issue: "'Intensive' is subjective - needs target HbA1c or glucose range"
+          suggested_question: "What target defines 'intensive control'? (e.g., HbA1c <6.5%, fasting glucose 80-110 mg/dL)"
+    
+    response_format:
+      additional_fields:
+        is_complete: boolean
+        confidence: string
+        needs_user_input: boolean
+        intervention_type: string
+        intervention_specified: boolean
+        dosing_specified: boolean
+        dosing_adequate_for_replication: boolean
+        frequency_specified: boolean
+        duration_specified: boolean
+        delivery_method_specified: boolean
+        route_of_administration_specified: boolean
+        setting_specified: boolean
+        provider_qualifications_mentioned: boolean
+        adjunct_treatments_considered: boolean
+        intervention_completeness_score: float
+      
+      field_descriptions:
+        needs_refinement: "Whether the intervention requires additional clarification"
+        explanation: "Summary of the intervention analysis"
+        suggested_question: "Targeted question to resolve the most critical intervention gap"
+        is_complete: "True when the intervention is sufficiently specified"
+        confidence: "Confidence in this assessment (e.g., high/medium/low)"
+        needs_user_input: "True if user input is still required"
+        intervention_type: "Category: pharmacological, procedural, behavioral, diagnostic, other"
+        intervention_specified: "Whether specific intervention is named"
+        dosing_specified: "Whether dose/intensity information provided"
+        dosing_adequate_for_replication: "Whether dosing details are sufficient to replicate the study"
+        frequency_specified: "Whether frequency of administration/delivery is mentioned"
+        duration_specified: "Whether treatment duration is indicated"
+        delivery_method_specified: "Whether delivery method is described"
+        route_of_administration_specified: "Whether route is specified (for medications)"
+        setting_specified: "Whether care setting is mentioned"
+        provider_qualifications_mentioned: "Whether provider expertise/credentials are specified"
+        adjunct_treatments_considered: "Whether concurrent treatments are addressed"
+        intervention_completeness_score: "Overall specification score from 0-10"
+    
+    allow_follow_up: true
+    max_follow_ups: 3
+    
+    metadata:
+      domain: clinical_research
+      framework: PICO
+      pico_component: Intervention
+      priority: critical
+      typical_order: 3
+      estimated_completion_time_seconds: 60
+
+  # ========================================
+  # C - COMPARISON
+  # ========================================
+  
+  - id: comparison_group
+    name: Comparison/Control Group
+    description: |
+      Defines what the intervention is compared against: placebo, standard care,
+      alternative treatment, or no treatment. Critical for establishing causality.
+    
+    depends_on:
+      - intervention_specification
+    
+    analysis_prompt: |
+      **Query to Analyze:** "{query}"
+      
+      # TASK: Comparison Group Analysis
+      
+      Analyze whether an appropriate comparison/control group is specified.
+      
+      ## Comparison Types
+      
+      1. **Placebo Control**
+         - Inert substance/sham procedure
+         - Blinding considerations
+      
+      2. **Standard Care/Treatment**
+         - Current guideline-recommended treatment
+         - Usual care protocols
+      
+      3. **Alternative Active Treatment**
+         - Different drug/dose/intervention
+         - Head-to-head comparison
+      
+      4. **No Treatment**
+         - Watchful waiting
+         - Natural history observation
+      
+      5. **Dose Comparison**
+         - Different doses of same intervention
+      
+      ## Key Questions
+      
+      - Is a comparator mentioned?
+      - Is the comparator appropriate for the research question?
+      - Is the comparator as well-defined as the intervention?
+      - Are ethical considerations addressed (especially for no-treatment controls)?
+    
+    examples:
+      clear:
+        - query: "Metformin vs placebo in prediabetic adults"
+          explanation: "Clear active intervention (metformin) vs inert control (placebo)"
+        
+        - query: "New anticoagulant compared to warfarin (standard care) in atrial fibrillation"
+          explanation: "Novel treatment vs established standard of care explicitly stated"
+        
+        - query: "High-intensity statins vs moderate-intensity statins in secondary prevention"
+          explanation: "Head-to-head comparison of two active dose strategies"
+      
+      needs_refinement:
+        - query: "Effects of new drug on blood pressure"
+          issue: "No comparison group mentioned"
+          missing: "Comparator specification"
+          suggested_question: "What will you compare the new drug against? (e.g., placebo, current standard treatment, another active drug)"
+        
+        - query: "Study of surgical intervention"
+          issue: "No comparison - surgery vs what?"
+          missing: "Control/comparison group"
+          suggested_question: "What is the comparison? (e.g., surgery vs medical management, surgery vs observation, one surgical technique vs another)"
+      
+      partial:
+        - query: "Cognitive therapy vs usual care in depression"
+          has: "Intervention (cognitive therapy) and comparison type (usual care)"
+          missing: "'Usual care' not defined - varies by setting and provider"
+          suggested_question: "Can you specify what 'usual care' includes in your setting? (e.g., medications only, supportive counseling, monitoring frequency)"
+        
+        - query: "New treatment compared to current options"
+          has: "Comparison concept mentioned"
+          missing: "Specific comparator not identified"
+          suggested_question: "What specific current treatment(s) will serve as the comparator? (e.g., specific drug names, specific procedures)"
+      
+      ambiguous:
+        - query: "Drug A versus control in hypertension"
+          issue: "'Control' could mean placebo, standard care, or no treatment"
+          suggested_question: "What does 'control' mean in your study? (placebo, standard antihypertensive therapy, or no treatment)"
+        
+        - query: "Intervention vs standard therapy"
+          issue: "'Standard therapy' varies by geography, guidelines, and time period"
+          suggested_question: "What specific treatment(s) constitute 'standard therapy' in your context? (e.g., specific drugs, specific guidelines)"
+    
+    response_format:
+      additional_fields:
+        is_complete: boolean
+        confidence: string
+        needs_user_input: boolean
+        comparison_mentioned: boolean
+        comparison_type: string
+        comparison_well_defined: boolean
+        comparison_appropriate: boolean
+        placebo_controlled: boolean
+        active_comparator: boolean
+        standard_care_defined: boolean
+        ethical_considerations_addressed: boolean
+        blinding_considerations_mentioned: boolean
+        comparison_completeness_score: float
+      
+      field_descriptions:
+        needs_refinement: "Whether the comparison/control needs additional clarification"
+        explanation: "Summary of the comparison analysis"
+        suggested_question: "Question to clarify the most critical comparison detail"
+        is_complete: "True if the comparison is fully specified"
+        confidence: "Confidence in this assessment (e.g., high/medium/low)"
+        needs_user_input: "True if further user guidance is required"
+        comparison_mentioned: "Whether any comparator is referenced"
+        comparison_type: "Type: placebo, standard_care, active_treatment, no_treatment, dose_comparison, none"
+        comparison_well_defined: "Whether comparator is as well-specified as the intervention"
+        comparison_appropriate: "Whether comparator choice is scientifically/ethically sound"
+        placebo_controlled: "Whether placebo is the comparator"
+        active_comparator: "Whether comparison is against another active treatment"
+        standard_care_defined: "If standard care, whether it's adequately defined"
+        ethical_considerations_addressed: "Whether ethical aspects of the control group are considered"
+        blinding_considerations_mentioned: "Whether blinding/masking is addressed"
+        comparison_completeness_score: "Overall specification score from 0-10"
+    
+    allow_follow_up: true
+    max_follow_ups: 2
+    
+    metadata:
+      domain: clinical_research
+      framework: PICO
+      pico_component: Comparison
+      priority: high
+      typical_order: 4
+      estimated_completion_time_seconds: 45
+
+  # ========================================
+  # O - OUTCOMES
+  # ========================================
+  
+  - id: primary_outcomes
+    name: Primary Outcomes
+    description: |
+      Specifies the main outcomes of interest including measurement methods,
+      timepoints, and clinical significance thresholds.
+    
+    depends_on:
+      - intervention_specification
+      - population_clinical_profile
+    
+    analysis_prompt: |
+      **Query to Analyze:** "{query}"
+      
+      # TASK: Primary Outcome Analysis
+      
+      Analyze whether primary outcomes are adequately specified.
+      
+      ## Outcome Dimensions
+      
+      1. **Outcome Type**
+         - Clinical outcomes (mortality, morbidity)
+         - Surrogate/biomarker outcomes
+         - Patient-reported outcomes (PROs)
+         - Functional outcomes
+         - Safety/adverse events
+      
+      2. **Measurement Method**
+         - Specific instruments/scales
+         - Laboratory tests
+         - Imaging modalities
+         - Validated questionnaires
+      
+      3. **Timepoint(s)**
+         - When outcomes measured
+         - Follow-up duration
+         - Multiple assessment points
+      
+      4. **Clinical Significance**
+         - Minimal clinically important difference (MCID)
+         - Target effect size
+         - Superiority vs non-inferiority
+      
+      5. **Primary vs Secondary**
+         - Is primary outcome identified?
+         - Are secondary outcomes distinguished?
+    
+    examples:
+      clear:
+        - query: "Effect of intervention on all-cause mortality at 5 years"
+          explanation: "Specific outcome (all-cause mortality), clear timepoint (5 years)"
+        
+        - query: "Change in HbA1c from baseline to 6 months, with target reduction ≥0.5%"
+          explanation: "Specific biomarker (HbA1c), timeframe (baseline to 6 months), clinical significance threshold (≥0.5%)"
+        
+        - query: "Quality of life measured by SF-36 at 3, 6, and 12 months post-intervention"
+          explanation: "Specific validated instrument (SF-36), multiple timepoints (3, 6, 12 months)"
+      
+      needs_refinement:
+        - query: "Study on treatment effectiveness"
+          issue: "'Effectiveness' not defined - needs specific measurable outcome"
+          missing: "Specific outcome measure, measurement method, timepoint"
+          suggested_question: "How will you measure effectiveness? (e.g., specific clinical outcomes, biomarkers, patient-reported measures)"
+        
+        - query: "Research on improving patient outcomes"
+          issue: "'Outcomes' is vague - could mean dozens of different measures"
+          missing: "Specific outcome(s), measurement tools, assessment timing"
+          suggested_question: "What specific outcome(s) will you measure? When will they be assessed?"
+        
+        - query: "Trial measuring quality of life improvement"
+          issue: "QOL mentioned but no instrument specified"
+          missing: "QOL instrument, measurement timepoints, MCID"
+          suggested_question: "Which quality of life instrument will you use? (e.g., SF-36, EQ-5D, disease-specific) When will you assess it?"
+      
+      partial:
+        - query: "Effect on blood pressure reduction"
+          has: "General outcome category (blood pressure)"
+          missing: "Specific BP parameter (systolic, diastolic, mean arterial), target reduction, measurement protocol, timepoint"
+          suggested_question: "Which BP parameter? (systolic, diastolic, or both) What measurement protocol? When will it be assessed?"
+        
+        - query: "Change in depression scores using validated scales"
+          has: "Outcome type (depression), mentions validation"
+          missing: "Specific scale, timepoints, MCID"
+          suggested_question: "Which depression scale? (PHQ-9, Beck Depression Inventory, HAM-D) At what timepoints? What change is clinically meaningful?"
+      
+      ambiguous:
+        - query: "Study on long-term outcomes of surgery"
+          issue: "'Long-term' is relative (could be 1 year or 10 years), 'outcomes' unspecified"
+          suggested_question: "What is the follow-up duration? What specific outcomes will you measure? (e.g., survival, complications, functional status)"
+        
+        - query: "Research on significant improvement in symptoms"
+          issue: "'Significant' (statistical vs clinical?) and 'symptoms' (which ones?) both vague"
+          suggested_question: "Which specific symptoms? How will you measure them? What defines a clinically meaningful improvement?"
+    
+    response_format:
+      additional_fields:
+        is_complete: boolean
+        confidence: string
+        needs_user_input: boolean
+        outcome_specified: boolean
+        outcome_type: string
+        measurement_method_specified: boolean
+        measurement_method_validated: boolean
+        timepoint_specified: boolean
+        timepoint_appropriate: boolean
+        multiple_timepoints: boolean
+        clinical_significance_defined: boolean
+        primary_outcome_identified: boolean
+        outcome_relevance_to_patients: string
+        outcome_feasibility: string
+        outcome_completeness_score: float
+      
+      field_descriptions:
+        needs_refinement: "Whether the outcome definition needs additional clarification"
+        explanation: "Summary of the outcome analysis"
+        suggested_question: "Question that best resolves the outcome ambiguity"
+        is_complete: "True if outcome specification is ready to use"
+        confidence: "Confidence in this assessment (e.g., high/medium/low)"
+        needs_user_input: "True if more information from the user is required"
+        outcome_specified: "Whether specific outcome(s) are named"
+        outcome_type: "Category: clinical, surrogate, patient-reported, functional, safety"
+        measurement_method_specified: "Whether measurement instrument/method is described"
+        measurement_method_validated: "Whether validated instruments are referenced"
+        timepoint_specified: "Whether assessment timing is mentioned"
+        timepoint_appropriate: "Whether the timepoint is reasonable for expected effect"
+        multiple_timepoints: "Whether longitudinal assessment is planned"
+        clinical_significance_defined: "Whether MCID or target effect size is specified"
+        primary_outcome_identified: "Whether the primary outcome is distinguished from secondary"
+        outcome_relevance_to_patients: "Assessment of patient-centered relevance (high/medium/low)"
+        outcome_feasibility: "Assessment of measurement feasibility (high/medium/low)"
+        outcome_completeness_score: "Overall specification score from 0-10"
+    
+    allow_follow_up: true
+    max_follow_ups: 3
+    
+    metadata:
+      domain: clinical_research
+      framework: PICO
+      pico_component: Outcome
+      priority: critical
+      typical_order: 5
+      estimated_completion_time_seconds: 60
+      common_pitfalls:
+        - "Using vague terms like 'improvement' without specifying how measured"
+        - "Not specifying measurement instruments for subjective outcomes"
+        - "Omitting timepoints for outcome assessment"
+        - "Not distinguishing primary from secondary outcomes"
+        - "Using only surrogate outcomes when clinical outcomes are feasible"
+
+  # ========================================
+  # STUDY DESIGN & CONTEXT
+  # ========================================
+  
+  - id: study_design_context
+    name: Study Design & Methodological Context
+    description: |
+      Clarifies the intended study design, setting, sample size considerations,
+      and methodological approach. Helps determine feasibility and appropriate
+      statistical methods.
+    
+    depends_on:
+      - population_demographics
+      - intervention_specification
+      - comparison_group
+      - primary_outcomes
+    
+    analysis_prompt: |
+      **Query to Analyze:** "{query}"
+      
+      # TASK: Study Design & Context Analysis
+      
+      Analyze whether study design and methodological context are specified.
+      
+      ## Design Dimensions
+      
+      1. **Study Type**
+         - RCT (parallel, crossover, cluster)
+         - Observational (cohort, case-control)
+         - Systematic review/meta-analysis
+         - Pragmatic trial
+      
+      2. **Setting**
+         - Healthcare setting type
+         - Geographic scope
+         - Single-center vs multi-center
+      
+      3. **Sample Size**
+         - Target enrollment
+         - Sample size rationale
+         - Power considerations
+      
+      4. **Duration**
+         - Study timeline
+         - Recruitment period
+         - Follow-up length
+      
+      5. **Special Considerations**
+         - Blinding/masking
+         - Randomization method
+         - Statistical approach
+         - Interim analyses
+    
+    examples:
+      clear:
+        - query: "Multicenter RCT of drug A vs placebo in 500 patients with 12-month follow-up"
+          explanation: "Study type (RCT), setting (multicenter), sample size (500), duration (12 months) all specified"
+        
+        - query: "Double-blind placebo-controlled parallel-group trial across 20 US academic medical centers"
+          explanation: "Design details (double-blind, placebo-controlled, parallel), setting (20 academic centers, US location)"
+      
+      needs_refinement:
+        - query: "Study comparing two treatments"
+          issue: "Study design not specified"
+          missing: "Study type, setting, duration"
+          suggested_question: "What study design? (e.g., randomized controlled trial, observational cohort, systematic review)"
+      
+      partial:
+        - query: "RCT comparing interventions in hospital setting"
+          has: "Study type (RCT), general setting (hospital)"
+          missing: "Sample size, duration, specific hospital type, blinding approach"
+          suggested_question: "What is your target sample size? Study duration? Single-center or multi-center?"
+    
+    response_format:
+      additional_fields:
+        is_complete: boolean
+        confidence: string
+        needs_user_input: boolean
+        study_design_specified: boolean
+        study_design_type: string
+        setting_specified: boolean
+        multicenter: boolean
+        sample_size_mentioned: boolean
+        sample_size_justified: boolean
+        study_duration_specified: boolean
+        blinding_specified: boolean
+        randomization_mentioned: boolean
+        statistical_approach_mentioned: boolean
+        feasibility_assessment: string
+        design_completeness_score: float
+      
+      field_descriptions:
+        needs_refinement: "Whether the study design needs additional clarification"
+        explanation: "Summary of the study design analysis"
+        suggested_question: "Question that resolves the key design uncertainty"
+        is_complete: "True if study design context is sufficiently specified"
+        confidence: "Confidence in this assessment (e.g., high/medium/low)"
+        needs_user_input: "True if more input from the user is required"
+        study_design_specified: "Whether study design type is mentioned"
+        study_design_type: "Type: RCT, cohort, case-control, meta-analysis, other"
+        setting_specified: "Whether study setting is described"
+        multicenter: "Whether this is a multi-site study"
+        sample_size_mentioned: "Whether target enrollment is indicated"
+        sample_size_justified: "Whether a sample size rationale is provided"
+        study_duration_specified: "Whether timeline is mentioned"
+        blinding_specified: "Whether blinding/masking is addressed"
+        randomization_mentioned: "Whether randomization approach is specified"
+        statistical_approach_mentioned: "Whether analysis methods are referenced"
+        feasibility_assessment: "Overall feasibility (high/medium/low/unclear)"
+        design_completeness_score: "Overall specification score from 0-10"
+    
+    allow_follow_up: true
+    max_follow_ups: 2
+    
+    metadata:
+      domain: clinical_research
+      framework: PICO
+      pico_component: Study_Design
+      priority: medium
+      typical_order: 6
+      estimated_completion_time_seconds: 45
