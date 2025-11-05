@@ -1,5 +1,3 @@
-__version__ = "0.1.0"
-
 """
 Query refinement chatbot
 
@@ -20,7 +18,7 @@ The module is organized into several layers:
     - Type definitions and protocols
 
 3. **Providers** (providers.py):
-    - Implementation of tracing providers and emitters
+    - Implementation of tracing providers, emitters, and session storage adapters
 
 4. **Core Refinement Logic** (core.py):
     - Main classes and functions for query refinement (QueryRefinementManager)
@@ -31,9 +29,12 @@ The module is organized into several layers:
     - Async-friendly service facade for integrations
     - Typed request/response models for API exposure
     - Session persistence via the storage interface
+"""
 
+__version__ = "0.1.0"
 
 from .core import QueryRefinementManager, QueryRefinementSession
+from .providers import InMemorySessionStorage, RedisSessionStorage
 from .service import QueryRefinementService
 from .api_models import (
     SessionCreateRequest,
@@ -48,6 +49,8 @@ __all__ = [
     "QueryRefinementManager",
     "QueryRefinementSession",
     "QueryRefinementService",
+    "InMemorySessionStorage",
+    "RedisSessionStorage",
     "SessionCreateRequest",
     "SessionCreateResponse",
     "InteractionRequest",
@@ -55,4 +58,3 @@ __all__ = [
     "SessionStatusResponse",
     "NextPrompt",
 ]
-"""

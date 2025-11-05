@@ -1,14 +1,23 @@
 import logging
+import pickle
+import threading
 from contextlib import contextmanager
-from typing import Any, Optional, Dict
+from typing import Any, Dict, Optional
 
 __all__ = [
     "NoOpTracingProvider",
     "ConsoleTracing",
     "TraceEventEmitter",
+    "InMemorySessionStorage",
+    "RedisSessionStorage",
 ]
 
-from .interfaces import TracingProviderInterface
+try:  # pragma: no cover - validated at runtime when Redis storage is instantiated
+    import redis  # type: ignore[import]
+except ImportError:  # pragma: no cover - handled with explicit runtime error
+    redis = None
+
+from .interfaces import SessionStorageInterface, TracingProviderInterface
 
 # ========
 # Tracing Utilities
@@ -86,6 +95,69 @@ class ConsoleTracing(TracingProviderInterface):
 
     def is_enabled(self) -> bool:
         return True
+
+
+# ========
+# Session Storage Implementations
+# ========
+
+
+class InMemorySessionStorage(SessionStorageInterface):
+    """Thread-safe in-memory session storage.
+
+    Suitable for tests and single-process deployments.
+    """
+
+    def __init__(self) -> None:
+        self._sessions: Dict[str, Any] = {}
+        self._lock = threading.RLock()
+
+    def save_session(self, session_id: str, session: Any) -> None:
+        with self._lock:
+            self._sessions[session_id] = session
+
+    def load_session(self, session_id: str) -> Any:
+        with self._lock:
+            if session_id not in self._sessions:
+                raise KeyError(session_id)
+            return self._sessions[session_id]
+
+    def delete_session(self, session_id: str) -> None:
+        with self._lock:
+            self._sessions.pop(session_id, None)
+
+    def session_exists(self, session_id: str) -> bool:
+        with self._lock:
+            return session_id in self._sessions
+
+
+class RedisSessionStorage(SessionStorageInterface):
+    """Redis-backed session persistence using pickle serialization."""
+
+    def __init__(self, client: Any, namespace: str = "refinement:sessions") -> None:
+        if redis is None:
+            raise RuntimeError("redis package is required for RedisSessionStorage")
+        self._client = client
+        self._namespace = namespace.rstrip(":")
+
+    def _key(self, session_id: str) -> str:
+        return f"{self._namespace}:{session_id}"
+
+    def save_session(self, session_id: str, session: Any) -> None:
+        payload = pickle.dumps(session, protocol=pickle.HIGHEST_PROTOCOL)
+        self._client.set(self._key(session_id), payload)
+
+    def load_session(self, session_id: str) -> Any:
+        raw = self._client.get(self._key(session_id))
+        if raw is None:
+            raise KeyError(session_id)
+        return pickle.loads(raw)
+
+    def delete_session(self, session_id: str) -> None:
+        self._client.delete(self._key(session_id))
+
+    def session_exists(self, session_id: str) -> bool:
+        return bool(self._client.exists(self._key(session_id)))
     
 
 
