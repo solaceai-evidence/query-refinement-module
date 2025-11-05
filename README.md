@@ -15,6 +15,7 @@ pip install query-refinement-module
 - Structured-response validation with automated retries
 - Built-in follow-up history, summaries, and conversation exports
 - Tracing hooks through `TraceEventEmitter` and providers
+- Session storage adapters (in-memory, Redis) for quick persistence choices
 
 ## Quick Start
 
@@ -157,4 +158,35 @@ business = registry.get_framework("business_analysis")
 - [docs/api_integration_guide.md](docs/api_integration_guide.md) — wiring providers, analyzers, and tracing
 - [docs/user_commands.md](docs/user_commands.md) — interactive command reference
 - [examples/](examples/) — sample frameworks and YAML snippets
+
+## Session Storage Options
+
+```python
+from query_refinement_module import (
+  QueryRefinementService,
+  InMemorySessionStorage,
+  RedisSessionStorage,
+)
+```
+
+- `InMemorySessionStorage`: ideal for unit tests or single-process deployments.
+- `RedisSessionStorage`: requires `redis` (Python library) and a running Redis instance.
+
+Spin up Redis quickly with Docker:
+
+```bash
+docker run --name refinement-redis -p 6379:6379 -d redis:7-alpine
+```
+
+Then configure the service:
+
+```python
+import redis
+
+redis_client = redis.Redis(host="localhost", port=6379)
+storage = RedisSessionStorage(redis_client)
+service = QueryRefinementService(manager, storage)
+```
+
+When Redis is unavailable, substitute `InMemorySessionStorage()`, understanding sessions reset on process restart.
 

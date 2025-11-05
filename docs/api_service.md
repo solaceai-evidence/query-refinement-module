@@ -37,6 +37,29 @@ All payloads keep client responsibilities minimal: the client only sends the raw
 
 `QueryRefinementService` depends on `SessionStorageInterface`, which allows implementers to back sessions with Redis, Postgres, in-memory caches, etc. All storage calls are wrapped in `asyncio.to_thread` to keep the public API awaitable.
 
+Out of the box the package ships with two adapters you can wire in immediately:
+
+- `InMemorySessionStorage` — thread-safe dictionary suitable for tests and single-process demos.
+- `RedisSessionStorage` — serializes sessions with `pickle` and persists them under a configurable namespace. Pass an instance of `redis.Redis` (sync client).
+
+### Quick Redis bootstrap (Docker)
+
+```bash
+docker run --name refinement-redis -p 6379:6379 -d redis:7-alpine
+```
+
+Then instantiate the storage in your application startup:
+
+```python
+import redis
+from query_refinement_module import RedisSessionStorage
+
+redis_client = redis.Redis(host="localhost", port=6379, decode_responses=False)
+storage = RedisSessionStorage(redis_client)
+```
+
+For environments without Redis, fall back to `InMemorySessionStorage` while acknowledging that sessions vanish on process restart.
+
 ## Extensibility
 
 - Additional endpoints (e.g., webhook registration, streaming events) can be layered on top without touching the core manager.
