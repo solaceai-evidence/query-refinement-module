@@ -36,8 +36,9 @@ __version__ = "0.1.0"
 from .cli import build_manager as build_cli_manager, main as cli_main, run_cli
 from .core import QueryRefinementManager, QueryRefinementSession
 from .providers import InMemorySessionStorage, LiteLLMProvider, RedisSessionStorage
-from .service import QueryRefinementService
+from .service import QueryRefinementService, build_manager_from_env
 from .analyzers import LLMQueryAnalyzer
+from .settings import LLMSettings
 from .api_models import (
     SessionCreateRequest,
     SessionCreateResponse,
@@ -58,6 +59,8 @@ __all__ = [
     "cli_main",
     "run_cli",
     "build_cli_manager",
+    "build_manager_from_env",
+    "LLMSettings",
     "SessionCreateRequest",
     "SessionCreateResponse",
     "InteractionRequest",

@@ -6,6 +6,7 @@ import asyncio
 import uuid
 from typing import Callable, Optional
 
+from .analyzers import LLMQueryAnalyzer
 from .api_models import (
     InteractionRequest,
     InteractionResponse,
@@ -20,7 +21,27 @@ from .core import (
     is_user_command,
     parse_user_command,
 )
-from .interfaces import SessionStorageInterface
+from .interfaces import SessionStorageInterface, TracingProviderInterface
+from .providers import LiteLLMProvider
+from .settings import LLMSettings
+
+
+def build_manager_from_env(
+    *,
+    settings: Optional[LLMSettings] = None,
+    tracing_provider: Optional[TracingProviderInterface] = None,
+) -> QueryRefinementManager:
+    """Construct a ``QueryRefinementManager`` using environment-driven LLM settings."""
+
+    resolved_settings = settings or LLMSettings.from_env()
+    provider = LiteLLMProvider(**resolved_settings.as_provider_kwargs())
+    analyzer = LLMQueryAnalyzer(provider, **resolved_settings.as_analyzer_kwargs())
+
+    return QueryRefinementManager(
+        llm_provider=provider,
+        query_analyzer=analyzer,
+        tracing_provider=tracing_provider,
+    )
 
 
 class QueryRefinementService:
