@@ -18,10 +18,10 @@ pico:
     
     response_format:
       type: json
-      schema:
-        needs_refinement: boolean
-        reason: string
-        suggested_question: string
+      field_descriptions:
+        needs_refinement: "Whether the population needs clarification"
+        explanation: "Brief explanation of the population analysis"
+        suggested_question: "Specific question to ask when clarification is required"
     
     allow_follow_up: true
     max_follow_ups: 2
@@ -47,10 +47,10 @@ pico:
     
     response_format:
       type: json
-      schema:
-        needs_refinement: boolean
-        reason: string
-        suggested_question: string
+      field_descriptions:
+        needs_refinement: "Whether the intervention needs clarification"
+        explanation: "Brief explanation of the intervention analysis"
+        suggested_question: "Specific question to ask about intervention details"
     
     allow_follow_up: true
     max_follow_ups: 2
@@ -77,10 +77,10 @@ pico:
     
     response_format:
       type: json
-      schema:
-        needs_refinement: boolean
-        reason: string
-        suggested_question: string
+      field_descriptions:
+        needs_refinement: "Whether a comparison/control needs clarification"
+        explanation: "Brief explanation of the comparison analysis"
+        suggested_question: "Focused follow-up question about the comparison"
     
     allow_follow_up: true
     max_follow_ups: 1
@@ -106,10 +106,10 @@ pico:
     
     response_format:
       type: json
-      schema:
-        needs_refinement: boolean
-        reason: string
-        suggested_question: string
+      field_descriptions:
+        needs_refinement: "Whether the outcome specification needs clarification"
+        explanation: "Brief explanation of the outcome analysis"
+        suggested_question: "Specific question to refine outcome details"
     
     allow_follow_up: true
     max_follow_ups: 2

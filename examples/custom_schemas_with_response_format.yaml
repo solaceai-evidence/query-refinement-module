@@ -31,15 +31,12 @@ my_enhanced_schema:
     # Response format defined separately for consistency
     response_format:
       type: json
-      schema:
-        needs_refinement: true
-        reason: "Brief explanation"
-        suggested_question: "Question to ask user"
-        confidence: 0.85
+      additional_fields:
+        confidence: float
       field_descriptions:
-        needs_refinement: "Boolean indicating if this dimension needs user clarification"
-        reason: "Brief explanation of why refinement is or isn't needed"
-        suggested_question: "Specific question to ask the user (null if needs_refinement is false)"
+        needs_refinement: "Whether temporal clarity needs user clarification"
+        explanation: "Brief explanation of why refinement is or isn't needed"
+        suggested_question: "Specific question to ask the user (use empty string if needs_refinement is false)"
         confidence: "Confidence score 0.0-1.0 for the analysis (optional)"
     
     allow_follow_up: true
@@ -79,15 +76,12 @@ my_enhanced_schema:
     
     response_format:
       type: json
-      schema:
-        needs_refinement: false
-        reason: "string"
-        suggested_question: null
-        identified_locations: []
+      additional_fields:
+        identified_locations: array
       field_descriptions:
         needs_refinement: "Whether geographic scope needs clarification"
-        reason: "Explanation of the analysis"
-        suggested_question: "Question for the user (null if not needed)"
+        explanation: "Explanation of the analysis"
+        suggested_question: "Question for the user (use empty string if not needed)"
         identified_locations: "List of any locations mentioned in the query"
     
     allow_follow_up: false
@@ -124,17 +118,14 @@ my_enhanced_schema:
     
     response_format:
       type: json
-      schema:
-        needs_refinement: true
-        reason: "string"
-        status: "CLEAR"
-        suggested_question: "string"
-        inferred_fields: []
+      additional_fields:
+        status: string
+        inferred_fields: array
       field_descriptions:
         needs_refinement: "Whether field clarification is needed"
-        reason: "Analysis explanation"
-        status: "One of: CLEAR, AMBIGUOUS, MISSING"
+        explanation: "Analysis explanation"
         suggested_question: "Question with field options"
+        status: "One of: CLEAR, AMBIGUOUS, MISSING"
         inferred_fields: "List of fields inferred from the query"
     
     allow_follow_up: true
@@ -180,17 +171,14 @@ pico_enhanced:
     
     response_format:
       type: json
-      schema:
-        needs_refinement: false
-        reason: "string"
-        suggested_question: null
-        identified_population: "string or null"
-        specificity_level: "specific"
+      additional_fields:
+        identified_population: string
+        specificity_level: string
       field_descriptions:
         needs_refinement: "Whether population needs clarification"
-        reason: "Explanation of the population analysis"
+        explanation: "Explanation of the population analysis"
         suggested_question: "Question to refine population definition"
-        identified_population: "The population identified in the query (if any)"
+        identified_population: "The population identified in the query (use empty string if none)"
         specificity_level: "One of: specific, moderate, vague, missing"
     
     allow_follow_up: true
@@ -222,18 +210,15 @@ pico_enhanced:
     
     response_format:
       type: json
-      schema:
-        needs_refinement: true
-        reason: "string"
-        suggested_question: "string"
-        intervention_type: "treatment"
-        details_provided: {}
+      additional_fields:
+        intervention_type: string
+        details_provided: object
       field_descriptions:
         needs_refinement: "Whether intervention needs clarification"
-        reason: "Analysis explanation"
+        explanation: "Analysis explanation"
         suggested_question: "Question about intervention details"
         intervention_type: "Type of intervention (drug, procedure, behavioral, etc.)"
-        details_provided: "Dict of intervention details found (dosage, duration, etc.)"
+        details_provided: "Dictionary of intervention details found (dosage, duration, etc.)"
     
     allow_follow_up: true
     max_follow_ups: 2
@@ -265,17 +250,14 @@ pico_enhanced:
     
     response_format:
       type: json
-      schema:
-        needs_refinement: false
-        reason: "string"
-        suggested_question: null
-        identified_outcomes: []
-        outcome_specificity: "specific"
+      additional_fields:
+        identified_outcomes: array
+        outcome_specificity: string
       field_descriptions:
         needs_refinement: "Whether outcome needs clarification"
-        reason: "Explanation of outcome analysis"
+        explanation: "Explanation of outcome analysis"
         suggested_question: "Question about outcome measures"
-        identified_outcomes: "List of outcomes mentioned in query"
+        identified_outcomes: "List of outcomes mentioned in the query"
         outcome_specificity: "One of: specific, moderate, vague, missing"
     
     allow_follow_up: true
@@ -318,18 +300,15 @@ legal_enhanced:
     
     response_format:
       type: json
-      schema:
-        needs_refinement: true
-        reason: "string"
-        suggested_question: "string"
-        identified_jurisdiction: null
-        jurisdiction_level: "unspecified"
-        confidence: 0.5
+      additional_fields:
+        identified_jurisdiction: string
+        jurisdiction_level: string
+        confidence: float
       field_descriptions:
         needs_refinement: "Whether jurisdiction needs clarification"
-        reason: "Analysis explanation"
+        explanation: "Analysis explanation"
         suggested_question: "Question about jurisdiction"
-        identified_jurisdiction: "Jurisdiction inferred from query (if any)"
+        identified_jurisdiction: "Jurisdiction inferred from the query (use empty string if none)"
         jurisdiction_level: "One of: federal, state, local, international, unspecified"
         confidence: "Confidence in jurisdiction inference (0.0-1.0)"
     
@@ -377,18 +356,15 @@ legal_enhanced:
     
     response_format:
       type: json
-      schema:
-        needs_refinement: true
-        reason: "string"
-        suggested_question: "string"
-        likely_source_types: []
-        requires_multiple_sources: false
+      additional_fields:
+        likely_source_types: array
+        requires_multiple_sources: boolean
       field_descriptions:
         needs_refinement: "Whether source type needs clarification"
-        reason: "Analysis explanation"
+        explanation: "Analysis explanation"
         suggested_question: "Question about source types with context-aware options"
-        likely_source_types: "List of probable source types based on query"
-        requires_multiple_sources: "Whether query likely needs multiple source types"
+        likely_source_types: "List of probable source types based on the query"
+        requires_multiple_sources: "Whether the query likely needs multiple source types"
     
     allow_follow_up: true
     max_follow_ups: 2
@@ -419,26 +395,15 @@ structured_response_example:
     # Alternative: structured text response format
     response_format:
       type: structured
-      fields:
-        - name: needs_refinement
-          type: boolean
-          required: true
-          description: "Whether methodology needs clarification"
-        
-        - name: methodology_found
-          type: string
-          required: false
-          description: "Any methodology mentioned in the query"
-        
-        - name: suggested_question
-          type: string
-          required: true
-          description: "Question to ask about methodology"
-        
-        - name: relevant_methods
-          type: list
-          required: false
-          description: "List of methodology types relevant to this query"
+      additional_fields:
+        methodology_found: string
+        relevant_methods: array
+      field_descriptions:
+        needs_refinement: "Whether methodology needs clarification"
+        explanation: "Brief explanation of the methodology assessment"
+        suggested_question: "Question to ask about methodology"
+        methodology_found: "Any methodology mentioned in the query"
+        relevant_methods: "List of methodology types relevant to this query"
     
     allow_follow_up: true
     max_follow_ups: 2

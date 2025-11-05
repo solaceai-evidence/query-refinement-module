@@ -2,7 +2,7 @@
 # ========================================================================
 # 
 # This is a comprehensive template demonstrating best practices for designing
-# custom schemas with the RefinementDimension class.
+# custom schemas with the RefinementAspect class.
 #
 # PICO Framework:
 # - Population/Patient: Who are the subjects of the study?

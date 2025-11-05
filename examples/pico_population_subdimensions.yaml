@@ -19,6 +19,46 @@ pico_population_subdimensions:
       4. Geographic region or population setting
       
       [Focused prompt continues...]
+    
+    # Examples for few-shot learning - helps LLM understand patterns
+    examples:
+      clear:
+        - query: "Does aerobic exercise reduce depression in adults aged 18-65?"
+          explanation: "Age range clearly specified (18-65), adult population identified"
+        - query: "Efficacy of statins in postmenopausal women with hyperlipidemia"
+          explanation: "Gender (women), life stage (postmenopausal) clearly defined"
+        - query: "Outcomes of cognitive therapy in elderly patients 75+ years in nursing homes"
+          explanation: "Age threshold (75+), setting (nursing homes), and population (elderly) all clear"
+      
+      needs_refinement:
+        - query: "Does exercise help with depression in adults?"
+          issue: "No age range specified - 'adults' is too broad (18-100?)"
+          suggested_question: "What age range are you interested in? For example, young adults (18-35), middle-aged (36-64), or older adults (65+)?"
+        - query: "Treatment outcomes in patients with diabetes"
+          issue: "No demographic context - missing age, gender, setting"
+          suggested_question: "Can you specify the demographic characteristics? For instance: age range, gender, or care setting?"
+        - query: "Study on medication adherence in elderly population"
+          issue: "'Elderly' is vague - could mean 65+, 70+, 75+, or 80+"
+          suggested_question: "What age threshold defines 'elderly' for your research? (e.g., 65+, 75+)"
+      
+      partial:
+        - query: "Effects of diet intervention in women over 40"
+          has: "Gender (women) and minimum age (40)"
+          missing: "No upper age limit, ethnicity, or geographic scope"
+          suggested_question: "Is there a specific upper age limit or geographic region you're focusing on?"
+        - query: "Hypertension management in urban African American populations"
+          has: "Ethnicity (African American) and setting (urban)"
+          missing: "No age range specified"
+          suggested_question: "What age range are you targeting for this study?"
+      
+      ambiguous:
+        - query: "Intervention effectiveness in middle-aged adults"
+          issue: "'Middle-aged' is ambiguous - typically 40-65, but varies by source"
+          suggested_question: "Can you specify the exact age range you consider 'middle-aged'?"
+        - query: "Study in diverse patient populations"
+          issue: "'Diverse' is vague - diverse in what way? Age, ethnicity, geography?"
+          suggested_question: "What diversity dimensions are important for your research? (age, ethnicity, gender, geography)"
+    
     response_format:
       additional_fields:
         age_specified: boolean
@@ -53,6 +93,28 @@ pico_population_subdimensions:
       4. Diagnostic criteria used
       
       [Focused prompt continues...]
+    
+    examples:
+      clear:
+        - query: "Efficacy of chemotherapy in stage III colorectal cancer patients"
+          explanation: "Disease (colorectal cancer) and stage (III) clearly specified"
+        - query: "Management of acute severe asthma exacerbations in emergency settings"
+          explanation: "Condition (asthma), phase (acute), and severity (severe) all defined"
+      
+      needs_refinement:
+        - query: "Treatment for diabetes patients"
+          issue: "Type of diabetes not specified (Type 1, Type 2, gestational?)"
+          suggested_question: "What type of diabetes are you focusing on? (Type 1, Type 2, gestational, or other)"
+        - query: "Outcomes in cancer patients"
+          issue: "No cancer type or stage specified"
+          suggested_question: "Which cancer type and stage are you interested in?"
+      
+      partial:
+        - query: "Effects of medication in moderate depression"
+          has: "Condition (depression) and severity (moderate)"
+          missing: "No specification of depression type (major, persistent, etc.)"
+          suggested_question: "Are you focusing on a specific depression subtype? (e.g., major depressive disorder, persistent depressive disorder)"
+    
     response_format:
       additional_fields:
         diagnosis_specificity: string
@@ -76,7 +138,30 @@ pico_population_subdimensions:
     analysis_prompt: |
       # TASK: Comorbidities and Medical History Analysis
       
-      [Focused prompt on comorbidities only...]
+      Analyze if the query specifies relevant comorbidities and medical history.
+      
+      Query: {query}
+      
+      Focus on comorbidity dimensions and prior treatment context.
+    
+    examples:
+      clear:
+        - query: "Effects of ACE inhibitors in diabetic patients with hypertension"
+          explanation: "Primary condition (diabetes) and comorbidity (hypertension) both specified"
+        - query: "Statin therapy in patients with CVD and no prior statin use"
+          explanation: "Condition clear and prior treatment history specified"
+      
+      needs_refinement:
+        - query: "Intervention in patients with multiple conditions"
+          issue: "No specific comorbidities mentioned"
+          suggested_question: "Which specific comorbidities are relevant to your study?"
+      
+      partial:
+        - query: "Treatment in heart failure patients with renal impairment"
+          has: "Primary condition (heart failure) and one comorbidity (renal impairment)"
+          missing: "Severity of renal impairment not specified"
+          suggested_question: "What level of renal impairment are you considering? (mild, moderate, severe)"
+    
     response_format:
       additional_fields:
         comorbidity_considerations: array
@@ -99,7 +184,30 @@ pico_population_subdimensions:
     analysis_prompt: |
       # TASK: Eligibility Criteria Analysis
       
-      [Focused prompt on specific inclusion/exclusion criteria...]
+      Analyze if the query specifies eligibility criteria clearly.
+      
+      Query: {query}
+      
+      Focus on inclusion/exclusion criteria and biomarker requirements.
+    
+    examples:
+      clear:
+        - query: "Trial for patients with HbA1c > 7.5% and BMI 25-40"
+          explanation: "Specific biomarker threshold (HbA1c) and BMI range clearly defined"
+        - query: "Study excluding patients on immunosuppressants or with active infection"
+          explanation: "Clear exclusion criteria specified"
+      
+      needs_refinement:
+        - query: "Study in patients with elevated markers"
+          issue: "Which markers? What elevation threshold?"
+          suggested_question: "Which biomarkers are you measuring, and what defines 'elevated'?"
+      
+      partial:
+        - query: "Patients with systolic BP > 140 mmHg"
+          has: "One specific inclusion criterion (BP threshold)"
+          missing: "Other eligibility criteria unclear"
+          suggested_question: "Are there other inclusion or exclusion criteria to specify?"
+    
     response_format:
       additional_fields:
         inclusion_criteria_specified: array
@@ -122,7 +230,30 @@ pico_population_subdimensions:
     analysis_prompt: |
       # TASK: Special Populations and Setting Analysis
       
-      [Focused prompt on special populations and logistics...]
+      Analyze if the query specifies special population considerations and study setting.
+      
+      Query: {query}
+      
+      Focus on special populations (e.g., pregnant, pediatric, elderly) and recruitment context.
+    
+    examples:
+      clear:
+        - query: "Study in pregnant women during second trimester in urban hospitals"
+          explanation: "Special population (pregnant) and setting (urban hospitals) clearly defined"
+        - query: "Trial recruiting elderly patients from nursing home facilities"
+          explanation: "Special population context and recruitment setting specified"
+      
+      needs_refinement:
+        - query: "Study in vulnerable populations"
+          issue: "Which vulnerable populations specifically?"
+          suggested_question: "Which vulnerable population groups are you focusing on? (e.g., pregnant women, children, immunocompromised)"
+      
+      partial:
+        - query: "Research in pediatric populations"
+          has: "Special population (pediatric) identified"
+          missing: "No setting or recruitment context specified"
+          suggested_question: "What is the study setting? (e.g., hospitals, clinics, community)"
+    
     response_format:
       additional_fields:
         special_populations_relevant: array

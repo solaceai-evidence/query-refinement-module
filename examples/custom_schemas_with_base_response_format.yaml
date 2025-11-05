@@ -1,5 +1,5 @@
 # ============================================================================
-# BASIC EXAMPLE: Using only base fields (needs_refinement, reason, suggested_question)
+# BASIC EXAMPLE: Using only base fields (needs_refinement, explanation, suggested_question)
 # ============================================================================
 basic_schema:
   - id: temporal_scope
