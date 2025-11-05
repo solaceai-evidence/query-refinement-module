@@ -62,20 +62,27 @@ For environments without Redis, fall back to `InMemorySessionStorage` while ackn
 
 ## LLM Provider Abstraction
 
-Use `LiteLLMProvider` together with `LLMQueryAnalyzer` for a vendor-neutral way to call OpenAI, Anthropic, Azure OpenAI, Groq, or any backend that [litellm](https://github.com/BerriAI/litellm) supports.
+Use `LLMSettings` to keep configuration centralized and shared with the CLI. The helper below wires together `LiteLLMProvider` and `LLMQueryAnalyzer` using the same environment variables.
 
 ```python
-from query_refinement_module import LiteLLMProvider, LLMQueryAnalyzer, QueryRefinementManager
+from query_refinement_module import LLMSettings, QueryRefinementService, build_manager_from_env
 
-llm = LiteLLMProvider(
-    default_model="gpt-4o-mini",
-    # api_key=None -> picked up from OPENAI_API_KEY / ANTHROPIC_API_KEY etc.
-)
-analyzer = LLMQueryAnalyzer(llm, temperature=0.0)
-manager = QueryRefinementManager(llm_provider=llm, query_analyzer=analyzer)
+settings = LLMSettings.from_env()
+manager = build_manager_from_env(settings=settings)
+
+service = QueryRefinementService(manager=manager, storage=your_storage_impl)
 ```
 
-Configure API keys via standard environment variables (`OPENAI_API_KEY`, `ANTHROPIC_API_KEY`, `AZURE_OPENAI_API_KEY`, etc.) or pass them directly into `LiteLLMProvider`. Optional kwargs such as `top_p`, `presence_penalty`, or `response_format` can be forwarded via the provider/analyzer constructors if your deployment needs custom settings.
+Populate the following environment variables (also documented in `.env_example`):
+
+- `QUERY_REFINEMENT_LLM_MODEL` (required)
+- `QUERY_REFINEMENT_LLM_API_KEY`
+- `QUERY_REFINEMENT_LLM_API_BASE`
+- `QUERY_REFINEMENT_LLM_TEMPERATURE`
+- `QUERY_REFINEMENT_LLM_MAX_TOKENS`
+- `QUERY_REFINEMENT_LLM_COMPLETION_KWARGS` (JSON object)
+
+Provider-specific secrets such as `OPENAI_API_KEY` or `ANTHROPIC_API_KEY` are still respected by [litellm](https://github.com/BerriAI/litellm). Any additional keyword arguments can be supplied via `QUERY_REFINEMENT_LLM_COMPLETION_KWARGS` (for example `{ "top_p": 0.8 }`).
 
 ## Extensibility
 
