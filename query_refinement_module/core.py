@@ -295,7 +295,9 @@ class QueryAspectRefiner:
                     missing_deps.append(dep_id)
 
             if context_lines:
-                analysis_prompt_context.append("Previous refinements:")
+                analysis_prompt_context.append(
+                    "Previous refinements (use these details when evaluating this aspect):"
+                )
                 analysis_prompt_context.extend(context_lines)
                 analysis_prompt_context.append("")  # Blank line
 
@@ -803,16 +805,15 @@ class QueryRefinementSession:
         
         lines = ["Refinement Steps:"]
         for i, step in enumerate(self.steps, 1):
-            # Determine status icon and text
             if step.is_complete and not step.needs_review:
-                status = "✓ completed"
+                status = "completed"
             elif step.needs_review:
-                status = "⚠ needs review"
+                status = "needs review"
             elif step == active:
-                status = "→ active"
+                status = "active"
             else:
-                status = "○ not started"
-            
+                status = "not started"
+
             followups = f" ({step.follow_up_count} follow-ups)" if step.follow_up_count > 0 else ""
             lines.append(f"  {i}. [{status}] {step.refinement_aspect.name}{followups}")
         
