@@ -32,7 +32,7 @@ pip install query-refinement-module
 
   ```bash
   poetry run query-refine --list-frameworks
-  poetry run query-refine --framework pico_clinical_research
+  poetry run query-refine --framework pico_advanced
   ```
 
 For programmatic use, build the manager from the environment-driven helpers so the CLI and service share the same configuration:
@@ -40,7 +40,7 @@ For programmatic use, build the manager from the environment-driven helpers so t
 ```python
 from query_refinement_module import build_manager_from_env, registry
 
-framework = registry.get_framework("pico_clinical_research")
+framework = registry.get_framework("pico_advanced")
 manager = build_manager_from_env()
 
 session = manager.initialize(
@@ -123,7 +123,7 @@ Define multiple frameworks in your YAML file:
 
 ```yaml
 # custom_frameworks.yaml
-medical_pico:
+medical_pico_advanced:
   - id: population
     name: Population
     # ... dimensions ...
@@ -144,7 +144,7 @@ Then use them:
 ```python
 from query_refinement_module.schema import registry
 
-pico = registry.get_framework("medical_pico")
+pico_advanced = registry.get_framework("medical_pico_advanced")
 legal = registry.get_framework("legal_research")
 business = registry.get_framework("business_analysis")
 ```
@@ -196,7 +196,7 @@ Explore the refinement flow locally without wiring an API:
 
 ```bash
 poetry run query-refine --list-frameworks                   # Inspect available schemas
-poetry run query-refine --framework pico_clinical_research  # Launch interactive session
+poetry run query-refine --framework pico_advanced  # Launch interactive session
 ```
 
 Set `REFINEMENT_FRAMEWORK_PATH` (or populate it in your `.env`) before running so the CLI can load your YAML definitions. During a session you can use commands such as `/help`, `/status`, `/back`, and `/goto 2` to navigate.
@@ -217,7 +217,7 @@ The CLI and API service now read the same environment-driven configuration via `
 Provider-specific secrets such as `OPENAI_API_KEY` or `ANTHROPIC_API_KEY` remain supported by [litellm](https://github.com/BerriAI/litellm). Once the environment is configured, simply run:
 
 ```bash
-poetry run query-refine --framework pico_clinical_research
+poetry run query-refine --framework pico_advanced
 ```
 
 No additional model flags are required—the CLI automatically reuses the configured LLM stack.
