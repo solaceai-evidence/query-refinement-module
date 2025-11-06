@@ -69,12 +69,28 @@ class LLMQueryAnalyzer(QueryAnalyzerInterface):
                 suggested_question=aspect.name,
             )
 
-        needs_refinement = self._coerce_bool(payload.get("needs_refinement", True))
+        if "needs_refinement" not in payload:
+            logger.warning(
+                "Analyzer response for aspect '%s' missing 'needs_refinement'; defaulting to manual refinement.",
+                aspect.id,
+            )
+            return AspectAnalysisResult(
+                needs_refinement=True,
+                explanation="Analyzer response missing required 'needs_refinement' field.",
+                suggested_question=aspect.name,
+            )
+
+        needs_refinement = self._coerce_bool(payload["needs_refinement"])
         explanation = payload.get("explanation") or ""
         suggested_question = payload.get("suggested_question")
 
-        if needs_refinement and not suggested_question:
-            suggested_question = aspect.name
+        if needs_refinement:
+            if not suggested_question:
+                logger.warning(
+                    "Analyzer response for aspect '%s' missing 'suggested_question'. Using aspect name as fallback.",
+                    aspect.id,
+                )
+                suggested_question = aspect.name
 
         return AspectAnalysisResult(
             needs_refinement=needs_refinement,

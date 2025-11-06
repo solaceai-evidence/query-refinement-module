@@ -139,6 +139,15 @@ def parse_args(argv: Optional[list[str]] = None) -> argparse.Namespace:
 def main(argv: Optional[list[str]] = None) -> None:
     args = parse_args(argv)
 
+    try:
+        registry.reload_from_env(raise_on_error=True)
+    except registry.FrameworkLoadError as exc:
+        print(f"Failed to load refinement frameworks: {exc}")
+        last_error = registry.get_last_load_error()
+        if last_error and str(exc) != last_error:
+            print(last_error)
+        return
+
     frameworks = registry.list_frameworks()
     if args.list_frameworks:
         if not frameworks:
