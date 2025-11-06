@@ -223,6 +223,16 @@ class LiteLLMProvider(LLMProviderInterface):
         if max_tokens is not None and "max_tokens" not in completion_kwargs:
             completion_kwargs["max_tokens"] = max_tokens
 
+        logger.info(
+            "Dispatching completion",
+            extra={
+                "llm_provider": "litellm",
+                "model": target_model,
+                "temperature": completion_kwargs.get("temperature"),
+                "max_tokens": completion_kwargs.get("max_tokens"),
+            },
+        )
+
         response = litellm.completion(
             model=target_model,
             messages=messages,
@@ -241,6 +251,15 @@ class LiteLLMProvider(LLMProviderInterface):
             "usage": usage,
             "response_id": response.get("id"),
         }
+
+        logger.info(
+            "Completion received",
+            extra={
+                "llm_provider": "litellm",
+                "model": target_model,
+                "total_tokens": total_tokens,
+            },
+        )
 
         return LLMCompletionResult(
             context=message,

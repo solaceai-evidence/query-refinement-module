@@ -9,7 +9,7 @@ This module handles:
 
 import os
 from pathlib import Path
-from typing import List, Dict, Any
+from typing import List, Dict, Any, Optional
 import logging
 
 from .model import RefinementAspect
@@ -21,10 +21,20 @@ __all__ = [
     "list_frameworks",
     "get_framework",
     "describe_framework",
+    "reload_from_env",
+    "get_last_load_error",
+    "FrameworkLoadError",
 ]
 
 
-def _load_refinement_framework() -> Dict[str, List[RefinementAspect]]:
+class FrameworkLoadError(RuntimeError):
+    """Raised when refinement frameworks cannot be loaded from the environment path."""
+
+
+_LAST_LOAD_ERROR: Optional[str] = None
+
+
+def _load_refinement_framework(*, raise_on_error: bool = False) -> Dict[str, List[RefinementAspect]]:
     """
     Load refinement framework from external YAML file specified by REFINEMENT_FRAMEWORK_PATH.
     
@@ -34,36 +44,56 @@ def _load_refinement_framework() -> Dict[str, List[RefinementAspect]]:
     Returns:
         Dictionary mapping framework names to lists of RefinementAspect objects
     """
+    global _LAST_LOAD_ERROR
     refinement_frameworks: Dict[str, List[RefinementAspect]] = {}
+    _LAST_LOAD_ERROR = None
     
     # Check if PyYAML is available
     try:
         import yaml
     except ImportError:
-        logger.error(
-            "PyYAML not installed. refinement framework require PyYAML. "
+        message = (
+            "PyYAML not installed. refinement frameworks require PyYAML. "
             "Install with: pip install pyyaml"
         )
+        _LAST_LOAD_ERROR = message
+        logger.error(message)
+        if raise_on_error:
+            raise FrameworkLoadError(message)
         return refinement_frameworks
     
     # Get path from environment variable
     env_path = os.getenv("REFINEMENT_FRAMEWORK_PATH")
     if not env_path:
-        logger.error(
+        message = (
             "REFINEMENT_FRAMEWORK_PATH environment variable not set. "
             "Please set it to the path of your refinement framework YAML file."
         )
+        _LAST_LOAD_ERROR = message
+        logger.error(message)
+        if raise_on_error:
+            raise FrameworkLoadError(message)
         return refinement_frameworks
     
     framework_path = Path(env_path)
     
     # Check if file exists
     if not framework_path.exists():
-        logger.error(f"refinement framework file not found: {framework_path}")
+        message = f"refinement framework file not found: {framework_path}"
+        _LAST_LOAD_ERROR = message
+        logger.error(message)
+        if raise_on_error:
+            raise FrameworkLoadError(message)
         return refinement_frameworks
-    
+
     if not framework_path.is_file():
-        logger.error(f"REFINEMENT_FRAMEWORK_PATH must point to a file, not a directory: {framework_path}")
+        message = (
+            f"REFINEMENT_FRAMEWORK_PATH must point to a file, not a directory: {framework_path}"
+        )
+        _LAST_LOAD_ERROR = message
+        logger.error(message)
+        if raise_on_error:
+            raise FrameworkLoadError(message)
         return refinement_frameworks
     
     # Load and parse YAML file
@@ -73,7 +103,13 @@ def _load_refinement_framework() -> Dict[str, List[RefinementAspect]]:
             data = yaml.safe_load(f)
         
         if not isinstance(data, dict):
-            logger.error(f"Invalid YAML format in {framework_path}: expected dictionary at root level")
+            message = (
+                f"Invalid YAML format in {framework_path}: expected dictionary at root level"
+            )
+            _LAST_LOAD_ERROR = message
+            logger.error(message)
+            if raise_on_error:
+                raise FrameworkLoadError(message)
             return refinement_frameworks
         
         # Validate and convert to RefinementAspect objects
@@ -88,7 +124,9 @@ def _load_refinement_framework() -> Dict[str, List[RefinementAspect]]:
                     dimension = RefinementAspect.from_dict(dim_data)
                     refinement_aspects.append(dimension)
                 except (TypeError, ValueError) as e:
-                    logger.warning(f"Skipping invalid dimension in framework '{framework_name}': {e}")
+                    logger.warning(
+                        f"Skipping invalid dimension in framework '{framework_name}': {e}"
+                    )
                     continue
             
             if refinement_aspects:
@@ -103,12 +141,24 @@ def _load_refinement_framework() -> Dict[str, List[RefinementAspect]]:
                     continue
         
         if not refinement_frameworks:
-            logger.warning(f"No valid frameworks found in {framework_path}")
+            message = f"No valid frameworks found in {framework_path}"
+            _LAST_LOAD_ERROR = message
+            logger.warning(message)
+            if raise_on_error:
+                raise FrameworkLoadError(message)
             
     except yaml.YAMLError as e:
-        logger.error(f"Error parsing YAML from {framework_path}: {e}")
+        message = f"Error parsing YAML from {framework_path}: {e}"
+        _LAST_LOAD_ERROR = message
+        logger.error(message)
+        if raise_on_error:
+            raise FrameworkLoadError(message) from e
     except Exception as e:
-        logger.error(f"Error loading refinement framework from {framework_path}: {e}")
+        message = f"Error loading refinement framework from {framework_path}: {e}"
+        _LAST_LOAD_ERROR = message
+        logger.error(message)
+        if raise_on_error:
+            raise FrameworkLoadError(message) from e
     
     return refinement_frameworks
 
@@ -119,6 +169,20 @@ def _load_refinement_framework() -> Dict[str, List[RefinementAspect]]:
 
 # Load refinement framework from REFINEMENT_FRAMEWORK_PATH
 REFINEMENT_FRAMEWORK_STORE: Dict[str, List[RefinementAspect]] = _load_refinement_framework()
+
+
+def reload_from_env(*, raise_on_error: bool = False) -> Dict[str, List[RefinementAspect]]:
+    """Reload refinement frameworks from the current environment configuration."""
+
+    global REFINEMENT_FRAMEWORK_STORE
+    REFINEMENT_FRAMEWORK_STORE = _load_refinement_framework(raise_on_error=raise_on_error)
+    return REFINEMENT_FRAMEWORK_STORE
+
+
+def get_last_load_error() -> Optional[str]:
+    """Return the most recent framework loading error, if any."""
+
+    return _LAST_LOAD_ERROR
 
 
 def list_frameworks() -> List[str]:

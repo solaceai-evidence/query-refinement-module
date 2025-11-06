@@ -22,6 +22,9 @@ from .registry import (
     list_frameworks,
     get_framework,
     describe_framework,
+    reload_from_env,
+    get_last_load_error,
+    FrameworkLoadError,
 )
 
 __all__ = [
@@ -29,8 +32,12 @@ __all__ = [
     "RefinementAspect",
     # Dependency utility
     "sort_aspects_by_dependencies",
+    "validate_dependencies",
     # Registry functions
     "list_frameworks",
     "get_framework",
     "describe_framework",
+    "reload_from_env",
+    "get_last_load_error",
+    "FrameworkLoadError",
 ]

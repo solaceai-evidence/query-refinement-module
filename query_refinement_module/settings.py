@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+import copy
 import json
 import os
 from dataclasses import dataclass, field
@@ -95,7 +96,7 @@ class LLMSettings:
             "default_model": self.model,
             "api_key": self.api_key,
             "api_base": self.api_base,
-            "default_completion_kwargs": self.completion_kwargs,
+            "default_completion_kwargs": copy.deepcopy(self.completion_kwargs),
         }
 
     def as_analyzer_kwargs(self) -> Dict[str, Any]:
@@ -104,7 +105,7 @@ class LLMSettings:
         return {
             "temperature": self.temperature,
             "max_tokens": self.max_tokens,
-            "completion_kwargs": self.completion_kwargs,
+            "completion_kwargs": copy.deepcopy(self.completion_kwargs),
         }
 
 
