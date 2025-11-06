@@ -27,6 +27,7 @@ Navigation:
 Control:
 - /skip                  - Skip current refinement aspect entirely
 - /done                  - Mark current step as complete (stop follow-ups)
+- /synthesize            - Finish session immediately using current answers
 - /continue              - Continue with remaining steps
 - /finish                - Complete session with current refinements
 
@@ -72,6 +73,7 @@ class UserCommand(Enum):
     DONE = "done"
     CONTINUE = "continue"
     FINISH = "finish"
+    SYNTHESIZE = "synthesize"
     
     # Information
     STATUS = "status"
@@ -95,6 +97,7 @@ COMMAND_ALIASES: Dict[str, UserCommand] = {
     "status": UserCommand.STATUS,
     "help": UserCommand.HELP,
     "steps": UserCommand.STEPS,
+    "synthesize": UserCommand.SYNTHESIZE,
 }
 
 
@@ -146,7 +149,15 @@ def parse_user_command(user_input: str) -> CommandResult:
         return CommandResult(command=UserCommand.NONE, is_valid=False)
     
     # Remove leading slash and split
-    parts = user_input.strip()[1:].split(maxsplit=1)
+    remainder = user_input.strip()[1:].strip()
+    if not remainder:
+        return CommandResult(
+            command=UserCommand.NONE,
+            is_valid=False,
+            error_message="Empty command. Type /help for available commands."
+        )
+
+    parts = remainder.split(maxsplit=1)
     cmd_str = parts[0].lower()
     argument = parts[1].strip() if len(parts) > 1 else None
 
@@ -195,6 +206,7 @@ NAVIGATION:
 CONTROL:
   /skip                 Skip current refinement aspect entirely
   /done                 Mark current step complete (stop follow-ups)
+    /synthesize           Finish session immediately using current answers
   /continue             Continue with remaining steps
   /finish               Complete session with current refinements
 
@@ -235,6 +247,9 @@ class QueryAspectRefiner:
     
     # Review status - set when dependencies change, preserves history for review
     needs_review: bool = False
+
+    # Whether the step was explicitly skipped by the user without supplying a value
+    was_skipped: bool = False
     
     # Analysis result - stored from LLM's structured analysis output during initialize()
     # Contains: reason (why refinement needed/not), suggested_question (what to ask)
@@ -325,6 +340,7 @@ class QueryAspectRefiner:
         
         The last response in history becomes the refined_value.
         """
+        self.was_skipped = False
         self.follow_up_history.append({
             "question": question,
             "response": response
@@ -413,6 +429,7 @@ class QueryRefinementSession:
 
     original_query: str
     steps: List[QueryAspectRefiner] = field(default_factory=list)
+    synthesis_requested: bool = False
     
     @property
     def refinement_framework(self) -> List[RefinementAspect]:
@@ -492,7 +509,7 @@ class QueryRefinementSession:
                     "name": dep_step.refinement_aspect.name,
                     "value": dep_step.final_response,
                 }
-            elif dep_step.is_complete:
+            elif dep_step.is_complete and not dep_step.was_skipped:
                 context[dep_id] = {
                     "name": dep_step.refinement_aspect.name,
                     "value": (
@@ -613,6 +630,7 @@ class QueryRefinementSession:
             UserCommand.FINISH: self._finish_current,
             UserCommand.STATUS: self._get_status,
             UserCommand.STEPS: self._list_steps,
+            UserCommand.SYNTHESIZE: self._request_synthesis,
             UserCommand.HELP: lambda: {"success": True, "message": get_help_text()},
         }
 
@@ -641,6 +659,7 @@ class QueryRefinementSession:
                 # Soft invalidate: preserve history but mark for review
                 step.is_complete = False
                 step.needs_review = True  # Flag for review, DON'T clear history
+                step.was_skipped = False
                 invalidated.append(step.refinement_aspect.name)
                 
                 # Recursively invalidate dependents of this step
@@ -663,6 +682,7 @@ class QueryRefinementSession:
         active.is_complete = False
         active.follow_up_history = []
         active.needs_review = False
+        active.was_skipped = False
         
         # Reactivate previous step (don't clear its history)
         prev_step = self.steps[active_idx - 1]
@@ -699,6 +719,7 @@ class QueryRefinementSession:
         target_step.is_complete = False
         target_step.follow_up_history = []
         target_step.needs_review = False
+        target_step.was_skipped = False
         
         # Soft-invalidate all dependents of the target (preserve their history)
         invalidated = self._invalidate_dependents(target_step.refinement_aspect.id)
@@ -730,6 +751,8 @@ class QueryRefinementSession:
             step.is_complete = False
             step.follow_up_history = []
             step.needs_review = False
+            step.was_skipped = False
+        self.synthesis_requested = False
         
         return {
             "success": True,
@@ -744,6 +767,7 @@ class QueryRefinementSession:
         
         # Mark as complete without adding to history (no refined value)
         active.is_complete = True
+        active.was_skipped = True
         
         return {
             "success": True,
@@ -759,17 +783,27 @@ class QueryRefinementSession:
         if not active.final_response:
             return {
                 "success": False,
-                "message": "Cannot finish: no value has been provided yet",
+                "message": "Cannot finish: no value has been provided yet. Provide an answer or use /skip.",
             }
         
         # Mark as complete and clear review flag
         active.is_complete = True
         active.needs_review = False
+        active.was_skipped = False
         
         return {
             "success": True,
             "message": f"Completed refinement aspect: {active.refinement_aspect.name}",
             "step": active,
+        }
+
+    def _request_synthesis(self) -> Dict[str, Any]:
+        """Request immediate synthesis using currently captured clarifications."""
+        self.synthesis_requested = True
+        return {
+            "success": True,
+            "message": "Generating refined query with current clarifications.",
+            "synthesize": True,
         }
     
     def _get_status(self) -> Dict[str, Any]:
@@ -1449,6 +1483,9 @@ class QueryRefinementManager:
             final_value = (step.final_response or "").strip()
             if final_value:
                 clarifications.append((step.refinement_aspect.name, final_value))
+                continue
+
+            if step.was_skipped:
                 continue
 
             if step.is_complete:
