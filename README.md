@@ -20,35 +20,34 @@ pip install query-refinement-module
 
 ## Quick Start
 
+1. Install and configure the project:
+
+  ```bash
+  poetry install
+  cp .env_example .env
+  ```
+
+1. Edit `.env` with your refinement framework path and LLM settings (see [LLM Configuration](#llm-configuration)).
+1. Inspect available frameworks and launch the CLI:
+
+  ```bash
+  poetry run query-refine --list-frameworks
+  poetry run query-refine --framework pico_clinical_research
+  ```
+
+For programmatic use, build the manager from the environment-driven helpers so the CLI and service share the same configuration:
+
 ```python
-from query_refinement_module.core import QueryRefinementManager
-from query_refinement_module.providers import ConsoleTracing
-from query_refinement_module.schema import registry
+from query_refinement_module import build_manager_from_env, registry
 
-# Supply concrete implementations in your application
-llm_provider = MyLLMProvider()
-query_analyzer = MyQueryAnalyzer()
-
-framework = registry.get_framework("pico_enhanced")
-manager = QueryRefinementManager(
-  llm_provider=llm_provider,
-  query_analyzer=query_analyzer,
-  tracing_provider=ConsoleTracing(),
-)
+framework = registry.get_framework("pico_clinical_research")
+manager = build_manager_from_env()
 
 session = manager.initialize(
-  original_query="What are the effects of aspirin on heart disease?",
-  refinement_framework=framework,
+    original_query="Evaluate whether low-dose aspirin helps prevent recurrent myocardial infarction.",
+    refinement_framework=framework,
 )
-
-while not session.is_complete():
-  step = manager.process_next_step(session)
-  if not step:
-    break
-  print(step["aspect_name"], step.get("structured_payload"))
-
-print(session.get_step_summary())
-print(session.get_full_conversation())
+print(manager.get_initialization_summary(session))
 ```
 
 ## Custom Refinement Frameworks
