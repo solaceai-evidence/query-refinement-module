@@ -40,6 +40,7 @@ These commands are detected via is_user_command() and processed via parse_user_c
 
 import json
 import logging
+import textwrap
 from dataclasses import dataclass, field
 from enum import Enum
 from typing import Any, Callable, Dict, List, Optional
@@ -340,31 +341,63 @@ class QueryAspectRefiner:
             history_lines.append(f" A: {qa.get('response', '')}")
         return "\n".join(history_lines)
     
-    # TODO: revise for future use
+    
     def format_follow_up_prompt_template(
-            self,
-            latest_answer: str,
-            include_examples: bool = True,
+        self,
+        original_query: str,
+        *,
+        include_examples: bool = True,
     ) -> str:
-        """
-        Format the follow-up prompt for this refinement aspect using the latest answer.
-        
-        Uses the same YAML-based prompt from the refinement aspect for consistency.
-        In the future, this can be replaced with a dedicated follow-up evaluation schema.
-        
+        """Build a follow-up analysis prompt with explicit context history guidance.
+
+        The follow-up flow reuses the refinement aspect's schema while adding
+        instructions that clarify this is a subsequent turn. The conversation
+        history for the aspect is appended so the LLM can avoid repetition and
+        focus on unresolved details.
+
         Args:
-            latest_answer: The user's latest answer to evaluate
-            include_examples: Whether to include examples in the prompt
-            
+            original_query: The initial user query for the session.
+            include_examples: Whether to include the aspect's examples section.
+
         Returns:
-            Formatted prompt string ready for LLM
+            Formatted prompt string ready for an LLM follow-up call.
         """
-        # For now, use the refinement aspect's own prompt format
-        # The {query} placeholder will contain the user's answer to evaluate
-        return self.refinement_aspect.get_user_prompt(
-            query=latest_answer,
+
+        history_text = self.get_conversation_history_text()
+        latest_answer = self.final_response or ""
+
+        follow_up_preamble = textwrap.dedent(
+            f"""
+            FOLLOW-UP CONTEXT:
+            You are evaluating whether additional clarification is required for the
+            refinement aspect "{self.refinement_aspect.name}". This is a follow-up
+            turn, so review the conversation history carefully before deciding if a
+            new question is needed. Only request information that is still missing.
+            If the aspect is now sufficiently specified, respond according to the
+            schema with ``needs_refinement`` set to ``false`` and explain why no
+            further follow-up is necessary.
+            """
+        ).strip()
+
+        history_section_lines = ["Conversation history for this aspect:", history_text]
+        if latest_answer:
+            history_section_lines.extend(
+                [
+                    "",
+                    "Most recent user answer:",
+                    latest_answer,
+                ]
+            )
+        history_section = "\n".join(history_section_lines)
+
+        base_prompt = self.refinement_aspect.get_user_prompt(
+            query=original_query,
             include_examples=include_examples,
+            include_user_answer=True,
         )
+
+        sections = [follow_up_preamble, history_section, base_prompt]
+        return "\n\n".join(section for section in sections if section)
     
 @dataclass
 class QueryRefinementSession:
@@ -1349,6 +1382,181 @@ class QueryRefinementManager:
             )
 
         return base_prompt + "\n".join(guidance_lines)
+
+    def build_follow_up_prompts(
+        self,
+        session: QueryRefinementSession,
+        aspect_id: Optional[str] = None,
+        *,
+        include_examples: bool = True,
+    ) -> tuple[str, str]:
+        """Produce system/user prompts for an automated follow-up evaluation.
+
+        The consumer is expected to call this after at least one response has been
+        captured for the target aspect. The user prompt incorporates the fixed
+        follow-up guidance plus the full conversation history for that aspect.
+
+        Args:
+            session: Active refinement session containing the step history.
+            aspect_id: Optional explicit aspect identifier. When omitted, the
+                current active step is used.
+            include_examples: Whether to include examples in the follow-up prompt.
+
+        Returns:
+            Tuple of (system_prompt, user_prompt) ready for an LLM call.
+        """
+
+        step: Optional[QueryAspectRefiner]
+        if aspect_id:
+            step_lookup = {candidate.refinement_aspect.id: candidate for candidate in session.steps}
+            step = step_lookup.get(aspect_id)
+        else:
+            step = session.get_active_step()
+
+        if step is None:
+            raise ValueError("No refinement aspect available for follow-up prompts")
+
+        if not step.follow_up_history:
+            raise ValueError(
+                f"Follow-up prompts require at least one recorded response for aspect '{step.refinement_aspect.id}'."
+            )
+
+        system_prompt = step.get_system_prompt()
+        user_prompt = step.format_follow_up_prompt_template(
+            original_query=session.original_query,
+            include_examples=include_examples,
+        )
+
+        return system_prompt, user_prompt
+
+    def _gather_refinement_clarifications(
+        self, session: QueryRefinementSession
+    ) -> List[tuple[str, str]]:
+        """Collect all finalized refinement values for synthesis prompts."""
+
+        clarifications: List[tuple[str, str]] = []
+        for step in session.steps:
+            value = (step.final_response or "").strip()
+            if not value:
+                continue
+            clarifications.append((step.refinement_aspect.name, value))
+        return clarifications
+
+    def synthesize_refined_query(
+        self,
+        session: QueryRefinementSession,
+        *,
+        model: Optional[str] = None,
+        temperature: float = 0.2,
+        max_tokens: int = 256,
+        additional_guidance: Optional[str] = None,
+    ) -> Dict[str, Any]:
+        """Generate a refined query by combining the original query with clarifications.
+
+        Args:
+            session: Active refinement session containing user-provided clarifications.
+            model: Optional model override for the synthesis call.
+            temperature: Sampling temperature for the completion (default 0.2).
+            max_tokens: Maximum tokens for the synthesis response (default 256).
+            additional_guidance: Optional extra instruction appended to the prompt.
+
+        Returns:
+            Dictionary containing the refined query, whether the LLM was invoked,
+            and supporting metadata.
+        """
+
+        clarifications = self._gather_refinement_clarifications(session)
+
+        if not clarifications:
+            logger.info(
+                "Skipping LLM synthesis: no refinement clarifications recorded."
+            )
+            return {
+                "refined_query": session.original_query,
+                "used_llm": False,
+                "clarifications": [],
+                "metadata": {
+                    "reason": "no_clarifications",
+                },
+            }
+
+        system_prompt = (
+            "You are an expert research assistant who rewrites user queries. "
+            "Blend the initial query with clarified aspect details into a single, "
+            "well-formed refined query. Do not add new information beyond the "
+            "provided clarifications."
+        )
+
+        clarification_lines = "\n".join(
+            f"- {name}: {value}" for name, value in clarifications
+        )
+
+        user_sections = [
+            "ORIGINAL QUERY:",
+            session.original_query.strip(),
+            "",
+            "CONFIRMED CLARIFICATIONS:",
+            clarification_lines,
+            "",
+            "Compose a single refined query that integrates these clarifications. "
+            "Return only the refined query text without extra commentary.",
+        ]
+
+        if additional_guidance:
+            user_sections.append(additional_guidance.strip())
+
+        user_prompt = "\n".join(section for section in user_sections if section).strip()
+
+        self.trace_emitter.emit(
+            "query_synthesis_start",
+            metadata={
+                "clarification_count": len(clarifications),
+                "model_override": model,
+            },
+        )
+
+        completion_kwargs: Dict[str, Any] = {}
+        if temperature is not None:
+            completion_kwargs["temperature"] = temperature
+        if max_tokens is not None:
+            completion_kwargs["max_tokens"] = max_tokens
+
+        try:
+            result = self.llm_provider.complete(
+                system_prompt=system_prompt,
+                user_prompt=user_prompt,
+                model=model,
+                **completion_kwargs,
+            )
+        except Exception as exc:  # pragma: no cover - provider errors surfaced
+            logger.exception("LLM synthesis failed: %s", exc)
+            self.trace_emitter.emit(
+                "query_synthesis_error",
+                level="error",
+                metadata={"error": str(exc)},
+            )
+            raise
+
+        refined_query = (result.context or "").strip()
+
+        if not refined_query:
+            logger.warning("LLM synthesis returned empty response; using original query")
+            refined_query = session.original_query
+
+        self.trace_emitter.emit(
+            "query_synthesis_complete",
+            metadata={
+                "clarification_count": len(clarifications),
+                "response_length": len(refined_query),
+            },
+        )
+
+        return {
+            "refined_query": refined_query,
+            "used_llm": True,
+            "clarifications": clarifications,
+            "metadata": result.metadata,
+        }
 
     def run_full_refinement(self, session: QueryRefinementSession, max_iterations: int = 100) -> QueryRefinementSession:
         """
