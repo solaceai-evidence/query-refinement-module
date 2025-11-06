@@ -1,6 +1,6 @@
 # query-refinement-module
 
-Standalone query refinement engine for orchestrating multi-step, schema-driven conversations. Frameworks reside in YAML so this package stays reusable across Solace-AI and external deployments.
+Standalone query refinement engine for orchestrating multi-step, refinement-framework–driven conversations. Framework definitions live in YAML so this package stays reusable across Solace-AI and external deployments.
 
 ## Installation
 
@@ -51,16 +51,16 @@ print(session.get_step_summary())
 print(session.get_full_conversation())
 ```
 
-## Custom Schemas
+## Custom Refinement Frameworks
 
-Custom schemas are required and must be defined in a YAML file. Set the `REFINEMENT_FRAMEWORK_PATH` environment variable to point to your schema file:
+Refinement frameworks are required and must be defined in a YAML file. Set the `REFINEMENT_FRAMEWORK_PATH` environment variable to point to your framework file:
 
 ```bash
 export REFINEMENT_FRAMEWORK_PATH=/path/to/your/custom_schemas.yaml
 ```
 
 ```yaml
-my_schema:
+my_framework:
   - id: dimension_id
     name: Dimension Name
     description: What this dimension refines
@@ -86,7 +86,7 @@ Then load it via the registry:
 ```python
 from query_refinement_module.schema import registry
 
-framework = registry.get_framework("my_schema")
+framework = registry.get_framework("my_framework")
 ```
 
 ### Requirements
@@ -94,36 +94,36 @@ framework = registry.get_framework("my_schema")
 - `pip install pyyaml`
 - Set the `REFINEMENT_FRAMEWORK_PATH` environment variable
 
-See [docs/custom_schemas.md](docs/custom_schemas.md) for end-to-end guidance on authoring frameworks.
+See [docs/custom_schemas.md](docs/custom_schemas.md) for end-to-end guidance on authoring refinement frameworks.
 
 ## Usage
 
 ### Environment Setup
 
 ```bash
-# Set the path to your custom schemas file
-export REFINEMENT_FRAMEWORK_PATH=/path/to/your/custom_schemas.yaml
+# Set the path to your refinement framework file
+export REFINEMENT_FRAMEWORK_PATH=/path/to/your/custom_frameworks.yaml
 
 # Or add to your .env file
-echo "REFINEMENT_FRAMEWORK_PATH=/path/to/custom_schemas.yaml" >> .env
+echo "REFINEMENT_FRAMEWORK_PATH=/path/to/custom_frameworks.yaml" >> .env
 ```
 
-### List Available Schemas
+### List Available Frameworks
 
 ```python
 from query_refinement_module.schema import registry
 
-print(registry.list_frameworks())  # ['my_schema', 'legal_research', ...]
-summary = registry.describe_framework("my_schema")
+print(registry.list_frameworks())  # ['my_framework', 'legal_research', ...]
+summary = registry.describe_framework("my_framework")
 print(summary["name"], summary["num_dimensions"])
 ```
 
-### Using Different Schemas
+### Using Different Frameworks
 
-Define multiple schemas in your YAML file:
+Define multiple frameworks in your YAML file:
 
 ```yaml
-# custom_schemas.yaml
+# custom_frameworks.yaml
 medical_pico:
   - id: population
     name: Population
@@ -152,7 +152,7 @@ business = registry.get_framework("business_analysis")
 
 ## Documentation
 
-- [docs/custom_schemas.md](docs/custom_schemas.md) — authoring and loading frameworks
+- [docs/custom_schemas.md](docs/custom_schemas.md) — authoring and loading refinement frameworks
 - [docs/response_format_guide.md](docs/response_format_guide.md) — enforcing structured output
 - [docs/examples_field_reference.md](docs/examples_field_reference.md) — managing few-shot examples
 - [docs/dependencies.md](docs/dependencies.md) — handling aspect ordering and validation
