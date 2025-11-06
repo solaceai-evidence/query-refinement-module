@@ -76,6 +76,19 @@ def run_cli(manager: QueryRefinementManager, framework_name: str, query: str) ->
             if not step:
                 print("All aspects processed. Final conversation:")
                 print(session.get_full_conversation())
+                try:
+                    synthesis = manager.synthesize_refined_query(session)
+                except ValueError as exc:
+                    print(f"Failed to build refined query: {exc}")
+                except Exception as exc:
+                    print(f"LLM synthesis failed: {exc}")
+                else:
+                    refined_query = synthesis.get("refined_query", "").strip()
+                    if refined_query:
+                        print("\nRefined query:")
+                        print(refined_query)
+                        if not synthesis.get("used_llm", False):
+                            print("(No clarifications captured; original query shown.)")
                 break
 
             header = step.refinement_aspect.name

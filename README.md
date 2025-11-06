@@ -202,6 +202,8 @@ poetry run query-refine --framework pico_clinical_research  # Launch interactive
 
 Set `REFINEMENT_FRAMEWORK_PATH` (or populate it in your `.env`) before running so the CLI can load your YAML definitions. During a session you can use commands such as `/help`, `/status`, `/back`, and `/goto 2` to navigate.
 
+When every aspect is processed the CLI prints the full conversation along with a synthesized refined query that merges the original question with any clarifications you provided.
+
 ### LLM Configuration
 
 The CLI and API service now read the same environment-driven configuration via `LLMSettings`. Declare the following variables (see `.env_example` for defaults):
