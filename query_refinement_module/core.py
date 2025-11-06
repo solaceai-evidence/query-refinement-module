@@ -240,6 +240,7 @@ class QueryAspectRefiner:
     # Contains: reason (why refinement needed/not), suggested_question (what to ask)
     analysis_reason: Optional[str] = None
     analysis_suggested_question: Optional[str] = None
+    initial_summary: Optional[str] = None
     
     @property
     def follow_up_count(self) -> int:
@@ -1018,6 +1019,12 @@ class QueryRefinementManager:
                 else:
                     # Aspect is already clear - mark complete, original query has the info
                     step.is_complete = True
+                    summary_text = (
+                        analysis_result.explanation
+                        or step.refinement_aspect.description
+                        or f"Aspect '{step.refinement_aspect.name}' is sufficiently specified in the original query."
+                    )
+                    step.initial_summary = summary_text.strip()
                     logger.debug("Aspect %s is already clear in original query", aspect.name)
             
             logger.info(
@@ -1429,18 +1436,26 @@ class QueryRefinementManager:
 
         return system_prompt, user_prompt
 
-    def _gather_refinement_clarifications(
+    def _gather_refinement_details(
         self, session: QueryRefinementSession
-    ) -> List[tuple[str, str]]:
-        """Collect all finalized refinement values for synthesis prompts."""
+    ) -> tuple[List[tuple[str, str]], List[tuple[str, str]]]:
+        """Collect refinement clarifications and baseline summaries for synthesis."""
 
         clarifications: List[tuple[str, str]] = []
+        baseline_summaries: List[tuple[str, str]] = []
+
         for step in session.steps:
-            value = (step.final_response or "").strip()
-            if not value:
+            final_value = (step.final_response or "").strip()
+            if final_value:
+                clarifications.append((step.refinement_aspect.name, final_value))
                 continue
-            clarifications.append((step.refinement_aspect.name, value))
-        return clarifications
+
+            if step.is_complete:
+                summary = (step.initial_summary or step.analysis_reason or "").strip()
+                if summary:
+                    baseline_summaries.append((step.refinement_aspect.name, summary))
+
+        return clarifications, baseline_summaries
 
     def synthesize_refined_query(
         self,
@@ -1465,16 +1480,17 @@ class QueryRefinementManager:
             and supporting metadata.
         """
 
-        clarifications = self._gather_refinement_clarifications(session)
+        clarifications, baseline_summaries = self._gather_refinement_details(session)
 
-        if not clarifications:
+        if not clarifications and not baseline_summaries:
             logger.info(
-                "Skipping LLM synthesis: no refinement clarifications recorded."
+                "Skipping LLM synthesis: no refinement clarifications or summaries recorded."
             )
             return {
                 "refined_query": session.original_query,
                 "used_llm": False,
                 "clarifications": [],
+                "baseline_summaries": [],
                 "metadata": {
                     "reason": "no_clarifications",
                 },
@@ -1487,20 +1503,38 @@ class QueryRefinementManager:
             "provided clarifications."
         )
 
-        clarification_lines = "\n".join(
-            f"- {name}: {value}" for name, value in clarifications
-        )
-
         user_sections = [
             "ORIGINAL QUERY:",
             session.original_query.strip(),
             "",
-            "CONFIRMED CLARIFICATIONS:",
-            clarification_lines,
-            "",
-            "Compose a single refined query that integrates these clarifications. "
-            "Return only the refined query text without extra commentary.",
         ]
+
+        if baseline_summaries:
+            baseline_lines = "\n".join(
+                f"- {name}: {value}" for name, value in baseline_summaries
+            )
+            user_sections.extend([
+                "DETAILS ALREADY SPECIFIED IN THE ORIGINAL QUERY:",
+                baseline_lines,
+                "",
+            ])
+
+        if clarifications:
+            clarification_lines = "\n".join(
+                f"- {name}: {value}" for name, value in clarifications
+            )
+            user_sections.extend([
+                "CONFIRMED CLARIFICATIONS FROM FOLLOW-UP QUESTIONS:",
+                clarification_lines,
+                "",
+            ])
+
+        user_sections.append(
+            (
+                "Compose a single refined query that integrates all provided details. "
+                "Return only the refined query text without extra commentary."
+            )
+        )
 
         if additional_guidance:
             user_sections.append(additional_guidance.strip())
@@ -1511,6 +1545,7 @@ class QueryRefinementManager:
             "query_synthesis_start",
             metadata={
                 "clarification_count": len(clarifications),
+                "baseline_count": len(baseline_summaries),
                 "model_override": model,
             },
         )
@@ -1547,6 +1582,7 @@ class QueryRefinementManager:
             "query_synthesis_complete",
             metadata={
                 "clarification_count": len(clarifications),
+                "baseline_count": len(baseline_summaries),
                 "response_length": len(refined_query),
             },
         )
@@ -1555,6 +1591,7 @@ class QueryRefinementManager:
             "refined_query": refined_query,
             "used_llm": True,
             "clarifications": clarifications,
+            "baseline_summaries": baseline_summaries,
             "metadata": result.metadata,
         }
 
