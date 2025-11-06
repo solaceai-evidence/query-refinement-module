@@ -2,9 +2,6 @@ pico_advanced:
   # ========================================
   # ADVANCED PICO FRAMEWORK SCHEMA
   # ========================================
-  # Comprehensive clinical research query refinement framework
-  # Demonstrates: dependencies, rich examples, custom response formats,
-  # field descriptions, metadata, and multi-turn follow-ups
   
   # ========================================
   # P - POPULATION
