@@ -18,6 +18,7 @@ Control the refinement flow:
 
 - **`/skip`**: Skip the current dimension without providing a value
 - **`/done`**: Mark current step complete with the last response as final value (stops follow-up questions)
+- **`/synthesize`**: End the session immediately and synthesize with the current clarifications
 - **`/continue`**: Continue with the current refinement (no-op, for explicit continuation)
 - **`/finish`**: Alias for `/done`
 
@@ -170,6 +171,17 @@ result = session.handle_command(parse_user_command("/skip"))
 active_step.user_response = "Adults 18-65"
 result = session.handle_command(parse_user_command("/done"))
 # Step completed with "Adults 18-65" as final value
+```
+
+#### `/synthesize`
+
+- Flags the session to end immediately and move to final synthesis
+- Keeps unfinished steps unchanged so downstream callers know they were skipped
+- Returns a payload containing `"synthesize": True` for downstream handling
+
+```python
+result = session.handle_command(parse_user_command("/synthesize"))
+# result['synthesize'] is True, session.synthesis_requested is True
 ```
 
 ### Information Behavior

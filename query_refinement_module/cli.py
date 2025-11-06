@@ -68,27 +68,18 @@ def run_cli(manager: QueryRefinementManager, framework_name: str, query: str) ->
     _print_summary(manager, session)
 
     print("Type answers to refine each aspect. Prefix commands with '/' (e.g., /help, /status, /back).")
+    print("Use /synthesize at any time to finish with the current answers.")
     print("Press Ctrl+C to exit at any time.\n")
+
+    interrupted = False
 
     try:
         while True:
+            if session.synthesis_requested:
+                break
+
             step = session.get_active_step()
             if not step:
-                print("All aspects processed. Final conversation:")
-                print(session.get_full_conversation())
-                try:
-                    synthesis = manager.synthesize_refined_query(session)
-                except ValueError as exc:
-                    print(f"Failed to build refined query: {exc}")
-                except Exception as exc:
-                    print(f"LLM synthesis failed: {exc}")
-                else:
-                    refined_query = synthesis.get("refined_query", "").strip()
-                    if refined_query:
-                        print("\nRefined query:")
-                        print(refined_query)
-                        if not synthesis.get("used_llm", False):
-                            print("(No clarifications captured; original query shown.)")
                 break
 
             header = step.refinement_aspect.name
@@ -111,6 +102,8 @@ def run_cli(manager: QueryRefinementManager, framework_name: str, query: str) ->
                 command_result = parse_user_command(user_input)
                 payload = session.handle_command(command_result)
                 print(payload.get("message", ""))
+                if payload.get("synthesize") or session.synthesis_requested:
+                    continue
                 invalidated = payload.get("invalidated", []) or []
                 if invalidated:
                     print("Revisit: " + ", ".join(invalidated))
@@ -121,10 +114,35 @@ def run_cli(manager: QueryRefinementManager, framework_name: str, query: str) ->
             step.needs_review = False
             print(f"Recorded response for {header}.")
 
+        if session.synthesis_requested:
+            print("Session ended early by /synthesize. Current conversation:")
+        else:
+            print("All aspects processed. Final conversation:")
+
+        print(session.get_full_conversation())
+
+        try:
+            synthesis = manager.synthesize_refined_query(session)
+        except ValueError as exc:
+            print(f"Failed to build refined query: {exc}")
+        except Exception as exc:
+            print(f"LLM synthesis failed: {exc}")
+        else:
+            refined_query = synthesis.get("refined_query", "").strip()
+            if refined_query:
+                print("\nRefined query:")
+                print(refined_query)
+                if not synthesis.get("used_llm", False):
+                    print("(No clarifications captured; original query shown.)")
+
     except KeyboardInterrupt:
+        interrupted = True
         print("\nSession interrupted by user.")
     finally:
         _print_summary(manager, session)
+
+    if interrupted:
+        return
 
 
 def parse_args(argv: Optional[list[str]] = None) -> argparse.Namespace:

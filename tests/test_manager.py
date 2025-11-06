@@ -1,6 +1,6 @@
 import textwrap
 
-from query_refinement_module.core import QueryRefinementManager
+from query_refinement_module.core import QueryRefinementManager, parse_user_command
 from query_refinement_module.interfaces import (
     AspectAnalysisResult,
     LLMCompletionResult,
@@ -50,6 +50,15 @@ class StubAnalyzer(QueryAnalyzerInterface):
         )
 
 
+class NeedsRefinementAnalyzer(QueryAnalyzerInterface):
+    def analyze_aspect(self, query, aspect, dependency_context=None, llm_provider=None):
+        return AspectAnalysisResult(
+            needs_refinement=True,
+            explanation="Population details missing",
+            suggested_question="Which population are you studying?",
+        )
+
+
 def _write_framework(tmp_path):
     yaml_content = textwrap.dedent(
         """
@@ -90,3 +99,27 @@ def test_initialize_stores_initial_summary(monkeypatch, tmp_path):
     user_prompt = provider.calls[0]["user_prompt"]
     assert "DETAILS ALREADY SPECIFIED IN THE ORIGINAL QUERY" in user_prompt
     assert "Aspect A: This aspect is already clear" in user_prompt
+
+
+def test_skip_does_not_trigger_synthesis(monkeypatch, tmp_path):
+    framework_path = _write_framework(tmp_path)
+    monkeypatch.setenv("REFINEMENT_FRAMEWORK_PATH", str(framework_path))
+    registry.reload_from_env(raise_on_error=True)
+
+    provider = StubProvider()
+    analyzer = NeedsRefinementAnalyzer()
+    manager = QueryRefinementManager(provider, analyzer)
+
+    session = manager.initialize("Original question", registry.get_framework("demo"))
+
+    # Simulate user skipping the only refinement aspect
+    command = parse_user_command("/skip")
+    session.handle_command(command)
+
+    synthesis = manager.synthesize_refined_query(session)
+
+    assert synthesis["refined_query"] == "Original question"
+    assert synthesis["used_llm"] is False
+    assert synthesis["clarifications"] == []
+    assert synthesis["baseline_summaries"] == []
+    assert provider.calls == []
