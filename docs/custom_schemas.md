@@ -43,7 +43,17 @@ If `{query}` is missing the loader raises `ValueError` and the aspect is skipped
 
 ### 2.2 Optional fields (add only what you need)
 
-- `system_prompt` (string): Persona or role instructions injected as the system message when prompting the LLM. Falls back to an auto-generated prompt if omitted.
+- `system_prompt` (string): Persona or role instructions injected as the system message when prompting the LLM. If you omit it, the manager falls back to a default prompt shown below.
+
+#### Default system prompt (when `system_prompt` is omitted)
+
+```text
+You refine scientific queries by analyzing: {aspect.name} ({aspect.description}).
+Determine if this aspect is missing, incomplete, or ambiguous. If yes, ask ONE specific question to clarify.
+```
+
+The manager substitutes `{aspect.name}` and `{aspect.description}` at runtime. Provide an explicit `system_prompt` when you need stricter tone, role-play, or domain vocabulary.
+
 - `examples` (dict): Few-shot guidance, grouped by clarity category. Structure described in §4.
 - `response_format` (dict): Structured response contract. Details in §3.
 - `depends_on` (list[str]): IDs of earlier aspects this one needs context from. The manager passes previous answers in `dependency_context`.
