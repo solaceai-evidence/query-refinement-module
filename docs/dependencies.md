@@ -1,65 +1,56 @@
 # Dependency Management
 
-Refinement frameworks support explicit dependencies between aspects so later dimensions can reason with the context produced by earlier ones. This guide covers authoring dependency graphs in YAML, the validation performed during framework loading, and the runtime behaviors that keep sessions consistent.
+Refinement frameworks can model prerequisite relationships between aspects so that subsequent prompts reuse answers gathered earlier in the conversation. This page explains how to declare those dependencies in YAML, how the loader validates and orders aspects, and how `QueryRefinementSession` uses the graph at runtime.
 
-## Declaring Dependencies in YAML
+## 1. Declaring Dependencies in YAML
 
-Use the `depends_on` array on each `RefinementAspect`. List only the aspect identifiers that provide essential context for the current dimension.
+Attach a `depends_on` list to any `RefinementAspect` that requires context from other aspects in the same framework. Each entry must match the `id` of another aspect.
 
 ```yaml
 pico_enhanced:
   - id: population
     name: Population
     description: Define who is being studied
-    depends_on: []
+    depends_on: []            # optional; omit when empty
 
   - id: intervention
     name: Intervention
     description: Clarify the treatment or exposure
-    depends_on: [population]
+    depends_on:
+      - population           # can read population answers when prompting
 
   - id: outcome
     name: Outcome
     description: Identify the endpoints that matter
-    depends_on: [population, intervention]
+    depends_on:
+      - population
+      - intervention
 ```
 
-When the framework is loaded through `query_refinement_module.schema.registry`, the dependency graph is validated and sorted so that `population` initializes first, `intervention` second, and `outcome` last.
+Keep the list as small as possible—every declared dependency increases prompt size and invalidation surface area when users change answers.
 
-## Load-Time Validation
+## 2. Loader Validation and Ordering
 
-Validation happens in `query_refinement_module.schema.dependencies.validate_dependencies` before the framework is accepted.
+`query_refinement_module.schema.registry` loads frameworks through `sort_aspects_by_dependencies`, which performs two checks:
 
-```yaml
-# ✅ Linear chain
-- id: a
-  depends_on: []
-- id: b
-  depends_on: [a]
-- id: c
-  depends_on: [b]
+1. **Missing references** (`validate_dependencies`) – raises `ValueError` if an aspect lists an ID that does not exist in the framework.
+2. **Cycles** (`graphlib.TopologicalSorter`) – raises `ValueError` with a readable cycle description if the graph is not acyclic.
 
-# ❌ References missing node (raises ValueError)
-- id: population
-  depends_on: [nonexistent]
-```
-
-`sort_aspects_by_dependencies` runs after validation using `graphlib.TopologicalSorter`. Any cycle raises a `ValueError` with a readable explanation, keeping invalid frameworks out of the registry.
-
-## Dependency-Aware Ordering
-
-The manager always processes aspects in topological order. Regardless of how YAML is arranged, runtime execution becomes deterministic:
+Only frameworks that pass both checks are registered. After validation, the loader returns aspects in topological order regardless of their appearance in the YAML file, so the manager always initializes prerequisites first.
 
 ```text
-Input order:   outcome, population, intervention
-Sorted order:  population → intervention → outcome
+YAML order:   outcome, population, intervention
+Runtime order: population → intervention → outcome
 ```
 
-Only aspects whose declared dependencies are complete (either refined or already clear) are eligible for processing.
+## 3. Runtime Context Injection
 
-## Runtime Context Injection
+`QueryRefinementSession.get_dependency_context(aspect_id)` builds a context dictionary before each prompt. For every declared dependency that has either:
 
-`QueryRefinementSession.get_dependency_context` collects final values for each dependency and passes them to `QueryAspectRefiner.get_prompts`. The user prompt receives a concise preamble so the LLM can reason with prior answers.
+- a refined value (`final_response`), or
+- was determined to be “already clear” during initialization,
+
+the session injects a `{name, value}` pair. `QueryRefinementManager` then forwards that context into the prompt builder so the LLM receives a short preamble, for example:
 
 ```text
 Previous refinements:
@@ -68,61 +59,43 @@ Previous refinements:
 Determine if the intervention/treatment/exposure is clearly specified.
 ```
 
-Context is only added for declared dependencies, preserving tokens and keeping prompts focused.
+No other aspects are included, which keeps prompts focused and token usage predictable.
 
-## Missing Context
+## 4. Handling Missing or Stale Context
 
-If a dependency was skipped or never answered, the manager logs a warning similar to:
+If a dependency has no value (for example, it was skipped), the manager logs a warning and continues without injecting that entry. Operators can decide whether to revisit the missing aspect manually.
 
-```text
-refinement aspect 'intervention' depends on ['population'] but they have no values. Continuing without that context.
-```
-
-Processing continues so that human operators can decide how to resolve the gap.
-
-## Cascade Invalidation
-
-Navigating backwards automatically marks dependents for review. `QueryRefinementSession._invalidate_dependents` walks the dependency tree and sets `needs_review=True` while preserving conversation history.
+Whenever a user revisits or rewrites an upstream answer (via `/back`, `/goto`, or by editing responses programmatically), the session invokes `_invalidate_dependents`. This method walks the dependency tree, marks every subsequent step as `needs_review=True`, and preserves the conversation history so the LLM can reconsider prior exchanges with the updated context.
 
 ```text
 State: Population ✓ → Intervention ✓ → Outcome ✓
 Command: /back
-Result: Population reopened, Intervention and Outcome flagged for review
+Effect: Population reopens, Intervention and Outcome flagged for review
 ```
 
-`/goto <step>` performs the same invalidation for the target step and every downstream aspect, ensuring new answers never rely on stale context.
+`/goto <n>` behaves similarly: all steps from `<n>` onward are soft-reset to prevent stale data from leaking into later prompts.
 
-## Best Practices
+## 5. Best Practices
 
-- Declare only the dependencies you truly need; avoid `depends_on: []` on aspects that clearly rely on upstream answers.
-- Keep chains shallow. Prefer branching graphs (`population → {intervention, comparison}`) over long linear pipelines.
-- Use dependencies to express domain logic, not presentation order. If an aspect can be reasoned about independently, leave `depends_on` empty.
-- Iterate on frameworks with tests. `examples/test_dependencies.py` demonstrates expected ordering, validation failures, and missing-context warnings.
+- **Model intent, not order.** If an aspect can be analyzed in isolation, leave `depends_on` empty even if it happens to run later.
+- **Prefer shallow graphs.** Branching (`population → {intervention, comparison}`) is easier to maintain than long chains where every aspect depends on the previous one.
+- **Guard edge cases in tests.** `tests/test_registry.py` and `tests/test_manager.py` exercise dependency sorting and invalidation; mirror those patterns when introducing new frameworks.
+- **Watch the logs.** Loader errors and runtime warnings include the affected IDs to help diagnose malformed YAML quickly.
 
-## Reference Implementation
-
-Key functions and classes involved in dependency management:
+## 6. Key APIs
 
 ```python
 from query_refinement_module.schema.dependencies import sort_aspects_by_dependencies
 from query_refinement_module.core import QueryRefinementSession
 
-# Topological sorting during framework load
-def load_framework(aspects):
-    return sort_aspects_by_dependencies(aspects)
+# Load-time topological ordering
+sorted_aspects = sort_aspects_by_dependencies(aspects)
 
-# Context building at runtime
-session = QueryRefinementSession(original_query="...")
-context = session.get_dependency_context(target_refinement_aspect_id="intervention")
-# {'population': {'name': 'Population', 'value': 'Adults aged 18-65 ...'}}
+# Runtime context in the manager
+context = session.get_dependency_context("intervention")
 
-# Cascade invalidation when answers change
-session._invalidate_dependents(changed_refinement_aspect_id="population")
+# Soft invalidation when upstream answers change
+invalidated = session._invalidate_dependents("population")
 ```
 
-## Related Files
-
-- `query_refinement_module/schema/dependencies.py`
-- `query_refinement_module/core.py`
-- `examples/pico_with_dependencies.yaml`
-- `examples/test_dependencies.py`
+Related sources: `query_refinement_module/schema/dependencies.py`, `query_refinement_module/core.py`, and `examples/pico_with_dependencies.yaml` demonstrate the complete workflow.

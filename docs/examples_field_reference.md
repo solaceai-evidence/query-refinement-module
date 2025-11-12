@@ -1,123 +1,99 @@
-# Examples Field Reference Guide
+# Examples Field Reference
 
-## Quick Field Reference by Category
+`RefinementAspect.examples` accepts an `ExamplesDict` that provides few-shot guidance for the LLM. Each category is optional, but every example must contain a `query` string. All other fields are strings as well and will be validated at load time.
 
-### `clear` - Complete Specification Examples
+## 1. Category Cheat Sheet
 
-**Purpose**: Show what a well-specified query looks like
+| Category | Typical Use | Optional Fields |
+| --- | --- | --- |
+| `clear` | Fully specified queries the model should accept as-is | `explanation`, `user_answer` |
+| `needs_refinement` | Queries missing critical detail | `issue`, `missing`, `suggested_question`, `user_answer` |
+| `partial` | Queries with some detail but notable gaps | `has`, `missing`, `suggested_question`, `user_answer` |
+| `ambiguous` | Queries containing vague or conflicting language | `issue`, `suggested_question`, `user_answer` |
+| `other` | Edge cases or guidance that do not cleanly fit the buckets above | `note`, `guidance`, `suggested_question`, `user_answer` |
 
-**Recommended Fields**:
-- `query` (required) - The example query
-- `explanation` - Why this is clear and complete
+`user_answer` is especially helpful when you call `RefinementAspect.get_user_prompt(..., include_user_answer=True)` because the prompt will pair the suggested question with a sample answer to show both sides of the exchange.
 
-**Example**:
+## 2. Examples by Category
+
+All snippets below are valid—the loader will reject anything that omits `query`, provides non-string values, or introduces unexpected keys.
+
 ```yaml
-clear:
-  - query: "Does aerobic exercise reduce depression in adults aged 18-65?"
-    explanation: "Age range clearly specified (18-65), adult population identified"
+examples:
+  clear:
+    - query: "Efficacy of metformin in adults aged 40-65 with BMI > 30"
+      explanation: "Age, BMI, and clinical population are all explicit."
+
+  needs_refinement:
+    - query: "Does exercise help with depression in adults?"
+      issue: "'Adults' spans 18-80+ and setting is unspecified."
+      suggested_question: "Which age range and care setting should we target?"
+
+  partial:
+    - query: "Effects of diet intervention in women over 40"
+      has: "Gender and minimum age are supplied."
+      missing: "Upper age limit and geographic scope."
+      suggested_question: "Do you want to focus on a specific age band or region?"
+
+  ambiguous:
+    - query: "Intervention effectiveness in middle-aged adults"
+      issue: "'Middle-aged' is subjective; clarify the numeric range."
+      suggested_question: "What exact ages define 'middle-aged' for this study?"
+
+  other:
+    - query: "Effectiveness of mindfulness training for exactly 40-year-old women with postpartum depression"
+      note: "Hyper-specific demographic filters can shrink the candidate evidence base to almost nothing."
+      guidance: "Confirm whether such granularity is really needed at the discovery stage or if a broader band (e.g., women 30-45) would be acceptable."
+      suggested_question: "Should we widen the age range or related qualifiers to capture more literature?"
 ```
 
----
+## 3. Python Typing Helpers
 
-### `needs_refinement` - Missing Information Examples
-
-**Purpose**: Show queries lacking critical information
-
-**Recommended Fields**:
-- `query` (required) - The incomplete example query
-- `issue` - What's wrong or missing
-- `missing` - Specifically what information is absent
-- `suggested_question` - Example clarifying question
-
-**Example**:
-```yaml
-needs_refinement:
-  - query: "Does exercise help with depression in adults?"
-    issue: "No age range specified - 'adults' is too broad"
-    suggested_question: "What age range are you interested in?"
-```
-
----
-
-### `partial` - Partially Specified Examples
-
-**Purpose**: Show queries with some but not all needed information
-
-**Recommended Fields**:
-- `query` (required) - The partially complete query
-- `has` - What information IS present
-- `missing` - What information is still needed
-- `suggested_question` - Example question for missing details
-
-**Example**:
-```yaml
-partial:
-  - query: "Effects of diet intervention in women over 40"
-    has: "Gender (women) and minimum age (40)"
-    missing: "No upper age limit or geographic scope"
-    suggested_question: "Is there a specific upper age limit?"
-```
-
----
-
-### `ambiguous` - Vague Specification Examples
-
-**Purpose**: Show queries with unclear or ambiguous terms
-
-**Recommended Fields**:
-- `query` (required) - The ambiguous example query
-- `issue` - What makes it vague or unclear
-- `suggested_question` - Example clarification question
-
-**Example**:
-```yaml
-ambiguous:
-  - query: "Intervention effectiveness in middle-aged adults"
-    issue: "'Middle-aged' is ambiguous - could mean 40-65 or other ranges"
-    suggested_question: "Can you specify the exact age range?"
-```
-
----
-
-## Type Safety in Python
-
-Each category has a TypedDict type for IDE autocomplete:
+For strongly typed authoring and auto-completion, the schema exposes lightweight TypedDicts:
 
 ```python
-from schema.model import (
-    ClearExample,           # For 'clear' category
-    NeedsRefinementExample, # For 'needs_refinement' category
-    PartialExample,         # For 'partial' category
-    AmbiguousExample,       # For 'ambiguous' category
-    ExamplesDict,           # For the full examples dict
+from query_refinement_module.schema.model import (
+    ClearExample,
+    NeedsRefinementExample,
+    PartialExample,
+    AmbiguousExample,
+  OtherExample,
+    ExamplesDict,
 )
+
+sample: ExamplesDict = {
+    "partial": [
+        PartialExample(
+            query="Compare statins in adults",
+            has="Intervention is clear",
+            missing="Population age band",
+            suggested_question="Which age range for adults?"
+        )
+  ],
+  "other": [
+    OtherExample(
+      query="Outcomes for exactly 40-year-old women with hypertension",
+      note="Overly narrow age filters can exclude relevant adjacent cohorts.",
+      guidance="Ask if the researcher is open to a broader decade-based age band before proceeding."
+    )
+  ]
+}
 ```
 
-## Field Summary Table
+## 4. Validation Rules (Applied on Load)
 
-| Category | Required | Recommended Optional Fields |
-|----------|----------|----------------------------|
-| `clear` | `query` | `explanation` |
-| `needs_refinement` | `query` | `issue`, `missing`, `suggested_question` |
-| `partial` | `query` | `has`, `missing`, `suggested_question` |
-| `ambiguous` | `query` | `issue`, `suggested_question` |
+- Categories must be one of `clear`, `needs_refinement`, `partial`, `ambiguous`, or `other`.
+- Each category value must be a list of dicts.
+- Each dict must contain `query` and every value must be a string.
+- Unexpected keys trigger a warning (logged once per occurrence) so typos are easy to spot while remaining non-blocking.
 
-## Validation Rules
+If validation fails, the framework loader logs the offending aspect and rejects that example payload so you can fix the YAML before reloading.
 
-✅ **Valid**:
-- Any category can be omitted entirely
-- Only `query` field is required per example
-- Optional fields can be mixed and matched
+## 5. Prompt Formatting Tips
 
-❌ **Invalid**:
-- Example without `query` field
-- Invalid category names (only `clear`, `needs_refinement`, `partial`, `ambiguous` allowed)
-- Non-string values for any field
-- Category value that's not a list
+- Provide at least two examples per active category to illustrate different failure modes.
+- Mix `issue`/`missing` with `suggested_question` so the LLM sees both diagnosis and remediation patterns.
+- Use realistic domain vocabulary; these examples are injected verbatim into prompts.
+- Include `user_answer` when you want to demonstrate ideal user responses for coaching-style prompts.
 
-## Tips
-
-1. **Use contextual fields**: Different categories work better with different optional fields
-2. **Be specific**: `issue` and `missing` help the LLM understand what to look for
-3. **Show variety**: Include 2-5 examples per category to show different patterns
-4. **Real-world examples**: Use actual queries from your domain when possible
+For a complete end-to-end schema, review `examples/pico_advanced_complete.yaml`, which showcases all categories alongside dependency-aware prompts.

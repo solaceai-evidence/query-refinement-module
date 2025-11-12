@@ -101,6 +101,12 @@ pico_advanced:
         - query: "Study in representative population sample"
           issue: "'Representative' is context-dependent - representative of what population?"
           suggested_question: "What population should this sample represent? Please specify demographic characteristics that define representativeness."
+
+      other:
+        - query: "Mindfulness program outcomes for exactly 40-year-old women diagnosed with postpartum depression within the last month"
+          note: "Extremely narrow demographic qualifiers can cause the literature search to miss closely related evidence (e.g., 35-45)."
+          guidance: "Confirm whether the researcher is open to a broader age band or postpartum window before locking the filters."
+          suggested_question: "Should we expand the age or postpartum interval to capture more applicable studies?"
     
     response_format:
       additional_fields:
