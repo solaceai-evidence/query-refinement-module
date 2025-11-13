@@ -1,421 +1,133 @@
-# Response Format Specification Guide
+# Response Format Guide
 
-## Overview
+Every `RefinementAspect` automatically expects three base fields in the LLM response:
 
-The enhanced schema design allows you to **separate response format from analysis logic** in your prompts. This creates more maintainable, consistent, and testable refinement dimensions.
+| Field | Type | Description |
+| --- | --- | --- |
+| `needs_refinement` | boolean | Whether the aspect still requires clarification |
+| `explanation` | string | Short justification for the decision |
+| `suggested_question` | string | Follow-up question to ask (use an empty string when no refinement is needed) |
 
-## The Problem
+You do not need to mention these in your prompt; the manager always appends them to the generated instructions. The `response_format` section lets you extend the schema with additional fields without polluting the analysis prompt itself.
 
-Previously, response format instructions were embedded directly in the prompt:
+## 1. Why separate analysis and format?
 
-```yaml
-analysis_prompt: |
-  Analyze the query: {query}
-  
-  Consider temporal scope...
-  
-  Respond in JSON format:
-  {
-    "needs_refinement": true/false,
-    "reason": "...",
-    "suggested_question": "..."
-  }
-```
+- Prompts stay focused on the reasoning workflow.
+- All aspects share the same baseline expectations, which simplifies validation.
+- Updating the shape of the response no longer requires touching the prompt text.
+- Tests can programmatically validate the JSON payload before it moves deeper into the pipeline.
 
-**Issues:**
-- 🔴 Response format mixed with analysis logic
-- 🔴 Inconsistent formats across dimensions
-- 🔴 Hard to validate responses
-- 🔴 Difficult to update format globally
-- 🔴 Prompts become cluttered
+## 2. Anatomy of `response_format`
 
-## The Solution
-
-Use the `response_format` field to specify expected responses **separately**:
-
-```yaml
-my_schema:
-  - id: temporal_scope
-    name: Temporal Scope
-    description: Clarifies time period
-    
-    # Prompt focuses ONLY on analysis logic
-    analysis_prompt: |
-      Analyze temporal clarity in: {query}
-      
-      Check for:
-      1. Specific time periods mentioned
-      2. Ambiguous temporal terms
-      3. Implied timeframes
-      
-      Determine if clarification is needed.
-    
-    # Response format specified separately
-    response_format:
-      type: json
-      schema:
-        needs_refinement: boolean
-        reason: string
-        suggested_question: string
-      field_descriptions:
-        needs_refinement: Whether this dimension needs clarification
-        reason: Brief explanation of the analysis
-        suggested_question: Question to ask user (null if not needed)
-    
-    allow_follow_up: true
-    metadata:
-      domain: general
-```
-
-## Benefits
-
-✅ **Separation of Concerns**: Analysis logic separate from format  
-✅ **Consistency**: All dimensions use the same response structure  
-✅ **Validation**: Can validate LLM responses against schema  
-✅ **Maintainability**: Update format in one place  
-✅ **Clarity**: Cleaner, more focused prompts  
-✅ **Type Safety**: Clear field types and requirements  
-✅ **Documentation**: Field descriptions explain expected values  
-✅ **Testability**: Easy to test format compliance  
-
-## Response Format Structure
-
-### Type: JSON (Recommended)
+`response_format` is an optional dictionary with two key parts:
 
 ```yaml
 response_format:
-  type: json
-  schema:
-    # Define expected fields and example values
-    needs_refinement: true
-    reason: "string"
-    suggested_question: "string"
-    confidence: 0.85
-    additional_data: {}
-  
-  # Optional: Describe each field
+  additional_fields:
+    confidence: float
+    priority: string
   field_descriptions:
-    needs_refinement: "Boolean indicating if refinement is needed"
-    reason: "Explanation of why refinement is/isn't needed"
-    suggested_question: "Question for the user (null if not needed)"
-    confidence: "Confidence score 0.0-1.0 (optional)"
-    additional_data: "Any additional context (optional)"
+    confidence: "Confidence score between 0.0 and 1.0 (optional)."
+    priority: "Relative urgency: low, medium, high."
 ```
 
-**The system automatically generates** this instruction and appends it to your prompt:
+- **`additional_fields`** – map of field name ➝ type. Allowed types match the validator: `string`, `boolean`, `integer`, `float`, `array`, `object` (case-insensitive).
+- **`field_descriptions`** – human-readable hints appended to the prompt. Keys should match the additional fields; extra entries simply trigger a warning.
 
+Any other keys (for example `type` for documentation) are ignored by the validator but can be left in place if you find them helpful for readability.
+
+## 3. Generated Instructions
+
+When you call `RefinementAspect.get_user_prompt(...)`, the manager appends something like the following to your analysis prompt:
+
+```text
+Respond in the following JSON format:
 ```
-Respond in the following format:
 
 ```json
 {
-  "needs_refinement": true,
-  "reason": "string",
-  "suggested_question": "string",
-  "confidence": 0.85,
-  "additional_data": {}
+  "needs_refinement": <boolean>,
+  "explanation": "<string>",
+  "suggested_question": "<string>",
+  "confidence": <float>,
+  "priority": "<string>"
 }
 ```
 
 Field descriptions:
-- needs_refinement: Boolean indicating if refinement is needed
-- reason: Explanation of why refinement is/isn't needed
-- suggested_question: Question for the user (null if not needed)
-- confidence: Confidence score 0.0-1.0 (optional)
-- additional_data: Any additional context (optional)
+
+- confidence (float) (optional): Confidence score between 0.0 and 1.0 (optional).
+- priority (string) (optional): Relative urgency: low, medium, high.
+
+
+The prompt always lists the base fields first, then the additional ones you declared, and tags everything that came from `additional_fields` as optional.
+
+## 4. End-to-End Example
+
+```yaml
+- id: temporal_scope
+  name: Temporal Scope
+  description: Clarifies time period or timeframe
+  analysis_prompt: |
+    Analyze temporal clarity in the following query:
+
+    Query: {query}
+
+    Look for explicit ranges, ambiguous words like "recent", and implied periods.
+    Decide if clarification is needed and propose exactly one follow-up question when it is.
+
+  response_format:
+    additional_fields:
+      confidence: float
+      detected_terms: array
+    field_descriptions:
+      confidence: "Confidence score 0.0-1.0 for the refinement decision."
+      detected_terms: "Temporal expressions found in the query (if any)."
+
+  allow_follow_up: true
+  max_follow_ups: 2
 ```
 
-### Type: Structured
+At runtime, responses must include the base keys plus any optional extras you choose to emit. `RefinementAspect.validate_response()` ensures types line up and surfaces helpful error messages if values are missing or of the wrong type.
 
-For more detailed field specifications:
+## 5. Validation Rules
+
+`RefinementAspect._validate_response_format_structure()` runs during framework loading:
+
+- `additional_fields` must be a dictionary of string → string.
+- Types must belong to the allowed set (`string`, `boolean`, `integer`, `float`, `array`, `object`).
+- `field_descriptions`, when present, must be a dictionary. Extra description keys trigger a warning but do not prevent loading.
+
+During execution `validate_response()` enforces:
+
+- All base fields exist and have the correct Python types (`bool` for `needs_refinement`, `str` for `explanation` and `suggested_question`).
+- Additional fields that appear in the LLM payload match the declared types. Unexpected fields are permitted but noted by `validate_response_strict()` as warnings.
+
+## 6. Recommended Standard Payload
+
+For most dimensions, a minimal yet informative extension is:
 
 ```yaml
 response_format:
-  type: structured
-  fields:
-    - name: needs_refinement
-      type: boolean
-      required: true
-      description: "Whether this dimension needs clarification"
-    
-    - name: reason
-      type: string
-      required: true
-      description: "Explanation of the analysis"
-    
-    - name: suggested_question
-      type: string
-      required: false  # Optional field
-      description: "Question to ask (null if no refinement needed)"
-    
-    - name: identified_terms
-      type: list
-      required: false
-      description: "List of relevant terms found in query"
-```
-
-## Standard Response Format
-
-We recommend using this **standard format** across all your dimensions:
-
-```yaml
-response_format:
-  type: json
-  schema:
-    needs_refinement: boolean
-    reason: string
-    suggested_question: string or null
-    confidence: number  # 0.0 to 1.0
+  additional_fields:
+    confidence: float
   field_descriptions:
-    needs_refinement: "Whether this dimension needs user clarification"
-    reason: "Brief explanation of why refinement is or isn't needed"
-    suggested_question: "Specific question to ask the user (null if needs_refinement is false)"
-    confidence: "Confidence score for the analysis (0.0 = low, 1.0 = high)"
+    confidence: "Confidence score between 0.0 (low) and 1.0 (high)."
 ```
 
-### Why This Format?
+This keeps schemas consistent, enables UI prioritization, and adds little extra weight to prompts.
 
-- **`needs_refinement`**: Clear boolean decision
-- **`reason`**: Explains the analysis (useful for debugging)
-- **`suggested_question`**: The actual refinement question
-- **`confidence`**: Helps prioritize which dimensions to ask about first
-
-## Extended Response Format
-
-For more complex analyses, add domain-specific fields:
-
-```yaml
-response_format:
-  type: json
-  schema:
-    needs_refinement: boolean
-    reason: string
-    suggested_question: string
-    confidence: number
-    
-    # Domain-specific additions
-    status: "CLEAR"  # or AMBIGUOUS, MISSING
-    identified_terms: []
-    suggested_options: []
-    priority: "high"
-  
-  field_descriptions:
-    needs_refinement: "Whether clarification is needed"
-    reason: "Analysis explanation"
-    suggested_question: "Question for the user"
-    confidence: "Confidence score 0.0-1.0"
-    status: "One of: CLEAR, AMBIGUOUS, MISSING"
-    identified_terms: "Terms from query relevant to this dimension"
-    suggested_options: "Options to present to the user"
-    priority: "Priority level: low, medium, high, critical"
-```
-
-## Complete Example
-
-Here's a complete dimension with response format:
-
-```yaml
-legal_research:
-  - id: jurisdiction
-    name: Jurisdiction
-    description: Clarifies the legal jurisdiction
-    
-    # Focused analysis prompt (no format instructions)
-    analysis_prompt: |
-      Analyze jurisdiction in the legal query:
-      
-      Query: {query}
-      
-      **Check for:**
-      1. Explicit jurisdiction mentions (federal, state, international)
-      2. Implied jurisdiction from statute citations or court names
-      3. Geographic references that indicate jurisdiction
-      4. Ambiguous terms that could apply to multiple jurisdictions
-      
-      **Inference Rules:**
-      - U.S.C. or C.F.R. citations → Federal jurisdiction
-      - State names → State jurisdiction
-      - "Supreme Court" without qualifier → Ask which one
-      - International treaties → International law
-      
-      **Decision Logic:**
-      - If jurisdiction is clear: needs_refinement = false
-      - If ambiguous or missing: needs_refinement = true
-      - Provide confidence based on inference strength
-      
-      **Question Generation:**
-      - Be specific about why jurisdiction matters
-      - Offer relevant options based on query context
-      - Explain briefly if needed
-    
-    # Clean, separate response format
-    response_format:
-      type: json
-      schema:
-        needs_refinement: true
-        reason: "string"
-        suggested_question: "string"
-        identified_jurisdiction: null
-        jurisdiction_level: "unspecified"
-        confidence: 0.7
-      field_descriptions:
-        needs_refinement: "Whether jurisdiction needs user clarification"
-        reason: "Explanation of jurisdiction analysis"
-        suggested_question: "Question about jurisdiction with context"
-        identified_jurisdiction: "Jurisdiction inferred from query (if any)"
-        jurisdiction_level: "One of: federal, state, local, international, unspecified"
-        confidence: "Confidence in analysis (0.0-1.0)"
-    
-    allow_follow_up: true
-    max_follow_ups: 2
-    metadata:
-      domain: legal
-      priority: critical
-      examples:
-        - Which jurisdiction's law are you interested in?
-        - Is this federal or state law?
-```
-
-## Using Response Format in Code
-
-The `RefinementAspect` class automatically handles response format:
+## 7. Working with the API
 
 ```python
-from query_refinement.schemas import get_schema
+from query_refinement_module.schema.model import RefinementAspect
 
-# Load schema
-schema = get_schema("my_schema")
-dimension = schema[0]
+aspect = RefinementAspect.from_dict(yaml_payload)
+system_prompt, user_prompt = aspect.get_prompts(query)
 
-# Get the complete prompt (includes response format)
-full_prompt = dimension.get_full_prompt("What are the effects of aspirin?")
-
-print(full_prompt)
-# Output includes:
-# 1. Your analysis prompt with {query} filled in
-# 2. Automatically generated response format instructions
+# After the LLM responds
+payload = llm_response.json()
+is_valid, error = aspect.validate_response(payload)
 ```
 
-### Example Output:
-
-```
-Analyze temporal clarity in: What are the effects of aspirin?
-
-Check for:
-1. Specific time periods mentioned
-2. Ambiguous temporal terms
-3. Implied timeframes
-
-Determine if clarification is needed.
-
-Respond in the following format:
-
-```json
-{
-  "needs_refinement": true,
-  "reason": "string",
-  "suggested_question": "string"
-}
-```
-
-Field descriptions:
-- needs_refinement: Whether this dimension needs clarification
-- reason: Brief explanation of the analysis
-- suggested_question: Question to ask user (null if not needed)
-```
-
-## Migration Guide
-
-### Before (Embedded Format):
-
-```yaml
-analysis_prompt: |
-  Analyze: {query}
-  
-  Check temporal scope...
-  
-  Respond in JSON:
-  {
-    "needs_refinement": true/false,
-    "reason": "...",
-    "question": "..."
-  }
-```
-
-### After (Separate Format):
-
-```yaml
-analysis_prompt: |
-  Analyze: {query}
-  
-  Check temporal scope...
-
-response_format:
-  type: json
-  schema:
-    needs_refinement: boolean
-    reason: string
-    question: string
-  field_descriptions:
-    needs_refinement: "Whether refinement needed"
-    reason: "Analysis explanation"
-    question: "Question for user"
-```
-
-## Best Practices
-
-1. **Use Standard Format**: Adopt the recommended standard format for consistency
-2. **Clear Field Names**: Use descriptive, consistent field names
-3. **Document Fields**: Always include `field_descriptions`
-4. **Optional Fields**: Mark optional fields in descriptions (e.g., "... (optional)")
-5. **Type Hints**: Include example values showing expected types
-6. **Keep It Simple**: Start with basic format, add fields only when needed
-7. **Consistent Across Schema**: Use same format for all dimensions in a schema
-
-## Validation
-
-With structured response format, you can validate LLM responses:
-
-```python
-import json
-
-def validate_response(response_text, expected_format):
-    """Validate LLM response against expected format."""
-    try:
-        response = json.loads(response_text)
-        schema = expected_format.get("schema", {})
-        
-        # Check required fields
-        for field in schema:
-            if field not in response:
-                return False, f"Missing field: {field}"
-        
-        # Check types
-        # ... type validation logic ...
-        
-        return True, "Valid"
-    except json.JSONDecodeError:
-        return False, "Invalid JSON"
-```
-
-## Examples
-
-See `examples/custom_schemas_with_response_format.yaml` for complete working examples demonstrating:
-
-- Standard JSON response format
-- Extended response format with domain-specific fields
-- Structured response format
-- PICO schema with response formats
-- Legal research schema with response formats
-
-## Summary
-
-The `response_format` field provides:
-
-- **Better Structure**: Separation of analysis logic and output format
-- **Consistency**: Uniform responses across all dimensions
-- **Validation**: Machine-readable format specifications
-- **Maintainability**: Update format without touching prompts
-- **Clarity**: Cleaner, more focused prompts
-
-This is the **recommended approach** for creating professional, maintainable refinement schemas.
+For complete YAML examples, check `examples/custom_schemas_with_response_format.yaml` and `examples/pico_advanced_complete.yaml`, both of which showcase complex domain-specific fields layered on top of the shared base schema.

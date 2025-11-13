@@ -81,6 +81,23 @@ class AmbiguousExample(BaseExample, total=False):
     suggested_question: NotRequired[str]
 
 
+class OtherExample(BaseExample, total=False):
+    """
+    Example capturing edge cases that do not map cleanly to the predefined buckets.
+
+    Suggested fields:
+        query: The example query (REQUIRED)
+        user_answer: an answer that demonstrates the desired adjustment.
+        note: Additional context describing the pitfall or why it matters.
+        guidance: Direction for the model on how to handle similar queries.
+        suggested_question: Example follow-up question if clarification is useful.
+    """
+    user_answer: NotRequired[str]
+    note: NotRequired[str]
+    guidance: NotRequired[str]
+    suggested_question: NotRequired[str]
+
+
 class ExamplesDict(TypedDict, total=False):
     """
     Structure for examples field - all categories are optional.
@@ -90,11 +107,13 @@ class ExamplesDict(TypedDict, total=False):
         needs_refinement: NeedsRefinementExample - Examples missing critical information
         partial: PartialExample - Examples with some but not all information
         ambiguous: AmbiguousExample - Examples with vague specifications
+        other: OtherExample - Edge cases or guidance that does not fit other buckets
     """
     clear: NotRequired[List[ClearExample]]
     needs_refinement: NotRequired[List[NeedsRefinementExample]]
     partial: NotRequired[List[PartialExample]]
     ambiguous: NotRequired[List[AmbiguousExample]]
+    other: NotRequired[List[OtherExample]]
 
 
 __all__ = [
@@ -104,6 +123,7 @@ __all__ = [
     "NeedsRefinementExample", 
     "PartialExample",
     "AmbiguousExample",
+    "OtherExample",
 ]
 
 
@@ -273,9 +293,9 @@ class RefinementAspect:
         """
         Validate the examples structure at load time.
         
-        Ensures:
-        - examples is a dict
-        - Only valid category keys are used (clear, needs_refinement, partial, ambiguous)
+    Ensures:
+    - examples is a dict
+    - Only valid category keys are used (clear, needs_refinement, partial, ambiguous, other)
         - Each category contains a list
         - Each example in the list is a dict with at least a 'query' field
         
@@ -288,7 +308,7 @@ class RefinementAspect:
             )
         
         # Valid category keys
-        valid_categories = {"clear", "needs_refinement", "partial", "ambiguous"}
+        valid_categories = {"clear", "needs_refinement", "partial", "ambiguous", "other"}
         
         # Check for invalid category keys
         invalid_keys = set(self.examples.keys()) - valid_categories
@@ -324,7 +344,16 @@ class RefinementAspect:
                     )
                 
                 # Validate optional fields are strings if present
-                optional_fields = {"explanation", "issue", "missing", "has", "suggested_question", "user_answer"}
+                optional_fields = {
+                    "explanation",
+                    "issue",
+                    "missing",
+                    "has",
+                    "suggested_question",
+                    "user_answer",
+                    "note",
+                    "guidance",
+                }
                 for field_name in example.keys():
                     if field_name == "query":
                         continue  # Already validated
@@ -399,11 +428,12 @@ class RefinementAspect:
         """
         Format examples into a readable section for prompt inclusion.
         
-        Supports multiple example categories:
-        - clear: Examples with all information properly specified
-        - needs_refinement: Examples missing critical information
-        - partial: Examples with some but not all information
-        - ambiguous: Examples with vague or unclear specifications
+    Supports multiple example categories:
+    - clear: Examples with all information properly specified
+    - needs_refinement: Examples missing critical information
+    - partial: Examples with some but not all information
+    - ambiguous: Examples with vague or unclear specifications
+    - other: Edge cases or guidance that fall outside the standard buckets
         
         Returns:
             Formatted examples section, or empty string if no examples
@@ -419,6 +449,7 @@ class RefinementAspect:
             ("needs_refinement", "EXAMPLES NEEDING REFINEMENT:"),
             ("partial", "EXAMPLES WITH PARTIAL INFORMATION:"),
             ("ambiguous", "EXAMPLES WITH AMBIGUOUS SPECIFICATIONS:"),
+            ("other", "ADDITIONAL EDGE-CASE GUIDANCE:"),
         ]
         
         for category_key, header in category_config:
@@ -453,6 +484,12 @@ class RefinementAspect:
                     # Add optional user answer to the suggested query for refinement examples
                     if include_user_answer and "user_answer" in example:
                         line_parts.append(f"A: \"{example['user_answer']}\"")
+
+                    if "note" in example:
+                        line_parts.append(f"Note: {example['note']}")
+
+                    if "guidance" in example:
+                        line_parts.append(f"Guidance: {example['guidance']}")
 
                     sections.append("  " + " ".join(line_parts))
                 

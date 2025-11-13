@@ -1,319 +1,166 @@
 # User Control Commands
 
-The query refinement module supports user control commands to navigate and manage refinement sessions. Commands are prefixed with `/` to distinguish them from regular responses.
+Refinement sessions accept slash-prefixed commands to manage navigation, control flow, and progress reporting. All parsing lives in `query_refinement_module.core`, so the same behavior is available from the CLI, API service, and custom integrations.
 
-## Available Commands
+## 1. Command Reference
 
-### Navigation Commands
+| Command | Aliases | Purpose |
+| --- | --- | --- |
+| `/back` | `/prev` | Return to the previous step and invalidate subsequent dependents |
+| `/goto <n>` | — | Jump to step `n` (1-indexed) and reopen that branch |
+| `/restart` | — | Reset the session to its initial state |
+| `/skip` | — | Mark the current step as skipped (`final_response = None`) |
+| `/done` | `/finish` | Commit the current response and stop follow-ups for that aspect |
+| `/continue` | — | Explicit no-op acknowledgement (useful in scripted flows) |
+| `/synthesize` | — | Request early termination and move straight to synthesis |
+| `/status` | — | Print a progress summary with completion counts |
+| `/steps` | — | List every aspect with status icons and follow-up counts |
+| `/help` | — | Return formatted help text covering all commands |
 
-Navigate between refinement steps:
+All commands start with `/`. Anything else is treated as a normal answer.
 
-- **`/back`** or **`/prev`**: Go back to the previous step
-- **`/goto <number>`**: Jump to a specific step (1-indexed)
-- **`/restart`**: Restart the entire refinement session
-
-### Control Commands
-
-Control the refinement flow:
-
-- **`/skip`**: Skip the current dimension without providing a value
-- **`/done`**: Mark current step complete with the last response as final value (stops follow-up questions)
-- **`/synthesize`**: End the session immediately and synthesize with the current clarifications
-- **`/continue`**: Continue with the current refinement (no-op, for explicit continuation)
-- **`/finish`**: Alias for `/done`
-
-### Information Commands
-
-Query session status:
-
-- **`/status`**: Show current session progress
-- **`/steps`**: List all refinement steps with completion status
-- **`/help`**: Display help message with all commands
-
-## Usage Example
+## 2. Parsing Utilities
 
 ```python
-from core import (
-    RefinementSession,
+from query_refinement_module.core import is_user_command, parse_user_command
+
+is_user_command("/help")   # True
+is_user_command("Adults")  # False
+
+result = parse_user_command("/goto 2")
+assert result.command.value == "goto"
+assert result.argument == "2"
+assert result.is_valid
+```
+
+`parse_user_command` returns a `CommandResult` dataclass with four fields:
+
+- `command` (`UserCommand` enum)
+- `argument` (`Optional[str]`)
+- `is_valid` (`bool`)
+- `error_message` (`Optional[str]`)
+
+If parsing fails, `command` is set to `UserCommand.NONE`, `is_valid` is `False`, and `error_message` describes the issue.
+
+## 3. Applying Commands to a Session
+
+```python
+from query_refinement_module.core import QueryRefinementSession
+
+session = QueryRefinementSession(original_query="...")
+# session.steps populated elsewhere
+
+cmd_result = parse_user_command("/skip")
+response = session.handle_command(cmd_result)
+
+if response["success"]:
+    print(response["message"])
+else:
+    print(f"Command failed: {response['message']}")
+```
+
+`QueryRefinementSession.handle_command` always returns a dictionary with at least:
+
+- `success`: `True`/`False`
+- `message`: human-readable feedback
+
+Some commands add more detail (for example, `/status` includes a `summary` payload, `/steps` returns the list of step descriptors, and `/synthesize` flags `"synthesize": True`).
+
+## 4. Command Behaviour Highlights
+
+### Navigation
+
+- `/back` and `/prev` reopen the last completed/active step, clear its in-progress answer, and call `_invalidate_dependents` so every dependent aspect is marked `needs_review=True`.
+- `/goto <n>` jumps to step `n`. The target and all later steps become incomplete without erasing their conversation history, ensuring revised answers cannot rely on stale dependency context.
+- `/restart` resets the entire session: steps become incomplete, follow-up counts reset, and conversation history is cleared.
+
+### Flow Control
+
+- `/skip` records an explicit skip, preserving audit trails with `was_skipped=True`.
+- `/done` and `/finish` mark the step complete and treat the most recent conversation response as the accepted value (no extra setter required).
+- `/continue` simply acknowledges the prompt and leaves the session unchanged—useful when a workflow handler wants the user to confirm the next question.
+- `/synthesize` sets `session.synthesis_requested = True` so call sites can break out of the refinement loop and proceed directly to query synthesis.
+
+### Information
+
+- `/status` wraps `QueryRefinementSession.get_step_summary()`, returning totals for completed steps, steps needing review, active follow-up counts, and the current step name.
+- `/steps` prints each step with a textual status (`completed`, `needs review`, `active`, `not started`) and the current follow-up count.
+- `/help` pulls from `query_refinement_module.core.get_help_text()` to display up-to-date instructions and examples.
+
+## 5. Loop Integration Template
+
+```python
+from query_refinement_module.core import (
+    QueryRefinementSession,
     is_user_command,
     parse_user_command,
+    UserCommand,
 )
 
-# In your refinement loop
-user_input = get_user_input()
-
-if is_user_command(user_input):
-    # Parse and execute command
-    cmd_result = parse_user_command(user_input)
-    result = session.handle_command(cmd_result)
-    
-    if result['success']:
-        print(result['message'])
-        
-        # Handle navigation commands
-        if cmd_result.command in [UserCommand.BACK, UserCommand.GOTO, UserCommand.RESTART]:
-            # Active step has changed, continue loop
-            continue
-            
-        # Handle control commands
-        elif cmd_result.command in [UserCommand.SKIP, UserCommand.DONE]:
-            # Current step completed, move to next
-            continue
-    else:
-        print(f"Error: {result['message']}")
-else:
-    # Process as normal answer
-    active_step.user_response = user_input
-    # ... continue with refinement logic
-```
-
-## Command Parsing
-
-### `is_user_command(user_input: str) -> bool`
-
-Detects if input is a command (starts with `/`).
-
-```python
-is_user_command("/help")      # True
-is_user_command("my answer")  # False
-```
-
-### `parse_user_command(user_input: str) -> CommandResult`
-
-Parses a command string and validates it.
-
-Returns a `CommandResult` with:
-
-- `command`: The `UserCommand` enum value
-- `argument`: Optional argument (e.g., step number for `/goto`)
-- `is_valid`: Whether the command is valid
-- `error_message`: Error description if invalid
-
-```python
-result = parse_user_command("/goto 2")
-# result.command = UserCommand.GOTO
-# result.argument = "2"
-# result.is_valid = True
-
-result = parse_user_command("/goto")
-# result.is_valid = False
-# result.error_message = "/goto requires a step number..."
-```
-
-## Session Command Handling
-
-### `session.handle_command(cmd_result: CommandResult) -> Dict[str, Any]`
-
-Executes a parsed command and returns result dictionary:
-
-```python
-{
-    "success": True,           # Whether command succeeded
-    "message": "...",          # Human-readable result message
-    # Additional command-specific data
-}
-```
-
-### Navigation Behavior
-
-#### `/back` or `/prev`
-
-- Returns to the previous step
-- Marks current step as incomplete
-- Clears current step's response and final value
-- Reactivates previous step
-
-```python
-result = session.handle_command(parse_user_command("/back"))
-# result['step'] contains the previous step
-# result['step_index'] contains the new index
-```
-
-#### `/goto <number>`
-
-- Jumps to specific step (1-indexed)
-- Marks target step and all following steps as incomplete
-- Validates step number is in valid range
-
-```python
-result = session.handle_command(parse_user_command("/goto 3"))
-# Jumps to step 3, marks steps 3, 4, ... as incomplete
-```
-
-#### `/restart`
-
-- Resets all steps to incomplete
-- Clears all responses and final values
-- Resets follow-up counts
-- Clears conversation history
-
-### Control Behavior
-
-#### `/skip`
-
-- Marks current step as complete
-- Sets `final_value` to `None` (explicitly skipped)
-- Moves to next step
-
-```python
-result = session.handle_command(parse_user_command("/skip"))
-# Current dimension is skipped, no value set
-```
-
-#### `/done` or `/finish`
-
-- Marks current step as complete
-- Sets `final_value` to `user_response`
-- Stops any follow-up questions for this dimension
-- Requires at least one response to be provided
-
-```python
-active_step.user_response = "Adults 18-65"
-result = session.handle_command(parse_user_command("/done"))
-# Step completed with "Adults 18-65" as final value
-```
-
-#### `/synthesize`
-
-- Flags the session to end immediately and move to final synthesis
-- Keeps unfinished steps unchanged so downstream callers know they were skipped
-- Returns a payload containing `"synthesize": True` for downstream handling
-
-```python
-result = session.handle_command(parse_user_command("/synthesize"))
-# result['synthesize'] is True, session.synthesis_requested is True
-```
-
-### Information Behavior
-
-#### `/status`
-
-Returns session progress:
-
-- Total steps and completion count
-- Total follow-up questions asked
-- Current active step
-
-```python
-result = session.handle_command(parse_user_command("/status"))
-# result['message'] contains formatted status
-# result['summary'] contains detailed statistics
-# result['active_step'] contains current RefinementStep
-```
-
-#### `/steps`
-
-Lists all steps with visual indicators:
-
-- `✓` = completed
-- `→` = active
-- `○` = not started
-
-Also shows follow-up count for each step.
-
-```python
-result = session.handle_command(parse_user_command("/steps"))
-# result['message'] contains formatted list
-# result['steps'] contains all RefinementStep objects
-```
-
-#### `/help`
-
-Returns formatted help text with all commands and examples.
-
-## Integration Pattern
-
-Here's a complete integration pattern for a refinement loop:
-
-```python
-def run_refinement_session(session: RefinementSession, llm_provider):
-    """Run an interactive refinement session with command support."""
-    
-    while not session.is_complete():
-        active_step = session.get_active_step()
-        if not active_step:
+def run_loop(session: QueryRefinementSession, ask_llm):
+    while not session.is_complete() and not session.synthesis_requested:
+        step = session.get_active_step()
+        if not step:
             break
-        
-        # Generate question if needed
-        if not active_step.final_response:
-            system_prompt, user_prompt = active_step.get_prompts(session.original_query)
-            question = llm_provider.generate(system_prompt, user_prompt)
-            print(f"\nAssistant: {question}")
-        
-        # Get user input
+
+        question_text = step.analysis_suggested_question or ""
+
+        # Ask the model for the next question when needed
+        if not step.follow_up_history:
+            system_prompt, user_prompt = step.get_prompts(session.original_query)
+            question_text = ask_llm(system_prompt, user_prompt)
+            print(f"Assistant: {question_text}")
+
         user_input = input("You: ").strip()
-        
-        # Handle commands
+
         if is_user_command(user_input):
-            cmd_result = parse_user_command(user_input)
-            result = session.handle_command(cmd_result)
-            
-            print(result['message'])
-            
-            if not result['success']:
-                continue  # Try again on error
-            
-            # Navigation: loop continues with new active step
-            if cmd_result.command in [UserCommand.BACK, UserCommand.GOTO, UserCommand.RESTART]:
+            cmd = parse_user_command(user_input)
+            if not cmd.is_valid:
+                print(cmd.error_message)
                 continue
-            
-            # Skip/Done: current step complete, move to next
-            if cmd_result.command in [UserCommand.SKIP, UserCommand.DONE]:
+
+            result = session.handle_command(cmd)
+            print(result["message"])
+
+            if not result["success"]:
                 continue
-            
-            # Info commands: show and continue
-            if cmd_result.command in [UserCommand.STATUS, UserCommand.STEPS, UserCommand.HELP]:
-                continue
-        
-        else:
-            # Process regular answer
-            active_step.user_response = user_input
-            
-            # Check if follow-up needed
-            if active_step.can_ask_followup():
-                # Generate follow-up question
-                followup = generate_followup(active_step, user_input)
-                active_step.add_followup(followup, user_input)
-                print(f"\nFollow-up: {followup}")
-            else:
-                # Mark complete
-                active_step.complete_with_value(user_input)
-    
-    print("\n✓ Refinement complete!")
+
+            if cmd.command in {UserCommand.BACK, UserCommand.GOTO, UserCommand.RESTART}:
+                continue  # active step changed
+
+            if cmd.command in {UserCommand.SKIP, UserCommand.DONE, UserCommand.FINISH}:
+                continue  # move forward automatically
+
+            if result.get("synthesize"):
+                break
+
+            continue  # info commands fall through to next loop iteration
+
+        # Regular answer path
+        step.add_follow_up(question=question_text, response=user_input)
+
+        if not step.can_ask_followup():
+            step.is_complete = True
+            step.needs_review = False
+
     return session
+
+For follow-up rounds you can call `step.format_follow_up_prompt_template(session.original_query)` to build a dedicated prompt that includes conversation history and dependency context before generating the next question.
 ```
 
-## Error Handling
+## 6. Error Handling Patterns
 
-Commands are validated before execution:
+- `parse_user_command` protects against malformed inputs (missing arguments, unknown commands, non-integer `/goto` targets). Always check `CommandResult.is_valid` before invoking `handle_command`.
+- `handle_command` returns a descriptive message for domain errors (for example, `/back` on the first step, or `/goto 99` when only three steps exist). Display these messages verbatim—they are written for end users.
 
-```python
-result = parse_user_command("/goto")
-if not result.is_valid:
-    print(result.error_message)
-    # Output: "/goto requires a step number. Example: /goto 2"
+## 7. Test Coverage
 
-result = parse_user_command("/goto 99")
-handle_result = session.handle_command(result)
-if not handle_result['success']:
-    print(handle_result['message'])
-    # Output: "Invalid step number. Valid range: 1-3"
-```
+Automated tests in `tests/test_core_commands.py` and `tests/test_manager.py` cover:
 
-## Design Principles
+- Parsing edge cases and alias handling
+- Navigation effects (including dependency invalidation)
+- Skip/done flows and follow-up termination
+- Status and help payloads
+- `/synthesize` semantics inside the manager pipeline
 
-1. **Domain-Agnostic**: Commands work with any refinement schema
-2. **Safe Navigation**: Invalid jumps are rejected with clear errors
-3. **State Preservation**: Navigation maintains consistency
-4. **Clear Feedback**: All commands return human-readable messages
-5. **Flexible Flow**: Users control pacing and direction
-
-## Testing
-
-See `examples/test_user_commands.py` for comprehensive examples of:
-
-- Command parsing and validation
-- Navigation scenarios
-- Control flow management
-- Information queries
-- Full refinement simulation
+Use these tests as templates when extending command behaviour or introducing new workflows.
