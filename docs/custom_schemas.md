@@ -1,559 +1,268 @@
-# Custom Schema Guide
+# Custom Refinement Schemas
 
-This guide explains how to create custom refinement schemas using YAML configuration files.
+Design custom refinement frameworks in YAML so the module can orchestrate multi-step conversations tailored to your domain. This document reflects the current `query_refinement_module.schema` model and shows how to author complete, validated schemas.
 
-## Overview
+## 1. Setup Checklist
 
-The query refinement module uses custom schemas defined in YAML format. This enables you to:
+- Install PyYAML in the same environment as the module: `pip install pyyaml`.
+- Create a YAML file (for example `custom_frameworks.yaml`) that contains all of your frameworks.
+- Point the module to the file by setting `REFINEMENT_FRAMEWORK_PATH`:
+  - macOS/Linux `export REFINEMENT_FRAMEWORK_PATH=/absolute/path/custom_frameworks.yaml`
+  - Windows PowerShell `$env:REFINEMENT_FRAMEWORK_PATH="C:\\path\\custom_frameworks.yaml"`
+  - `.env` file `REFINEMENT_FRAMEWORK_PATH=/absolute/path/custom_frameworks.yaml`
+- Reload at runtime with `registry.reload_from_env()` if you change the file while a process is running.
 
-- Define domain-specific refinement dimensions
-- Customize the refinement process for your use case
-- Share schemas across teams without code changes
-- Create reusable templates for different research domains
-- Maintain clear, readable prompt engineering
+## 2. YAML File Anatomy
 
-## Quick Start
-
-1. Create a YAML file with your custom schemas (e.g., `custom_schemas.yaml`)
-2. Set the `CUSTOM_SCHEMAS_PATH` environment variable to point to your file:
-   ```bash
-   export CUSTOM_SCHEMAS_PATH=/path/to/your/custom_schemas.yaml
-   ```
-3. Define your schemas following the `RefinementAspect` format below
-
-## Prerequisites
-
-Custom schemas require PyYAML:
-
-```bash
-pip install pyyaml
-```
-
-## Schema File Format
-
-Custom schemas are defined in YAML format. Each top-level key is a schema name, and each value is a list of `RefinementAspect` objects.
-
-**Basic structure:**
+Each top-level key represents a framework name. The value is an ordered list of `RefinementAspect` definitions. Dependencies defined through `depends_on` automatically drive topological ordering at load time.
 
 ```yaml
-schema_name:
-  - id: dimension_id
-    name: Dimension Name
-    description: Description of what this dimension refines
+my_framework:
+  - id: population
+    name: Target Population
+    description: Define who the question is about
     analysis_prompt: |
-      Multi-line prompt template with {query} placeholder.
-      
-      Use the pipe (|) character for multi-line strings.
-      No escaping needed for special characters!
-    
-    # Optional: Define response format for structured outputs
-    response_format:
-      additional_fields:
-        field_name: field_type  # e.g., priority: string, confidence: float
-      field_descriptions:
-        field_name: "Description of what this field contains"
-    
-    allow_follow_up: false
-    max_follow_ups: 2
-    metadata:
-      domain: general
-      priority: high
-```
+      Analyze the following query and decide whether information about the population is missing.
 
-### Required Fields
-
-Every dimension must have:
-
-- **`id`** (string): Unique identifier for the dimension within the schema
-- **`name`** (string): Human-readable name for the dimension
-- **`description`** (string): Brief description of what this dimension refines
-- **`analysis_prompt`** (string): Template for analyzing if this dimension needs refinement
-  - **Must include `{query}` placeholder** where the user's query will be inserted
-  - Should guide the LLM on how to analyze and what to ask
-  - Use `|` for multi-line prompts (highly recommended for readability)
-
-### Optional Fields
-
-- **`response_format`** (object): Defines expected response structure
-  - `additional_fields`: Dict mapping field names to types (string, boolean, integer, float, array, object)
-  - `field_descriptions`: Dict providing descriptions for custom fields
-  - Base fields (needs_refinement, reason, suggested_question) are always included automatically
-
-- **`examples`** (object): Example queries for few-shot learning (highly recommended)
-  - Helps the LLM understand what constitutes clear, incomplete, or ambiguous specifications
-  - **Structure**: Dictionary with four optional category keys, each with recommended fields:
-    - `clear`: Examples with complete information
-      - Recommended fields: `query` (required), `explanation`
-    - `needs_refinement`: Examples missing critical information
-      - Recommended fields: `query` (required), `issue`, `missing`, `suggested_question`
-    - `partial`: Examples with some but not all information
-      - Recommended fields: `query` (required), `has`, `missing`, `suggested_question`
-    - `ambiguous`: Examples with vague or unclear specifications
-      - Recommended fields: `query` (required), `issue`, `suggested_question`
-  - **All categories are optional** - include only those relevant to your dimension
-  - **Type Safety**: Each category has a specific TypedDict type (`ClearExample`, `NeedsRefinementExample`, `PartialExample`, `AmbiguousExample`) providing IDE autocomplete
-  - Examples are automatically formatted and injected into prompts
-  - **Validation**: Structure is validated at load time to catch errors early
-  
-- **`allow_follow_up`** (boolean, default: `false`): Whether this dimension supports follow-up questions
-
-- **`max_follow_ups`** (integer, default: `2`): Maximum number of follow-up rounds if enabled
-
-- **`metadata`** (object, default: `{}`): Additional metadata for extensibility
-  - Common fields: `domain`, `priority`, `framework`, `medical_specialty`
-
-## Example: Simple Custom Schema
-
-```yaml
-project_scoping:
-  - id: timeline
-    name: Project Timeline
-    description: Clarifies project deadlines and milestones
-    analysis_prompt: |
-      Does this project query specify a timeline?
-      
       Query: {query}
-      
-      If not, ask about deadlines, milestones, or timeframe.
-      
-      Respond with:
-      {
-        "needs_refinement": true/false,
-        "suggested_question": "..."
-      }
+
+      Consider demographics, clinical condition, and eligibility restrictions.
+      Only ask for one clarification at a time.
+```
+
+### 2.1 Required fields for every aspect
+
+| Field | Type | Purpose |
+| --- | --- | --- |
+| `id` | string | Stable identifier unique inside the framework |
+| `name` | string | Human-readable label used in UIs/logs |
+| `description` | string | Short explanation of what the aspect refines |
+| `analysis_prompt` | string | Prompt template **must contain `{query}`** |
+
+If `{query}` is missing the loader raises `ValueError` and the aspect is skipped.
+
+### 2.2 Optional fields (add only what you need)
+
+- `system_prompt` (string): Persona or role instructions injected as the system message when prompting the LLM. If you omit it, the manager falls back to a default prompt shown below.
+
+#### Default system prompt (when `system_prompt` is omitted)
+
+```text
+You refine scientific queries by analyzing: {aspect.name} ({aspect.description}).
+Determine if this aspect is missing, incomplete, or ambiguous. If yes, ask ONE specific question to clarify.
+```
+
+The manager substitutes `{aspect.name}` and `{aspect.description}` at runtime. Provide an explicit `system_prompt` when you need stricter tone, role-play, or domain vocabulary.
+
+- `examples` (dict): Few-shot guidance, grouped by clarity category. Structure described in §4.
+- `response_format` (dict): Structured response contract. Details in §3.
+- `depends_on` (list[str]): IDs of earlier aspects this one needs context from. The manager passes previous answers in `dependency_context`.
+- `allow_follow_up` (bool, default `false`): Whether the manager may ask multiple rounds.
+- `max_follow_ups` (int, default `3`): Hard cap on follow-up rounds when enabled.
+- `metadata` (dict): Free-form structured data for dependent logic (priority, domain, UI hints, etc.).
+
+## 3. Response Format Contracts
+
+The module always expects the base schema fields below and validates every LLM response against them:
+
+| Field | Type | Notes |
+| --- | --- | --- |
+| `needs_refinement` | boolean | Required; instructs the manager to ask the user |
+| `explanation` | string | Required; short diagnostic or acknowledgement |
+| `suggested_question` | string | Required; single follow-up question or empty when not needed |
+
+To extend the schema, supply `response_format.additional_fields` with allowed types `string`, `boolean`, `integer`, `float`, `array`, or `object`. Pair custom fields with user-facing descriptions via `response_format.field_descriptions`.
+
+```yaml
+response_format:
+  additional_fields:
+    priority: string
+    confidence: float
+  field_descriptions:
+    priority: "Urgency level: high, medium, or low"
+    confidence: "Self-reported confidence 0.0-1.0"
+```
+
+During prompting the manager synthesises a JSON example that merges the base schema and your additional fields, then lists field descriptions. `RefinementAspect.validate_response()` enforces types at runtime, so type mismatches immediately surface as validation failures.
+
+See also `docs/response_format_guide.md` for deeper guidance and advanced validation patterns.
+
+## 4. Example Library (Few-shot Guidance)
+
+The `examples` field accepts any combination of five clarity categories. Each category is a list; every item must supply a `query` string and may add optional string metadata shown below.
+
+| Category key | Optional fields |
+| --- | --- |
+| `clear` | `explanation`, `user_answer` |
+| `needs_refinement` | `issue`, `missing`, `suggested_question`, `user_answer` |
+| `partial` | `has`, `missing`, `suggested_question`, `user_answer` |
+| `ambiguous` | `issue`, `suggested_question`, `user_answer` |
+| `other` | `note`, `guidance`, `suggested_question`, `user_answer` |
+
+Example:
+
+```yaml
+examples:
+  clear:
+    - query: Does aspirin reduce MI risk in adults with prior infarction?
+      explanation: Specifies population, intervention, comparison, and outcome.
+  needs_refinement:
+    - query: Does aspirin reduce heart attack risk?
+      issue: No population context or comparison group provided.
+      suggested_question: "Which patient group and comparator should we focus on?"
+  partial:
+    - query: Compare metformin to placebo for cognition in older adults with diabetes.
+      has: Population and comparison supplied.
+      missing: Define cognitive outcome measure and timeframe.
+      suggested_question: "Which cognitive assessment and follow-up horizon matter most?"
+  ambiguous:
+    - query: Evaluate new therapy for high-risk patients.
+      issue: "High-risk" is undefined.
+      suggested_question: "What criteria define high-risk in this context?"
+  other:
+    - query: Evaluate treatment outcomes for exactly 40-year-old women with postpartum depression.
+      note: Hyper-specific qualifiers risk excluding useful evidence.
+      guidance: Encourage the user to confirm whether a broader cohort (e.g., 30-45) is acceptable before proceeding.
+```
+
+The loader validates structure and types, logging warnings for unexpected keys so you can catch typos early.
+
+## 5. Putting It All Together
+
+### 5.1 Minimal two-aspect framework
+
+```yaml
+basic_project_scoping:
+  - id: timeline
+    name: Timeline
+    description: Determine whether deadlines or milestones are specified.
+    analysis_prompt: |
+      Query: {query}
+
+      Identify if a timeline is provided. If not, request a specific date range or deadline.
     allow_follow_up: true
     max_follow_ups: 2
-    metadata:
-      domain: project_management
-      priority: high
 
   - id: budget
     name: Budget Constraints
-    description: Identifies budget limitations and resource constraints
+    description: Check for financial limitations.
     analysis_prompt: |
-      Does this query mention budget or resource constraints?
-      
       Query: {query}
-      
-      If not specified but relevant, ask about budget range.
-      
-      Respond with:
-      {
-        "needs_refinement": true/false,
-        "suggested_question": "..."
-      }
+
+      Decide whether budget parameters are defined; otherwise ask for a range.
+    depends_on:
+      - timeline
+```
+
+### 5.2 Comprehensive PICO-style aspect with dependencies
+
+```yaml
+pico_advanced:
+  - id: population_core
+    name: Population Fundamentals
+    description: Capture demographic and clinical qualifiers for the study population.
+    system_prompt: You specialize in clarifying population characteristics for evidence synthesis.
+    analysis_prompt: |
+      Evaluate whether the query clearly specifies the study population.
+
+      Query: {query}
+
+      Confirm age range, clinical condition, stage/severity, and notable inclusion/exclusion criteria.
+      If one or more pillars are absent, return needs_refinement = true and propose a targeted question.
+    examples:
+      needs_refinement:
+        - query: Does immunotherapy help lung cancer patients?
+          issue: Cancer stage and biomarker status unknown.
+          suggested_question: "Which lung cancer subtype, stage, and biomarker profile are relevant?"
+    response_format:
+      additional_fields:
+        specificity_score: float
+      field_descriptions:
+        specificity_score: "0-1 score estimating how fully the population is defined."
+    allow_follow_up: true
+    max_follow_ups: 3
+    metadata:
+      domain: pico
+      priority: critical
+
+  - id: intervention_detail
+    name: Intervention Detail
+    description: Clarify exact intervention components, doses, and schedules.
+    analysis_prompt: |
+      Query: {query}
+
+      Review the intervention description and confirm agent, dose, frequency, and delivery setting.
+      Use dependency context to avoid asking about population again unless needed.
+    depends_on:
+      - population_core
+    allow_follow_up: true
+    metadata:
+      domain: pico
+      priority: high
+
+  - id: outcome_measure
+    name: Primary Outcome
+    description: Determine the outcome metric and timeframe of interest.
+    analysis_prompt: |
+      Query: {query}
+
+      Use dependency context when crafting clarifying questions.
+    depends_on:
+      - population_core
+      - intervention_detail
+    response_format:
+      additional_fields:
+        outcome_type: string
+        time_horizon: string
+      field_descriptions:
+        outcome_type: "Clinical endpoint to evaluate (e.g., mortality, symptom score)."
+        time_horizon: "Observation period or follow-up duration."
     allow_follow_up: false
-    metadata:
-      domain: project_management
-      priority: medium
 ```
 
-## Setting Up Custom Schemas
+This example demonstrates system prompts, example usage, dependencies, custom response fields, and metadata. Review `examples/pico_template.yaml` for the full production-ready framework shipped with the repository.
 
-### Environment Variable (Required)
+## 6. Dependency Semantics
 
-You **must** set the `CUSTOM_SCHEMAS_PATH` environment variable to point to your YAML schema file:
+- Declare `depends_on` using aspect IDs; only named dependencies appear in `session.get_dependency_context()` when the LLM analyzes subsequent aspects.
+- The loader validates that dependencies reference existing IDs and raises if cycles are detected.
+- Dependencies let you tailor follow-up prompts to earlier answers (see `docs/dependencies.md` for operational details).
 
-**Linux/macOS:**
-```bash
-export CUSTOM_SCHEMAS_PATH=/path/to/your/custom_schemas.yaml
-```
+## 7. Follow-up Behaviour
 
-**Windows (PowerShell):**
-```powershell
-$env:CUSTOM_SCHEMAS_PATH="C:\path\to\your\custom_schemas.yaml"
-```
+- `allow_follow_up: true` permits the manager to loop over `max_follow_ups` iterations until `needs_refinement` flips to `false`.
+- Use metadata to signal UI hints (for example `metadata.follow_up_style: "checkbox"`). The core manager treats metadata as opaque.
 
-**Using a `.env` file:**
-```env
-CUSTOM_SCHEMAS_PATH=/path/to/your/custom_schemas.yaml
-```
+## 8. Validation Lifecycle
 
-**Important:** The path must point to a **file**, not a directory. The module will only load schemas from this single file.
+At load time each aspect runs through several guards:
 
-## Example: Complex Schema with Multi-line Prompts
+- Missing required fields or wrong types raise `ValueError` and skip the aspect.
+- Invalid response format definitions (unknown types, inconsistent descriptions) raise immediately.
+- Example collections must be dicts of lists; each entry must be a dict containing `query`.
+- Dependency references are checked for existence; cycles throw `FrameworkLoadError`.
 
-YAML makes complex prompts easy to read and maintain:
+Review logs if dimensions vanish; the loader records every rejection with context. You can also call `registry.get_last_load_error()` to retrieve the most recent error string.
 
-```yaml
-legal_research:
-  - id: source_type
-    name: Legal Source Type
-    description: Identifies the type of legal source needed
-    analysis_prompt: |
-      The query doesn't specify the type of legal source needed.
-      
-      Current query: {query}
-      
-      What type of legal source are you looking for? Please consider:
-      - Case law (judicial opinions)?
-        * Federal courts (District, Circuit, Supreme Court)
-        * State courts (various levels)
-        * Administrative decisions
-      - Statutes or regulations?
-        * Federal (U.S.C., C.F.R.)
-        * State statutes
-        * Local ordinances
-      - Secondary sources (law review articles, treatises)?
-        * Peer-reviewed journals
-        * Legal encyclopedias
-        * Practice guides
-      - Legislative history?
-        * Committee reports
-        * Floor debates
-        * Bill analyses
-      
-      IMPORTANT NOTES:
-      - Multiple source types may be relevant
-      - "Recent" in law might mean last 5-10 years
-      - Consider jurisdiction-specific sources
-      
-      Generate ONE concise question to clarify the source type.
-      
-      Format your response as JSON:
-      {
-        "needs_refinement": true/false,
-        "primary_concern": "brief explanation",
-        "suggested_question": "your question here"
-      }
-    allow_follow_up: true
-    max_follow_ups: 2
-    metadata:
-      domain: legal_research
-      priority: high
-      related_dimensions:
-        - jurisdiction
-        - temporal_scope
-      examples:
-        - What type of legal authority do you need?
-        - Are you looking for case law or statutes?
+## 9. Prompt Crafting Tips
 
-  - id: jurisdiction
-    name: Jurisdiction
-    description: Clarifies the legal jurisdiction
-    analysis_prompt: |
-      Analyze the query for jurisdiction clarity:
-      
-      Query: {query}
-      
-      Jurisdiction considerations:
-      1. Is the jurisdiction explicitly stated?
-         - Federal vs. State vs. International
-         - Specific circuit or state
-         - Local/municipal level
-      
-      2. Are there conflicts of law issues?
-         - Multiple jurisdictions involved
-         - Choice of law considerations
-      
-      3. Is jurisdiction implied by context?
-         - Specific statutes (e.g., "ADA" = federal US law)
-         - Geographic references
-      
-      If jurisdiction is unclear, ask for clarification.
-      
-      Respond in JSON format:
-      {
-        "needs_refinement": true/false,
-        "reason": "Brief explanation",
-        "suggested_question": "Question if needed"
-      }
-    allow_follow_up: true
-    max_follow_ups: 2
-    metadata:
-      domain: legal_research
-      priority: high
-```
+- Lead with the decision objective (“Determine if outcome detail is sufficient”).
+- Enumerate considerations in bullet or numbered form to encourage structured reasoning.
+- Spell out edge cases, especially known trouble spots for your domain.
+- Close with explicit formatting instructions reflecting your response schema.
+- Keep prompts concise; split a large aspect into multiple focused ones if the instructions exceed ~120 lines or combine unrelated tasks (see `examples/pico_population_subdimensions.yaml`).
 
-See `examples/custom_schemas.yaml` for a complete, working example.
+## 10. Troubleshooting Checklist
 
-- Proper prompt engineering
-- Multiple dimensions per schema
-- Different priority levels
-- Domain-specific considerations
-- Follow-up configurations
+- **Framework missing**: ensure `REFINEMENT_FRAMEWORK_PATH` is set, readable, and points to a file.
+- **YAML parse error**: run `yamllint` or an online validator to catch indentation or colon issues.
+- **Aspect skipped**: check logs for a validation error (missing `{query}`, wrong type, invalid dependency).
+- **Unexpected LLM output**: verify `response_format` matches what you expect and adjust prompt instructions accordingly.
+- **Dependency context empty**: confirm `depends_on` lists the exact IDs of input aspects and that they were processed earlier in the list.
 
-## YAML Tips & Best Practices
+## 11. Additional References
 
-### Multi-line Strings
-
-Use `|` for literal blocks (preserves newlines):
-
-```yaml
-analysis_prompt: |
-  Line 1
-  Line 2
-  Line 3
-```
-
-Use `>` for folded blocks (joins lines):
-
-```yaml
-description: >
-  This is a long description
-  that will be joined into
-  a single line.
-```
-
-### Special Characters
-
-No escaping needed in YAML! These all work naturally:
-
-```yaml
-analysis_prompt: |
-  Use "quotes" freely
-  Include JSON: {"key": "value"}
-  Special chars: @#$%^&*()
-  Paths: C:\Users\file.txt
-  Placeholders: {query}
-```
-
-### Comments
-
-Add documentation with `#`:
-
-```yaml
-my_schema:
-  # This dimension handles temporal aspects
-  - id: temporal_scope
-    name: Temporal Scope
-    # The analysis prompt should cover multiple scenarios
-    analysis_prompt: |
-      ...
-```
-
-### Lists and Nested Data
-
-```yaml
-metadata:
-  domain: legal_research
-  priority: high
-  frameworks:
-    - IRAC
-    - Legal Research Methodology
-  examples:
-    - Question 1?
-    - Question 2?
-  related_dimensions:
-    - jurisdiction
-    - temporal_scope
-```
-
-## Best Practices for Prompts
-
-When creating `analysis_prompt` templates, consider:
-
-1. **Clear Instructions**: Specify what the LLM should analyze and how
-2. **Expected Format**: Define the JSON response structure
-3. **Examples**: Include 3-5 concrete examples in your prompt
-4. **Edge Cases**: Address ambiguous terms and boundary conditions
-5. **Domain Context**: Include domain-specific guidance where relevant
-
-Example structure:
-
-```yaml
-analysis_prompt: |
-  Analyze the query for [dimension]:
-  
-  Query: {query}
-  
-  Consider:
-  1. [First consideration]
-  2. [Second consideration]
-  3. [Third consideration]
-  
-  EDGE CASES:
-  - [Edge case 1]
-  - [Edge case 2]
-  
-  Respond in JSON format:
-  {
-    "needs_refinement": true/false,
-    "reason": "Brief explanation",
-    "suggested_question": "Question to ask user"
-  }
-```
-
-
-## Designing Effective Dimensions: When to Split vs. Combine
-
-### The Subdimension Strategy
-
-When designing schemas, you may face the question: should a broad concept be one dimension or split into multiple subdimensions?
-
-**Example:** In the PICO framework, "Population" could be:
-- **Option A**: One comprehensive dimension covering all population aspects
-- **Option B**: Multiple focused subdimensions (Demographics, Clinical Condition, Comorbidities, Eligibility Criteria, Special Populations)
-
-### Benefits of Splitting into Subdimensions
-
-Splitting a high-level dimension into focused subdimensions provides several advantages:
-
-1. **More Focused Prompts**
-   - Each subdimension has a clearer, more specific task
-   - Easier for the LLM to analyze one aspect deeply without getting overwhelmed
-   - Reduces cognitive load and improves response quality
-
-2. **Better Granularity and Control**
-   - Users can be asked about demographics separately from clinical characteristics
-   - Different follow-up strategies for each subdimension
-   - Some aspects may not need refinement while others do
-   - Skip irrelevant subdimensions entirely (e.g., "Special Populations" may not apply to all studies)
-
-3. **Improved Validation and Tracking**
-   - Custom response fields more relevant to each subdimension
-   - Easier to track which specific aspect needs clarification
-   - Better metrics (e.g., "age_clarity_score" vs. generic "population_score")
-   - More actionable analytics on where queries commonly need refinement
-
-4. **Flexible Workflows**
-   - Process subdimensions in a logical order (demographics first, then clinical details)
-   - Parallel processing of independent subdimensions
-   - Better alignment with how domain experts actually think about the problem
-
-5. **Cleaner Maintenance**
-   - Easier to update one focused prompt than one massive prompt
-   - Each subdimension can have specific priority levels
-   - More precise metadata and domain expert assignments
-
-### When to Split
-
-Consider splitting when:
-- ✅ The dimension covers multiple distinct categories
-- ✅ Each subdimension has its own set of considerations and edge cases
-- ✅ Users may need different levels of detail for different aspects
-- ✅ The prompt becomes too long (>100 lines) or complex
-- ✅ Different subdimensions have different follow-up needs
-
-### When to Keep Combined
-
-Keep dimensions combined when:
-- ✅ The aspects are highly interconnected and can't be considered separately
-- ✅ Splitting would create artificial boundaries
-- ✅ The dimension is already focused and specific
-- ✅ Users need to consider all aspects together to make sense
-
-### Implementation Example
-
-```yaml
-# Instead of one large "population" dimension:
-pico_clinical:
-  - id: population_demographics
-    name: Demographics
-    # Focused prompt on age, gender, ethnicity...
-    metadata:
-      subdimension: Demographics
-      typical_order: 1
-  
-  - id: population_clinical_condition
-    name: Clinical Condition
-    # Focused prompt on diagnosis, disease stage...
-    metadata:
-      subdimension: Clinical_Condition
-      typical_order: 2
-  
-  # More subdimensions...
-```
-
-See `examples/pico_template.yaml` for a complete subdimension example.
-
-## Using Custom Schemas in Code
-
-Once defined, your custom schemas are automatically loaded when the module initializes:
-
-```python
-from query_refinement.schemas import get_schema, list_schemas
-
-# List all available schemas
-all_schemas = list_schemas()
-print(all_schemas)  # ['my_custom_schema', 'pico_clinical', ...]
-
-# Get your custom schema
-my_schema = get_schema("my_custom_schema")
-
-# Use it in refinement
-refiner = QueryRefiner(dimensions=my_schema)
-result = refiner.refine("My query about...")
-```
-
-## Validation
-
-The module validates custom schemas on load:
-
-- **Required fields**: All required fields (`id`, `name`, `description`, `analysis_prompt`) must be present
-- **Placeholder validation**: `analysis_prompt` must include `{query}` placeholder
-- **Response format validation**: If `response_format` is provided:
-  - `additional_fields` types must be valid (string, boolean, integer, float, array, object)
-  - Field descriptions are checked for consistency
-- **Type checking**: Fields must match expected types
-- **Error logging**: Invalid dimensions are logged and skipped
-
-If a dimension fails validation, it will be logged and skipped, but other valid dimensions will still load.
-
-## Troubleshooting
-
-### Schema Not Loading
-
-If your schema doesn't appear in `list_schemas()`:
-
-1. **Check environment variable**: Ensure `CUSTOM_SCHEMAS_PATH` is set correctly
-2. **Verify file path**: The path must point to an existing **file**, not a directory
-3. **YAML syntax**: Validate your YAML syntax using an online validator
-4. **File permissions**: Ensure the file is readable
-5. **PyYAML installed**: Run `pip install pyyaml`
-6. **Check logs**: Look for error messages in application logs
-
-### YAML Syntax Errors
-
-Common YAML issues:
-
-- **Indentation**: Use spaces (not tabs); be consistent (2 or 4 spaces)
-- **Missing colons**: Keys need `:` after them
-- **List items**: Must start with `- ` (dash and space)
-- **Quotes**: Usually not needed, but use for strings with special chars
-
-Use an online YAML validator to check syntax.
-
-### Dimension Skipped
-
-If a dimension is skipped during loading, check logs for:
-
-- Missing required fields (`id`, `name`, `description`, `analysis_prompt`)
-- Invalid field types
-- Missing `{query}` placeholder in `analysis_prompt`
-- Invalid response format field types
-
-### Schema Not Found at Runtime
-
-If you get "Unknown schema" errors:
-
-```python
-from query_refinement.schemas import list_schemas
-print(list_schemas())  # See what's actually loaded
-```
-
-Make sure the schema name you're requesting matches exactly (case-sensitive).
-
-## Complete Example Files
-
-See the `examples/` directory for complete, working examples:
-
-- **`custom_schemas.yaml`**: Multiple schemas demonstrating various patterns
-- **`pico_template.yaml`**: Comprehensive PICO framework with best practices
-- **`custom_schemas_with_response_format.yaml`**: Examples using response_format feature
-
-Each example demonstrates:
-
-- Proper prompt engineering
-- Multiple dimensions per schema
-- Different priority levels
-- Domain-specific considerations
-- Follow-up configurations
-- Response format specifications
-
-## Additional Resources
-
-- [YAML Syntax Guide](https://yaml.org/spec/1.2/spec.html)
-- [Online YAML Validator](https://www.yamllint.com/)
-- [Response Format Guide](./response_format_guide.md)
-- [YAML Reference](../YAML_REFERENCE.md)
+- `docs/response_format_guide.md` — deep dive on structured outputs and validation helpers.
+- `docs/examples_field_reference.md` — additional suggestions for crafting example payloads.
+- `docs/dependencies.md` — operational behaviour of dependency contexts in sessions.
+- `examples/` directory — end-to-end sample frameworks you can copy and adapt.
