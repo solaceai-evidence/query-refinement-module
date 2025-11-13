@@ -44,7 +44,7 @@ def _print_summary(manager: QueryRefinementManager, session) -> None:
     summary = manager.get_initialization_summary(session)
     print()
     print("Session summary:")
-    print(f"  Total aspects: {summary['total_aspects']}")
+    print(f"  Refinement aspects in this framework: {summary['total_aspects']}")
     print(f"  Needs refinement: {summary['aspects_needing_refinement']}")
     print(f"  Already clear: {summary['aspects_clear']}")
     for aspect in summary["aspects"]:
