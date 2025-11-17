@@ -450,12 +450,12 @@ class QueryRefinementSession:
         return step
     
     def get_active_step(self) -> Optional[QueryAspectRefiner]:
-        """
-        Returns the current active refinement step (first incomplete or needs review).
-        """
+        """Return the first step that still requires user attention."""
+
         for step in self.steps:
             if not step.is_complete or step.needs_review:
                 return step
+
         return None
     
     def get_dependency_context(self, target_refinement_aspect_id: str) -> Dict[str, Dict[str, str]]:
@@ -1085,38 +1085,85 @@ class QueryRefinementManager:
             
             return session
 
-    @staticmethod
-    def _dependencies_ready(
-        candidate: QueryAspectRefiner,
-        step_lookup: Dict[str, QueryAspectRefiner],
+    def ensure_step_is_ready(
+        self,
+        session: QueryRefinementSession,
+        step: QueryAspectRefiner,
     ) -> bool:
-        """Check whether all declared dependencies for a step are satisfied."""
-        dependencies = candidate.refinement_aspect.depends_on or []
-        if not dependencies:
-            return True
+        """Prepare a step before presenting it to the user.
 
-        pending: List[str] = []
+        Returns True when the caller should prompt the user, False when the
+        step resolved itself (e.g., dependencies filled in the missing context).
+        """
 
-        for dep_id in dependencies:
-            dep_step = step_lookup.get(dep_id)
-            if not dep_step:
-                logger.warning(
-                    "Aspect %s declares dependency on %s but it's not in the session",
-                    candidate.refinement_aspect.id,
-                    dep_id,
-                )
-                return False
+        if self._maybe_autocomplete_dependent_step(session, step):
+            return False
 
-            if not dep_step.is_complete and not dep_step.final_response:
-                pending.append(dep_id)
+        return True
 
-        if pending:
+    def _maybe_autocomplete_dependent_step(
+        self,
+        session: QueryRefinementSession,
+        step: QueryAspectRefiner,
+    ) -> bool:
+        """Re-run analysis for dependent steps once their context is available."""
+
+        aspect = step.refinement_aspect
+
+        if not aspect.depends_on:
+            return False
+
+        if step.follow_up_history:
+            # User already supplied input; keep existing flow.
+            return False
+
+        dependency_context = session.get_dependency_context(aspect.id)
+        missing = [dep for dep in (aspect.depends_on or []) if dep not in dependency_context]
+        if missing:
+            # Dependencies not ready; rely on ordering to handle them first.
             logger.debug(
-                "Aspect %s waiting on dependencies %s",
-                candidate.refinement_aspect.id,
-                pending,
+                "Aspect %s waiting for dependency context from %s",
+                aspect.id,
+                missing,
             )
             return False
+
+        analyzer_context = {
+            dep_id: entry["value"] for dep_id, entry in dependency_context.items()
+        }
+
+        logger.debug(
+            "Re-analyzing dependent aspect '%s' after dependency completion",
+            aspect.id,
+        )
+
+        analysis_result = self.query_analyzer.analyze_aspect(
+            query=session.original_query,
+            aspect=aspect,
+            dependency_context=analyzer_context,
+            llm_provider=self.llm_provider,
+        )
+
+        step.analysis_reason = analysis_result.explanation
+        step.analysis_suggested_question = analysis_result.suggested_question
+        step.needs_review = False
+
+        if analysis_result.needs_refinement:
+            step.is_complete = False
+            return False
+
+        step.is_complete = True
+        step.was_skipped = False
+        summary_text = (
+            analysis_result.explanation
+            or aspect.description
+            or f"Aspect '{aspect.name}' is sufficiently specified after refreshed analysis."
+        )
+        step.initial_summary = summary_text.strip()
+
+        logger.debug(
+            "Aspect %s marked complete after refreshed analysis", aspect.id
+        )
 
         return True
 
@@ -1136,25 +1183,19 @@ class QueryRefinementManager:
             processed, or None if there are no remaining steps.
         """
         with self.tracing_provider.trace_operation("process_next_step"):
-            # Find the next step whose dependencies are satisfied (dependency-aware ordering)
-            step: Optional[QueryAspectRefiner] = None
-            step_lookup = {candidate.refinement_aspect.id: candidate for candidate in session.steps}
+            while True:
+                step = session.get_active_step()
 
-            for candidate in session.steps:
-                if candidate.is_complete and not candidate.needs_review:
-                    continue
+                if step is None:
+                    logger.debug("No active step remaining to process")
+                    self.trace_emitter.emit(
+                        "no_eligible_step",
+                        metadata={"session_steps": len(session.steps)}
+                    )
+                    return None
 
-                if self._dependencies_ready(candidate, step_lookup):
-                    step = candidate
+                if self.ensure_step_is_ready(session, step):
                     break
-
-            if step is None:
-                logger.debug("No active step with satisfied dependencies to process")
-                self.trace_emitter.emit(
-                    "no_eligible_step",
-                    metadata={"session_steps": len(session.steps)}
-                )
-                return None
 
             aspect = step.refinement_aspect
             
