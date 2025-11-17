@@ -40,20 +40,20 @@ def test_parse_user_command_with_known_command_remains_valid():
     assert result.error_message is None
 
 
-def test_parse_user_command_synthesize_is_valid():
-    result = parse_user_command("/synthesize")
-    assert result.command is UserCommand.SYNTHESIZE
+def test_parse_user_command_submit_is_valid():
+    result = parse_user_command("/submit")
+    assert result.command is UserCommand.SUBMIT
     assert result.is_valid is True
     assert result.error_message is None
 
 
-def test_synthesize_command_marks_session_for_synthesis():
+def test_submit_command_marks_session_for_synthesis():
     session = QueryRefinementSession(original_query="Example query")
-    result = parse_user_command("/synthesize")
+    result = parse_user_command("/submit")
 
     payload = session.handle_command(result)
 
-    assert payload["synthesize"] is True
+    assert payload["submit"] is True
     assert payload["success"] is True
     assert session.synthesis_requested is True
 

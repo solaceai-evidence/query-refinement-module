@@ -421,7 +421,7 @@ def test_session_request_synthesis_and_to_dict():
     session, step_a, step_b = build_session_with_steps()
     synth = session._request_synthesis()
     assert session.synthesis_requested
-    assert synth["synthesize"]
+    assert synth["submit"]
 
     data = session.to_dict()
     assert data["original_query"] == "original query"

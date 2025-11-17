@@ -11,7 +11,7 @@ Refinement sessions accept slash-prefixed commands to manage navigation, control
 | `/restart` | — | Reset the session to its initial state |
 | `/skip` | — | Mark the current step complete without asking more questions |
 | `/done` | — | Commit the current step with whatever information has been collected |
-| `/synthesize` | — | Request early termination and move straight to synthesis |
+| `/submit` | `/end` | Request early termination and move straight to synthesis |
 | `/status` | — | Print a progress summary with completion counts |
 | `/steps` | — | List every aspect with status icons and follow-up counts |
 | `/help` | — | Return formatted help text covering all commands |
@@ -63,7 +63,7 @@ else:
 - `success`: `True`/`False`
 - `message`: human-readable feedback
 
-Some commands add more detail (for example, `/status` includes a `summary` payload, `/steps` returns the list of step descriptors, and `/synthesize` flags `"synthesize": True`).
+Some commands add more detail (for example, `/status` includes a `summary` payload, `/steps` returns the list of step descriptors, and `/submit` flags `"submit": True`).
 
 ## 4. Command Behaviour Highlights
 
@@ -76,7 +76,7 @@ Some commands add more detail (for example, `/status` includes a `summary` paylo
 ### Flow Control
 
 - `/skip` and `/done` are operational synonyms: each marks the current step complete while preserving the existing conversation history. If no clarification was captured, the step is recorded as intentionally skipped so dependent aspects can continue without re-prompting for the same detail.
-- `/synthesize` sets `session.synthesis_requested = True` so call sites can break out of the refinement loop and proceed directly to query synthesis.
+- `/submit` (and its alias `/end`) sets `session.synthesis_requested = True` so call sites can break out of the refinement loop and proceed directly to query synthesis.
 
 ### Information
 
@@ -125,10 +125,10 @@ def run_loop(session: QueryRefinementSession, ask_llm):
             if cmd.command in {UserCommand.BACK, UserCommand.GOTO, UserCommand.RESTART}:
                 continue  # active step changed
 
-            if cmd.command in {UserCommand.SKIP, UserCommand.DONE, UserCommand.FINISH}:
+            if cmd.command in {UserCommand.SKIP, UserCommand.DONE}:
                 continue  # move forward automatically
 
-            if result.get("synthesize"):
+            if result.get("submit"):
                 break
 
             continue  # info commands fall through to next loop iteration
@@ -158,6 +158,6 @@ Automated tests in `tests/test_core_commands.py` and `tests/test_manager.py` cov
 - Navigation effects (including dependency invalidation)
 - Skip/done flows and follow-up termination
 - Status and help payloads
-- `/synthesize` semantics inside the manager pipeline
+- `/submit` semantics inside the manager pipeline
 
 Use these tests as templates when extending command behaviour or introducing new workflows.

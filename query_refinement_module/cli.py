@@ -68,7 +68,7 @@ def run_cli(manager: QueryRefinementManager, framework_name: str, query: str) ->
     _print_summary(manager, session)
 
     print("Type answers to refine each aspect. Prefix commands with '/' (e.g., /help, /status, /back).")
-    print("Use /synthesize at any time to finish with the current answers.")
+    print("Use /submit (or /end) at any time to finish with the current answers.")
     print("Press Ctrl+C to exit at any time.\n")
 
     interrupted = False
@@ -102,7 +102,7 @@ def run_cli(manager: QueryRefinementManager, framework_name: str, query: str) ->
                 command_result = parse_user_command(user_input)
                 payload = session.handle_command(command_result)
                 print(payload.get("message", ""))
-                if payload.get("synthesize") or session.synthesis_requested:
+                if payload.get("submit") or session.synthesis_requested:
                     continue
                 invalidated = payload.get("invalidated", []) or []
                 if invalidated:
@@ -115,7 +115,7 @@ def run_cli(manager: QueryRefinementManager, framework_name: str, query: str) ->
             print(f"Recorded response for {header}.")
 
         if session.synthesis_requested:
-            print("Session ended early by /synthesize. Current conversation:")
+            print("Session ended early by /submit. Current conversation:")
         else:
             print("All aspects processed. Final conversation:")
 
