@@ -1,0 +1,68 @@
+name: macOS Packaging
+
+on:
+  workflow_dispatch:
+
+jobs:
+  build:
+    name: Build QueryRefine (${{ matrix.arch }})
+    runs-on: ${{ matrix.runner }}
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          - runner: macos-14
+            arch: arm64
+          - runner: macos-13
+            arch: x86_64
+
+    env:
+      POETRY_VIRTUALENVS_IN_PROJECT: true
+
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v4
+
+      - name: Set up Python
+        uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+
+      - name: Install Poetry
+        run: |
+          python -m pip install --upgrade pip
+          python -m pip install poetry
+
+      - name: Install dependencies
+        run: |
+          poetry install --no-interaction --no-ansi --no-root
+
+      - name: Install PyInstaller
+        run: |
+          poetry run pip install pyinstaller
+
+      - name: Run unit tests
+        run: |
+          poetry run pytest
+
+      - name: Build macOS application bundle
+        run: |
+          poetry run pyinstaller packaging/macos/QueryRefine.spec --noconfirm
+
+      - name: Assemble distributable archive
+        run: |
+          PACKAGE_DIR="QueryRefine-${{ matrix.arch }}"
+          rm -rf "$PACKAGE_DIR"
+          mkdir "$PACKAGE_DIR"
+          cp -R dist/QueryRefine.app "$PACKAGE_DIR/QueryRefine.app"
+          cp packaging/macos/sample.env "$PACKAGE_DIR/sample.env"
+          cp packaging/macos/Configure\ Environment.command "$PACKAGE_DIR/Configure Environment.command"
+          cp packaging/macos/Run\ Query\ Refine.command "$PACKAGE_DIR/Run Query Refine.command"
+          chmod +x "$PACKAGE_DIR"/*.command
+          ditto -c -k --keepParent "$PACKAGE_DIR" "QueryRefine-${{ matrix.arch }}.zip"
+
+      - name: Upload artifact
+        uses: actions/upload-artifact@v4
+        with:
+          name: QueryRefine-${{ matrix.arch }}
+          path: QueryRefine-${{ matrix.arch }}.zip

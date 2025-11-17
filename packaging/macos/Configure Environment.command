@@ -2,17 +2,25 @@
 # Ensure the script stops on errors so users get clear feedback.
 set -e
 
-APP_DIR=$(cd "$(dirname "$0")"; pwd)
-RESOURCE_DIR="$APP_DIR/../Resources"
+SCRIPT_DIR=$(cd "$(dirname "$0")"; pwd)
+APP_BUNDLE="$SCRIPT_DIR/QueryRefine.app"
+RESOURCE_DIR="$APP_BUNDLE/Contents/Resources"
+TEMPLATE_ENV="$SCRIPT_DIR/sample.env"
 TARGET_ENV="$RESOURCE_DIR/.env"
-TEMPLATE_ENV="$RESOURCE_DIR/sample.env"
 
-if [[ ! -d "$RESOURCE_DIR" ]]; then
-	echo "Unable to locate the app's Resources directory at $RESOURCE_DIR"
+if [[ ! -d "$APP_BUNDLE" ]]; then
+	echo "Could not find QueryRefine.app alongside this script."
+	echo "Make sure QueryRefine.app, sample.env, and this command remain in the same folder."
 	exit 1
 fi
 
-# Copy template over the first time so users start from hints instead of a blank file.
+mkdir -p "$RESOURCE_DIR"
+
+if [[ ! -f "$TEMPLATE_ENV" ]]; then
+	echo "Missing sample.env next to this script."
+	exit 1
+fi
+
 if [[ ! -f "$TARGET_ENV" ]]; then
 	cp "$TEMPLATE_ENV" "$TARGET_ENV"
 fi

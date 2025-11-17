@@ -1,23 +1,24 @@
 #!/bin/zsh
 set -e
 
-APP_DIR=$(cd "$(dirname "$0")"; pwd)
-RESOURCE_DIR="$APP_DIR/../Resources"
+SCRIPT_DIR=$(cd "$(dirname "$0")"; pwd)
+APP_BUNDLE="$SCRIPT_DIR/QueryRefine.app"
+RESOURCE_DIR="$APP_BUNDLE/Contents/Resources"
 ENV_FILE="$RESOURCE_DIR/.env"
-APP_BINARY="$APP_DIR/../MacOS/QueryRefine"
+APP_BINARY="$APP_BUNDLE/Contents/MacOS/QueryRefine"
 
 if [[ ! -x "$APP_BINARY" ]]; then
 	echo "Unable to locate QueryRefine binary at $APP_BINARY"
+	echo "Make sure QueryRefine.app is in the same folder as this script."
 	exit 1
 fi
 
 if [[ ! -f "$ENV_FILE" ]]; then
 	echo "Missing configuration file: $ENV_FILE"
-	echo "Run 'Configure Environment.command' first."
+	echo "Run 'Configure Environment.command' first to create it."
 	exit 1
 fi
 
-# Export variables while respecting quoted values and spaces.
 set -a
 source "$ENV_FILE"
 set +a
