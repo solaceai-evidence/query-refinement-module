@@ -1357,6 +1357,22 @@ class QueryRefinementManager:
                     "attempt": attempt_number,
                 }
             )
+            self.trace_emitter.emit(
+                "llm_prompt_attempt",
+                metadata={
+                    "aspect_id": aspect.id,
+                    "attempt": attempt_number,
+                    "system_prompt": system_prompt,
+                    "user_prompt": prompt,
+                },
+            )
+            logger.info(
+                "LLM prompt attempt | aspect=%s | attempt=%d | system_prompt=%s | user_prompt=%s",
+                aspect.id,
+                attempt_number,
+                system_prompt or "",
+                prompt,
+            )
             try:
                 result = self.llm_provider.complete(
                     system_prompt=system_prompt,
