@@ -2,6 +2,8 @@
 
 from __future__ import annotations
 
+from dotenv import load_dotenv
+
 import argparse
 import sys
 from typing import Optional
@@ -13,6 +15,7 @@ from .providers import ConsoleTracing, FileTracingProvider, LiteLLMProvider
 from .schema import registry
 from .settings import LLMSettings
 
+load_dotenv(override=False)
 
 def build_manager(
     *,
