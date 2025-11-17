@@ -126,7 +126,7 @@ class StubSession:
     def handle_command(self, command_result):
         self.command_calls.append(command_result)
         self.synthesis_requested = True
-        return {"message": "Handled", "synthesize": True}
+        return {"message": "Handled", "submit": True}
 
     def get_full_conversation(self):
         return "conversation"
@@ -175,7 +175,7 @@ def test_run_cli_handles_command(monkeypatch, capsys):
     session = StubSession(step)
     manager = StubManager(session)
 
-    inputs = iter(["/synthesize"])
+    inputs = iter(["/submit"])
     monkeypatch.setattr(cli.registry, "get_framework", lambda name: [])
     monkeypatch.setattr("builtins.input", lambda prompt="": next(inputs))
 

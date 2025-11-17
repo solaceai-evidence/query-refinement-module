@@ -199,7 +199,7 @@ poetry run query-refine --list-frameworks                   # Inspect available 
 poetry run query-refine --framework pico_advanced  # Launch interactive session
 ```
 
-Set `REFINEMENT_FRAMEWORK_PATH` (or populate it in your `.env`) before running so the CLI can load your YAML definitions. During a session you can use commands such as `/help`, `/status`, `/back`, and `/goto 2` to navigate. If you want to stop early and synthesize with the clarifications gathered so far, issue `/synthesize`.
+Set `REFINEMENT_FRAMEWORK_PATH` (or populate it in your `.env`) before running so the CLI can load your YAML definitions. During a session you can use commands such as `/help`, `/status`, `/back`, and `/goto 2` to navigate. If you want to stop early and synthesize with the clarifications gathered so far, issue `/submit` (or `/end`).
 
 When every aspect is processed the CLI prints the full conversation along with a synthesized refined query that merges the original question with any clarifications you provided.
 

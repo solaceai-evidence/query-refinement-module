@@ -27,8 +27,7 @@ Navigation:
 Control:
 - /skip                  - Skip current refinement aspect entirely
 - /done                  - Mark current step as complete (stop follow-ups)
-- /synthesize            - Finish session immediately using current answers
-- /finish                - Complete session with current refinements
+- /submit or /end        - Finish session immediately using current answers
 
 Information:
 - /status                - Show session progress
@@ -70,7 +69,7 @@ class UserCommand(Enum):
     # Control
     SKIP = "skip"
     DONE = "done"
-    SYNTHESIZE = "synthesize"
+    SUBMIT = "submit"
     
     # Information
     STATUS = "status"
@@ -92,7 +91,8 @@ COMMAND_ALIASES: Dict[str, UserCommand] = {
     "status": UserCommand.STATUS,
     "help": UserCommand.HELP,
     "steps": UserCommand.STEPS,
-    "synthesize": UserCommand.SYNTHESIZE,
+    "submit": UserCommand.SUBMIT,
+    "end": UserCommand.SUBMIT,
 }
 
 
@@ -201,8 +201,7 @@ NAVIGATION:
 CONTROL:
   /skip                 Skip current refinement aspect entirely
   /done                 Mark current step complete (stop follow-ups)
-    /synthesize           Finish session immediately using current answers
-    /finish               Complete session with current refinements
+  /submit, /end         Finish session immediately using current answers
 
 INFORMATION:
   /status               Show session progress
@@ -625,7 +624,7 @@ class QueryRefinementSession:
             UserCommand.DONE: self._finish_current,
             UserCommand.STATUS: self._get_status,
             UserCommand.STEPS: self._list_steps,
-            UserCommand.SYNTHESIZE: self._request_synthesis,
+            UserCommand.SUBMIT: self._request_synthesis,
             UserCommand.HELP: lambda: {"success": True, "message": get_help_text()},
         }
 
@@ -809,7 +808,7 @@ class QueryRefinementSession:
         return {
             "success": True,
             "message": "Generating refined query with current clarifications.",
-            "synthesize": True,
+            "submit": True,
         }
     
     def _get_status(self) -> Dict[str, Any]:
