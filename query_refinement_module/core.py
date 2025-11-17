@@ -70,7 +70,6 @@ class UserCommand(Enum):
     # Control
     SKIP = "skip"
     DONE = "done"
-    FINISH = "finish"
     SYNTHESIZE = "synthesize"
     
     # Information
@@ -90,7 +89,6 @@ COMMAND_ALIASES: Dict[str, UserCommand] = {
     "restart": UserCommand.RESTART,
     "skip": UserCommand.SKIP,
     "done": UserCommand.DONE,
-    "finish": UserCommand.FINISH,
     "status": UserCommand.STATUS,
     "help": UserCommand.HELP,
     "steps": UserCommand.STEPS,
@@ -512,6 +510,11 @@ class QueryRefinementSession:
                         f"[{dep_step.refinement_aspect.name} is clear in original query: \"{self.original_query}\"]"
                     ),
                 }
+            elif dep_step.was_skipped:
+                context[dep_id] = {
+                    "name": dep_step.refinement_aspect.name,
+                    "value": "[User declined to provide additional details for this aspect]",
+                }
 
         return context
     
@@ -620,7 +623,6 @@ class QueryRefinementSession:
             UserCommand.RESTART: self._restart,
             UserCommand.SKIP: self._skip_current,
             UserCommand.DONE: self._finish_current,
-            UserCommand.FINISH: self._finish_current,
             UserCommand.STATUS: self._get_status,
             UserCommand.STEPS: self._list_steps,
             UserCommand.SYNTHESIZE: self._request_synthesis,
@@ -753,40 +755,51 @@ class QueryRefinementSession:
         }
     
     def _skip_current(self) -> Dict[str, Any]:
-        """Skip the current refinement aspect without providing a value."""
+        """Skip the current refinement aspect while preserving any captured input."""
         active = self.get_active_step()
         if not active:
             return {"success": False, "message": "No active step to skip"}
-        
-        # Mark as complete without adding to history (no refined value)
-        active.is_complete = True
-        active.was_skipped = True
-        
-        return {
-            "success": True,
-            "message": f"Skipped refinement aspect: {active.refinement_aspect.name}",
-            "step": active,
-        }
-    
+
+        return self._finalize_active_step(
+            active,
+            mark_skipped=True,
+            success_message=f"Skipped refinement aspect: {active.refinement_aspect.name}",
+        )
+
     def _finish_current(self) -> Dict[str, Any]:
-        """Finish the current step, accepting the current refined value."""
+        """Finish the current step, preserving captured responses (if any)."""
         active = self.get_active_step()
         if not active:
             return {"success": False, "message": "No active step to finish"}
+
+        message = f"Completed refinement aspect: {active.refinement_aspect.name}"
         if not active.final_response:
-            return {
-                "success": False,
-                "message": "Cannot finish: no value has been provided yet. Provide an answer or use /skip.",
-            }
-        
-        # Mark as complete and clear review flag
+            message += " (no additional details provided)."
+
+        return self._finalize_active_step(
+            active,
+            mark_skipped=None,
+            success_message=message,
+        )
+
+    def _finalize_active_step(
+        self,
+        active: QueryAspectRefiner,
+        *,
+        mark_skipped: Optional[bool],
+        success_message: str,
+    ) -> Dict[str, Any]:
+        """Mark the provided step complete while preserving history."""
+
         active.is_complete = True
         active.needs_review = False
-        active.was_skipped = False
-        
+        if mark_skipped is None:
+            mark_skipped = not bool(active.final_response)
+        active.was_skipped = mark_skipped
+
         return {
             "success": True,
-            "message": f"Completed refinement aspect: {active.refinement_aspect.name}",
+            "message": success_message,
             "step": active,
         }
 

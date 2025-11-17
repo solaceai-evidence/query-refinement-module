@@ -380,7 +380,8 @@ def test_session_skip_and_finish_behaviour():
     assert step.was_skipped
 
     finish_without_value = session._finish_current()
-    assert not finish_without_value["success"]
+    assert finish_without_value["success"] is False
+    assert step.was_skipped
 
     finish_session = QueryRefinementSession(original_query="query")
     finish_step = finish_session.add_step(make_aspect())

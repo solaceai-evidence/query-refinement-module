@@ -109,8 +109,9 @@ def test_handle_command_done_without_response_fails():
     session = _make_session()
     payload = session.handle_command(parse_user_command("/done"))
 
-    assert payload["success"] is False
-    assert "no value has been provided" in payload["message"].lower()
+    assert payload["success"] is True
+    assert "no additional details provided" in payload["message"].lower()
+    assert session.steps[0].was_skipped is True
 
 
 def test_handle_command_done_with_response_marks_complete():

@@ -9,8 +9,8 @@ Refinement sessions accept slash-prefixed commands to manage navigation, control
 | `/back` | `/prev` | Return to the previous step and invalidate subsequent dependents |
 | `/goto <n>` | — | Jump to step `n` (1-indexed) and reopen that branch |
 | `/restart` | — | Reset the session to its initial state |
-| `/skip` | — | Mark the current step as skipped (`final_response = None`) |
-| `/done` | `/finish` | Commit the current response and stop follow-ups for that aspect |
+| `/skip` | — | Mark the current step complete without asking more questions |
+| `/done` | — | Commit the current step with whatever information has been collected |
 | `/synthesize` | — | Request early termination and move straight to synthesis |
 | `/status` | — | Print a progress summary with completion counts |
 | `/steps` | — | List every aspect with status icons and follow-up counts |
@@ -75,8 +75,7 @@ Some commands add more detail (for example, `/status` includes a `summary` paylo
 
 ### Flow Control
 
-- `/skip` records an explicit skip, preserving audit trails with `was_skipped=True`.
-- `/done` and `/finish` mark the step complete and treat the most recent conversation response as the accepted value (no extra setter required).
+- `/skip` and `/done` are operational synonyms: each marks the current step complete while preserving the existing conversation history. If no clarification was captured, the step is recorded as intentionally skipped so dependent aspects can continue without re-prompting for the same detail.
 - `/synthesize` sets `session.synthesis_requested = True` so call sites can break out of the refinement loop and proceed directly to query synthesis.
 
 ### Information
