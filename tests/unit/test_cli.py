@@ -1,8 +1,9 @@
+import logging
 from types import SimpleNamespace
 from typing import List, Optional
 
 import query_refinement_module.cli as cli
-from query_refinement_module.providers import NoOpTracingProvider
+from query_refinement_module.providers import FileTracingProvider, NoOpTracingProvider
 
 
 class StubSettings:
@@ -51,6 +52,36 @@ def test_build_manager_without_tracing(monkeypatch):
     manager = cli.build_manager(enable_tracing=False)
 
     assert manager.tracing_provider.__class__ is NoOpTracingProvider
+
+
+def test_build_manager_with_trace_dir(monkeypatch, tmp_path):
+    monkeypatch.setattr(cli.LLMSettings, "from_env", classmethod(lambda cls: StubSettings()))
+
+    class DummyProvider:
+        pass
+
+    class DummyAnalyzer:
+        def __init__(self, provider, **kwargs):
+            self.provider = provider
+
+    monkeypatch.setattr(cli, "LiteLLMProvider", lambda **_: DummyProvider())
+    monkeypatch.setattr(cli, "LLMQueryAnalyzer", DummyAnalyzer)
+
+    root_logger = logging.getLogger()
+    original_handlers = list(root_logger.handlers)
+    try:
+        manager = cli.build_manager(enable_tracing=False, trace_dir=str(tmp_path / "trace"))
+        assert isinstance(manager.tracing_provider, FileTracingProvider)
+        log_file = tmp_path / "trace" / "application.log"
+        assert log_file.exists()
+    finally:
+        for handler in list(root_logger.handlers):
+            if handler not in original_handlers:
+                handler.close()
+                root_logger.removeHandler(handler)
+        for handler in original_handlers:
+            if handler not in root_logger.handlers:
+                root_logger.addHandler(handler)
 
 
 def test_format_dependency_context_formats(monkeypatch):
@@ -193,12 +224,27 @@ def test_parse_args_defaults():
     assert args.query is None
     assert args.list_frameworks is False
     assert args.trace is False
+    assert args.trace_dir is None
+    assert args.log_dir is None
 
 
 def test_parse_args_with_values():
-    args = cli.parse_args(["--framework", "demo", "--query", "text", "--list-frameworks", "--trace"])
+    args = cli.parse_args([
+        "--framework",
+        "demo",
+        "--query",
+        "text",
+        "--list-frameworks",
+        "--trace",
+        "--trace-dir",
+        "traces",
+        "--log-dir",
+        "logs",
+    ])
     assert args.framework == "demo"
     assert args.query == "text"
+    assert args.trace_dir == "traces"
+    assert args.log_dir == "logs"
     assert args.list_frameworks is True
     assert args.trace is True
 
@@ -207,7 +253,18 @@ def test_main_handles_reload_error(monkeypatch, capsys):
     def raise_error(*_, **__):
         raise cli.registry.FrameworkLoadError("bad")
 
-    monkeypatch.setattr(cli, "parse_args", lambda argv=None: SimpleNamespace(list_frameworks=False, framework=None, query=None, trace=False))
+    monkeypatch.setattr(
+        cli,
+        "parse_args",
+        lambda argv=None: SimpleNamespace(
+            list_frameworks=False,
+            framework=None,
+            query=None,
+            trace=False,
+            trace_dir=None,
+            log_dir=None,
+        ),
+    )
     monkeypatch.setattr(cli.registry, "reload_from_env", raise_error)
     monkeypatch.setattr(cli.registry, "get_last_load_error", lambda: "extra")
 
@@ -218,7 +275,14 @@ def test_main_handles_reload_error(monkeypatch, capsys):
 
 
 def test_main_lists_frameworks(monkeypatch, capsys):
-    args = SimpleNamespace(list_frameworks=True, framework=None, query=None, trace=False)
+    args = SimpleNamespace(
+        list_frameworks=True,
+        framework=None,
+        query=None,
+        trace=False,
+        trace_dir=None,
+        log_dir=None,
+    )
     monkeypatch.setattr(cli, "parse_args", lambda argv=None: args)
     monkeypatch.setattr(cli.registry, "reload_from_env", lambda **_: {})
     monkeypatch.setattr(cli.registry, "list_frameworks", lambda: ["A", "B"])
@@ -230,7 +294,14 @@ def test_main_lists_frameworks(monkeypatch, capsys):
 
 
 def test_main_requires_framework_selection(monkeypatch, capsys):
-    args = SimpleNamespace(list_frameworks=False, framework=None, query="query", trace=False)
+    args = SimpleNamespace(
+        list_frameworks=False,
+        framework=None,
+        query="query",
+        trace=False,
+        trace_dir=None,
+        log_dir=None,
+    )
     monkeypatch.setattr(cli, "parse_args", lambda argv=None: args)
     monkeypatch.setattr(cli.registry, "reload_from_env", lambda **_: {})
     monkeypatch.setattr(cli.registry, "list_frameworks", lambda: ["A", "B"])
@@ -241,7 +312,14 @@ def test_main_requires_framework_selection(monkeypatch, capsys):
 
 
 def test_main_validates_framework_name(monkeypatch, capsys):
-    args = SimpleNamespace(list_frameworks=False, framework="C", query="query", trace=False)
+    args = SimpleNamespace(
+        list_frameworks=False,
+        framework="C",
+        query="query",
+        trace=False,
+        trace_dir=None,
+        log_dir=None,
+    )
     monkeypatch.setattr(cli, "parse_args", lambda argv=None: args)
     monkeypatch.setattr(cli.registry, "reload_from_env", lambda **_: {})
     monkeypatch.setattr(cli.registry, "list_frameworks", lambda: ["A", "B"])
@@ -252,7 +330,14 @@ def test_main_validates_framework_name(monkeypatch, capsys):
 
 
 def test_main_prompts_for_query(monkeypatch, capsys):
-    args = SimpleNamespace(list_frameworks=False, framework="A", query=None, trace=False)
+    args = SimpleNamespace(
+        list_frameworks=False,
+        framework="A",
+        query=None,
+        trace=False,
+        trace_dir=None,
+        log_dir=None,
+    )
     monkeypatch.setattr(cli, "parse_args", lambda argv=None: args)
     monkeypatch.setattr(cli.registry, "reload_from_env", lambda **_: {})
     monkeypatch.setattr(cli.registry, "list_frameworks", lambda: ["A"])
@@ -264,11 +349,22 @@ def test_main_prompts_for_query(monkeypatch, capsys):
 
 
 def test_main_handles_build_manager_error(monkeypatch, capsys):
-    args = SimpleNamespace(list_frameworks=False, framework="A", query="query", trace=False)
+    args = SimpleNamespace(
+        list_frameworks=False,
+        framework="A",
+        query="query",
+        trace=False,
+        trace_dir=None,
+        log_dir=None,
+    )
     monkeypatch.setattr(cli, "parse_args", lambda argv=None: args)
     monkeypatch.setattr(cli.registry, "reload_from_env", lambda **_: {})
     monkeypatch.setattr(cli.registry, "list_frameworks", lambda: ["A"])
-    monkeypatch.setattr(cli, "build_manager", lambda enable_tracing=False: (_ for _ in ()).throw(RuntimeError("fail")))
+    monkeypatch.setattr(
+        cli,
+        "build_manager",
+        lambda enable_tracing=False, trace_dir=None, log_dir=None: (_ for _ in ()).throw(RuntimeError("fail")),
+    )
 
     cli.main([])
     out = capsys.readouterr().out
@@ -276,13 +372,24 @@ def test_main_handles_build_manager_error(monkeypatch, capsys):
 
 
 def test_main_invokes_run_cli(monkeypatch):
-    args = SimpleNamespace(list_frameworks=False, framework="A", query="query", trace=True)
+    args = SimpleNamespace(
+        list_frameworks=False,
+        framework="A",
+        query="query",
+        trace=True,
+        trace_dir=None,
+        log_dir=None,
+    )
     monkeypatch.setattr(cli, "parse_args", lambda argv=None: args)
     monkeypatch.setattr(cli.registry, "reload_from_env", lambda **_: {})
     monkeypatch.setattr(cli.registry, "list_frameworks", lambda: ["A"])
 
     called = {}
-    monkeypatch.setattr(cli, "build_manager", lambda enable_tracing: "manager")
+    monkeypatch.setattr(
+        cli,
+        "build_manager",
+        lambda enable_tracing, trace_dir=None, log_dir=None: "manager",
+    )
     monkeypatch.setattr(cli, "run_cli", lambda manager, framework, query: called.update({"manager": manager, "framework": framework, "query": query}))
 
     cli.main([])

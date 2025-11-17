@@ -35,10 +35,16 @@ __version__ = "0.1.0"
 
 from .cli import build_manager as build_cli_manager, main as cli_main, run_cli
 from .core import QueryRefinementManager, QueryRefinementSession
-from .providers import InMemorySessionStorage, LiteLLMProvider, RedisSessionStorage
+from .providers import (
+    FileTracingProvider,
+    InMemorySessionStorage,
+    LiteLLMProvider,
+    RedisSessionStorage,
+)
 from .service import QueryRefinementService, build_manager_from_env
 from .analyzers import LLMQueryAnalyzer
 from .settings import LLMSettings
+from .logging_utils import configure_file_logging
 from .api_models import (
     SessionCreateRequest,
     SessionCreateResponse,
@@ -55,7 +61,9 @@ __all__ = [
     "InMemorySessionStorage",
     "RedisSessionStorage",
     "LiteLLMProvider",
+    "FileTracingProvider",
     "LLMQueryAnalyzer",
+    "configure_file_logging",
     "cli_main",
     "run_cli",
     "build_cli_manager",

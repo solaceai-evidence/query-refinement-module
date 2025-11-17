@@ -1,4 +1,7 @@
+import json
+import logging
 import pickle
+from pathlib import Path
 
 import pytest
 
@@ -6,12 +9,14 @@ import query_refinement_module.providers as providers
 from query_refinement_module.interfaces import LLMCompletionResult
 from query_refinement_module.providers import (
     ConsoleTracing,
+    FileTracingProvider,
     InMemorySessionStorage,
     LiteLLMProvider,
     NoOpTracingProvider,
     RedisSessionStorage,
     TraceEventEmitter,
 )
+from query_refinement_module.logging_utils import configure_file_logging
 
 
 def test_trace_event_emitter_ignores_missing_provider():
@@ -196,3 +201,47 @@ def test_litellm_provider_completion_and_model_info(monkeypatch):
     assert info["model"] == "demo"
     assert info["provider"] == "litellm"
     assert info["pricing"] == {"model": "demo", "cost": 0.01}
+
+
+def test_file_tracing_provider_writes_json(tmp_path):
+    trace_dir = tmp_path / "logs"
+    tracer = FileTracingProvider(str(trace_dir))
+
+    with tracer.trace_operation("initialise", metadata={"step": 1}):
+        pass
+
+    tracer.log_event("step_ready", metadata={"aspect": "population"})
+
+    operations_path = trace_dir / "trace_operations.log"
+    events_path = trace_dir / "trace_events.log"
+
+    assert operations_path.exists()
+    assert events_path.exists()
+
+    operations = [json.loads(line) for line in operations_path.read_text().splitlines() if line]
+    events = [json.loads(line) for line in events_path.read_text().splitlines() if line]
+
+    assert operations[0]["event"] == "start"
+    assert operations[1]["status"] == "success"
+    assert events[0]["event"] == "step_ready"
+
+
+def test_configure_file_logging_creates_directory(tmp_path):
+    root_logger = logging.getLogger()
+    original_handlers = list(root_logger.handlers)
+    try:
+        log_path = configure_file_logging(str(tmp_path / "log"), filename="app.log")
+        logging.getLogger("query_refinement_module.tests").info("hello")
+        for handler in root_logger.handlers:
+            handler.flush()
+        assert log_path.exists()
+        contents = log_path.read_text()
+        assert "hello" in contents
+    finally:
+        for handler in list(root_logger.handlers):
+            if handler not in original_handlers:
+                handler.close()
+                root_logger.removeHandler(handler)
+        for handler in original_handlers:
+            if handler not in root_logger.handlers:
+                root_logger.addHandler(handler)

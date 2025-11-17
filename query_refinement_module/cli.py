@@ -8,13 +8,29 @@ from typing import Optional
 
 from .analyzers import LLMQueryAnalyzer
 from .core import QueryRefinementManager, is_user_command, parse_user_command
-from .providers import ConsoleTracing, LiteLLMProvider
+from .logging_utils import configure_file_logging
+from .providers import ConsoleTracing, FileTracingProvider, LiteLLMProvider
 from .schema import registry
 from .settings import LLMSettings
 
 
-def build_manager(*, enable_tracing: bool) -> QueryRefinementManager:
-    tracer = ConsoleTracing() if enable_tracing else None
+def build_manager(
+    *,
+    enable_tracing: bool,
+    trace_dir: Optional[str] = None,
+    log_dir: Optional[str] = None,
+) -> QueryRefinementManager:
+    logs_directory = log_dir or trace_dir
+    if logs_directory:
+        configure_file_logging(logs_directory)
+
+    tracer: Optional[ConsoleTracing | FileTracingProvider]
+    if trace_dir:
+        tracer = FileTracingProvider(trace_dir)
+    elif enable_tracing:
+        tracer = ConsoleTracing()
+    else:
+        tracer = None
     settings = LLMSettings.from_env()
 
     provider = LiteLLMProvider(**settings.as_provider_kwargs())
@@ -156,6 +172,8 @@ def parse_args(argv: Optional[list[str]] = None) -> argparse.Namespace:
     parser.add_argument("--query", "-q", help="Original query to refine", required=False)
     parser.add_argument("--list-frameworks", action="store_true", help="List available frameworks and exit")
     parser.add_argument("--trace", action="store_true", help="Enable verbose console tracing")
+    parser.add_argument("--trace-dir", help="Write tracing operations and events to this directory")
+    parser.add_argument("--log-dir", help="Directory for application logs (defaults to trace-dir when set)")
     return parser.parse_args(argv)
 
 
@@ -206,8 +224,14 @@ def main(argv: Optional[list[str]] = None) -> None:
         print("A non-empty query is required.")
         return
 
+    trace_enabled = bool(args.trace or args.trace_dir)
+
     try:
-        manager = build_manager(enable_tracing=args.trace)
+        manager = build_manager(
+            enable_tracing=trace_enabled,
+            trace_dir=args.trace_dir,
+            log_dir=args.log_dir,
+        )
     except RuntimeError as exc:
         print(f"Failed to initialise LLM provider: {exc}")
         return

@@ -1,12 +1,16 @@
+import json
 import logging
 import pickle
 import threading
 from contextlib import contextmanager
+from datetime import UTC, datetime
+from pathlib import Path
 from typing import Any, Dict, Optional
 
 __all__ = [
     "NoOpTracingProvider",
     "ConsoleTracing",
+    "FileTracingProvider",
     "TraceEventEmitter",
     "InMemorySessionStorage",
     "RedisSessionStorage",
@@ -106,6 +110,91 @@ class ConsoleTracing(TracingProviderInterface):
 
     def is_enabled(self) -> bool:
         return True
+
+
+class FileTracingProvider(TracingProviderInterface):
+    """Persist tracing operations and events to JSONL files on disk."""
+
+    def __init__(
+        self,
+        log_dir: str,
+        *,
+        operations_filename: str = "trace_operations.log",
+        events_filename: str = "trace_events.log",
+    ) -> None:
+        self._log_dir = Path(log_dir)
+        self._log_dir.mkdir(parents=True, exist_ok=True)
+        self._operations_file = self._log_dir / operations_filename
+        self._events_file = self._log_dir / events_filename
+        self._lock = threading.RLock()
+        self._enabled = True
+
+    @contextmanager
+    def trace_operation(
+        self,
+        name: str,
+        operation_type: str = "function",
+        metadata: Optional[Dict[str, Any]] = None,
+    ):
+        start_payload = {
+            "timestamp": self._timestamp(),
+            "name": name,
+            "operation_type": operation_type,
+            "metadata": metadata or {},
+            "event": "start",
+        }
+        self._write_json_line(self._operations_file, start_payload)
+        try:
+            yield
+        except Exception as exc:
+            failure_payload = {
+                "timestamp": self._timestamp(),
+                "name": name,
+                "operation_type": operation_type,
+                "metadata": metadata or {},
+                "event": "end",
+                "status": "error",
+                "error": str(exc),
+            }
+            self._write_json_line(self._operations_file, failure_payload)
+            raise
+        else:
+            success_payload = {
+                "timestamp": self._timestamp(),
+                "name": name,
+                "operation_type": operation_type,
+                "metadata": metadata or {},
+                "event": "end",
+                "status": "success",
+            }
+            self._write_json_line(self._operations_file, success_payload)
+
+    def log_event(
+        self,
+        event_name: str,
+        level: str = "info",
+        metadata: Optional[Dict[str, Any]] = None,
+    ) -> None:
+        payload = {
+            "timestamp": self._timestamp(),
+            "event": event_name,
+            "level": level,
+            "metadata": metadata or {},
+        }
+        self._write_json_line(self._events_file, payload)
+
+    def is_enabled(self) -> bool:
+        return self._enabled
+
+    def _write_json_line(self, file_path: Path, payload: Dict[str, Any]) -> None:
+        with self._lock:
+            with file_path.open("a", encoding="utf-8") as fh:
+                json.dump(payload, fh, ensure_ascii=True)
+                fh.write("\n")
+
+    @staticmethod
+    def _timestamp() -> str:
+        return datetime.now(UTC).isoformat().replace("+00:00", "Z")
 
 
 # ========
