@@ -99,7 +99,7 @@ class StubLLMProvider(LLMProviderInterface):
 
 
 class StubQueryAnalyzer(QueryAnalyzerInterface):
-    def __init__(self, results: Dict[str, AspectAnalysisResult]):
+    def __init__(self, results: Dict[str, Any]):
         self.results = results
         self.calls: List[Dict[str, Any]] = []
 
@@ -117,7 +117,10 @@ class StubQueryAnalyzer(QueryAnalyzerInterface):
                 "dependency_context": dependency_context,
             }
         )
-        return self.results[aspect.id]
+        result = self.results[aspect.id]
+        if callable(result):
+            return result(dependency_context or {})
+        return result
 
 
 @dataclass
@@ -463,16 +466,45 @@ def test_manager_initialize_applies_dependency_context():
     assert ctx["a"]["value"].startswith("[Aspect A is clear")
 
 
-def test_dependencies_ready_detects_pending():
-    a = QueryAspectRefiner(refinement_aspect=make_aspect(aspect_id="a"))
-    b = QueryAspectRefiner(refinement_aspect=make_aspect(aspect_id="b", depends_on=["a"]))
-    lookup = {"a": a, "b": b}
+def test_ensure_step_is_ready_autocompletes_dependent_aspect():
+    aspect_a = make_aspect(aspect_id="a")
+    aspect_b = make_aspect(aspect_id="b", depends_on=["a"])
 
-    assert QueryRefinementManager._dependencies_ready(a, lookup)
-    assert not QueryRefinementManager._dependencies_ready(b, lookup)
+    def analyze_b(context: Dict[str, Any]) -> AspectAnalysisResult:
+        if "a" not in context:
+            return AspectAnalysisResult(
+                needs_refinement=True,
+                explanation="Missing population",
+                suggested_question="Provide population",
+            )
+        return AspectAnalysisResult(
+            needs_refinement=False,
+            explanation="Population context already specifies details",
+        )
 
-    a.is_complete = True
-    assert QueryRefinementManager._dependencies_ready(b, lookup)
+    manager = build_manager(
+        responses=[],
+        analysis_results={
+            "a": AspectAnalysisResult(needs_refinement=False, explanation="Population covered"),
+            "b": analyze_b,
+        },
+    )
+
+    session = QueryRefinementSession(original_query="query")
+    step_a = session.add_step(aspect_a)
+    step_b = session.add_step(aspect_b)
+
+    step_a.is_complete = True
+    step_a.initial_summary = "Population captured in original query"
+
+    step_b.is_complete = False
+    step_b.analysis_suggested_question = "Need population"
+
+    ready = manager.ensure_step_is_ready(session, step_b)
+
+    assert not ready  # auto-resolved, no prompt needed
+    assert step_b.is_complete
+    assert "already" in (step_b.initial_summary or "").lower()
 
 
 def test_process_next_step_returns_none_when_no_pending():

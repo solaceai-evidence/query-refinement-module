@@ -82,6 +82,11 @@ def run_cli(manager: QueryRefinementManager, framework_name: str, query: str) ->
             if not step:
                 break
 
+            if hasattr(manager, "ensure_step_is_ready"):
+                if not manager.ensure_step_is_ready(session, step):
+                    # Aspect resolved after refreshed analysis; move to next candidate.
+                    continue
+
             header = step.refinement_aspect.name
             question = step.analysis_suggested_question or header
             if step.needs_review:
