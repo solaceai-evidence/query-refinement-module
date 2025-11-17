@@ -1096,9 +1096,27 @@ class QueryRefinementManager:
         step resolved itself (e.g., dependencies filled in the missing context).
         """
 
+        aspect_id = step.refinement_aspect.id
+        logger.debug("Ensuring readiness for aspect %s", aspect_id)
+        self.trace_emitter.emit(
+            "step_readiness_check",
+            metadata={
+                "aspect_id": aspect_id,
+                "needs_review": step.needs_review,
+                "follow_up_count": step.follow_up_count,
+            },
+        )
+
         if self._maybe_autocomplete_dependent_step(session, step):
             return False
 
+        self.trace_emitter.emit(
+            "step_ready_for_prompt",
+            metadata={
+                "aspect_id": aspect_id,
+                "depends_on": step.refinement_aspect.depends_on,
+            },
+        )
         return True
 
     def _maybe_autocomplete_dependent_step(
@@ -1115,6 +1133,10 @@ class QueryRefinementManager:
 
         if step.follow_up_history:
             # User already supplied input; keep existing flow.
+            self.trace_emitter.emit(
+                "dependent_step_has_user_input",
+                metadata={"aspect_id": aspect.id, "follow_up_count": step.follow_up_count},
+            )
             return False
 
         dependency_context = session.get_dependency_context(aspect.id)
@@ -1126,6 +1148,10 @@ class QueryRefinementManager:
                 aspect.id,
                 missing,
             )
+            self.trace_emitter.emit(
+                "dependent_step_waiting_on_dependencies",
+                metadata={"aspect_id": aspect.id, "pending_dependencies": missing},
+            )
             return False
 
         analyzer_context = {
@@ -1135,6 +1161,13 @@ class QueryRefinementManager:
         logger.debug(
             "Re-analyzing dependent aspect '%s' after dependency completion",
             aspect.id,
+        )
+        self.trace_emitter.emit(
+            "dependent_step_reanalysis_start",
+            metadata={
+                "aspect_id": aspect.id,
+                "dependency_keys": list(dependency_context.keys()),
+            },
         )
 
         analysis_result = self.query_analyzer.analyze_aspect(
@@ -1150,6 +1183,10 @@ class QueryRefinementManager:
 
         if analysis_result.needs_refinement:
             step.is_complete = False
+            self.trace_emitter.emit(
+                "dependent_step_requires_followup",
+                metadata={"aspect_id": aspect.id},
+            )
             return False
 
         step.is_complete = True
@@ -1163,6 +1200,13 @@ class QueryRefinementManager:
 
         logger.debug(
             "Aspect %s marked complete after refreshed analysis", aspect.id
+        )
+        self.trace_emitter.emit(
+            "dependent_step_autocompleted",
+            metadata={
+                "aspect_id": aspect.id,
+                "summary_present": bool(step.initial_summary),
+            },
         )
 
         return True
