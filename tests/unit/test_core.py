@@ -507,6 +507,21 @@ def test_ensure_step_is_ready_autocompletes_dependent_aspect():
     assert "already" in (step_b.initial_summary or "").lower()
 
 
+def test_dependency_context_uses_latest_follow_up_response():
+    aspect_a = make_aspect(aspect_id="population")
+    aspect_b = make_aspect(aspect_id="intervention", depends_on=["population"])
+
+    session = QueryRefinementSession(original_query="query")
+    step_a = session.add_step(aspect_a)
+    session.add_step(aspect_b)
+
+    step_a.add_follow_up("Q", "Adults aged 40-65")
+    step_a.is_complete = True
+
+    context = session.get_dependency_context("intervention")
+    assert context["population"]["value"] == "Adults aged 40-65"
+
+
 def test_process_next_step_returns_none_when_no_pending():
     manager = build_manager(responses=[], analysis_results={})
     session = QueryRefinementSession(original_query="query")
@@ -526,6 +541,7 @@ def test_process_next_step_records_follow_up_without_schema():
     assert result["response"] == "Answer"
     assert step.is_complete
     assert step.follow_up_history[-1]["response"] == "Answer"
+    assert step.final_response == "Answer"
 
 
 def test_process_next_step_enforces_json_validation():
