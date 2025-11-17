@@ -33,10 +33,10 @@ if collect_data_files is not None:
     )
 
 datas += [
-    (str(SPEC_DIR / "sample.env"), "Resources"),
-    (str(SPEC_DIR / "sample_framework.yaml"), "Resources"),
-    (str(SPEC_DIR / "Configure Environment.command"), "Resources"),
-    (str(SPEC_DIR / "Run Query Refine.command"), "Resources"),
+    (str(SPEC_DIR / "sample.env"), "."),
+    (str(SPEC_DIR / "sample_framework.yaml"), "."),
+    (str(SPEC_DIR / "Configure Environment.command"), "."),
+    (str(SPEC_DIR / "Run Query Refine.command"), "."),
 ]
 
 hiddenimports = ["litellm"]
@@ -67,10 +67,8 @@ pyz = PYZ(
 exe = EXE(
     pyz,
     a.scripts,
-    a.binaries,
-    a.zipfiles,
-    a.datas,
     [],
+    exclude_binaries=True,
     name='QueryRefine',
     debug=False,
     bootloader_ignore_signals=False,
@@ -84,8 +82,18 @@ exe = EXE(
     entitlements_file=None,
 )
 
-app = BUNDLE(
+coll = COLLECT(
     exe,
+    a.binaries,
+    a.datas,
+    strip=False,
+    upx=True,
+    upx_exclude=[],
+    name='QueryRefine',
+)
+
+app = BUNDLE(
+    coll,
     name='QueryRefine.app',
     icon=None,
     bundle_identifier=None,
