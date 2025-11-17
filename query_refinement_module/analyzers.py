@@ -49,6 +49,15 @@ class LLMQueryAnalyzer(QueryAnalyzerInterface):
         system_prompt = aspect.get_system_prompt()
         user_prompt = self._build_prompt(query, aspect, dependency_context)
 
+        dependency_keys = sorted(dependency_context.keys()) if dependency_context else []
+        logger.info(
+            "Analyzer prompt dispatched | aspect=%s | dependency_keys=%s | system_prompt=%s | user_prompt=%s",
+            aspect.id,
+            dependency_keys,
+            system_prompt or "",
+            user_prompt,
+        )
+
         result = provider.complete(
             user_prompt=user_prompt,
             system_prompt=system_prompt,
