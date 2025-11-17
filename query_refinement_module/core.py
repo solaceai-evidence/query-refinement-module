@@ -285,15 +285,11 @@ class QueryAspectRefiner:
             Tuple of (system_prompt, analysis_prompt)
         """
         system_prompt = self.refinement_aspect.get_system_prompt()
-        
-        # Build user prompt with dependency context
-        analysis_prompt_context = []
-        
-        # Add dependency context if provided
-        if dependency_context and self.refinement_aspect.depends_on:
-            missing_deps: List[str] = []
-            context_lines: List[str] = []
 
+        context_lines: List[str] = []
+        missing_deps: List[str] = []
+
+        if dependency_context and self.refinement_aspect.depends_on:
             for dep_id in self.refinement_aspect.depends_on:
                 entry = dependency_context.get(dep_id)
                 if entry and entry.get("value"):
@@ -302,24 +298,27 @@ class QueryAspectRefiner:
                 else:
                     missing_deps.append(dep_id)
 
-            if context_lines:
-                analysis_prompt_context.append(
-                    "Previous refinements (use these details when evaluating this aspect):"
-                )
-                analysis_prompt_context.extend(context_lines)
-                analysis_prompt_context.append("")  # Blank line
-
             if missing_deps:
                 logger.warning(
                     "refinement aspect '%s' depends on %s but they have no values. Continuing without that context.",
                     self.refinement_aspect.id,
                     missing_deps,
                 )
-        
-        # Add main analysis prompt
-        analysis_prompt_context.append(self.refinement_aspect.get_user_prompt(query=query, **kwargs))
-        
-        return system_prompt, "\n".join(analysis_prompt_context)
+
+        analysis_prompt_sections = [
+            self.refinement_aspect.get_user_prompt(query=query, **kwargs)
+        ]
+
+        if context_lines:
+            analysis_prompt_sections.extend(
+                [
+                    "",
+                    "Previous refinements (use these details when evaluating this aspect):",
+                    *context_lines,
+                ]
+            )
+
+        return system_prompt, "\n".join(analysis_prompt_sections)
     
     def can_ask_followup(self) -> bool:
         """
