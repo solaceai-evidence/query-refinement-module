@@ -28,7 +28,6 @@ Control:
 - /skip                  - Skip current refinement aspect entirely
 - /done                  - Mark current step as complete (stop follow-ups)
 - /synthesize            - Finish session immediately using current answers
-- /continue              - Continue with remaining steps
 - /finish                - Complete session with current refinements
 
 Information:
@@ -71,7 +70,6 @@ class UserCommand(Enum):
     # Control
     SKIP = "skip"
     DONE = "done"
-    CONTINUE = "continue"
     FINISH = "finish"
     SYNTHESIZE = "synthesize"
     
@@ -92,7 +90,6 @@ COMMAND_ALIASES: Dict[str, UserCommand] = {
     "restart": UserCommand.RESTART,
     "skip": UserCommand.SKIP,
     "done": UserCommand.DONE,
-    "continue": UserCommand.CONTINUE,
     "finish": UserCommand.FINISH,
     "status": UserCommand.STATUS,
     "help": UserCommand.HELP,
@@ -207,8 +204,7 @@ CONTROL:
   /skip                 Skip current refinement aspect entirely
   /done                 Mark current step complete (stop follow-ups)
     /synthesize           Finish session immediately using current answers
-  /continue             Continue with remaining steps
-  /finish               Complete session with current refinements
+    /finish               Complete session with current refinements
 
 INFORMATION:
   /status               Show session progress
@@ -617,9 +613,6 @@ class QueryRefinementSession:
             if cmd_result.argument is None:
                 return {"success": False, "message": "/goto requires step number"}
             return self._go_to_step(int(cmd_result.argument))
-
-        if command == UserCommand.CONTINUE:
-            return {"success": True, "message": "Continuing with current step"}
 
         command_handlers: Dict[UserCommand, Callable[[], Dict[str, Any]]] = {
             UserCommand.BACK: self._go_back,

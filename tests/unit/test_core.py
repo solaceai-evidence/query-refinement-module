@@ -358,9 +358,6 @@ def test_session_handle_command_flow():
     invalid = session.handle_command(CommandResult(command=UserCommand.NONE, is_valid=False, error_message="bad"))
     assert not invalid["success"] and invalid["message"] == "bad"
 
-    continue_result = session.handle_command(CommandResult(command=UserCommand.CONTINUE))
-    assert continue_result["message"] == "Continuing with current step"
-
     goto_fail = session.handle_command(CommandResult(command=UserCommand.GOTO, argument=None))
     assert not goto_fail["success"]
 
