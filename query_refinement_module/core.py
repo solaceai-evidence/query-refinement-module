@@ -502,6 +502,12 @@ class QueryRefinementSession:
                     "name": dep_step.refinement_aspect.name,
                     "value": dep_step.final_response,
                 }
+            elif dep_step.follow_up_history:
+                latest_response = dep_step.follow_up_history[-1].get("response") or ""
+                context[dep_id] = {
+                    "name": dep_step.refinement_aspect.name,
+                    "value": latest_response,
+                }
             elif dep_step.is_complete and not dep_step.was_skipped:
                 context[dep_id] = {
                     "name": dep_step.refinement_aspect.name,
