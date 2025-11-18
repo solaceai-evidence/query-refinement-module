@@ -45,9 +45,19 @@ jobs:
 
       - name: Verify anthropic_tokenizer.json is bundled
         run: |
-          if ! find dist/QueryRefine/QueryRefine -type f -name 'anthropic_tokenizer.json' | grep anthropic_tokenizer.json; then
-            echo "anthropic_tokenizer.json not found in bundle!" && exit 1
+          set -e
+          # Check if output directory exists
+          if [ ! -d dist/QueryRefine ]; then
+            echo "Build output directory dist/QueryRefine does not exist! Build may have failed."
+            exit 1
           fi
+          # Search for anthropic_tokenizer.json recursively in CLI and .app bundle
+          FOUND=$(find dist/QueryRefine -name anthropic_tokenizer.json)
+          if [ -z "$FOUND" ]; then
+            echo "anthropic_tokenizer.json not found in any QueryRefine output!"
+            exit 1
+          fi
+          echo "Found anthropic_tokenizer.json at: $FOUND"
 
       - name: Prepare release folder
         run: |
