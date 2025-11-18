@@ -8,9 +8,15 @@ from pathlib import Path
 import sys
 
 try:
-    from PyInstaller.utils.hooks import collect_data_files
+    import litellm
+except ImportError:  # pragma: no cover - packaging safeguard
+    litellm = None
+
+try:
+    from PyInstaller.utils.hooks import collect_data_files, collect_submodules
 except ImportError:
     collect_data_files = None
+    collect_submodules = None
 
 # ``__file__`` is not defined when PyInstaller execs the spec, so use argv[0].
 SPEC_DIR = Path(sys.argv[0]).resolve().parent
@@ -31,6 +37,23 @@ if collect_data_files is not None:
         includes=["prompt/*"],
         excludes=None,
     )
+    datas += collect_data_files("tiktoken_ext")
+    token_datas = collect_data_files(
+        "litellm",
+        includes=["litellm_core_utils/tokenizers/*"],
+        excludes=None,
+    )
+    datas += token_datas
+
+if litellm is not None:
+    anthropic_tokenizer = (
+        Path(litellm.__file__).resolve().parent
+        / "litellm_core_utils"
+        / "tokenizers"
+        / "anthropic_tokenizer.json"
+    )
+    if anthropic_tokenizer.exists():
+        datas.append((str(anthropic_tokenizer), "litellm/litellm_core_utils/tokenizers"))
 
 datas += [
     (str(SPEC_DIR / "sample.env"), "."),
@@ -39,7 +62,13 @@ datas += [
     (str(SPEC_DIR / "Run Query Refine.command"), "."),
 ]
 
-hiddenimports = ["litellm"]
+hiddenimports = [
+    "litellm",
+    "tiktoken_ext.openai_public",
+]
+
+if collect_submodules is not None:
+    hiddenimports += collect_submodules("tiktoken_ext")
 
 
 a = Analysis(

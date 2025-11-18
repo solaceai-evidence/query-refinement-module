@@ -1,0 +1,63 @@
+name: Build and Package QueryRefine (macOS x86_64)
+
+on:
+  workflow_dispatch:
+  push:
+    branches:
+      - main
+    paths:
+      - 'packaging/macos/**'
+      - 'query_refinement_module/**'
+      - 'pyproject.toml'
+      - '.github/workflows/macos-x86_64.yml'
+
+jobs:
+  build-macos-x86_64:
+    runs-on: macos-latest
+    env:
+      PYTHON_VERSION: '3.10'
+      ARCH: 'x86_64'
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v4
+
+      - name: Set up Python ${{ env.PYTHON_VERSION }}
+        uses: actions/setup-python@v5
+        with:
+          python-version: ${{ env.PYTHON_VERSION }}
+
+      - name: Install Poetry
+        run: |
+          curl -sSL https://install.python-poetry.org | python3 -
+          echo "export PATH=\"$HOME/.local/bin:$PATH\"" >> $GITHUB_ENV
+
+      - name: Install dependencies
+        run: |
+          poetry install --no-interaction --no-root
+
+      - name: Build QueryRefine (x86_64)
+        run: |
+          cd packaging/macos
+          poetry run pyinstaller QueryRefine.spec --distpath build/QueryRefine --workpath build/QueryRefine --clean
+
+      - name: Verify anthropic_tokenizer.json is bundled
+        run: |
+          if ! find build/QueryRefine/QueryRefine -name 'anthropic_tokenizer.json' | grep anthropic_tokenizer.json; then
+            echo "anthropic_tokenizer.json not found in bundle!" && exit 1
+          fi
+
+      - name: Prepare release folder
+        run: |
+          mkdir -p ../../release/macos/x86_64
+          cp -R build/QueryRefine/QueryRefine ../../release/macos/x86_64/
+          cp ../../README.md ../../release/macos/x86_64/
+          cp sample_framework.yaml ../../release/macos/x86_64/
+          cp sample.env ../../release/macos/x86_64/
+          cp Run\ Query\ Refine.command ../../release/macos/x86_64/
+          cp Configure\ Environment.command ../../release/macos/x86_64/
+
+      - name: Upload release artifact
+        uses: actions/upload-artifact@v4
+        with:
+          name: QueryRefine-macos-x86_64
+          path: release/macos/x86_64/
