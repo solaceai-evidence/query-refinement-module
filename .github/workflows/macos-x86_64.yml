@@ -45,14 +45,14 @@ jobs:
 
       - name: Verify anthropic_tokenizer.json is bundled
         run: |
-          if ! find build/QueryRefine/QueryRefine -name 'anthropic_tokenizer.json' | grep anthropic_tokenizer.json; then
+          if ! find dist/QueryRefine/QueryRefine -name 'anthropic_tokenizer.json' | grep anthropic_tokenizer.json; then
             echo "anthropic_tokenizer.json not found in bundle!" && exit 1
           fi
 
       - name: Prepare release folder
         run: |
           mkdir -p ../../release/macos/x86_64
-          cp -R build/QueryRefine/QueryRefine ../../release/macos/x86_64/
+          cp -R dist/QueryRefine/QueryRefine ../../release/macos/x86_64/
           cp ../../README.md ../../release/macos/x86_64/
           cp sample_framework.yaml ../../release/macos/x86_64/
           cp sample.env ../../release/macos/x86_64/
