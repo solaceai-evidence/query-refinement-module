@@ -45,7 +45,7 @@ jobs:
 
       - name: Verify anthropic_tokenizer.json is bundled
         run: |
-          if ! find dist/QueryRefine/QueryRefine -name 'anthropic_tokenizer.json' | grep anthropic_tokenizer.json; then
+          if ! find dist/QueryRefine/QueryRefine -type f -name 'anthropic_tokenizer.json' | grep anthropic_tokenizer.json; then
             echo "anthropic_tokenizer.json not found in bundle!" && exit 1
           fi
 
