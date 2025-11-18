@@ -6,7 +6,7 @@ on:
 jobs:
   build:
     name: Build QueryRefine (${{ matrix.arch }})
-    runs-on: ${{ matrix.runner }}
+    runs-on: self-hosted 
     strategy:
       fail-fast: false
       matrix:
@@ -45,9 +45,36 @@ jobs:
         run: |
           poetry run pytest
 
+
+
+
       - name: Build macOS application bundle
         run: |
           poetry run pyinstaller packaging/macos/QueryRefine.spec --noconfirm
+      - name: Verify anthropic_tokenizer.json is bundled
+        run: |
+          set -e
+          if [ ! -d dist/QueryRefine.app ]; then
+            echo "Build output directory dist/QueryRefine.app does not exist! Build may have failed."
+            exit 1
+          fi
+          FOUND=$(find dist/QueryRefine.app -name anthropic_tokenizer.json)
+          if [ -z "$FOUND" ]; then
+            echo "anthropic_tokenizer.json not found in QueryRefine.app!"
+            exit 1
+          fi
+          echo "Found anthropic_tokenizer.json at: $FOUND"
+            if [ ! -d dist/QueryRefine.app ]; then
+              echo "Build output directory dist/QueryRefine.app does not exist! Build may have failed."
+              exit 1
+            fi
+            # Search for anthropic_tokenizer.json recursively in the .app bundle
+            FOUND=$(find dist/QueryRefine.app -name anthropic_tokenizer.json)
+            if [ -z "$FOUND" ]; then
+              echo "anthropic_tokenizer.json not found in QueryRefine.app!"
+              exit 1
+            fi
+            echo "Found anthropic_tokenizer.json at: $FOUND"
 
       - name: Assemble distributable archive
         run: |
