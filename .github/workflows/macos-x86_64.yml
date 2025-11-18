@@ -41,7 +41,7 @@ jobs:
       - name: Build QueryRefine (x86_64)
         run: |
           cd packaging/macos
-          poetry run pyinstaller QueryRefine.spec --distpath build/QueryRefine --workpath build/QueryRefine --clean
+          poetry run pyinstaller QueryRefine.spec --distpath dist/QueryRefine --workpath build/QueryRefine --clean
 
       - name: Verify anthropic_tokenizer.json is bundled
         run: |
