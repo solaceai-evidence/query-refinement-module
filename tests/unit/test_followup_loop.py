@@ -13,7 +13,11 @@ class DummyLLMProvider(LLMProviderInterface):
         self.calls = []
     def complete(self, user_prompt, system_prompt=None, **kwargs):
         self.calls.append((user_prompt, system_prompt))
-        return type('LLMCompletionResult', (), {"context": self.responses.pop(0)})()
+        response = self.responses.pop(0)
+        # Return the raw JSON string, not a parsed dict
+        return type('LLMCompletionResult', (), {"context": response})()
+    def get_model_info(self, model=None):
+        return {}
 
 class DummyAnalyzer(QueryAnalyzerInterface):
     def __init__(self, results):
@@ -35,7 +39,7 @@ def test_followup_loop_stops_on_is_complete():
     aspect = make_aspect()
     responses = [
         '{"is_complete": false, "followup_question": "Clarify?", "reasoning": "Needs more"}',
-        '{"is_complete": true, "final_value": "Done", "reasoning": "Clear"}'
+        '{"is_complete": true, "final_value": "Clear", "reasoning": "Clear"}'
     ]
     llm = DummyLLMProvider(responses)
     analyzer = DummyAnalyzer({"aspect": AspectAnalysisResult(needs_refinement=True, explanation="", suggested_question="Q")})
@@ -43,8 +47,10 @@ def test_followup_loop_stops_on_is_complete():
     session = QueryRefinementSession("query")
     step = session.add_step(aspect)
     result = manager.run_followup_until_clear(session)
+    print("DEBUG result:", result)
+    print("DEBUG follow_up_history:", step.follow_up_history)
     assert result["is_complete"]
-    assert result["final_value"] == "Done"
+    assert result["final_value"] == "Clear"
     assert result["rounds"] == 2
     assert len(step.follow_up_history) == 2
 
