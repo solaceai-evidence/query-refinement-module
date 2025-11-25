@@ -904,55 +904,111 @@ class QueryRefinementManager:
             step = session.get_active_step()
 
         if step is None:
-            raise ValueError("No refinement aspect available for follow-up loop")
+            # If all steps are complete, return the last completed step's result
+            completed_steps = [s for s in session.steps if s.is_complete]
+            if completed_steps:
+                step = completed_steps[-1]
+            else:
+                raise ValueError("No refinement aspect available for follow-up loop")
 
         rounds = 0
         max_followups = max_rounds if max_rounds is not None else step.refinement_aspect.max_follow_ups
 
+        # If step is already complete, return immediately
+        if step.is_complete:
+            final_value = None
+            if step.follow_up_history:
+                last_response = step.follow_up_history[-1]["response"]
+                try:
+                    payload = json.loads(last_response)
+                    if "final_value" in payload:
+                        final_value = payload["final_value"]
+                except Exception:
+                    pass
+            return {
+                "aspect_id": step.refinement_aspect.id,
+                "aspect_name": step.refinement_aspect.name,
+                "follow_up_history": step.follow_up_history,
+                "is_complete": step.is_complete,
+                "final_value": final_value,
+                "rounds": rounds,
+            }
+
+        parsed_payload = None
+        final_value = None
+        followup_question = None
+        reasoning = None
+        response_text = None
+        error_message = None
+        is_error = False
+
         while not step.is_complete and rounds < max_followups:
-            # Build dependency context
             dependency_context = session.get_dependency_context(step.refinement_aspect.id)
-            # Build follow-up prompts
             system_prompt, user_prompt = step.get_prompts(
                 query=session.original_query,
                 dependency_context=dependency_context
             )
-            # Call LLM and validate
             response_text, parsed_payload, is_error, error_message = self._get_llm_response_with_validation(
                 aspect=step.refinement_aspect,
                 system_prompt=system_prompt,
                 user_prompt=user_prompt
             )
+            if parsed_payload:
+                final_value = parsed_payload.get("final_value")
+                followup_question = parsed_payload.get("followup_question")
+                reasoning = parsed_payload.get("reasoning")
+            # Always record the response
             if is_error:
                 step.add_follow_up(question=step.analysis_suggested_question or step.refinement_aspect.name, response=f"[Validation error: {error_message}]")
                 step.is_complete = True
                 break
-            # Parse LLM output for follow-up logic
-            needs_refinement = False
-            final_value = None
-            followup_question = None
-            reasoning = None
-            if parsed_payload:
-                needs_refinement = not parsed_payload.get("is_complete", False)
-                final_value = parsed_payload.get("final_value")
-                followup_question = parsed_payload.get("followup_question")
-                reasoning = parsed_payload.get("reasoning")
-            # Record the LLM's analysis
-            step.add_follow_up(question=followup_question or step.analysis_suggested_question or step.refinement_aspect.name, response=response_text)
+            step.add_follow_up(
+                question=followup_question or step.analysis_suggested_question or step.refinement_aspect.name,
+                response=response_text
+            )
             rounds += 1
-            if not needs_refinement:
+            # If this is the last allowed round, check payload for completion
+            if rounds == max_followups:
+                if parsed_payload and parsed_payload.get("is_complete", False):
+                    step.is_complete = True
+                    step.analysis_reason = reasoning
+                    if final_value is not None:
+                        step.initial_summary = final_value
+                    else:
+                        step.initial_summary = response_text
+                else:
+                    # If payload does not say complete, do NOT mark as complete
+                    step.is_complete = False
+                break
+            # Otherwise, set is_complete if payload says so
+            if parsed_payload and parsed_payload.get("is_complete", False):
                 step.is_complete = True
                 step.analysis_reason = reasoning
-                step.initial_summary = final_value or response_text
+                if final_value is not None:
+                    step.initial_summary = final_value
+                else:
+                    step.initial_summary = response_text
                 break
-            # If needs refinement, prepare for next round
             step.analysis_suggested_question = followup_question
+
+        # After loop, extract final_value from last response if present
+        last_response = None
+        if step.follow_up_history:
+            last_response = step.follow_up_history[-1]["response"]
+            try:
+                payload = json.loads(last_response)
+                if "final_value" in payload:
+                    final_value = payload["final_value"]
+                if payload.get("is_complete", False):
+                    step.is_complete = True
+            except Exception:
+                pass
         return {
             "aspect_id": step.refinement_aspect.id,
             "aspect_name": step.refinement_aspect.name,
             "follow_up_history": step.follow_up_history,
             "is_complete": step.is_complete,
-            "final_value": getattr(step, "initial_summary", None),
+            "final_value": final_value,
             "rounds": rounds,
         }
 
