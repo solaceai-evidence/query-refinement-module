@@ -923,8 +923,8 @@ class QueryRefinementManager:
                     payload = json.loads(last_response)
                     if "final_value" in payload:
                         final_value = payload["final_value"]
-                except Exception:
-                    pass
+                except Exception as exc:
+                    logger.warning(f"Failed to parse final_value from last response: {exc}")
             return {
                 "aspect_id": step.refinement_aspect.id,
                 "aspect_name": step.refinement_aspect.name,
@@ -1001,8 +1001,8 @@ class QueryRefinementManager:
                     final_value = payload["final_value"]
                 if payload.get("is_complete", False):
                     step.is_complete = True
-            except Exception:
-                pass
+            except Exception as exc:
+                logger.warning(f"Failed to parse final_value from last response: {exc}")
         return {
             "aspect_id": step.refinement_aspect.id,
             "aspect_name": step.refinement_aspect.name,
@@ -1196,75 +1196,6 @@ class QueryRefinementManager:
 
         dependency_context = session.get_dependency_context(aspect.id)
         missing = [dep for dep in (aspect.depends_on or []) if dep not in dependency_context]
-        if missing:
-            # Dependencies not ready; rely on ordering to handle them first.
-            logger.debug(
-                "Aspect %s waiting for dependency context from %s",
-                aspect.id,
-                missing,
-            )
-            self.trace_emitter.emit(
-                "dependent_step_waiting_on_dependencies",
-                metadata={"aspect_id": aspect.id, "pending_dependencies": missing},
-            )
-            return False
-
-        analyzer_context = {
-            dep_id: entry["value"] for dep_id, entry in dependency_context.items()
-        }
-
-        logger.debug(
-            "Re-analyzing dependent aspect '%s' after dependency completion",
-            aspect.id,
-        )
-        self.trace_emitter.emit(
-            "dependent_step_reanalysis_start",
-            metadata={
-                "aspect_id": aspect.id,
-                "dependency_keys": list(dependency_context.keys()),
-            },
-        )
-
-        analysis_result = self.query_analyzer.analyze_aspect(
-            query=session.original_query,
-            aspect=aspect,
-            dependency_context=analyzer_context,
-            llm_provider=self.llm_provider,
-        )
-
-        step.analysis_reason = analysis_result.explanation
-        step.analysis_suggested_question = analysis_result.suggested_question
-        step.needs_review = False
-
-        if analysis_result.needs_refinement:
-            step.is_complete = False
-            self.trace_emitter.emit(
-                "dependent_step_requires_followup",
-                metadata={"aspect_id": aspect.id},
-            )
-            return False
-
-        step.is_complete = True
-        step.was_skipped = False
-        summary_text = (
-            analysis_result.explanation
-            or aspect.description
-            or f"Aspect '{aspect.name}' is sufficiently specified after refreshed analysis."
-        )
-        step.initial_summary = summary_text.strip()
-
-        logger.debug(
-            "Aspect %s marked complete after refreshed analysis", aspect.id
-        )
-        self.trace_emitter.emit(
-            "dependent_step_autocompleted",
-            metadata={
-                "aspect_id": aspect.id,
-                "summary_present": bool(step.initial_summary),
-            },
-        )
-
-        return True
         if missing:
             # Dependencies not ready; rely on ordering to handle them first.
             logger.debug(
