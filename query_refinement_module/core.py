@@ -326,7 +326,7 @@ class QueryAspectRefiner:
         """
         return self.refinement_aspect.allow_follow_up and (self.follow_up_count < self.refinement_aspect.max_follow_ups)
 
-    def add_follow_up(self, question: str, response: str):
+    def add_follow_up(self, question: str, response: str) -> None:
         """
         Adds a follow-up question/response pair to the history.
         
@@ -380,13 +380,9 @@ class QueryAspectRefiner:
         follow_up_preamble = textwrap.dedent(
             f"""
             FOLLOW-UP CONTEXT:
-            You are evaluating whether additional clarification is required for the
-            refinement aspect "{self.refinement_aspect.name}". This is a follow-up
-            turn, so review the conversation history carefully before deciding if a
-            new question is needed. Only request information that is still missing.
-            If the aspect is now sufficiently specified, respond according to the
-            schema with ``needs_refinement`` set to ``false`` and explain why no
-            further follow-up is necessary.
+            For aspect "{self.refinement_aspect.name}", review the conversation history. 
+            Only ask for info that is still missing or unclear. 
+            If complete, set ``needs_refinement`` to ``false`` and briefly explain why no further follow-up is needed.
             """
         ).strip()
 
@@ -429,9 +425,9 @@ class QueryRefinementSession:
         return [step.refinement_aspect for step in self.steps]
     
     def add_step(
-            self,
-            refinement_aspect: RefinementAspect,
-        ) -> QueryAspectRefiner:
+        self,
+        refinement_aspect: RefinementAspect,
+    ) -> QueryAspectRefiner:
         """
         Adds a new refinement step to the session for a refinement aspect.
 
@@ -895,44 +891,19 @@ class QueryRefinementSession:
 
 
 class QueryRefinementManager:
-    def run_followup_until_clear(self, session: QueryRefinementSession, aspect_id: Optional[str] = None, max_rounds: Optional[int] = None) -> Dict[str, Any]:
-        step: Optional[QueryAspectRefiner]
-        if aspect_id:
-            step_lookup = {candidate.refinement_aspect.id: candidate for candidate in session.steps}
-            step = step_lookup.get(aspect_id)
-        else:
-            step = session.get_active_step()
-
-        if step is None:
-            # If all steps are complete, return the last completed step's result
-            completed_steps = [s for s in session.steps if s.is_complete]
-            if completed_steps:
-                step = completed_steps[-1]
-            else:
-                raise ValueError("No refinement aspect available for follow-up loop")
-
+    def run_followup_until_clear(
+        self,
+        session: QueryRefinementSession,
+        aspect_id: Optional[str] = None,
+        max_rounds: Optional[int] = None
+    ) -> Dict[str, Any]:
+        step = self._get_target_step(session, aspect_id)
         rounds = 0
         max_followups = max_rounds if max_rounds is not None else step.refinement_aspect.max_follow_ups
 
-        # If step is already complete, return immediately
         if step.is_complete:
-            final_value = None
-            if step.follow_up_history:
-                last_response = step.follow_up_history[-1]["response"]
-                try:
-                    payload = json.loads(last_response)
-                    if "final_value" in payload:
-                        final_value = payload["final_value"]
-                except Exception as exc:
-                    logger.warning(f"Failed to parse final_value from last response: {exc}")
-            return {
-                "aspect_id": step.refinement_aspect.id,
-                "aspect_name": step.refinement_aspect.name,
-                "follow_up_history": step.follow_up_history,
-                "is_complete": step.is_complete,
-                "final_value": final_value,
-                "rounds": rounds,
-            }
+            final_value = self._extract_final_value(step)
+            return self._build_followup_result(step, final_value, rounds)
 
         parsed_payload = None
         final_value = None
@@ -957,7 +928,6 @@ class QueryRefinementManager:
                 final_value = parsed_payload.get("final_value")
                 followup_question = parsed_payload.get("followup_question")
                 reasoning = parsed_payload.get("reasoning")
-            # Always record the response
             if is_error:
                 step.add_follow_up(question=step.analysis_suggested_question or step.refinement_aspect.name, response=f"[Validation error: {error_message}]")
                 step.is_complete = True
@@ -967,7 +937,6 @@ class QueryRefinementManager:
                 response=response_text
             )
             rounds += 1
-            # If this is the last allowed round, check payload for completion
             if rounds == max_followups:
                 if parsed_payload and parsed_payload.get("is_complete", False):
                     step.is_complete = True
@@ -977,10 +946,8 @@ class QueryRefinementManager:
                     else:
                         step.initial_summary = response_text
                 else:
-                    # If payload does not say complete, do NOT mark as complete
                     step.is_complete = False
                 break
-            # Otherwise, set is_complete if payload says so
             if parsed_payload and parsed_payload.get("is_complete", False):
                 step.is_complete = True
                 step.analysis_reason = reasoning
@@ -991,8 +958,31 @@ class QueryRefinementManager:
                 break
             step.analysis_suggested_question = followup_question
 
-        # After loop, extract final_value from last response if present
-        last_response = None
+        final_value = self._extract_final_value(step)
+        return self._build_followup_result(step, final_value, rounds)
+
+    def _get_target_step(
+        self,
+        session: QueryRefinementSession,
+        aspect_id: Optional[str]
+    ) -> QueryAspectRefiner:
+        """Get the target step for follow-up, or last completed if none active."""
+        if aspect_id:
+            step_lookup = {candidate.refinement_aspect.id: candidate for candidate in session.steps}
+            step = step_lookup.get(aspect_id)
+        else:
+            step = session.get_active_step()
+        if step is None:
+            completed_steps = [s for s in session.steps if s.is_complete]
+            if completed_steps:
+                step = completed_steps[-1]
+            else:
+                raise ValueError("No refinement aspect available for follow-up loop")
+        return step
+
+    def _extract_final_value(self, step: QueryAspectRefiner) -> Optional[str]:
+        """Extract final_value from last response if present."""
+        final_value = None
         if step.follow_up_history:
             last_response = step.follow_up_history[-1]["response"]
             try:
@@ -1003,6 +993,15 @@ class QueryRefinementManager:
                     step.is_complete = True
             except Exception as exc:
                 logger.warning(f"Failed to parse final_value from last response: {exc}")
+        return final_value
+
+    def _build_followup_result(
+        self,
+        step: QueryAspectRefiner,
+        final_value: Optional[str],
+        rounds: int
+    ) -> Dict[str, Any]:
+        """Build result dict for follow-up loop."""
         return {
             "aspect_id": step.refinement_aspect.id,
             "aspect_name": step.refinement_aspect.name,
@@ -1012,31 +1011,25 @@ class QueryRefinementManager:
             "rounds": rounds,
         }
 
-    # ...existing code...
+     
 
     def __init__(
         self,
         llm_provider: LLMProviderInterface,
         query_analyzer: QueryAnalyzerInterface,
         tracing_provider: Optional[TracingProviderInterface] = None,
-    ):
-        # ...existing code...
-        self.llm_provider = llm_provider
-        self.query_analyzer = query_analyzer
-        
-        # Use no-op tracing provider if none provided
-        self.tracing_provider = tracing_provider or NoOpTracingProvider()
-        self.trace_emitter = TraceEventEmitter(self.tracing_provider)
-        
-        logger.info("QueryRefinementManager initialized with "
-                    "LLM provider: %s, Query Analyzer: %s, Tracing Provider: %s",
-                    llm_provider.__class__.__name__, 
-                    query_analyzer.__class__.__name__ if query_analyzer else "None", 
-                    self.tracing_provider.__class__.__name__)
-
-        # Maximum number of retries when enforcing structured response validation
-        self.validation_max_retries = 2
-
+    ) -> None:
+        self.llm_provider: LLMProviderInterface = llm_provider
+        self.query_analyzer: QueryAnalyzerInterface = query_analyzer
+        self.tracing_provider: TracingProviderInterface = tracing_provider or NoOpTracingProvider()
+        self.trace_emitter: TraceEventEmitter = TraceEventEmitter(self.tracing_provider)
+        logger.info(
+            "QueryRefinementManager initialized with LLM provider: %s, Query Analyzer: %s, Tracing Provider: %s",
+            llm_provider.__class__.__name__,
+            query_analyzer.__class__.__name__ if query_analyzer else "None",
+            self.tracing_provider.__class__.__name__
+        )
+        self.validation_max_retries: int = 2
         self.trace_emitter.emit(
             "manager_initialized",
             metadata={
@@ -1050,7 +1043,7 @@ class QueryRefinementManager:
         original_query: str,
         refinement_framework: List[RefinementAspect],
     ) -> QueryRefinementSession:
-        # ...existing code...
+         
         with self.tracing_provider.trace_operation("initialize_refinement_session") as trace:
             if hasattr(trace, 'add_attribute'):
                 trace.add_attribute("original_query", original_query)
