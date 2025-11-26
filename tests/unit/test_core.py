@@ -259,7 +259,7 @@ def test_query_aspect_refiner_follow_up_prompt_template():
     refiner.add_follow_up("Initial", "First answer")
     refiner.add_follow_up("Follow-up", "Second answer")
 
-    prompt = refiner.format_follow_up_prompt_template("Original", include_examples=False)
+    prompt = refiner.format_follow_up_prompt_template("Original")
 
     assert "FOLLOW-UP CONTEXT" in prompt
     assert "Most recent user answer" in prompt
