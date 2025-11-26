@@ -1,6 +1,6 @@
 [tool.poetry]
 name = "query-refinement-module"
-version = "0.1.0"
+version = "0.2.0"
 description = "An AI-powered, domain-agnostic query refinement system for scientific literature search."
 authors = ["Jesus Dominguez <jesus.dominguez@kcl.ac.uk>"]
 keywords = [
