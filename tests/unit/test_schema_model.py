@@ -98,7 +98,7 @@ def test_get_user_prompt_includes_examples_and_format():
         response_format={"additional_fields": {"confidence": "float"}},
     )
 
-    prompt = aspect.get_user_prompt("Sample query", include_examples=True)
+    prompt = aspect.get_user_prompt("Sample query")
 
     assert "Sample query" in prompt
     assert "EXAMPLES NEEDING REFINEMENT" in prompt
@@ -134,7 +134,7 @@ def test_format_examples_omits_missing_categories():
         }
     )
 
-    formatted = aspect._format_examples(include_user_answer=False)
+    formatted = aspect._format_examples()
 
     assert "EXAMPLES OF CLEAR SPECIFICATIONS" in formatted
     assert "EXAMPLES NEEDING REFINEMENT" not in formatted
