@@ -12,7 +12,7 @@
 | `ambiguous` | Queries containing vague or conflicting language | `issue`, `suggested_question`, `user_answer` |
 | `other` | Edge cases or guidance that do not cleanly fit the buckets above | `note`, `guidance`, `suggested_question`, `user_answer` |
 
-`user_answer` is especially helpful when you call `RefinementAspect.get_user_prompt(..., include_user_answer=True)` because the prompt will pair the suggested question with a sample answer to show both sides of the exchange.
+`user_answer` is especially helpful for providing context in examples, as it shows both the suggested question and a sample answer to illustrate the expected exchange.
 
 ## 2. Examples by Category
 

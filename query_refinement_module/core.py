@@ -326,7 +326,7 @@ class QueryAspectRefiner:
         """
         return self.refinement_aspect.allow_follow_up and (self.follow_up_count < self.refinement_aspect.max_follow_ups)
 
-    def add_follow_up(self, question: str, response: str):
+    def add_follow_up(self, question: str, response: str) -> None:
         """
         Adds a follow-up question/response pair to the history.
         
@@ -380,13 +380,9 @@ class QueryAspectRefiner:
         follow_up_preamble = textwrap.dedent(
             f"""
             FOLLOW-UP CONTEXT:
-            You are evaluating whether additional clarification is required for the
-            refinement aspect "{self.refinement_aspect.name}". This is a follow-up
-            turn, so review the conversation history carefully before deciding if a
-            new question is needed. Only request information that is still missing.
-            If the aspect is now sufficiently specified, respond according to the
-            schema with ``needs_refinement`` set to ``false`` and explain why no
-            further follow-up is necessary.
+            For aspect "{self.refinement_aspect.name}", review the conversation history. 
+            Only ask for info that is still missing or unclear. 
+            If complete, set ``needs_refinement`` to ``false`` and briefly explain why no further follow-up is needed.
             """
         ).strip()
 
@@ -402,9 +398,7 @@ class QueryAspectRefiner:
         history_section = "\n".join(history_section_lines)
 
         base_prompt = self.refinement_aspect.get_user_prompt(
-            query=original_query,
-            include_examples=include_examples,
-            include_user_answer=True,
+            query=original_query
         )
 
         sections = [follow_up_preamble, history_section, base_prompt]
@@ -429,9 +423,9 @@ class QueryRefinementSession:
         return [step.refinement_aspect for step in self.steps]
     
     def add_step(
-            self,
-            refinement_aspect: RefinementAspect,
-        ) -> QueryAspectRefiner:
+        self,
+        refinement_aspect: RefinementAspect,
+    ) -> QueryAspectRefiner:
         """
         Adds a new refinement step to the session for a refinement aspect.
 
@@ -893,65 +887,147 @@ class QueryRefinementSession:
         }
     
 
+
 class QueryRefinementManager:
-    """
-    Orchestrates the multi-step query refinement process using provided LLM, tracing, and query analysis interfaces.
+    def run_followup_until_clear(
+        self,
+        session: QueryRefinementSession,
+        aspect_id: Optional[str] = None,
+        max_rounds: Optional[int] = None
+    ) -> Dict[str, Any]:
+        step = self._get_target_step(session, aspect_id)
+        rounds = 0
+        max_followups = max_rounds if max_rounds is not None else step.refinement_aspect.max_follow_ups
 
-    Refinement logic is domain-agnostic and driven by the provided schema refinement aspects.
-    All methods work with RefinementSession objects, allowing external management of state and persistence (files/Redis/databases).
+        if step.is_complete:
+            final_value = self._extract_final_value(step)
+            return self._build_followup_result(step, final_value, rounds)
 
-    Key responsibilities:
-    - Detecting wich refinement aspects need refinement based on the initial query
-    - Generating questions for each refinement aspect using the query analyzer
-    - Processing user responses and managing follow-up questions
-    - Synthesizing the final refined query
-    - Maintaining conversation history and session state
-    - Tracing and logging interactions for debugging and analysis
+        parsed_payload = None
+        final_value = None
+        followup_question = None
+        reasoning = None
+        response_text = None
+        error_message = None
+        is_error = False
 
-    Attributes:
-        llm_provider (LLMProviderInterface): Interface for interacting with the LLM.
-        tracing_provider (TracingProviderInterface): Interface for tracing and logging.
-        query_analyzer (QueryAnalyzerInterface): Interface for analyzing queries against schemas.
-    
-    Args:
-        llm_provider: LLM provider for question generation and synthesis
-        query_analyzer: Analyzer for detecting missing refinement aspects
-                    (if None, will assume all refinement aspects need refinement)
-        tracing_provider: Tracing provider for observability
-            (if None, will use no-op implementation)
-    """
+        while not step.is_complete and rounds < max_followups:
+            dependency_context = session.get_dependency_context(step.refinement_aspect.id)
+            system_prompt, user_prompt = step.get_prompts(
+                query=session.original_query,
+                dependency_context=dependency_context
+            )
+            response_text, parsed_payload, is_error, error_message = self._get_llm_response_with_validation(
+                aspect=step.refinement_aspect,
+                system_prompt=system_prompt,
+                user_prompt=user_prompt
+            )
+            if parsed_payload:
+                final_value = parsed_payload.get("final_value")
+                followup_question = parsed_payload.get("followup_question")
+                reasoning = parsed_payload.get("reasoning")
+            if is_error:
+                step.add_follow_up(question=step.analysis_suggested_question or step.refinement_aspect.name, response=f"[Validation error: {error_message}]")
+                step.is_complete = True
+                break
+            step.add_follow_up(
+                question=followup_question or step.analysis_suggested_question or step.refinement_aspect.name,
+                response=response_text
+            )
+            rounds += 1
+            if rounds == max_followups:
+                if parsed_payload and parsed_payload.get("is_complete", False):
+                    step.is_complete = True
+                    step.analysis_reason = reasoning
+                    if final_value is not None:
+                        step.initial_summary = final_value
+                    else:
+                        step.initial_summary = response_text
+                else:
+                    step.is_complete = False
+                break
+            if parsed_payload and parsed_payload.get("is_complete", False):
+                step.is_complete = True
+                step.analysis_reason = reasoning
+                if final_value is not None:
+                    step.initial_summary = final_value
+                else:
+                    step.initial_summary = response_text
+                break
+            step.analysis_suggested_question = followup_question
+
+        final_value = self._extract_final_value(step)
+        return self._build_followup_result(step, final_value, rounds)
+
+    def _get_target_step(
+        self,
+        session: QueryRefinementSession,
+        aspect_id: Optional[str]
+    ) -> QueryAspectRefiner:
+        """Get the target step for follow-up, or last completed if none active."""
+        if aspect_id:
+            step_lookup = {candidate.refinement_aspect.id: candidate for candidate in session.steps}
+            step = step_lookup.get(aspect_id)
+        else:
+            step = session.get_active_step()
+        if step is None:
+            completed_steps = [s for s in session.steps if s.is_complete]
+            if completed_steps:
+                step = completed_steps[-1]
+            else:
+                raise ValueError("No refinement aspect available for follow-up loop")
+        return step
+
+    def _extract_final_value(self, step: QueryAspectRefiner) -> Optional[str]:
+        """Extract final_value from last response if present."""
+        final_value = None
+        if step.follow_up_history:
+            last_response = step.follow_up_history[-1]["response"]
+            try:
+                payload = json.loads(last_response)
+                if "final_value" in payload:
+                    final_value = payload["final_value"]
+                if payload.get("is_complete", False):
+                    step.is_complete = True
+            except Exception as exc:
+                logger.warning(f"Failed to parse final_value from last response: {exc}")
+        return final_value
+
+    def _build_followup_result(
+        self,
+        step: QueryAspectRefiner,
+        final_value: Optional[str],
+        rounds: int
+    ) -> Dict[str, Any]:
+        """Build result dict for follow-up loop."""
+        return {
+            "aspect_id": step.refinement_aspect.id,
+            "aspect_name": step.refinement_aspect.name,
+            "follow_up_history": step.follow_up_history,
+            "is_complete": step.is_complete,
+            "final_value": final_value,
+            "rounds": rounds,
+        }
+
+     
 
     def __init__(
         self,
         llm_provider: LLMProviderInterface,
         query_analyzer: QueryAnalyzerInterface,
         tracing_provider: Optional[TracingProviderInterface] = None,
-    ):
-        """Initialize the manager with injected dependencies
-
-        Args:
-            llm_provider (LLMProviderInterface): LLM provider for question generation and synthesis
-            query_analyzer (QueryAnalyzerInterface): Analyzer for detecting missing refinement aspects
-                    (if None, will assume all refinement aspects need refinement)
-            tracing_provider (TracingProviderInterface): Tracing provider for observability
-                    (if None, will use no-op implementation)
-        """
-        self.llm_provider = llm_provider
-        self.query_analyzer = query_analyzer
-        
-        # Use no-op tracing provider if none provided
-        self.tracing_provider = tracing_provider or NoOpTracingProvider()
-        self.trace_emitter = TraceEventEmitter(self.tracing_provider)
-        
-        logger.info("QueryRefinementManager initialized with "
-                    "LLM provider: %s, Query Analyzer: %s, Tracing Provider: %s",
-                    llm_provider.__class__.__name__, 
-                    query_analyzer.__class__.__name__ if query_analyzer else "None", 
-                    self.tracing_provider.__class__.__name__)
-
-        # Maximum number of retries when enforcing structured response validation
-        self.validation_max_retries = 2
-
+    ) -> None:
+        self.llm_provider: LLMProviderInterface = llm_provider
+        self.query_analyzer: QueryAnalyzerInterface = query_analyzer
+        self.tracing_provider: TracingProviderInterface = tracing_provider or NoOpTracingProvider()
+        self.trace_emitter: TraceEventEmitter = TraceEventEmitter(self.tracing_provider)
+        logger.info(
+            "QueryRefinementManager initialized with LLM provider: %s, Query Analyzer: %s, Tracing Provider: %s",
+            llm_provider.__class__.__name__,
+            query_analyzer.__class__.__name__ if query_analyzer else "None",
+            self.tracing_provider.__class__.__name__
+        )
+        self.validation_max_retries: int = 2
         self.trace_emitter.emit(
             "manager_initialized",
             metadata={
@@ -965,34 +1041,7 @@ class QueryRefinementManager:
         original_query: str,
         refinement_framework: List[RefinementAspect],
     ) -> QueryRefinementSession:
-        """
-        Initialize a new refinement session for the given query and refinement aspects.
-
-        This method performs dependency-aware sequential analysis:
-        1. Creates a new session with the original query
-        2. For EACH aspect in dependency order:
-           a. Gets dependency context from previously analyzed aspects
-           b. Analyzes the aspect (with context) to determine if refinement is needed
-           c. Marks aspect as complete (clear) or incomplete (needs refinement and adds the LLM suggested query and explanation)
-        3. Returns the session with analysis complete
-
-        After initialization:
-        - If session.is_complete() == True: All aspects are clear, refinement not needed
-        - If session.is_complete() == False: Use process_next_step() to refine incomplete aspects
-        - Use session.get_step_summary() to see which aspects need refinement and why
-
-        This approach enables:
-        - Dependency-aware analysis (later aspects see earlier results)
-        - Complete initialization picture (API can show "3 aspects need work")
-        - More accurate determination of what needs refinement
-
-        Args:
-            original_query (str): The original query to refine.
-            refinement_framework (List[RefinementAspect]): The refinement aspects to consider.
-
-        Returns:
-            QueryRefinementSession: Session with analysis complete, ready for refinement.
-        """
+         
         with self.tracing_provider.trace_operation("initialize_refinement_session") as trace:
             if hasattr(trace, 'add_attribute'):
                 trace.add_attribute("original_query", original_query)
@@ -1088,19 +1137,13 @@ class QueryRefinementManager:
                 }
             )
             
-            return session
+        return session
 
     def ensure_step_is_ready(
         self,
         session: QueryRefinementSession,
         step: QueryAspectRefiner,
     ) -> bool:
-        """Prepare a step before presenting it to the user.
-
-        Returns True when the caller should prompt the user, False when the
-        step resolved itself (e.g., dependencies filled in the missing context).
-        """
-
         aspect_id = step.refinement_aspect.id
         logger.debug("Ensuring readiness for aspect %s", aspect_id)
         self.trace_emitter.emit(
@@ -1129,8 +1172,6 @@ class QueryRefinementManager:
         session: QueryRefinementSession,
         step: QueryAspectRefiner,
     ) -> bool:
-        """Re-run analysis for dependent steps once their context is available."""
-
         aspect = step.refinement_aspect
 
         if not aspect.depends_on:
