@@ -370,23 +370,21 @@ class RefinementAspect:
                             f"Schema '{self.name}': examples['{category}'][{idx}]['{field_name}'] must be a string"
                         )
 
-    def get_user_prompt(self, query: str, include_examples: bool = True, include_user_answer: bool = False) -> str:
+    def get_user_prompt(self, query: str) -> str:
         """
-        Generate the full user prompt including examples by default and response format instructions.
+        Generate the full user prompt including examples and response format instructions.
         
         Args:
             query: The user's query to analyze
-            include_examples: Whether to include examples in the prompt (default: True)
-            
         Returns:
             Complete user prompt with query inserted and response format appended
         """
         # Format the analysis prompt with query
         prompt = self.analysis_prompt.format(query=query)
         
-        # Inject examples if available and requested
-        if include_examples and self.examples:
-            examples_section = self._format_examples(include_user_answer=include_user_answer)
+        # Inject examples if available
+        if self.examples:
+            examples_section = self._format_examples()
             if examples_section:
                 prompt += "\n\n" + examples_section
         
@@ -424,7 +422,7 @@ class RefinementAspect:
         """
         return self.get_system_prompt(), self.get_user_prompt(query)
 
-    def _format_examples(self, include_user_answer: bool = False) -> str:
+    def _format_examples(self) -> str:
         """
         Format examples into a readable section for prompt inclusion.
         
@@ -476,14 +474,9 @@ class RefinementAspect:
                     
                     # Add optional suggested question for refinement examples
                     if "suggested_question" in example:
-                        if include_user_answer and "user_answer" in example:
-                            line_parts.append(f"Q: \"{example['suggested_question']}\"")
-                        else:
-                            line_parts.append(f"Ask: \"{example['suggested_question']}\"")
+                        line_parts.append(f"Ask: \"{example['suggested_question']}\"")
                     
                     # Add optional user answer to the suggested query for refinement examples
-                    if include_user_answer and "user_answer" in example:
-                        line_parts.append(f"A: \"{example['user_answer']}\"")
 
                     if "note" in example:
                         line_parts.append(f"Note: {example['note']}")
@@ -521,9 +514,9 @@ class RefinementAspect:
             custom_descriptions = self.response_format.get("field_descriptions", {})
             complete_descriptions.update(custom_descriptions)
         
-        # Format the schema as JSON example
-        schema_example = {field: f"<{ftype}>" for field, ftype in complete_schema.items()}
-        instructions.append(f"\n```json\n{json.dumps(schema_example, indent=2)}\n```")
+        if self.response_format:
+            schema_example = {key: f"<{ftype}>" for key, ftype in complete_schema.items()}
+            instructions.append(f"\n```json\n{json.dumps(schema_example, indent=2)}\n```")
         
         # Add field descriptions
         instructions.append("\nField descriptions:")

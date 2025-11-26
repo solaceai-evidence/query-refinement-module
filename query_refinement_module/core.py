@@ -398,9 +398,7 @@ class QueryAspectRefiner:
         history_section = "\n".join(history_section_lines)
 
         base_prompt = self.refinement_aspect.get_user_prompt(
-            query=original_query,
-            include_examples=include_examples,
-            include_user_answer=True,
+            query=original_query
         )
 
         sections = [follow_up_preamble, history_section, base_prompt]
