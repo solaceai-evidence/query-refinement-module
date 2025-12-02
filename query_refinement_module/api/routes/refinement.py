@@ -22,7 +22,7 @@ from query_refinement_module.api.dependencies import get_refinement_manager
 from query_refinement_module.schema.registry import get_framework, list_frameworks
 from query_refinement_module.core import QueryRefinementManager
 
-from pydantic import BaseModel, Field
+from pydantic import BaseModel, Field, field_validator
 
 
 router = APIRouter(prefix="/refinement", tags=["Query Refinement Workflow"])
@@ -34,8 +34,36 @@ router = APIRouter(prefix="/refinement", tags=["Query Refinement Workflow"])
 
 class StartRefinementRequest(BaseModel):
     """Request to start a new refinement workflow."""
-    original_query: str = Field(..., description="The query to refine")
-    framework_name: str = Field(..., description="Name of the refinement framework to use")
+    original_query: str = Field(
+        ..., 
+        min_length=3,
+        max_length=5000,
+        description="The query to refine"
+    )
+    framework_name: str = Field(
+        ..., 
+        min_length=1,
+        max_length=128,
+        description="Name of the refinement framework to use"
+    )
+    
+    @field_validator('original_query')
+    @classmethod
+    def query_not_empty(cls, v: str) -> str:
+        """Validate that query is not just whitespace."""
+        if not v or not v.strip():
+            raise ValueError("Query cannot be empty or just whitespace")
+        if len(v.strip()) < 3:
+            raise ValueError("Query must be at least 3 characters long")
+        return v.strip()
+    
+    @field_validator('framework_name')
+    @classmethod
+    def framework_not_empty(cls, v: str) -> str:
+        """Validate that framework name is not just whitespace."""
+        if not v or not v.strip():
+            raise ValueError("Framework name cannot be empty or just whitespace")
+        return v.strip()
 
 
 class StartRefinementResponse(BaseModel):
@@ -48,7 +76,20 @@ class StartRefinementResponse(BaseModel):
 
 class SubmitAnswerRequest(BaseModel):
     """Request to submit an answer to a refinement question."""
-    answer: str = Field(..., description="User's answer to the current question")
+    answer: str = Field(
+        ..., 
+        min_length=1,
+        max_length=2000,
+        description="User's answer to the current question"
+    )
+    
+    @field_validator('answer')
+    @classmethod
+    def answer_not_empty(cls, v: str) -> str:
+        """Validate that answer is not just whitespace."""
+        if not v or not v.strip():
+            raise ValueError("Answer cannot be empty or just whitespace")
+        return v.strip()
 
 
 class SubmitAnswerResponse(BaseModel):
@@ -71,7 +112,7 @@ class GetRefinementStatusResponse(BaseModel):
 
 class SynthesizeQueryRequest(BaseModel):
     """Request to synthesize the refined query."""
-    query_id: int = Field(..., description="ID of the query to synthesize")
+    query_id: int = Field(..., gt=0, description="ID of the query to synthesize")
 
 
 class SynthesizeQueryResponse(BaseModel):
@@ -142,10 +183,47 @@ def start_refinement(
         )
     
     # Initialize the refinement session (core logic)
-    session = manager.initialize(
-        original_query=request.original_query,
-        refinement_framework=framework
-    )
+    try:
+        session = manager.initialize(
+            original_query=request.original_query,
+            refinement_framework=framework
+        )
+    except ConnectionError as e:
+        raise HTTPException(
+            status_code=status.HTTP_503_SERVICE_UNAVAILABLE,
+            detail=f"Unable to connect to LLM service: {str(e)}"
+        )
+    except TimeoutError as e:
+        raise HTTPException(
+            status_code=status.HTTP_504_GATEWAY_TIMEOUT,
+            detail=f"LLM service request timed out: {str(e)}"
+        )
+    except Exception as e:
+        import logging
+        logging.error(f"Error initializing refinement session: {str(e)}", exc_info=True)
+        
+        # Check for specific LLM errors
+        error_str = str(e).lower()
+        if "credit balance" in error_str or "insufficient" in error_str:
+            raise HTTPException(
+                status_code=status.HTTP_402_PAYMENT_REQUIRED,
+                detail="LLM service credits exhausted. Please configure valid API credentials."
+            )
+        elif "api key" in error_str or "authentication" in error_str:
+            raise HTTPException(
+                status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
+                detail="LLM service authentication error. Please check API configuration."
+            )
+        elif "rate limit" in error_str:
+            raise HTTPException(
+                status_code=status.HTTP_429_TOO_MANY_REQUESTS,
+                detail="LLM service rate limit exceeded. Please try again later."
+            )
+        else:
+            raise HTTPException(
+                status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
+                detail=f"Failed to initialize refinement. LLM service may be unavailable."
+            )
     
     # Create database records
     db_session = create_query_session(db, user_id=current_user.id, framework_name=request.framework_name)
@@ -220,7 +298,25 @@ def submit_answer(
     })
     
     # Run follow-up loop to check if aspect is complete
-    result = manager.run_followup_until_clear(session, aspect_id=active_step.refinement_aspect.id)
+    try:
+        result = manager.run_followup_until_clear(session, aspect_id=active_step.refinement_aspect.id)
+    except ConnectionError as e:
+        raise HTTPException(
+            status_code=status.HTTP_503_SERVICE_UNAVAILABLE,
+            detail=f"Unable to connect to LLM service: {str(e)}"
+        )
+    except TimeoutError as e:
+        raise HTTPException(
+            status_code=status.HTTP_504_GATEWAY_TIMEOUT,
+            detail=f"LLM service request timed out: {str(e)}"
+        )
+    except Exception as e:
+        import logging
+        logging.error(f"Error in follow-up loop: {str(e)}", exc_info=True)
+        raise HTTPException(
+            status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
+            detail=f"Failed to process answer: {str(e)}"
+        )
     
     # Get the corresponding database refinement step
     db_steps = get_query_refinement_steps(db, query_id)
