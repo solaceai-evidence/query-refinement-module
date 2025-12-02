@@ -15,7 +15,7 @@ class FollowUpHistory(Base):
     answer = Column(Text, nullable=True)
     created_at = Column(DateTime, default=datetime.datetime.utcnow)
 
-    refinement_step = relationship("RefinementStep", backref="followup_history")
+    refinement_step = relationship("RefinementStep", back_populates="followup_history")
 
     def __repr__(self):
         return f"<FollowUpHistory(id={self.id}, refinement_step_id={self.refinement_step_id})>"

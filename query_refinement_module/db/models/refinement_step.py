@@ -17,7 +17,7 @@ class RefinementStep(Base):
     created_at = Column(DateTime, default=datetime.datetime.utcnow)
 
     query = relationship("Query", backref="refinement_steps")
-    followup_history = relationship("FollowUpHistory", backref="refinement_step", cascade="all, delete-orphan")
+    followup_history = relationship("FollowUpHistory", back_populates="refinement_step", cascade="all, delete-orphan")
 
     def __repr__(self):
         return f"<RefinementStep(id={self.id}, query_id={self.query_id}, aspect='{self.aspect_name}')>"
