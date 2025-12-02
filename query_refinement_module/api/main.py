@@ -5,7 +5,7 @@ from fastapi import FastAPI
 from fastapi.middleware.cors import CORSMiddleware
 
 from query_refinement_module.api.config import get_settings
-from query_refinement_module.api.routes import auth, queries, feedback
+from query_refinement_module.api.routes import auth, queries, feedback, refinement
 
 settings = get_settings()
 
@@ -31,6 +31,7 @@ app.add_middleware(
 app.include_router(auth.router, prefix="/api")
 app.include_router(queries.router, prefix="/api")
 app.include_router(feedback.router, prefix="/api")
+app.include_router(refinement.router, prefix="/api")
 
 
 @app.on_event("startup")
