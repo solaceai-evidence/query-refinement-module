@@ -148,7 +148,7 @@ def start_refinement(
     )
     
     # Create database records
-    db_session = create_query_session(db, user_id=current_user.id)
+    db_session = create_query_session(db, user_id=current_user.id, framework_name=request.framework_name)
     db_query = create_query(db, session_id=db_session.id, original_query=request.original_query)
     
     # Create refinement steps in database
@@ -285,8 +285,12 @@ def get_refinement_status(
     if db_query.session.user_id != current_user.id:
         raise HTTPException(status_code=status.HTTP_403_FORBIDDEN, detail="Access denied")
     
+    # Get framework name from database
+    framework_name = db_query.session.framework_name
+    if not framework_name:
+        raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail="Framework name not found for session")
+    
     # Reconstruct session to get status
-    framework_name = "pico_advanced"  # TODO: Store framework name
     framework = get_framework(framework_name)
     session = manager.initialize(db_query.original_query, framework)
     
@@ -323,8 +327,12 @@ def synthesize_refined_query(
     if db_query.session.user_id != current_user.id:
         raise HTTPException(status_code=status.HTTP_403_FORBIDDEN, detail="Access denied")
     
+    # Get framework name from database
+    framework_name = db_query.session.framework_name
+    if not framework_name:
+        raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail="Framework name not found for session")
+    
     # Reconstruct session with all follow-ups from database
-    framework_name = "pico_advanced"  # TODO: Store framework name
     framework = get_framework(framework_name)
     session = manager.initialize(db_query.original_query, framework)
     
