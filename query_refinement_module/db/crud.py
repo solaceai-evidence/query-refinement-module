@@ -56,9 +56,9 @@ def verify_user_password(db: Session, email: str, password: str) -> Optional[Use
 # QuerySession CRUD Operations
 # ==========================================
 
-def create_query_session(db: Session, user_id: int) -> QuerySession:
+def create_query_session(db: Session, user_id: int, framework_name: str = None) -> QuerySession:
     """Create a new query session for a user."""
-    session = QuerySession(user_id=user_id, status="active")
+    session = QuerySession(user_id=user_id, status="active", framework_name=framework_name)
     db.add(session)
     db.commit()
     db.refresh(session)

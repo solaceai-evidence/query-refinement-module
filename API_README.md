@@ -64,6 +64,16 @@ poetry run uvicorn query_refinement_module.api.main:app --reload --host 0.0.0.0 
 - `POST /api/queries/followups` - Create follow-up entry
 - `PUT /api/queries/followups/{followup_id}` - Update follow-up answer
 
+### Query Refinement Workflow (`/api/refinement`)
+
+**Core refinement endpoints that integrate the AI-powered refinement pipeline:**
+
+- `GET /api/refinement/frameworks` - List available refinement frameworks
+- `POST /api/refinement/start` - Start a new refinement workflow (initializes session, analyzes query)
+- `POST /api/refinement/queries/{query_id}/answer` - Submit answer to refinement question
+- `GET /api/refinement/queries/{query_id}/status` - Get current refinement status
+- `POST /api/refinement/synthesize` - Synthesize final refined query from all answers
+
 ### Feedback (`/api/feedback`)
 
 - `POST /api/feedback/` - Submit feedback
@@ -131,6 +141,66 @@ curl -X POST "http://localhost:8000/api/feedback/" \
     "comments": "Very helpful refinement process!"
   }'
 ```
+
+### 6. Complete Refinement Workflow
+
+**Step 1: Get available frameworks**
+
+```bash
+curl -X GET "http://localhost:8000/api/refinement/frameworks" \
+  -H "Authorization: Bearer YOUR_ACCESS_TOKEN"
+```
+
+**Step 2: Start refinement workflow**
+
+```bash
+curl -X POST "http://localhost:8000/api/refinement/start" \
+  -H "Authorization: Bearer YOUR_ACCESS_TOKEN" \
+  -H "Content-Type: application/json" \
+  -d '{
+    "original_query": "effects of aspirin on stroke prevention",
+    "framework_name": "pico_template"
+  }'
+```
+
+Response includes:
+- `session_id`: Database session ID
+- `query_id`: Query ID for tracking
+- `summary`: Analysis of what needs refinement
+- `next_prompt`: First question to answer
+
+**Step 3: Submit answers to refinement questions**
+
+```bash
+curl -X POST "http://localhost:8000/api/refinement/queries/{query_id}/answer" \
+  -H "Authorization: Bearer YOUR_ACCESS_TOKEN" \
+  -H "Content-Type: application/json" \
+  -d '{
+    "answer": "Adults over 50 years old with high cardiovascular risk"
+  }'
+```
+
+Repeat this step for each refinement question. The response will indicate if the aspect is complete or if follow-up questions are needed.
+
+**Step 4: Check refinement status**
+
+```bash
+curl -X GET "http://localhost:8000/api/refinement/queries/{query_id}/status" \
+  -H "Authorization: Bearer YOUR_ACCESS_TOKEN"
+```
+
+**Step 5: Synthesize refined query**
+
+```bash
+curl -X POST "http://localhost:8000/api/refinement/synthesize" \
+  -H "Authorization: Bearer YOUR_ACCESS_TOKEN" \
+  -H "Content-Type: application/json" \
+  -d '{
+    "query_id": 1
+  }'
+```
+
+Returns the final refined query combining original query with all clarifications.
 
 ## Configuration
 

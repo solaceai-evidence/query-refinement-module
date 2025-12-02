@@ -1,9 +1,10 @@
 """
 Pydantic schemas for request/response validation.
 """
-from pydantic import BaseModel, EmailStr, Field
+from pydantic import BaseModel, EmailStr, Field, field_validator
 from typing import Optional, List
 from datetime import datetime
+import re
 
 
 # ==========================================
@@ -13,8 +14,37 @@ from datetime import datetime
 class UserCreate(BaseModel):
     """Schema for user registration."""
     email: EmailStr
-    name: str
-    password: str = Field(..., min_length=8)
+    name: str = Field(..., min_length=1, max_length=100, description="User's full name")
+    password: str = Field(
+        ..., 
+        min_length=8,
+        max_length=128,
+        description="Password must be at least 8 characters with uppercase, lowercase, digit, and special character"
+    )
+    
+    @field_validator('name')
+    @classmethod
+    def name_not_empty(cls, v: str) -> str:
+        """Validate that name is not just whitespace."""
+        if not v or not v.strip():
+            raise ValueError("Name cannot be empty or just whitespace")
+        return v.strip()
+    
+    @field_validator('password')
+    @classmethod
+    def password_strength(cls, v: str) -> str:
+        """Validate password strength."""
+        if len(v) < 8:
+            raise ValueError("Password must be at least 8 characters long")
+        if not re.search(r'[A-Z]', v):
+            raise ValueError("Password must contain at least one uppercase letter")
+        if not re.search(r'[a-z]', v):
+            raise ValueError("Password must contain at least one lowercase letter")
+        if not re.search(r'[0-9]', v):
+            raise ValueError("Password must contain at least one digit")
+        if not re.search(r'[!@#$%^&*(),.?":{}|<>]', v):
+            raise ValueError("Password must contain at least one special character")
+        return v
 
 
 class UserResponse(BaseModel):
@@ -66,8 +96,21 @@ class QuerySessionResponse(BaseModel):
 
 class QueryCreate(BaseModel):
     """Schema for creating a new query."""
-    original_query: str = Field(..., min_length=1)
-    session_id: int
+    original_query: str = Field(
+        ..., 
+        min_length=1,
+        max_length=5000,
+        description="The original query to refine"
+    )
+    session_id: int = Field(..., gt=0, description="Valid session ID")
+    
+    @field_validator('original_query')
+    @classmethod
+    def query_not_empty(cls, v: str) -> str:
+        """Validate that query is not just whitespace."""
+        if not v or not v.strip():
+            raise ValueError("Query cannot be empty or just whitespace")
+        return v.strip()
 
 
 class QueryUpdate(BaseModel):
@@ -143,9 +186,25 @@ class FollowUpResponse(BaseModel):
 
 class FeedbackCreate(BaseModel):
     """Schema for creating feedback."""
-    query_id: Optional[int] = None
-    rating: Optional[int] = Field(None, ge=1, le=5)
-    comments: Optional[str] = None
+    query_id: Optional[int] = Field(None, gt=0, description="Optional query ID this feedback is about")
+    rating: Optional[int] = Field(None, ge=1, le=5, description="Rating from 1 (poor) to 5 (excellent)")
+    comments: Optional[str] = Field(None, max_length=2000, description="Optional feedback comments")
+    
+    @field_validator('comments')
+    @classmethod
+    def comments_not_just_whitespace(cls, v: Optional[str]) -> Optional[str]:
+        """Validate that comments are not just whitespace if provided."""
+        if v is not None and v.strip() == "":
+            raise ValueError("Comments cannot be just whitespace")
+        return v.strip() if v else None
+    
+    @field_validator('rating')
+    @classmethod
+    def validate_rating_or_comments(cls, v: Optional[int], info) -> Optional[int]:
+        """Ensure at least rating or comments is provided."""
+        # Note: This validator runs after comments, so we can't access it here
+        # We'll check this in the endpoint instead
+        return v
 
 
 class FeedbackResponse(BaseModel):
