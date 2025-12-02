@@ -28,8 +28,8 @@ poetry install
 cp .env.example .env
 # Edit .env with your configuration
 
-# Initialize database
-poetry run python test_db_setup.py
+# Run database migrations to create schema
+poetry run alembic upgrade head
 
 # Start the API server
 poetry run uvicorn query_refinement_module.api.main:app --reload --host 0.0.0.0 --port 8000
@@ -191,15 +191,20 @@ poetry run pytest
 
 ### Database Migrations
 
-```bash
-# Create a new migration
-poetry run alembic revision --autogenerate -m "Description"
+The API uses Alembic for schema management. See [docs/database_migrations.md](docs/database_migrations.md) for complete guide.
 
-# Apply migrations
+```bash
+# Apply migrations (required before first run)
 poetry run alembic upgrade head
 
-# Rollback
+# Create a new migration after model changes
+poetry run alembic revision --autogenerate -m "Description"
+
+# Rollback one version
 poetry run alembic downgrade -1
+
+# Check current version
+poetry run alembic current
 ```
 
 ### Code Quality

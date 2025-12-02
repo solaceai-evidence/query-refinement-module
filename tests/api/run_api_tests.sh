@@ -24,6 +24,19 @@ rm -f query_refinement.db
 
 echo "✅ Cleaned up"
 echo ""
+echo "📊 Running database migrations..."
+
+# Run Alembic migrations to create schema
+poetry run alembic upgrade head > /dev/null 2>&1
+
+if [ $? -eq 0 ]; then
+    echo "✅ Database schema created"
+else
+    echo "❌ Migration failed"
+    exit 1
+fi
+
+echo ""
 echo "🚀 Starting API server..."
 
 # Start API server in background
