@@ -14,6 +14,7 @@ class QuerySession(Base):
     started_at = Column(DateTime, default=datetime.datetime.utcnow)
     ended_at = Column(DateTime, nullable=True)
     status = Column(String(32), default="active")
+    framework_name = Column(String(128), nullable=True)
 
     user = relationship("User", backref="sessions")
 
