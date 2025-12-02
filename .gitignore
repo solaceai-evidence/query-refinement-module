@@ -61,6 +61,12 @@ local_settings.py
 db.sqlite3
 db.sqlite3-journal
 
+# Local development databases
+query_refinement.db
+query_refinement.db-journal
+*.db
+*.db-journal
+
 # Flask stuff:
 instance/
 .webassets-cache
