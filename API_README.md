@@ -156,7 +156,34 @@ QUERY_REFINEMENT_LLM_TEMPERATURE=0.2
 
 ## Development
 
-### Run Tests
+### Run API Tests
+
+**Automated (Recommended)**
+```bash
+cd tests/api && ./run_api_tests.sh
+```
+This script provides a clean test environment by:
+- Stopping any running API servers
+- Removing the test database for a fresh state
+- Starting a new API server
+- Running all 18 endpoint tests
+- Leaving the server running for manual exploration
+
+**Manual Testing**
+```bash
+# Start server (if not running)
+poetry run uvicorn query_refinement_module.api.main:app --reload
+
+# Run tests in another terminal
+poetry run python tests/api/test_api_endpoints.py
+
+# Stop server when done
+cd tests/api && ./stop_api_server.sh
+```
+
+**Note:** For accurate test results, always start with a clean database. See `tests/README.md` for complete testing documentation.
+
+### Run Unit Tests
 
 ```bash
 poetry run pytest

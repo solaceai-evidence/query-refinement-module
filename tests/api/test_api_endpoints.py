@@ -4,9 +4,12 @@ Tests all authentication, query management, and feedback endpoints.
 """
 import requests
 import json
-from typing import Dict, Any
+import os
+import time
+from typing import Dict
 
 BASE_URL = "http://localhost:8000"
+DB_PATH = "query_refinement.db"
 
 # Store test data
 test_data = {
@@ -20,19 +23,44 @@ test_data = {
 }
 
 
+def check_api_health():
+    """
+    Check if the API is running and healthy.
+    For clean test runs, use the run_api_tests.sh script which handles database reset.
+    """
+    try:
+        response = requests.get(f"{BASE_URL}/health", timeout=5)
+        if response.status_code == 200:
+            print("✅ API is running and healthy")
+            if os.path.exists(DB_PATH):
+                print(f"📁 Using database: {DB_PATH}")
+            else:
+                print("📁 Fresh database will be created")
+            return True
+        else:
+            print(f"⚠️  API health check returned status {response.status_code}")
+            return False
+    except Exception as e:
+        print(f"❌ Could not connect to API: {e}")
+        print(f"   Make sure the API server is running at {BASE_URL}")
+        print("   Quick start: ./run_api_tests.sh")
+        print("   Or manually: poetry run uvicorn query_refinement_module.api.main:app --reload")
+        return False
+
+
 def print_response(step: str, response: requests.Response):
     """Print formatted response."""
     print(f"\n{'=' * 60}")
     print(f"STEP: {step}")
     print(f"Status: {response.status_code}")
     if response.status_code < 400:
-        print(f"✅ SUCCESS")
+        print(f" SUCCESS")
         try:
             print(f"Response: {json.dumps(response.json(), indent=2)}")
         except:
             print(f"Response: {response.text}")
     else:
-        print(f"❌ FAILED")
+        print(f" FAILED")
         print(f"Error: {response.text}")
     print('=' * 60)
     return response
@@ -77,7 +105,7 @@ def test_2_login():
     if response.status_code == 200:
         data = response.json()
         test_data["access_token"] = data.get("access_token")
-        print(f"\n🔑 Access Token: {test_data['access_token'][:50]}...")
+        print(f"\n Access Token: {test_data['access_token'][:50]}...")
     return result
 
 
@@ -116,7 +144,7 @@ def test_5_list_sessions():
 def test_6_get_session():
     """Test getting session details."""
     if not test_data["session_id"]:
-        print("\n⚠️  Skipping - no session_id")
+        print("\n  Skipping - no session_id")
         return None
     
     response = requests.get(
@@ -129,7 +157,7 @@ def test_6_get_session():
 def test_7_create_query():
     """Test creating a query."""
     if not test_data["session_id"]:
-        print("\n⚠️  Skipping - no session_id")
+        print("\n  Skipping - no session_id")
         return None
     
     payload = {
@@ -152,7 +180,7 @@ def test_7_create_query():
 def test_8_get_query():
     """Test getting query details."""
     if not test_data["query_id"]:
-        print("\n⚠️  Skipping - no query_id")
+        print("\n  Skipping - no query_id")
         return None
     
     response = requests.get(
@@ -165,7 +193,7 @@ def test_8_get_query():
 def test_9_update_query():
     """Test updating refined query."""
     if not test_data["query_id"]:
-        print("\n⚠️  Skipping - no query_id")
+        print("\n  Skipping - no query_id")
         return None
     
     payload = {
@@ -182,7 +210,7 @@ def test_9_update_query():
 def test_10_create_refinement_step():
     """Test creating a refinement step."""
     if not test_data["query_id"]:
-        print("\n⚠️  Skipping - no query_id")
+        print("\n  Skipping - no query_id")
         return None
     
     payload = {
@@ -205,7 +233,7 @@ def test_10_create_refinement_step():
 def test_11_list_refinement_steps():
     """Test listing refinement steps for a query."""
     if not test_data["query_id"]:
-        print("\n⚠️  Skipping - no query_id")
+        print("\n  Skipping - no query_id")
         return None
     
     response = requests.get(
@@ -218,7 +246,7 @@ def test_11_list_refinement_steps():
 def test_12_create_followup():
     """Test creating a follow-up entry."""
     if not test_data["refinement_step_id"]:
-        print("\n⚠️  Skipping - no refinement_step_id")
+        print("\n  Skipping - no refinement_step_id")
         return None
     
     payload = {
@@ -242,7 +270,7 @@ def test_12_create_followup():
 def test_13_update_followup():
     """Test updating a follow-up answer."""
     if not test_data["followup_id"]:
-        print("\n⚠️  Skipping - no followup_id")
+        print("\n  Skipping - no followup_id")
         return None
     
     payload = {
@@ -259,7 +287,7 @@ def test_13_update_followup():
 def test_14_submit_feedback():
     """Test submitting feedback."""
     if not test_data["query_id"]:
-        print("\n⚠️  Skipping - no query_id")
+        print("\n  Skipping - no query_id")
         return None
     
     payload = {
@@ -292,7 +320,7 @@ def test_15_get_my_feedback():
 def test_16_get_query_feedback():
     """Test getting feedback for a specific query."""
     if not test_data["query_id"]:
-        print("\n⚠️  Skipping - no query_id")
+        print("\n  Skipping - no query_id")
         return None
     
     response = requests.get(
@@ -305,7 +333,7 @@ def test_16_get_query_feedback():
 def test_17_end_session():
     """Test ending a session."""
     if not test_data["session_id"]:
-        print("\n⚠️  Skipping - no session_id")
+        print("\n  Skipping - no session_id")
         return None
     
     response = requests.post(
@@ -326,6 +354,11 @@ def run_all_tests():
     print("\n" + "=" * 60)
     print("🧪 STARTING COMPREHENSIVE API TESTS")
     print("=" * 60)
+    
+    # Check if API is healthy before running tests
+    if not check_api_health():
+        print("\n❌ Cannot run tests - API is not available")
+        return
     
     tests = [
         test_1_register_user,
@@ -362,19 +395,19 @@ def run_all_tests():
             else:
                 failed += 1
         except Exception as e:
-            print(f"\n❌ EXCEPTION in {test.__name__}: {str(e)}")
+            print(f"\n EXCEPTION in {test.__name__}: {str(e)}")
             failed += 1
     
     print("\n" + "=" * 60)
-    print("📊 TEST SUMMARY")
+    print("TEST SUMMARY")
     print("=" * 60)
-    print(f"✅ Passed: {passed}")
-    print(f"❌ Failed: {failed}")
-    print(f"⚠️  Skipped: {skipped}")
+    print(f"Passed: {passed}")
+    print(f"Failed: {failed}")
+    print(f"Skipped: {skipped}")
     print(f"Total: {passed + failed + skipped}")
     print("=" * 60)
     
-    print("\n📦 Test Data Captured:")
+    print("\nTest Data Captured:")
     print(json.dumps(test_data, indent=2))
 
 
@@ -382,6 +415,6 @@ if __name__ == "__main__":
     try:
         run_all_tests()
     except KeyboardInterrupt:
-        print("\n\n⚠️  Tests interrupted by user")
+        print("\n\n  Tests interrupted by user")
     except Exception as e:
-        print(f"\n\n❌ Unexpected error: {str(e)}")
+        print(f"\n\n Unexpected error: {str(e)}")
