@@ -1,11 +1,16 @@
 """
 Main FastAPI application.
 """
-from fastapi import FastAPI
+from fastapi import FastAPI, Request
 from fastapi.middleware.cors import CORSMiddleware
+from fastapi.responses import JSONResponse
+from fastapi.exceptions import RequestValidationError
+from pydantic import ValidationError
 
 from query_refinement_module.api.config import get_settings
 from query_refinement_module.api.routes import auth, queries, feedback, refinement
+from query_refinement_module.api.exceptions import QueryRefinementException
+from query_refinement_module.api.rate_limit import RateLimitMiddleware
 
 settings = get_settings()
 
@@ -26,6 +31,44 @@ app.add_middleware(
     allow_methods=["*"],
     allow_headers=["*"],
 )
+
+# Configure rate limiting (60 requests per minute)
+app.add_middleware(
+    RateLimitMiddleware,
+    requests_per_minute=60,
+    exempt_paths=["/docs", "/redoc", "/openapi.json", "/health", "/"]
+)
+
+# Exception handlers
+@app.exception_handler(QueryRefinementException)
+async def query_refinement_exception_handler(request: Request, exc: QueryRefinementException):
+    """Handle custom query refinement exceptions."""
+    return JSONResponse(
+        status_code=exc.status_code,
+        content={"detail": exc.message}
+    )
+
+
+@app.exception_handler(RequestValidationError)
+async def validation_exception_handler(request: Request, exc: RequestValidationError):
+    """Handle Pydantic validation errors with detailed messages."""
+    errors = []
+    for error in exc.errors():
+        field = " -> ".join(str(loc) for loc in error["loc"])
+        errors.append({
+            "field": field,
+            "message": error["msg"],
+            "type": error["type"]
+        })
+    
+    return JSONResponse(
+        status_code=422,
+        content={
+            "detail": "Validation error",
+            "errors": errors
+        }
+    )
+
 
 # Include routers
 app.include_router(auth.router, prefix="/api")
