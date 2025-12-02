@@ -9,7 +9,10 @@ from query_refinement_module.db.models.query import Query
 from query_refinement_module.db.models.refinement_step import RefinementStep
 from query_refinement_module.db.models.followup_history import FollowUpHistory
 from query_refinement_module.db.models.feedback import Feedback
-import hashlib
+from passlib.context import CryptContext
+
+# Password hashing context
+pwd_context = CryptContext(schemes=["bcrypt"], deprecated="auto")
 
 
 # ==========================================
@@ -18,7 +21,9 @@ import hashlib
 
 def create_user(db: Session, email: str, name: str, password: str) -> User:
     """Create a new user with hashed password."""
-    password_hash = hashlib.sha256(password.encode()).hexdigest()
+    # Truncate password to 72 characters for bcrypt compatibility
+    truncated_password = password[:72]
+    password_hash = pwd_context.hash(truncated_password)
     user = User(email=email, name=name, password_hash=password_hash)
     db.add(user)
     db.commit()
@@ -40,8 +45,9 @@ def verify_user_password(db: Session, email: str, password: str) -> Optional[Use
     """Verify user credentials and return user if valid."""
     user = get_user_by_email(db, email)
     if user:
-        password_hash = hashlib.sha256(password.encode()).hexdigest()
-        if user.password_hash == password_hash:
+        # Truncate password to 72 characters for bcrypt compatibility
+        truncated_password = password[:72]
+        if pwd_context.verify(truncated_password, user.password_hash):
             return user
     return None
 
