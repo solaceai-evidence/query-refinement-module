@@ -149,6 +149,26 @@ legal = registry.get_framework("legal_research")
 business = registry.get_framework("business_analysis")
 ```
 
+## Testing
+
+The project uses a structured testing approach with three test categories:
+
+```bash
+# Run all tests
+poetry run pytest tests/
+
+# Unit tests (fast, isolated)
+poetry run pytest tests/unit/
+
+# Integration tests (database, workflows)
+poetry run pytest tests/integration/
+
+# API tests (requires running server)
+cd tests/api && ./run_api_tests.sh
+```
+
+See [tests/README.md](tests/README.md) for complete testing guidelines, examples, and CI/CD setup.
+
 ## Documentation
 
 - [docs/custom_schemas.md](docs/custom_schemas.md) — authoring and loading refinement frameworks
@@ -157,6 +177,7 @@ business = registry.get_framework("business_analysis")
 - [docs/dependencies.md](docs/dependencies.md) — handling aspect ordering and validation
 - [docs/api_integration_guide.md](docs/api_integration_guide.md) — wiring providers, analyzers, and tracing
 - [docs/user_commands.md](docs/user_commands.md) — interactive command reference
+- [docs/api_service.md](docs/api_service.md) — REST API documentation (see also [API_README.md](API_README.md))
 - [examples/](examples/) — sample frameworks and YAML snippets
 
 ## Session Storage Options
