@@ -6,7 +6,6 @@ from fastapi.middleware.cors import CORSMiddleware
 
 from query_refinement_module.api.config import get_settings
 from query_refinement_module.api.routes import auth, queries, feedback
-from query_refinement_module.db.database import init_db
 
 settings = get_settings()
 
@@ -36,8 +35,15 @@ app.include_router(feedback.router, prefix="/api")
 
 @app.on_event("startup")
 def on_startup():
-    """Initialize database on application startup."""
-    init_db()
+    """
+    Application startup tasks.
+    
+    Note: Database schema should be managed via Alembic migrations.
+    Run 'alembic upgrade head' before starting the server.
+    """
+    # Database is now managed by Alembic migrations
+    # Run: poetry run alembic upgrade head
+    pass
 
 
 @app.get("/")
