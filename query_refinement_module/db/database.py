@@ -8,10 +8,16 @@ from dotenv import load_dotenv
 
 load_dotenv()
 
-REFINEMENT_FRAMEWORK_PATH=os.getenv("REFINEMENT_FRAMEWORK_PATH", "/dev/null")
+# Set dummy value for REFINEMENT_FRAMEWORK_PATH if not set (for migrations)
+REFINEMENT_FRAMEWORK_PATH = os.getenv("REFINEMENT_FRAMEWORK_PATH", "/dev/null")
+
+# Database configuration
 DATABASE_URL = os.getenv("DATABASE_URL", "sqlite:///query_refinement.db")
 
-engine = create_engine(DATABASE_URL, echo=True, future=True)
+# SQLAlchemy engine configuration
+# For production, use PostgreSQL: postgresql://user:password@localhost/dbname
+# For development/testing, SQLite is sufficient
+engine = create_engine(DATABASE_URL, echo=False, future=True)
 SessionLocal = sessionmaker(autocommit=False, autoflush=False, bind=engine)
 
 # Import all models to ensure they are registered with SQLAlchemy
