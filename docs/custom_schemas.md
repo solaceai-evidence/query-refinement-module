@@ -37,9 +37,9 @@ my_framework:
 | `id` | string | Stable identifier unique inside the framework |
 | `name` | string | Human-readable label used in UIs/logs |
 | `description` | string | Short explanation of what the aspect refines |
-| `analysis_prompt` | string | Prompt template **must contain `{query}`** |
+| `analysis_prompt` | string | Prompt template for analysis instructions |
 
-If `{query}` is missing the loader raises `ValueError` and the aspect is skipped.
+The `analysis_prompt` may optionally include `{query}` as a placeholder. If present, the placeholder is replaced with the user's query at the specified location. If absent, the system automatically prepends `"Review this query: {query}"` at the beginning of the prompt to ensure the LLM always has context about what it is analyzing.
 
 ### 2.2 Optional fields (add only what you need)
 
@@ -48,18 +48,19 @@ If `{query}` is missing the loader raises `ValueError` and the aspect is skipped
 #### Default system prompt (when `system_prompt` is omitted)
 
 ```text
-You refine scientific queries by analyzing: {aspect.name} ({aspect.description}).
-Determine if this aspect is missing, incomplete, or ambiguous. If yes, ask ONE specific question to clarify.
+You refine research queries by analyzing: {aspect.name} ({aspect.description}).
+Identify all missing, incomplete, ambiguous, or poorly scoped elements within this refinement aspect.
+Address all deficiencies in a single response by asking targeted, clarifying questions.
 ```
 
-The manager substitutes `{aspect.name}` and `{aspect.description}` at runtime. Provide an explicit `system_prompt` when you need stricter tone, role-play, or domain vocabulary.
+The system substitutes `{aspect.name}` and `{aspect.description}` at runtime. Provide an explicit `system_prompt` when you need stricter tone, role-play, or domain-specific vocabulary.
 
 - `examples` (dict): Few-shot guidance, grouped by clarity category. Structure described in §4.
 - `response_format` (dict): Structured response contract. Details in §3.
 - `depends_on` (list[str]): IDs of earlier aspects this one needs context from. The manager passes previous answers in `dependency_context`.
-- `allow_follow_up` (bool, default `false`): Whether the manager may ask multiple rounds.
-- `max_follow_ups` (int, default `3`): Hard cap on follow-up rounds when enabled.
-- `metadata` (dict): Free-form structured data for dependent logic (priority, domain, UI hints, etc.).
+- `allow_follow_up` (bool, default `true`): Whether the manager may ask multiple rounds of clarifying questions for this aspect.
+- `max_follow_ups` (int, default `1`): Maximum number of follow-up rounds when enabled.
+- `metadata` (dict): Free-form structured data for custom logic (priority, domain, UI hints, etc.).
 
 ## 3. Response Format Contracts
 
@@ -89,15 +90,15 @@ See also `docs/response_format_guide.md` for deeper guidance and advanced valida
 
 ## 4. Example Library (Few-shot Guidance)
 
-The `examples` field accepts any combination of five clarity categories. Each category is a list; every item must supply a `query` string and may add optional string metadata shown below.
+The `examples` field accepts any combination of five clarity categories. Each category is a list where every item must include a `query` field and may include optional metadata fields. Examples are formatted with bullet points and automatically ensure proper punctuation for improved readability.
 
-| Category key | Optional fields |
-| --- | --- |
-| `clear` | `explanation`, `user_answer` |
-| `needs_refinement` | `issue`, `missing`, `suggested_question`, `user_answer` |
-| `partial` | `has`, `missing`, `suggested_question`, `user_answer` |
-| `ambiguous` | `issue`, `suggested_question`, `user_answer` |
-| `other` | `note`, `guidance`, `suggested_question`, `user_answer` |
+| Category key | Optional fields | Purpose |
+| --- | --- | --- |
+| `clear` | `explanation` | Examples demonstrating complete, unambiguous specifications |
+| `needs_refinement` | `issue`, `missing`, `suggested_question` | Examples missing critical information |
+| `partial` | `has`, `missing`, `suggested_question` | Examples with some but not all necessary details |
+| `ambiguous` | `issue`, `suggested_question` | Examples with vague or unclear specifications |
+| `other` | `note`, `guidance`, `suggested_question` | Edge cases or special guidance outside standard categories |
 
 Example:
 
@@ -125,7 +126,9 @@ examples:
       guidance: Encourage the user to confirm whether a broader cohort (e.g., 30-45) is acceptable before proceeding.
 ```
 
-The loader validates structure and types, logging warnings for unexpected keys so you can catch typos early.
+Examples are rendered in the prompt as formatted guidance with category headers (e.g., "CLEAR SPECIFICATIONS:", "NEEDS REFINEMENT:") followed by bulleted examples. The system automatically adds periods to field values that lack terminal punctuation, ensuring consistent formatting in the LLM prompt.
+
+The loader validates structure and types at load time, raising errors for unknown category keys, missing `query` fields, or non-string field values.
 
 ## 5. Putting It All Together
 
@@ -147,12 +150,12 @@ basic_project_scoping:
     name: Budget Constraints
     description: Check for financial limitations.
     analysis_prompt: |
-      Query: {query}
-
       Decide whether budget parameters are defined; otherwise ask for a range.
     depends_on:
       - timeline
 ```
+
+Notice the `budget` aspect omits the `{query}` placeholder. The system automatically prepends `"Review this query: <user_query>"` to ensure the LLM has the necessary context.
 
 ### 5.2 Comprehensive PICO-style aspect with dependencies
 
@@ -204,9 +207,12 @@ pico_advanced:
     name: Primary Outcome
     description: Determine the outcome metric and timeframe of interest.
     analysis_prompt: |
+      Assess whether the query specifies measurable outcomes and follow-up duration.
+      
       Query: {query}
-
-      Use dependency context when crafting clarifying questions.
+      
+      Consider clinical endpoints, surrogate markers, and observation periods.
+      Use dependency context from previous aspects to avoid redundant questions.
     depends_on:
       - population_core
       - intervention_detail
@@ -218,9 +224,12 @@ pico_advanced:
         outcome_type: "Clinical endpoint to evaluate (e.g., mortality, symptom score)."
         time_horizon: "Observation period or follow-up duration."
     allow_follow_up: false
+    metadata:
+      domain: pico
+      priority: high
 ```
 
-This example demonstrates system prompts, example usage, dependencies, custom response fields, and metadata. Review `examples/pico_template.yaml` for the full production-ready framework shipped with the repository.
+This example demonstrates system prompts, examples usage, dependencies, custom response fields, and metadata integration. Consult `examples/pico_template.yaml` and `examples/pico_advanced_complete.yaml` for production-ready frameworks included with the repository.
 
 ## 6. Dependency Semantics
 
@@ -230,35 +239,47 @@ This example demonstrates system prompts, example usage, dependencies, custom re
 
 ## 7. Follow-up Behaviour
 
-- `allow_follow_up: true` permits the manager to loop over `max_follow_ups` iterations until `needs_refinement` flips to `false`.
-- Use metadata to signal UI hints (for example `metadata.follow_up_style: "checkbox"`). The core manager treats metadata as opaque.
+Follow-ups are enabled by default (`allow_follow_up: true`) with a limit of one round (`max_follow_ups: 1`). When enabled, the manager iteratively prompts the LLM for clarification until either:
+
+- The LLM sets `needs_refinement` to `false`, indicating the aspect is sufficiently specified
+- The maximum number of follow-up rounds is reached
+
+Follow-up prompts automatically include:
+
+- The original query (ensuring consistent context across all rounds)
+- Conversation history for the aspect
+- The user's most recent answer
+- The aspect's analysis instructions and examples
+
+Set `allow_follow_up: false` to disable iterative refinement for aspects requiring only a single assessment. Use metadata fields like `metadata.follow_up_style: "checkbox"` for UI-specific hints; the core manager treats metadata as opaque.
 
 ## 8. Validation Lifecycle
 
-At load time each aspect runs through several guards:
+At load time, each aspect undergoes validation:
 
-- Missing required fields or wrong types raise `ValueError` and skip the aspect.
-- Invalid response format definitions (unknown types, inconsistent descriptions) raise immediately.
-- Example collections must be dicts of lists; each entry must be a dict containing `query`.
-- Dependency references are checked for existence; cycles throw `FrameworkLoadError`.
+- **Required fields**: Missing `id`, `name`, `description`, or `analysis_prompt` raises `ValueError`.
+- **Response format**: Invalid type specifications (types not in `string`, `boolean`, `integer`, `float`, `array`, `object`) or malformed structures raise errors immediately.
+- **Examples structure**: Must be a dictionary of lists; each example requires a `query` field. Unknown category keys or non-string field values trigger validation errors.
+- **Dependencies**: References to non-existent aspect IDs or circular dependencies raise `FrameworkLoadError`.
 
-Review logs if dimensions vanish; the loader records every rejection with context. You can also call `registry.get_last_load_error()` to retrieve the most recent error string.
+If an aspect fails validation, the loader logs the error with context and skips that aspect. Call `registry.get_last_load_error()` to retrieve the most recent error message programmatically.
 
-## 9. Prompt Crafting Tips
+## 9. Prompt Crafting Best Practices
 
-- Lead with the decision objective (“Determine if outcome detail is sufficient”).
-- Enumerate considerations in bullet or numbered form to encourage structured reasoning.
-- Spell out edge cases, especially known trouble spots for your domain.
-- Close with explicit formatting instructions reflecting your response schema.
-- Keep prompts concise; split a large aspect into multiple focused ones if the instructions exceed ~120 lines or combine unrelated tasks (see `examples/pico_population_subdimensions.yaml`).
+- **State the objective clearly**: Begin with the analysis goal (e.g., "Determine if the temporal scope is adequately specified").
+- **Structure guidance systematically**: Use numbered lists or bullet points to enumerate evaluation criteria, encouraging methodical reasoning.
+- **Address domain-specific edge cases**: Explicitly mention known ambiguities or pitfalls relevant to your field.
+- **Leverage automatic query injection**: Include `{query}` where it fits naturally in your prompt flow, or omit it entirely to have the system prepend it automatically.
+- **Keep prompts focused**: If analysis instructions exceed ~120 lines or combine orthogonal concerns, split into multiple targeted aspects (see `examples/pico_population_subdimensions.yaml`).
+- **Avoid redundant format instructions**: The system automatically appends JSON format specifications based on your `response_format`, so focus your prompt on analysis logic rather than output structure.
 
 ## 10. Troubleshooting Checklist
 
-- **Framework missing**: ensure `REFINEMENT_FRAMEWORK_PATH` is set, readable, and points to a file.
+- **Framework missing**: ensure `REFINEMENT_FRAMEWORK_PATH` is set, readable, and points to a valid file.
 - **YAML parse error**: run `yamllint` or an online validator to catch indentation or colon issues.
-- **Aspect skipped**: check logs for a validation error (missing `{query}`, wrong type, invalid dependency).
-- **Unexpected LLM output**: verify `response_format` matches what you expect and adjust prompt instructions accordingly.
-- **Dependency context empty**: confirm `depends_on` lists the exact IDs of input aspects and that they were processed earlier in the list.
+- **Aspect skipped**: check logs for validation errors (missing required fields, wrong types, invalid dependencies, or malformed response formats).
+- **Unexpected LLM output**: verify `response_format` matches your expectations and adjust prompt instructions accordingly.
+- **Dependency context empty**: confirm `depends_on` lists the exact IDs of prerequisite aspects and that they were processed earlier in the framework definition.
 
 ## 11. Additional References
 

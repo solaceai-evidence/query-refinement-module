@@ -69,7 +69,7 @@ Updated `examples/pico_population_subdimensions.yaml` with complete examples for
 examples:
   clear:
     - query: "Does aerobic exercise reduce depression in adults aged 18-65?"
-      note: "Age range clearly specified (18-65), adult population identified"
+      explanation: "Age range clearly specified (18-65), adult population identified"
   
   needs_refinement:
     - query: "Does exercise help with depression in adults?"
@@ -124,15 +124,16 @@ Created two test suites:
 my_dimension:
   - id: temporal_scope
     name: Temporal Scope
+    description: Clarifies time period or timeframe
+    system_prompt: You are a research assistant... 
     analysis_prompt: |
-      Query: {query}
-      Analyze temporal aspects...
+      Analyze temporal aspects like this...
     
     # Add examples (all categories optional)
     examples:
       clear:
         - query: "Studies published between 2020-2024"
-          note: "Specific date range provided"
+          explanation: "Specific date range provided"
       
       needs_refinement:
         - query: "Recent studies on climate change"

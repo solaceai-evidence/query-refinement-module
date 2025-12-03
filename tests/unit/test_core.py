@@ -259,12 +259,33 @@ def test_query_aspect_refiner_follow_up_prompt_template():
     refiner.add_follow_up("Initial", "First answer")
     refiner.add_follow_up("Follow-up", "Second answer")
 
-    prompt = refiner.format_follow_up_prompt_template("Original")
+    prompt = refiner.format_follow_up_prompt_template("Original query text")
 
     assert "FOLLOW-UP CONTEXT" in prompt
     assert "Most recent user answer" in prompt
     assert "Second answer" in prompt
     assert "Respond in the following JSON format" in prompt
+    # Verify original query is included (from analysis_prompt with {query})
+    assert "Original query text" in prompt
+
+
+def test_query_aspect_refiner_follow_up_includes_query_without_placeholder():
+    """Test that follow-up prompts include the query even when analysis_prompt lacks {query}."""
+    aspect = make_aspect(analysis_prompt="Evaluate the temporal characteristics.")
+    refiner = QueryAspectRefiner(refinement_aspect=aspect)
+    refiner.add_follow_up("What time period?", "Last 5 years")
+
+    prompt = refiner.format_follow_up_prompt_template("Effect of exercise on diabetes")
+
+    # Should have follow-up context
+    assert "FOLLOW-UP CONTEXT" in prompt
+    # Should have conversation history
+    assert "What time period?" in prompt
+    assert "Last 5 years" in prompt
+    # Should have the original query prepended since analysis_prompt lacks {query}
+    assert "Review this query: Effect of exercise on diabetes" in prompt
+    # Should have the analysis prompt content
+    assert "Evaluate the temporal characteristics" in prompt
 
 
 def test_query_aspect_refiner_can_ask_followup_respects_limits():

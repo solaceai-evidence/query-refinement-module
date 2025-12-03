@@ -214,19 +214,11 @@ class RefinementAspect:
 
     def __post_init__(self):
         """Validate schema structure at load time."""
-        # 1. Check required placeholder
-        required_placeholders = ["{query}"]
-        for ph in required_placeholders:
-            if ph not in self.analysis_prompt:
-                raise ValueError(
-                    f"Schema '{self.name}': Missing required placeholder: {ph}"
-                )
-        
-        # 2. Validate response_format structure (if provided)
+        # 1. Validate response_format structure (if provided)
         if self.response_format:
             self._validate_response_format_structure()
         
-        # 3. Validate examples structure (if provided)
+        # 2. Validate examples structure (if provided)
         if self.examples:
             self._validate_examples_structure()
     
@@ -370,19 +362,28 @@ class RefinementAspect:
         Returns:
             Complete user prompt with query inserted and response format appended
         """
-        # Format the analysis prompt with query
-        prompt = self.analysis_prompt.format(query=query)
+        # Always start with the query explicitly stated
+        prompt_parts = []
+        
+        # Check if analysis_prompt contains {query} placeholder
+        if "{query}" in self.analysis_prompt:
+            # Format the analysis prompt with the query
+            prompt_parts.append(self.analysis_prompt.format(query=query))
+        else:
+            # Prepend the query explicitly, then add the analysis prompt as-is
+            prompt_parts.append(f"Review this query: {query}")
+            prompt_parts.append(self.analysis_prompt)
         
         # Inject examples if available
         if self.examples:
             examples_section = self._format_examples()
             if examples_section:
-                prompt += "\n\n" + examples_section
+                prompt_parts.append(examples_section)
         
         # Always append response format (base schema at minimum)
-        prompt += "\n\n" + self._format_response_instructions()
+        prompt_parts.append(self._format_response_instructions())
         
-        return prompt
+        return "\n\n".join(prompt_parts)
     
     def get_system_prompt(self) -> str:
         """
