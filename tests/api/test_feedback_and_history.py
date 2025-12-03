@@ -2,7 +2,7 @@
 Tests for feedback and query history API endpoints.
 """
 import requests
-from test_refinement_endpoints import BASE_URL, register_and_login, check_api_health
+from .test_refinement_endpoints import BASE_URL, register_and_login, check_api_health
 
 
 def test_submit_feedback_with_rating_and_comments():

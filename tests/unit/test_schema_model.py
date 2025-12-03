@@ -81,7 +81,7 @@ def test_default_system_prompt_uses_name_and_description():
 
     assert "Demo Aspect" in prompt
     assert "Tracks demo behaviour" in prompt
-    assert "ask ONE specific question" in prompt
+    assert "asking targeted, clarifying questions" in prompt
 
 
 def test_get_user_prompt_includes_examples_and_format():
@@ -101,7 +101,7 @@ def test_get_user_prompt_includes_examples_and_format():
     prompt = aspect.get_user_prompt("Sample query")
 
     assert "Sample query" in prompt
-    assert "EXAMPLES NEEDING REFINEMENT" in prompt
+    assert "NEEDS REFINEMENT:" in prompt
     assert "confidence" in prompt
     assert "float" in prompt
 
@@ -136,10 +136,10 @@ def test_format_examples_omits_missing_categories():
 
     formatted = aspect._format_examples()
 
-    assert "EXAMPLES OF CLEAR SPECIFICATIONS" in formatted
-    assert "EXAMPLES NEEDING REFINEMENT" not in formatted
+    assert "CLEAR SPECIFICATIONS:" in formatted
+    assert "NEEDS REFINEMENT:" not in formatted
     assert "Has: Age" in formatted
-    assert "Ask: \"For how long?\"" in formatted
+    assert "Example Q: \"For how long?\"" in formatted
 
 
 def test_format_response_instructions_lists_fields():
