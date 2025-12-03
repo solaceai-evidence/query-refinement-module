@@ -16,15 +16,40 @@ def make_aspect(**overrides) -> RefinementAspect:
     return RefinementAspect(**base_kwargs)
 
 
-def test_refinement_aspect_requires_query_placeholder():
-    with pytest.raises(ValueError) as excinfo:
-        RefinementAspect(
-            id="demo",
-            name="Missing",
-            description="No placeholder",
-            analysis_prompt="Evaluate this",
-        )
-    assert "Missing required placeholder" in str(excinfo.value)
+def test_refinement_aspect_injects_query_when_no_placeholder():
+    """Test that query is injected at the beginning if {query} placeholder is missing."""
+    aspect = RefinementAspect(
+        id="demo",
+        name="Missing Placeholder",
+        description="No placeholder in prompt",
+        analysis_prompt="Evaluate the demographic characteristics.",
+    )
+    
+    user_prompt = aspect.get_user_prompt("What is the effect of exercise?")
+    
+    # Should start with explicit query statement
+    assert user_prompt.startswith("Review this query: What is the effect of exercise?")
+    # Should still include the analysis prompt
+    assert "Evaluate the demographic characteristics" in user_prompt
+
+
+def test_refinement_aspect_uses_placeholder_when_present():
+    """Test that query placeholder is properly substituted when present in analysis_prompt."""
+    aspect = RefinementAspect(
+        id="demo",
+        name="With Placeholder",
+        description="Has placeholder in prompt",
+        analysis_prompt="Analyze this query: {query}\n\nConsider all aspects.",
+    )
+    
+    user_prompt = aspect.get_user_prompt("What is the effect of exercise?")
+    
+    # Should have the query substituted in the analysis prompt
+    assert "Analyze this query: What is the effect of exercise?" in user_prompt
+    # Should include the rest of the prompt
+    assert "Consider all aspects" in user_prompt
+    # Should NOT have the "Review this query:" prefix since it's already in analysis_prompt
+    assert not user_prompt.startswith("Review this query:")
 
 
 def test_response_format_validates_allowed_types():

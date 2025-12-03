@@ -16,11 +16,11 @@ pico_advanced:
     
     analysis_prompt: |
       **Query to Analyze:** "{query}"
-      
-      # TASK: Demographic Specification Analysis
-      
-      You are analyzing a clinical research query to determine if the target population's
-      demographic characteristics are sufficiently specified.
+
+      Determine if the demographic specification is sufficient for:
+      1. Study replication
+      2. Results generalization
+      3. Ethical review requirements
       
       ## Required Demographic Dimensions
       
@@ -36,21 +36,7 @@ pico_advanced:
          - Consider: Does the condition have ethnic disparities?
          - Examples: "African American populations", "Asian populations"
       
-      4. **Geographic/Setting**: Is the population setting specified?
-         - Examples: "urban areas", "rural communities", "nursing homes"
-      
       ## Analysis Framework
-      
-      For each dimension:
-      - ✓ CLEAR: Specific, measurable, unambiguous
-      - ⚠ PARTIAL: Some specification but needs refinement
-      - ✗ MISSING: Not specified when relevant
-      - ? AMBIGUOUS: Mentioned but vague or unclear
-      
-      Determine if the demographic specification is sufficient for:
-      1. Study replication
-      2. Results generalization
-      3. Ethical review requirements
     
     examples:
       clear:
