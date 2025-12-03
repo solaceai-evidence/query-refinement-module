@@ -246,7 +246,7 @@ def test_query_aspect_refiner_get_prompts_includes_dependency_context(caplog):
             dependency_context=context,
         )
 
-    assert system_prompt.startswith("You refine scientific queries")
+    assert system_prompt.startswith("You refine research queries")
     assert "Previous refinements" in user_prompt
     assert "Dep: Value" in user_prompt
     assert "Original query" in user_prompt

@@ -2,7 +2,7 @@
 Tests for edge cases and error handling in API endpoints.
 """
 import requests
-from test_refinement_endpoints import BASE_URL, register_and_login, check_api_health
+from .test_refinement_endpoints import BASE_URL, register_and_login, check_api_health
 
 
 def test_missing_auth_token():

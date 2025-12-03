@@ -25,10 +25,8 @@ class ClearExample(BaseExample, total=False):
     
     Suggested fields:
         query: The example query (REQUIRED)
-        user_answer: The ideal user answer for this query. To be used when generating follow-up questions.
         explanation: Why this example is clear and complete
     """
-    user_answer: NotRequired[str]
     explanation: NotRequired[str]
 
 
@@ -38,12 +36,10 @@ class NeedsRefinementExample(BaseExample, total=False):
     
     Suggested fields:
         query: The example query (REQUIRED)
-        user_answer: an answer that addresses the missing information for this query. To be used when generating follow-up questions.
         issue: What information is missing or incomplete
         missing: Specifically what details are absent
         suggested_question: Example question to clarify the gap
     """
-    user_answer: NotRequired[str]
     issue: NotRequired[str]
     missing: NotRequired[str]
     suggested_question: NotRequired[str]
@@ -55,12 +51,10 @@ class PartialExample(BaseExample, total=False):
     
     Suggested fields:
         query: The example query (REQUIRED)
-        user_answer: an answer that addresses the missing information for this query. To be used when generating follow-up questions.
         has: What information is present
         missing: What information is still needed
         suggested_question: Example question to get missing details
     """
-    user_answer: NotRequired[str]
     has: NotRequired[str]
     missing: NotRequired[str]
     suggested_question: NotRequired[str]
@@ -72,11 +66,9 @@ class AmbiguousExample(BaseExample, total=False):
     
     Suggested fields:
         query: The example query (REQUIRED)
-        user_answer: an answer that addresses the ambiguity for this query. To be used when generating follow-up questions.
         issue: What makes this example ambiguous or vague
         suggested_question: Example question to clarify the ambiguity
     """
-    user_answer: NotRequired[str]
     issue: NotRequired[str]
     suggested_question: NotRequired[str]
 
@@ -87,12 +79,12 @@ class OtherExample(BaseExample, total=False):
 
     Suggested fields:
         query: The example query (REQUIRED)
-        user_answer: an answer that demonstrates the desired adjustment.
+        issue: What makes this example unique or edge-case
         note: Additional context describing the pitfall or why it matters.
         guidance: Direction for the model on how to handle similar queries.
         suggested_question: Example follow-up question if clarification is useful.
     """
-    user_answer: NotRequired[str]
+    issue: NotRequired[str]
     note: NotRequired[str]
     guidance: NotRequired[str]
     suggested_question: NotRequired[str]
@@ -197,10 +189,10 @@ class RefinementAspect:
     # Only declared dependencies will be included in the analysis context
     depends_on: List[str] = field(default_factory=list)
     
-    # Should this refinement aspect support follow-ups?
-    allow_follow_up: bool = False
-    # Maximum number of follow-ups allowed (if follow-ups are allowed) default = 3
-    max_follow_ups: int = 3  
+    # Should this refinement aspect support follow-up question to the initial suggested question?
+    allow_follow_up: bool = True
+    # Maximum number of follow-ups allowed (if follow-ups are allowed)
+    max_follow_ups: int = 1
 
     # Optional metadata for extensibility
     # e.g., domain, priority, examples, options, etc.
@@ -217,7 +209,7 @@ class RefinementAspect:
     BASE_FIELD_DESCRIPTIONS = {
         "needs_refinement": "Whether this query specification needs clarification (true/false)",
         "explanation": "Brief explanation of why refinement is or isn't needed",
-        "suggested_question": "The question to ask the user (if needs_refinement is true, otherwise can be empty)"
+        "suggested_question": "The clarifying question to ask the user if refinement is needed; otherwise empty"
     }
 
     def __post_init__(self):
@@ -350,7 +342,6 @@ class RefinementAspect:
                     "missing",
                     "has",
                     "suggested_question",
-                    "user_answer",
                     "note",
                     "guidance",
                 }
@@ -405,9 +396,9 @@ class RefinementAspect:
         
         # Default system prompt (concise to save tokens)
         return (
-            f"You refine scientific queries by analyzing: {self.name} ({self.description}).\n"
-            f"Determine if this aspect is missing, incomplete, or ambiguous. "
-            f"If yes, ask ONE specific question to clarify."
+            f"You refine research queries by analyzing: {self.name} ({self.description}).\n"
+            f"Identify all missing, incomplete, ambiguous, or poorly scoped elements within this refinement aspect."
+            f"Address all deficiencies in a single response by asking targeted, clarifying questions.\n"
         )
     
     def get_prompts(self, query: str) -> tuple[str, str]:
@@ -443,48 +434,51 @@ class RefinementAspect:
         
         # Category display config: (key, header, prefix)
         category_config = [
-            ("clear", "EXAMPLES OF CLEAR SPECIFICATIONS:"),
-            ("needs_refinement", "EXAMPLES NEEDING REFINEMENT:"),
-            ("partial", "EXAMPLES WITH PARTIAL INFORMATION:"),
-            ("ambiguous", "EXAMPLES WITH AMBIGUOUS SPECIFICATIONS:"),
+            ("clear", "CLEAR SPECIFICATIONS:"),
+            ("needs_refinement", "NEEDS REFINEMENT:"),
+            ("partial", "PARTIAL INFORMATION:"),
+            ("ambiguous", "AMBIGUOUS:"),
             ("other", "ADDITIONAL EDGE-CASE GUIDANCE:"),
         ]
+        
+        def ensure_period(text: str) -> str:
+            """Add period only if text doesn't end with punctuation."""
+            return text if text.rstrip().endswith(('.', '!', '?')) else text.rstrip() + '.'
         
         for category_key, header in category_config:
             if category_key in self.examples and self.examples[category_key]:
                 sections.append(header)
                 
                 for example in self.examples[category_key]:
-                    query = example.get("query", "")
+                    query = ensure_period(example.get("query", ""))
                     
                     # Build example line based on available fields
                     line_parts = [f'"{query}"']
                     
                     # Add explanatory fields in priority order
                     if "explanation" in example:
-                        line_parts.append(f"Explanation: {example['explanation']}")
+                        line_parts.append(f"Explanation: {ensure_period(example['explanation'])}")
                     elif "issue" in example:
-                        line_parts.append(f"Issue: {example['issue']}")
+                        line_parts.append(f"Issue: {ensure_period(example['issue'])}")
                     elif "missing" in example:
-                        line_parts.append(f"Missing: {example['missing']}")
+                        line_parts.append(f"Missing: {ensure_period(example['missing'])}")
                     
                     # Add context about what's present (for partial examples)
                     if "has" in example:
-                        line_parts.append(f"Has: {example['has']}")
+                        line_parts.append(f"Has: {ensure_period(example['has'])}")
                     
                     # Add optional suggested question for refinement examples
                     if "suggested_question" in example:
-                        line_parts.append(f"Ask: \"{example['suggested_question']}\"")
+                        line_parts.append(f"Example Q: \"{ensure_period(example['suggested_question'])}\"")
                     
-                    # Add optional user answer to the suggested query for refinement examples
-
+                    # Add notes/guidance for 'other' examples 
                     if "note" in example:
-                        line_parts.append(f"Note: {example['note']}")
+                        line_parts.append(f"Note: {ensure_period(example['note'])}")
 
                     if "guidance" in example:
-                        line_parts.append(f"Guidance: {example['guidance']}")
+                        line_parts.append(f"Guidance: {ensure_period(example['guidance'])}")
 
-                    sections.append("  " + " ".join(line_parts))
+                    sections.append("  - " + " ".join(line_parts))
                 
                 sections.append("")  # Blank line after each category
         
@@ -492,7 +486,7 @@ class RefinementAspect:
             return ""
         
         # Add header for the entire examples section
-        return "--- EXAMPLES FOR GUIDANCE ---\n" + "\n".join(sections)
+        return "--- GUIDANCE EXAMPLES ---\n" + "\n".join(sections)
     
     def _format_response_instructions(self) -> str:
         """
