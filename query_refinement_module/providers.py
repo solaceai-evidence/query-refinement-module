@@ -1,3 +1,4 @@
+import asyncio
 import json
 import logging
 import pickle
@@ -15,6 +16,7 @@ __all__ = [
     "TraceEventEmitter",
     "InMemorySessionStorage",
     "RedisSessionStorage",
+    "ConcurrentSessionStorage",
     "LiteLLMProvider",
 ]
 
@@ -313,6 +315,87 @@ class RedisSessionStorage(SessionStorageInterface):
 
     def session_exists(self, session_id: str) -> bool:
         return bool(self._client.exists(self._key(session_id)))
+
+
+class ConcurrentSessionStorage(SessionStorageInterface):
+    """
+    Wrapper that adds per-session async locking to any SessionStorageInterface.
+    
+    Ensures that concurrent async operations on the same session are serialized,
+    preventing race conditions during parallel query refinement.
+    
+    Thread-safe: Uses asyncio.Lock per session_id for async coordination.
+    Automatically cleans up locks for deleted sessions.
+    """
+
+    def __init__(self, backend: SessionStorageInterface) -> None:
+        """
+        Initialize concurrent session storage.
+        
+        Args:
+            backend: Underlying storage implementation to wrap.
+        """
+        self._backend = backend
+        self._locks: Dict[str, asyncio.Lock] = {}
+        self._locks_lock = threading.Lock()  # Protects the _locks dict itself
+
+    def _get_lock(self, session_id: str) -> asyncio.Lock:
+        """Get or create an asyncio.Lock for a specific session."""
+        with self._locks_lock:
+            if session_id not in self._locks:
+                self._locks[session_id] = asyncio.Lock()
+            return self._locks[session_id]
+
+    def _cleanup_lock(self, session_id: str) -> None:
+        """Remove the lock for a deleted session to prevent memory leaks."""
+        with self._locks_lock:
+            self._locks.pop(session_id, None)
+
+    async def save_session_async(self, session_id: str, session: Any) -> None:
+        """Async-safe session save with per-session locking."""
+        lock = self._get_lock(session_id)
+        async with lock:
+            # Run the synchronous storage operation in a thread pool
+            await asyncio.to_thread(self._backend.save_session, session_id, session)
+
+    async def load_session_async(self, session_id: str) -> Any:
+        """Async-safe session load with per-session locking."""
+        lock = self._get_lock(session_id)
+        async with lock:
+            # Run the synchronous storage operation in a thread pool
+            return await asyncio.to_thread(self._backend.load_session, session_id)
+
+    async def delete_session_async(self, session_id: str) -> None:
+        """Async-safe session delete with per-session locking and cleanup."""
+        lock = self._get_lock(session_id)
+        async with lock:
+            # Run the synchronous storage operation in a thread pool
+            await asyncio.to_thread(self._backend.delete_session, session_id)
+        # Clean up the lock after deletion
+        self._cleanup_lock(session_id)
+
+    async def session_exists_async(self, session_id: str) -> bool:
+        """Async-safe session existence check."""
+        # No locking needed for existence checks (read-only, idempotent)
+        return await asyncio.to_thread(self._backend.session_exists, session_id)
+
+    # Synchronous interface methods (for backward compatibility)
+    def save_session(self, session_id: str, session: Any) -> None:
+        """Synchronous save - delegates to backend directly."""
+        self._backend.save_session(session_id, session)
+
+    def load_session(self, session_id: str) -> Any:
+        """Synchronous load - delegates to backend directly."""
+        return self._backend.load_session(session_id)
+
+    def delete_session(self, session_id: str) -> None:
+        """Synchronous delete - delegates to backend directly."""
+        self._backend.delete_session(session_id)
+        self._cleanup_lock(session_id)
+
+    def session_exists(self, session_id: str) -> bool:
+        """Synchronous existence check - delegates to backend directly."""
+        return self._backend.session_exists(session_id)
 
 
 class LiteLLMProvider(LLMProviderInterface):
