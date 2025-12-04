@@ -1825,10 +1825,11 @@ class QueryRefinementManager:
                 },
             }
 
+        # TODO: extend and adapt the final refined query prompt to provide synonyms and a paragraph
         system_prompt = (
-            "You are an expert research assistant who rewrites user queries. "
+            "You are an expert research assistant who rewrites research queries. "
             "Blend the initial query with clarified aspect details into a single, "
-            "well-formed refined query. Do not add new information beyond the "
+            "well-formed refined query or paragraph. Do not add new information beyond the "
             "provided clarifications."
         )
 

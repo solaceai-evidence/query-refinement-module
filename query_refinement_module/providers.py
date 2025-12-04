@@ -375,5 +375,64 @@ class LiteLLMProvider(LLMProviderInterface):
 
         return info
     
+    def get_rate_limits(self, model: Optional[str] = None) -> "RateLimitConfig":
+        """
+        Get rate limits for the provider/model.
+        
+        Returns provider-specific rate limits based on the model prefix.
+        Falls back to conservative defaults for unknown providers.
+        """
+        from .interfaces import RateLimitConfig
+        
+        target_model = model or self._default_model
+        
+        # Provider-specific rate limits based on model prefix
+        # These are conservative estimates - users should configure actual limits in .env
+        
+        if target_model.startswith("gpt-"):
+            # OpenAI GPT models
+            if "gpt-4" in target_model:
+                return RateLimitConfig(
+                    requests_per_minute=500,
+                    tokens_per_minute=30000,
+                    max_concurrent=10,
+                )
+            else:  # GPT-3.5 and others
+                return RateLimitConfig(
+                    requests_per_minute=3500,
+                    tokens_per_minute=90000,
+                    max_concurrent=10,
+                )
+        
+        elif target_model.startswith("claude-"):
+            # Anthropic Claude models
+            return RateLimitConfig(
+                requests_per_minute=50,
+                tokens_per_minute=40000,
+                max_concurrent=5,
+            )
+        
+        elif target_model.startswith("gemini-"):
+            # Google Gemini models
+            return RateLimitConfig(
+                requests_per_minute=60,
+                tokens_per_minute=32000,
+                max_concurrent=5,
+            )
+        
+        elif "ollama" in target_model or "llama" in target_model.lower():
+            # Local models (Ollama, Llama)
+            return RateLimitConfig.unlimited()
+        
+        else:
+            # Unknown provider - use conservative defaults
+            return RateLimitConfig(
+                requests_per_minute=60,
+                tokens_per_minute=10000,
+                max_concurrent=5,
+            )
+
+
+
 
 
