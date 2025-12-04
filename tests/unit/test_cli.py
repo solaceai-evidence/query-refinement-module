@@ -36,7 +36,7 @@ def test_build_manager_constructs_components(monkeypatch):
     monkeypatch.setattr(cli, "LLMQueryAnalyzer", FakeAnalyzer)
     monkeypatch.setattr(cli, "ConsoleTracing", lambda: "tracer")
 
-    manager = cli.build_manager(enable_tracing=True)
+    manager = cli.build_manager(enable_tracing=True, parallel_enabled=False)
 
     assert created["provider_kwargs"] == {"default_model": "demo"}
     assert created["analyzer_kwargs"] == {"temperature": 0.1}
@@ -49,7 +49,7 @@ def test_build_manager_without_tracing(monkeypatch):
     monkeypatch.setattr(cli, "LiteLLMProvider", lambda **_: "provider")
     monkeypatch.setattr(cli, "LLMQueryAnalyzer", lambda provider, **__: (provider, {}))
 
-    manager = cli.build_manager(enable_tracing=False)
+    manager = cli.build_manager(enable_tracing=False, parallel_enabled=False)
 
     assert manager.tracing_provider.__class__ is NoOpTracingProvider
 
@@ -70,7 +70,7 @@ def test_build_manager_with_trace_dir(monkeypatch, tmp_path):
     root_logger = logging.getLogger()
     original_handlers = list(root_logger.handlers)
     try:
-        manager = cli.build_manager(enable_tracing=False, trace_dir=str(tmp_path / "trace"))
+        manager = cli.build_manager(enable_tracing=False, trace_dir=str(tmp_path / "trace"), parallel_enabled=False)
         assert isinstance(manager.tracing_provider, FileTracingProvider)
         log_file = tmp_path / "trace" / "application.log"
         assert log_file.exists()
@@ -94,8 +94,8 @@ def test_format_dependency_context_formats(monkeypatch):
 
     session = StubSession()
     formatted = cli._format_dependency_context(session, "aspect")
-    assert formatted.startswith("Dependency context:")
-    assert "- Dependency: Answer" in formatted
+    assert formatted.startswith("📎 Dependency Context:")
+    assert "• Dependency: Answer" in formatted
 
 
 def test_print_summary_outputs(capsys):
@@ -113,9 +113,9 @@ def test_print_summary_outputs(capsys):
 
     cli._print_summary(StubManager(), object())
     out = capsys.readouterr().out
-    assert "Session summary:" in out
-    assert "[needs_refinement] A" in out
-    assert "-> Missing" in out
+    assert "SESSION SUMMARY" in out
+    assert "[NEEDS_REFINEMENT] A" in out
+    assert "→ Missing" in out
 
 
 def test_run_cli_handles_missing_framework(monkeypatch, capsys):
@@ -145,6 +145,7 @@ class StubSession:
         self._dependency_context = dependency_context or {}
         self.synthesis_requested = False
         self.command_calls: List[dict] = []
+        self.original_query = "query"
 
     def get_active_step(self):
         if self._step and not self._step.is_complete:
@@ -167,6 +168,7 @@ class StubManager:
     def __init__(self, session: StubSession):
         self.session = session
         self.summary_calls = 0
+        self.parallel_config = None  # Add parallel_config attribute
 
     def initialize(self, query, framework):
         return self.session
@@ -197,7 +199,9 @@ def test_run_cli_processes_answer(monkeypatch, capsys):
 
     out = capsys.readouterr().out
     assert "Recorded response" in out
-    assert "Refined query:" in out
+    assert "RESULTS" in out
+    assert "Original:" in out
+    assert "Refined:" in out
     assert step.follow_up_history[0]["response"] == "answer"
 
 
@@ -214,7 +218,7 @@ def test_run_cli_handles_command(monkeypatch, capsys):
 
     out = capsys.readouterr().out
     assert "Handled" in out
-    assert "Session ended early" in out
+    assert "RESULTS" in out
     assert session.command_calls
 
 
@@ -356,6 +360,8 @@ def test_main_handles_build_manager_error(monkeypatch, capsys):
         trace=False,
         trace_dir=None,
         log_dir=None,
+        no_parallel=False,
+        parallel=False,
     )
     monkeypatch.setattr(cli, "parse_args", lambda argv=None: args)
     monkeypatch.setattr(cli.registry, "reload_from_env", lambda **_: {})
@@ -363,7 +369,7 @@ def test_main_handles_build_manager_error(monkeypatch, capsys):
     monkeypatch.setattr(
         cli,
         "build_manager",
-        lambda enable_tracing=False, trace_dir=None, log_dir=None: (_ for _ in ()).throw(RuntimeError("fail")),
+        lambda enable_tracing=False, trace_dir=None, log_dir=None, parallel_enabled=True: (_ for _ in ()).throw(RuntimeError("fail")),
     )
 
     cli.main([])
@@ -379,6 +385,8 @@ def test_main_invokes_run_cli(monkeypatch):
         trace=True,
         trace_dir=None,
         log_dir=None,
+        no_parallel=False,
+        parallel=False,
     )
     monkeypatch.setattr(cli, "parse_args", lambda argv=None: args)
     monkeypatch.setattr(cli.registry, "reload_from_env", lambda **_: {})
@@ -388,9 +396,9 @@ def test_main_invokes_run_cli(monkeypatch):
     monkeypatch.setattr(
         cli,
         "build_manager",
-        lambda enable_tracing, trace_dir=None, log_dir=None: "manager",
+        lambda enable_tracing, trace_dir=None, log_dir=None, parallel_enabled=True: "manager",
     )
-    monkeypatch.setattr(cli, "run_cli", lambda manager, framework, query: called.update({"manager": manager, "framework": framework, "query": query}))
+    monkeypatch.setattr(cli, "run_cli", lambda manager, framework, query, parallel_enabled=True: called.update({"manager": manager, "framework": framework, "query": query}))
 
     cli.main([])
     assert called == {"manager": "manager", "framework": "A", "query": "query"}

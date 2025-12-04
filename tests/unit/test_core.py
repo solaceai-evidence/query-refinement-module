@@ -345,10 +345,12 @@ def test_session_dependency_context_includes_values(caplog):
     context = session.get_dependency_context("b")
     assert context["a"]["value"] == "Value A"
 
-    with caplog.at_level("WARNING"):
+    # Should return empty context for unknown aspect (logged at debug level, not warning)
+    with caplog.at_level("DEBUG"):
         missing = session.get_dependency_context("unknown")
     assert missing == {}
-    assert any("unknown refinement aspect" in record.message.lower() for record in caplog.records)
+    # Debug message should mention dependency context
+    assert any("dependency context" in record.message.lower() for record in caplog.records)
 
 
 def test_session_is_complete_and_summary_counts():

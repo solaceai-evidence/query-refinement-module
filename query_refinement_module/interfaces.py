@@ -32,6 +32,148 @@ class AspectAnalysisResult:
     explanation: str
     suggested_question: Optional[str] = None
 
+# ========
+# Rate Limiting Types
+# ========
+@dataclass
+class RateLimitConfig:
+    """
+    Configuration for LLM provider rate limits
+
+    Defines the rate limits for a specific LLM provider or model integration.
+    Used by rate limiters to enforce appropriate usage policies.
+
+    Attributes:
+        requests_per_minute: Maximum number of requests allowed per minute (0 = unlimited).
+        tokens_per_minute: Maximum number of tokens allowed per minute (None = unlimited,  not enforced).
+        max_concurrent_requests: Maximum number of concurrent requests allowed (0 = unlimited).
+        adaptive_backoff: Whether to use adaptive backoff on rate limit errors based on 429 responses.
+        adaptive_decrease_factor: Factor to decrease limits on rate limit errors (e.g., 0.8 = reduce by 20%).
+        adaptive_increase_factor: Factor to gradually increase limits during recovery (e.g., 1.05 = increase by 5%).
+        adaptive_increase_interval: Time interval (seconds) to increase limits during recovery.
+    """
+    requests_per_minute: int = 0
+    tokens_per_minute: Optional[int] = None
+    max_concurrent_requests: int = 0
+    adaptive_backoff: bool = False
+    adaptive_decrease_factor: float = 0.8
+    adaptive_increase_factor: float = 1.05
+    adaptive_increase_interval: int = 60 # Recover adjustment every 60 seconds
+
+    def __post_init__(self):
+        """Validate rate limit configuration values."""
+        if self.requests_per_minute < 0:
+            raise ValueError("requests_per_minute must be >= 0")
+        if self.tokens_per_minute is not None and self.tokens_per_minute < 0:
+            raise ValueError("tokens_per_minute must be >= 0 or None")
+        if self.max_concurrent_requests < 0:
+            raise ValueError("max_concurrent_requests must be >= 0")
+        if not (0.0 < self.adaptive_decrease_factor < 1.0):
+            raise ValueError("adaptive_decrease_factor must be between 0.0 and 1.0")
+        if self.adaptive_increase_factor <= 1.0:
+            raise ValueError("adaptive_increase_factor must be greater than 1.0")
+        if self.adaptive_increase_interval <= 0:
+            raise ValueError("adaptive_increase_interval must be greater than 0 seconds")
+        
+    @classmethod
+    def unlimited(cls) -> "RateLimitConfig":
+        """Create a RateLimitConfig with no limits for local models."""
+        return cls(
+            requests_per_minute=0,
+            tokens_per_minute=None,
+            max_concurrent_requests=0,
+            adaptive_backoff=False,
+        )
+    
+    @classmethod
+    def from_env(
+        cls,
+        requests_per_minute: int = 0,
+        tokens_per_minute: Optional[int] = None,
+        max_concurrent_requests: int = 0,
+        adaptive_backoff: bool = False,
+        adaptive_decrease_factor: float = 0.8,
+        adaptive_increase_factor: float = 1.05,
+        adaptive_increase_interval: int = 60,
+    ) -> "RateLimitConfig":
+        """
+        Create a RateLimitConfig from provided configuration values.
+        
+        This method is designed to be called with values loaded from environment
+        variables or configuration files. All parameters have sensible defaults.
+        
+        Args:
+            requests_per_minute: Maximum requests per minute (0 = unlimited).
+            tokens_per_minute: Maximum tokens per minute (None = unlimited).
+            max_concurrent_requests: Maximum concurrent requests (0 = unlimited).
+            adaptive_backoff: Enable adaptive rate limit adjustments.
+            adaptive_decrease_factor: Decrease factor on rate limit errors (0.0-1.0).
+            adaptive_increase_factor: Increase factor during recovery (>1.0).
+            adaptive_increase_interval: Recovery adjustment interval (seconds).
+        
+        Returns:
+            RateLimitConfig instance with provided settings.
+        
+        Example:
+            # In your settings/config module:
+            config = RateLimitConfig.from_env(
+                requests_per_minute=settings.llm_rate_limit_rpm,
+                max_concurrent_requests=settings.llm_max_concurrent,
+                adaptive_backoff=settings.llm_adaptive_rate_limiting,
+            )
+        """
+        return cls(
+            requests_per_minute=requests_per_minute,
+            tokens_per_minute=tokens_per_minute,
+            max_concurrent_requests=max_concurrent_requests,
+            adaptive_backoff=adaptive_backoff,
+            adaptive_decrease_factor=adaptive_decrease_factor,
+            adaptive_increase_factor=adaptive_increase_factor,
+            adaptive_increase_interval=adaptive_increase_interval,
+        )
+    
+class RateLimitExceeded(Exception):
+    """
+    Exception raised when rate limit is exceeded.
+    
+    Attributes:
+        retry_after: Seconds to wait before retrying (from Retry-After header or calculated).
+        limit_type: Type of limit exceeded - "requests", "tokens", or "concurrent".
+        scope: Scope of the limit - "global" or "user".
+        user_id: User identifier if per-user limit was exceeded.
+        metadata: Additional provider-specific information.
+    """
+    
+    def __init__(
+        self,
+        message: str,
+        retry_after: Optional[int] = None,
+        limit_type: str = "requests",
+        scope: str = "global",
+        user_id: Optional[str] = None,
+        metadata: Optional[Dict[str, Any]] = None
+    ):
+        super().__init__(message)
+        self.retry_after = retry_after
+        self.limit_type = limit_type
+        self.scope = scope
+        self.user_id = user_id
+        self.metadata = metadata or {}
+    
+    def __str__(self) -> str:
+        base_msg = super().__str__()
+        details = []
+        if self.retry_after:
+            details.append(f"retry_after={self.retry_after}s")
+        if self.scope:
+            details.append(f"scope={self.scope}")
+        if self.user_id:
+            details.append(f"user_id={self.user_id}")
+        
+        if details:
+            return f"{base_msg} ({', '.join(details)})"
+        return base_msg
+
 # ===========
 # LLM Provider Interface
 # ===========
@@ -92,6 +234,7 @@ class LLMProviderInterface(ABC):
         
         Raises:
             NotImplementedError: If the method is not implemented by the subclass.
+            RateLimitExceeded: If the request exceeds rate limits (provider should raise this).
             Exception: For any errors during the completion process (implementation-specific).
         """
         pass
@@ -114,6 +257,21 @@ class LLMProviderInterface(ABC):
         """
         pass
         raise NotImplementedError("LLMProviderInterface.get_model_info() must be implemented by subclasses.")
+    
+    def get_rate_limits(self, model: Optional[str] = None) -> RateLimitConfig:
+        """
+        Retrieve the rate limit configuration for the provider or specific model.
+
+        Implementations should return provider/model-specific rate limits.
+
+        Args:
+            model (Optional[str]): The model identifier to get limits for (None for provider-wide limits).
+        
+        Returns:
+            RateLimitConfig with provider/model rate limits.
+            Default implementation returns unlimited (suitable for local models)
+        """
+        return RateLimitConfig.unlimited()
     
 # ========
 # Query Analyzer Interface
@@ -164,7 +322,7 @@ class QueryAnalyzerInterface(ABC):
         Indicates whether the analyzer can perform batch analysis.
         
         Batch analysis is faster (single LLM call) but less accurate since it
-        lacks dependency context. Useful for independent aspects or performance-critical scenarios.
+        lacks dependency context. Useful for independent aspects (e.g., at initial call) or performance-critical scenarios.
 
         Returns:
             bool: True if batch analysis is available, False otherwise.
@@ -275,6 +433,28 @@ class TracingProviderInterface(ABC):
         pass
         raise NotImplementedError("TracingInterface.is_enabled() must be implemented by subclasses.")   
 
+    def log_metric(
+    self,
+    metric_name: str,
+    value: float,
+    unit: str = "",
+    metadata: Optional[Dict[str, Any]] = None
+    ):
+        """
+        Log a numeric metric for monitoring and observability.
+        
+        Used for tracking parallel execution performance, rate limiting, cache hits, etc.
+        
+        Args:
+            metric_name: Name of the metric (e.g., "parallel.latency_reduction").
+            value: Numeric value of the metric.
+            unit: Unit of measurement (e.g., "seconds", "percent", "count").
+            metadata: Additional context about the metric.
+        
+        Default implementation does nothing (optional feature).
+        Implementations can override to send metrics to monitoring systems.
+        """
+        pass  # Optional: default no-op allows backward compatibility
 
 # ===========
 # Session Storage Interface
@@ -357,4 +537,7 @@ __all__ = [
     # result types
     "LLMCompletionResult",
     "AspectAnalysisResult",
+    # rate limiting
+    "RateLimitConfig", 
+    "RateLimitExceeded",
 ]
