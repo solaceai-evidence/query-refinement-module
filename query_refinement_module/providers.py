@@ -584,13 +584,13 @@ class LiteLLMProvider(LLMProviderInterface):
                 return RateLimitConfig(
                     requests_per_minute=500,
                     tokens_per_minute=30000,
-                    max_concurrent=10,
+                    max_concurrent_requests=10,
                 )
             else:  # GPT-3.5 and others
                 return RateLimitConfig(
                     requests_per_minute=3500,
                     tokens_per_minute=90000,
-                    max_concurrent=10,
+                    max_concurrent_requests=10,
                 )
         
         elif target_model.startswith("claude-"):
@@ -598,7 +598,7 @@ class LiteLLMProvider(LLMProviderInterface):
             return RateLimitConfig(
                 requests_per_minute=50,
                 tokens_per_minute=40000,
-                max_concurrent=5,
+                max_concurrent_requests=5,
             )
         
         elif target_model.startswith("gemini-"):
@@ -606,7 +606,7 @@ class LiteLLMProvider(LLMProviderInterface):
             return RateLimitConfig(
                 requests_per_minute=60,
                 tokens_per_minute=32000,
-                max_concurrent=5,
+                max_concurrent_requests=5,
             )
         
         elif "ollama" in target_model or "llama" in target_model.lower():
@@ -618,7 +618,7 @@ class LiteLLMProvider(LLMProviderInterface):
             return RateLimitConfig(
                 requests_per_minute=60,
                 tokens_per_minute=10000,
-                max_concurrent=5,
+                max_concurrent_requests=5,
             )
     
     def _is_rate_limit_error(self, error: Exception) -> bool:
