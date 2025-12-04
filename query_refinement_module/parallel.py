@@ -11,6 +11,7 @@ Integrates with rate limiting and provider interfaces.
 
 import asyncio
 import logging
+import time
 from dataclasses import dataclass
 from typing import Any, Callable, Dict, List, Optional, Set, TYPE_CHECKING
 
@@ -223,6 +224,8 @@ class ParallelQueryAnalyzer:
         Returns:
             Dict mapping aspect_id to AspectAnalysisResult.
         """
+        start_time = time.time()
+        
         if self.trace_emitter:
             self.trace_emitter.emit(
                 "parallel_execution_start",
@@ -312,14 +315,48 @@ class ParallelQueryAnalyzer:
                 )
         
         if self.trace_emitter:
+            execution_time = time.time() - start_time
+            num_successful = len([r for r in results.values() if r is not None])
+            
             self.trace_emitter.emit(
                 "parallel_execution_complete",
                 metadata={
                     "total_aspects": len(aspects),
                     "num_levels": len(levels),
-                    "num_successful": len([r for r in results.values() if r is not None]),
+                    "num_successful": num_successful,
+                    "execution_time_seconds": execution_time,
                 }
             )
+            
+            # Emit metrics for monitoring
+            if hasattr(self.trace_emitter, 'metric'):
+                self.trace_emitter.metric(
+                    "parallel.execution_time",
+                    execution_time,
+                    unit="seconds",
+                    metadata={
+                        "num_aspects": len(aspects),
+                        "num_levels": len(levels),
+                    }
+                )
+                
+                self.trace_emitter.metric(
+                    "parallel.success_rate",
+                    num_successful / len(aspects) * 100 if aspects else 0,
+                    unit="percent",
+                    metadata={"total_aspects": len(aspects)}
+                )
+                
+                # Estimate parallelism efficiency (vs sequential)
+                # Sequential would take sum of all level times; parallel takes max within each level
+                if len(levels) > 0:
+                    parallelism_factor = len(aspects) / len(levels) if len(levels) > 0 else 1
+                    self.trace_emitter.metric(
+                        "parallel.avg_concurrency",
+                        parallelism_factor,
+                        unit="aspects/level",
+                        metadata={"num_levels": len(levels)}
+                    )
         
         return results
     
