@@ -18,7 +18,7 @@ from query_refinement_module.db.crud import (
     create_followup,
 )
 from query_refinement_module.api.auth import get_current_user
-from query_refinement_module.api.dependencies import get_refinement_manager
+from query_refinement_module.api.dependencies import get_refinement_manager, get_parallel_config
 from query_refinement_module.schema.registry import get_framework, list_frameworks
 from query_refinement_module.core import QueryRefinementManager
 
@@ -162,7 +162,8 @@ def start_refinement(
     request: StartRefinementRequest,
     manager: QueryRefinementManager = Depends(get_refinement_manager),
     current_user = Depends(get_current_user),
-    db: Session = Depends(get_db)
+    db: Session = Depends(get_db),
+    parallel_config = Depends(get_parallel_config)
 ):
     """
     Start a new query refinement workflow.
@@ -186,7 +187,8 @@ def start_refinement(
     try:
         session = manager.initialize(
             original_query=request.original_query,
-            refinement_framework=framework
+            refinement_framework=framework,
+            parallel_config=parallel_config
         )
     except ConnectionError as e:
         raise HTTPException(

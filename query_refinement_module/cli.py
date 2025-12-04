@@ -5,6 +5,7 @@ from __future__ import annotations
 from dotenv import load_dotenv
 
 import argparse
+import os
 import sys
 from typing import Optional
 
@@ -22,6 +23,7 @@ def build_manager(
     enable_tracing: bool,
     trace_dir: Optional[str] = None,
     log_dir: Optional[str] = None,
+    parallel_enabled: bool = True,
 ) -> QueryRefinementManager:
     logs_directory = log_dir or trace_dir
     if logs_directory:
@@ -39,10 +41,37 @@ def build_manager(
     provider = LiteLLMProvider(**settings.as_provider_kwargs())
     analyzer = LLMQueryAnalyzer(provider, **settings.as_analyzer_kwargs())
 
+    # Build parallel config if enabled
+    parallel_config = None
+    if parallel_enabled:
+        from .interfaces import RateLimitConfig
+        from .parallel import ParallelConfig
+        from .rate_limiter import TokenBucketRateLimiter, BackoffStrategy
+        
+        # Get rate limits from environment or provider defaults
+        rate_limit_config = RateLimitConfig.from_env()
+        if not rate_limit_config or not rate_limit_config.requests_per_minute:
+            # Use provider defaults
+            rate_limit_config = provider.get_rate_limits()
+        
+        rate_limiter = TokenBucketRateLimiter(
+            config=rate_limit_config,
+            scope="global",
+        )
+        
+        parallel_config = ParallelConfig(
+            enabled=True,
+            max_concurrent=rate_limit_config.max_concurrent_requests or 5,
+            rate_limiter=rate_limiter,
+            backoff_strategy=BackoffStrategy(),
+            max_retries=3,
+        )
+
     return QueryRefinementManager(
         llm_provider=provider,
         query_analyzer=analyzer,
         tracing_provider=tracer,
+        parallel_config=parallel_config,
     )
 
 
@@ -51,44 +80,57 @@ def _format_dependency_context(session, aspect_id: str) -> Optional[str]:
     if not context:
         return None
 
-    lines = ["Dependency context:"]
+    lines = ["📎 Dependency Context:"]
     for dep_id, info in context.items():
         label = info.get("name", dep_id)
         value = info.get("value", "[unspecified]")
-        lines.append(f"  - {label}: {value}")
+        lines.append(f"  • {label}: {value}")
     return "\n".join(lines)
 
 
 def _print_summary(manager: QueryRefinementManager, session) -> None:
     summary = manager.get_initialization_summary(session)
+    print("\n" + "="*80)
+    print("SESSION SUMMARY")
+    print("="*80)
+    print(f"Refinement aspects in this framework: {summary['total_aspects']}")
+    print(f"Needs refinement: {summary['aspects_needing_refinement']}")
+    print(f"Already clear: {summary['aspects_clear']}")
     print()
-    print("Session summary:")
-    print(f"  Refinement aspects in this framework: {summary['total_aspects']}")
-    print(f"  Needs refinement: {summary['aspects_needing_refinement']}")
-    print(f"  Already clear: {summary['aspects_clear']}")
     for aspect in summary["aspects"]:
         status = aspect["status"]
-        line = f"    - [{status}] {aspect['name']}"
+        print(f"  [{status.upper()}] {aspect['name']}")
         reason = aspect.get("reason")
         if reason:
-            line += f" -> {reason}"
-        print(line)
-    print()
+            print(f"  → {reason}")
+        print()
+    print("="*80)
 
 
-def run_cli(manager: QueryRefinementManager, framework_name: str, query: str) -> None:
+def run_cli(manager: QueryRefinementManager, framework_name: str, query: str, parallel_enabled: bool = True) -> None:
     try:
         framework = registry.get_framework(framework_name)
     except ValueError as exc:
         print(f"Error: {exc}")
         return
 
+    print("\n" + "="*80)
+    if parallel_enabled and manager.parallel_config:
+        print(f"⚡ PARALLEL MODE: Up to {manager.parallel_config.max_concurrent} concurrent requests")
+    else:
+        print("📝 SEQUENTIAL MODE: Processing one aspect at a time")
+    print("="*80)
+    
     session = manager.initialize(query, framework)
     _print_summary(manager, session)
 
-    print("Type answers to refine each aspect. Prefix commands with '/' (e.g., /help, /status, /back).")
-    print("Use /submit (or /end) at any time to finish with the current answers.")
-    print("Press Ctrl+C to exit at any time.\n")
+    print("\n" + "="*80)
+    print("INSTRUCTIONS")
+    print("="*80)
+    print("• Type your answers to refine each aspect")
+    print("• Use commands like /help, /status, /back, /skip, /end")
+    print("• Press Ctrl+C to exit at any time")
+    print("="*80 + "\n")
 
     interrupted = False
 
@@ -108,17 +150,20 @@ def run_cli(manager: QueryRefinementManager, framework_name: str, query: str) ->
 
             header = step.refinement_aspect.name
             question = step.analysis_suggested_question or header
+            
+            print("\n" + "─"*80)
             if step.needs_review:
-                print(f"\n[{header}] (needs review)")
+                print(f"📋 {header.upper()} (needs review)")
             else:
-                print(f"\n[{header}]")
+                print(f"📋 {header.upper()}")
+            print("─"*80)
 
             context_text = _format_dependency_context(session, step.refinement_aspect.id)
             if context_text:
-                print(context_text)
+                print(f"\n{context_text}\n")
 
-            print(question)
-            user_input = input("> ").strip()
+            print(f"{question}\n")
+            user_input = input("→ ").strip()
             if not user_input:
                 continue
 
@@ -138,32 +183,30 @@ def run_cli(manager: QueryRefinementManager, framework_name: str, query: str) ->
             step.needs_review = False
             print(f"Recorded response for {header}.")
 
-        if session.synthesis_requested:
-            print("Session ended early by /submit. Current conversation:")
-        else:
-            print("All aspects processed. Final conversation:")
-
-        print(session.get_full_conversation())
+        print("\n" + "="*80)
+        print("RESULTS")
+        print("="*80)
+        print(f"Original: {session.original_query}")
 
         try:
             synthesis = manager.synthesize_refined_query(session)
         except ValueError as exc:
-            print(f"Failed to build refined query: {exc}")
+            print(f"Error: {exc}")
         except Exception as exc:
-            print(f"LLM synthesis failed: {exc}")
+            print(f"Error: {exc}")
         else:
             refined_query = synthesis.get("refined_query", "").strip()
             if refined_query:
-                print("\nRefined query:")
-                print(refined_query)
-                if not synthesis.get("used_llm", False):
-                    print("(No clarifications captured; original query shown.)")
+                print(f"Refined:  {refined_query}")
+            else:
+                print(f"Refined:  {session.original_query}")
+        print("="*80)
 
     except KeyboardInterrupt:
         interrupted = True
-        print("\nSession interrupted by user.")
-    finally:
-        _print_summary(manager, session)
+        print("\n" + "="*80)
+        print("Session interrupted by user.")
+        print("="*80)
 
     if interrupted:
         return
@@ -177,6 +220,21 @@ def parse_args(argv: Optional[list[str]] = None) -> argparse.Namespace:
     parser.add_argument("--trace", action="store_true", help="Enable verbose console tracing")
     parser.add_argument("--trace-dir", help="Write tracing operations and events to this directory")
     parser.add_argument("--log-dir", help="Directory for application logs (defaults to trace-dir when set)")
+    
+    # Parallel execution options
+    parallel_group = parser.add_mutually_exclusive_group()
+    parallel_group.add_argument(
+        "--parallel",
+        action="store_true",
+        default=None,
+        help="Enable parallel aspect analysis (default: enabled via QUERY_REFINEMENT_PARALLEL_MODE)"
+    )
+    parallel_group.add_argument(
+        "--no-parallel",
+        action="store_true",
+        help="Disable parallel execution, process aspects sequentially"
+    )
+    
     return parser.parse_args(argv)
 
 
@@ -228,12 +286,23 @@ def main(argv: Optional[list[str]] = None) -> None:
         return
 
     trace_enabled = bool(args.trace or args.trace_dir)
+    
+    # Determine parallel mode: CLI flags override environment variable
+    if args.no_parallel:
+        parallel_enabled = False
+    elif args.parallel:
+        parallel_enabled = True
+    else:
+        # Check environment variable (default: true)
+        env_parallel = os.getenv("QUERY_REFINEMENT_PARALLEL_MODE", "true").lower()
+        parallel_enabled = env_parallel in ("true", "1", "yes", "on")
 
     try:
         manager = build_manager(
             enable_tracing=trace_enabled,
             trace_dir=args.trace_dir,
             log_dir=args.log_dir,
+            parallel_enabled=parallel_enabled,
         )
     except RuntimeError as exc:
         print(f"Failed to initialise LLM provider: {exc}")
@@ -242,7 +311,7 @@ def main(argv: Optional[list[str]] = None) -> None:
         print(f"Invalid LLM configuration: {exc}")
         return
 
-    run_cli(manager, framework_name, query)
+    run_cli(manager, framework_name, query, parallel_enabled=parallel_enabled)
 
 
 if __name__ == "__main__":  # pragma: no cover

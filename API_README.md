@@ -10,6 +10,8 @@ AI-powered query refinement API for scientific literature search. Built with Fas
 - **Feedback Collection**: Collect user feedback on queries and results
 - **RESTful API**: Clean, well-documented REST endpoints
 - **OpenAPI Documentation**: Interactive API docs at `/docs`
+- **Parallel Processing**: Optional parallel execution of independent refinement aspects
+- **Rate Limiting**: Built-in protection against API quota violations
 
 ## Quick Start
 
@@ -222,7 +224,38 @@ REFINEMENT_FRAMEWORK_PATH=/path/to/framework.yaml
 QUERY_REFINEMENT_LLM_MODEL=anthropic/claude-sonnet-4-20250514
 QUERY_REFINEMENT_LLM_API_KEY=your-api-key
 QUERY_REFINEMENT_LLM_TEMPERATURE=0.2
+
+# Parallel Execution (optional)
+PARALLEL_EXECUTION_ENABLED=true
+PARALLEL_MAX_CONCURRENT=8
+RATE_LIMIT_REQUESTS_PER_MINUTE=60
+RATE_LIMIT_TOKENS_PER_MINUTE=90000
+RATE_LIMIT_MAX_CONCURRENT_REQUESTS=10
 ```
+
+### Parallel Execution Configuration
+
+The API supports parallel processing of independent refinement aspects to improve performance. When enabled, the system analyzes dependency relationships and processes aspects concurrently where possible.
+
+**Enable parallel execution:**
+
+```env
+PARALLEL_EXECUTION_ENABLED=true
+```
+
+**Configure concurrency limits:**
+
+- `PARALLEL_MAX_CONCURRENT`: Maximum number of aspects to process simultaneously (default: 8)
+- `RATE_LIMIT_MAX_CONCURRENT_REQUESTS`: Maximum concurrent API requests (default: 10)
+
+**Configure rate limits to prevent exceeding API quotas:**
+
+- `RATE_LIMIT_REQUESTS_PER_MINUTE`: Maximum API calls per minute (default: 60)
+- `RATE_LIMIT_TOKENS_PER_MINUTE`: Maximum tokens per minute (default: 90000)
+
+The system automatically manages rate limits across all active sessions and includes retry logic with exponential backoff for failed requests. If circular dependencies are detected in the refinement framework, the system gracefully falls back to sequential processing.
+
+For detailed parallel execution configuration and troubleshooting, see [docs/parallel_execution.md](docs/parallel_execution.md).
 
 ## Development
 
