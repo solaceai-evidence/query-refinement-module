@@ -209,10 +209,11 @@ class ParallelQueryAnalyzer:
         """
         Analyze multiple aspects in parallel, respecting dependencies.
         
-        Executes aspects level-by-level:
-        - Level 0 (no dependencies): all in parallel
-        - Level 1 (depends on L0): all in parallel after L0 completes
-        - etc.
+        Orchestrates parallel execution by:
+        1. Building dependency graph
+        2. Computing execution levels
+        3. Executing each level in parallel
+        4. Collecting and reporting results
         
         Args:
             query: Original query to analyze.
@@ -226,16 +227,45 @@ class ParallelQueryAnalyzer:
         """
         start_time = time.time()
         
-        if self.trace_emitter:
-            self.trace_emitter.emit(
-                "parallel_execution_start",
-                metadata={
-                    "num_aspects": len(aspects),
-                    "max_concurrent": self.config.max_concurrent,
-                }
-            )
+        self._emit_execution_start(len(aspects))
         
-        # Build dependency graph
+        # Build and validate dependency graph
+        dep_graph, aspect_map = self._build_dependency_graph(aspects)
+        
+        # Get execution levels (with fallback to sequential on error)
+        levels = await self._get_execution_levels(
+            dep_graph, query, aspects, llm_provider, dependency_context_provider, user_id
+        )
+        
+        if levels is None:
+            # Fallback already executed by _get_execution_levels
+            return {}
+        
+        # Execute all levels
+        results = await self._execute_all_levels(
+            levels=levels,
+            query=query,
+            aspect_map=aspect_map,
+            llm_provider=llm_provider,
+            dependency_context_provider=dependency_context_provider,
+            user_id=user_id
+        )
+        
+        # Report final metrics
+        self._emit_execution_complete(results, aspects, levels, start_time)
+        
+        return results
+
+    def _build_dependency_graph(
+        self,
+        aspects: List["RefinementAspect"]
+    ) -> tuple[DependencyGraph, Dict[str, "RefinementAspect"]]:
+        """
+        Build dependency graph from aspects.
+        
+        Returns:
+            Tuple of (dependency_graph, aspect_id_to_aspect_map)
+        """
         dep_graph = DependencyGraph()
         aspect_map = {aspect.id: aspect for aspect in aspects}
         
@@ -245,45 +275,64 @@ class ParallelQueryAnalyzer:
                 for dep_id in aspect.depends_on:
                     dep_graph.add_dependency(aspect.id, dep_id)
         
-        # Check for cycles - fallback to sequential if found
+        return dep_graph, aspect_map
+
+    async def _get_execution_levels(
+        self,
+        dep_graph: DependencyGraph,
+        query: str,
+        aspects: List["RefinementAspect"],
+        llm_provider: LLMProviderInterface,
+        dependency_context_provider: Callable[[str], Dict[str, str]],
+        user_id: Optional[str]
+    ) -> Optional[List[List[str]]]:
+        """
+        Compute execution levels from dependency graph.
+        
+        Falls back to sequential execution if cycles detected or level computation fails.
+        
+        Returns:
+            List of levels (each level is a list of aspect IDs), or None if fallback executed.
+        """
+        # Check for cycles
         if dep_graph.has_cycles():
             logger.warning("Dependency graph has cycles - falling back to sequential execution")
-            if self.trace_emitter:
-                self.trace_emitter.emit(
-                    "parallel_execution_fallback",
-                    metadata={"reason": "cycles_detected"}
-                )
-            return await self._analyze_sequential(
+            self._emit_fallback("cycles_detected")
+            await self._analyze_sequential(
                 query, aspects, llm_provider, dependency_context_provider, user_id
             )
+            return None
         
-        # Get dependency levels
+        # Compute levels
         try:
-            levels = dep_graph.get_levels()
+            return dep_graph.get_levels()
         except RuntimeError as e:
             logger.error("Failed to compute dependency levels: %s", e)
-            if self.trace_emitter:
-                self.trace_emitter.emit(
-                    "parallel_execution_fallback",
-                    metadata={"reason": "level_computation_failed", "error": str(e)}
-                )
-            return await self._analyze_sequential(
+            self._emit_fallback("level_computation_failed", str(e))
+            await self._analyze_sequential(
                 query, aspects, llm_provider, dependency_context_provider, user_id
             )
+            return None
+
+    async def _execute_all_levels(
+        self,
+        levels: List[List[str]],
+        query: str,
+        aspect_map: Dict[str, "RefinementAspect"],
+        llm_provider: LLMProviderInterface,
+        dependency_context_provider: Callable[[str], Dict[str, str]],
+        user_id: Optional[str]
+    ) -> Dict[str, "AspectAnalysisResult"]:
+        """
+        Execute all dependency levels sequentially, with parallelism within each level.
         
-        # Execute level-by-level
+        Returns:
+            Dict mapping aspect_id to AspectAnalysisResult.
+        """
         results: Dict[str, AspectAnalysisResult] = {}
         
         for level_idx, level_aspect_ids in enumerate(levels):
-            if self.trace_emitter:
-                self.trace_emitter.emit(
-                    "level_execution_start",
-                    metadata={
-                        "level": level_idx,
-                        "num_aspects": len(level_aspect_ids),
-                        "aspect_ids": level_aspect_ids,
-                    }
-                )
+            self._emit_level_start(level_idx, level_aspect_ids)
             
             logger.debug(
                 "Executing dependency level %d with %d aspects: %s",
@@ -303,62 +352,116 @@ class ParallelQueryAnalyzer:
             )
             
             results.update(level_results)
-            
-            if self.trace_emitter:
-                self.trace_emitter.emit(
-                    "level_execution_complete",
-                    metadata={
-                        "level": level_idx,
-                        "num_completed": len(level_results),
-                        "num_failed": len([r for r in level_results.values() if r is None]),
-                    }
-                )
-        
-        if self.trace_emitter:
-            execution_time = time.time() - start_time
-            num_successful = len([r for r in results.values() if r is not None])
-            
-            self.trace_emitter.emit(
-                "parallel_execution_complete",
-                metadata={
-                    "total_aspects": len(aspects),
-                    "num_levels": len(levels),
-                    "num_successful": num_successful,
-                    "execution_time_seconds": execution_time,
-                }
-            )
-            
-            # Emit metrics for monitoring
-            if hasattr(self.trace_emitter, 'metric'):
-                self.trace_emitter.metric(
-                    "parallel.execution_time",
-                    execution_time,
-                    unit="seconds",
-                    metadata={
-                        "num_aspects": len(aspects),
-                        "num_levels": len(levels),
-                    }
-                )
-                
-                self.trace_emitter.metric(
-                    "parallel.success_rate",
-                    num_successful / len(aspects) * 100 if aspects else 0,
-                    unit="percent",
-                    metadata={"total_aspects": len(aspects)}
-                )
-                
-                # Estimate parallelism efficiency (vs sequential)
-                # Sequential would take sum of all level times; parallel takes max within each level
-                if len(levels) > 0:
-                    parallelism_factor = len(aspects) / len(levels) if len(levels) > 0 else 1
-                    self.trace_emitter.metric(
-                        "parallel.avg_concurrency",
-                        parallelism_factor,
-                        unit="aspects/level",
-                        metadata={"num_levels": len(levels)}
-                    )
+            self._emit_level_complete(level_idx, level_results)
         
         return results
+
+    def _emit_execution_start(self, num_aspects: int) -> None:
+        """Emit trace event for parallel execution start."""
+        if self.trace_emitter:
+            self.trace_emitter.emit(
+                "parallel_execution_start",
+                metadata={
+                    "num_aspects": num_aspects,
+                    "max_concurrent": self.config.max_concurrent,
+                }
+            )
+
+    def _emit_fallback(self, reason: str, error: Optional[str] = None) -> None:
+        """Emit trace event for fallback to sequential execution."""
+        if self.trace_emitter:
+            metadata = {"reason": reason}
+            if error:
+                metadata["error"] = error
+            self.trace_emitter.emit("parallel_execution_fallback", metadata=metadata)
+
+    def _emit_level_start(self, level_idx: int, level_aspect_ids: List[str]) -> None:
+        """Emit trace event for level execution start."""
+        if self.trace_emitter:
+            self.trace_emitter.emit(
+                "level_execution_start",
+                metadata={
+                    "level": level_idx,
+                    "num_aspects": len(level_aspect_ids),
+                    "aspect_ids": level_aspect_ids,
+                }
+            )
+
+    def _emit_level_complete(self, level_idx: int, level_results: Dict[str, Any]) -> None:
+        """Emit trace event for level execution completion."""
+        if self.trace_emitter:
+            self.trace_emitter.emit(
+                "level_execution_complete",
+                metadata={
+                    "level": level_idx,
+                    "num_completed": len(level_results),
+                    "num_failed": len([r for r in level_results.values() if r is None]),
+                }
+            )
+
+    def _emit_execution_complete(
+        self,
+        results: Dict[str, "AspectAnalysisResult"],
+        aspects: List["RefinementAspect"],
+        levels: List[List[str]],
+        start_time: float
+    ) -> None:
+        """Emit trace events and metrics for parallel execution completion."""
+        if not self.trace_emitter:
+            return
+        
+        execution_time = time.time() - start_time
+        num_successful = len([r for r in results.values() if r is not None])
+        
+        self.trace_emitter.emit(
+            "parallel_execution_complete",
+            metadata={
+                "total_aspects": len(aspects),
+                "num_levels": len(levels),
+                "num_successful": num_successful,
+                "execution_time_seconds": execution_time,
+            }
+        )
+        
+        # Emit performance metrics
+        if hasattr(self.trace_emitter, 'metric'):
+            self._emit_performance_metrics(
+                execution_time, num_successful, len(aspects), len(levels)
+            )
+
+    def _emit_performance_metrics(
+        self,
+        execution_time: float,
+        num_successful: int,
+        num_aspects: int,
+        num_levels: int
+    ) -> None:
+        """Emit performance metrics for monitoring."""
+        if not self.trace_emitter or not hasattr(self.trace_emitter, 'metric'):
+            return
+        
+        self.trace_emitter.metric(
+            "parallel.execution_time",
+            execution_time,
+            unit="seconds",
+            metadata={"num_aspects": num_aspects, "num_levels": num_levels}
+        )
+        
+        self.trace_emitter.metric(
+            "parallel.success_rate",
+            num_successful / num_aspects * 100 if num_aspects else 0,
+            unit="percent",
+            metadata={"total_aspects": num_aspects}
+        )
+        
+        if num_levels > 0:
+            parallelism_factor = num_aspects / num_levels
+            self.trace_emitter.metric(
+                "parallel.avg_concurrency",
+                parallelism_factor,
+                unit="aspects/level",
+                metadata={"num_levels": num_levels}
+            )
     
     async def _execute_level(
         self,
