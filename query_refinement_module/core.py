@@ -37,6 +37,7 @@ Information:
 These commands are detected via is_user_command() and processed via parse_user_command().
 """
 
+import asyncio
 import json
 import logging
 import textwrap
@@ -1040,6 +1041,7 @@ class QueryRefinementManager:
         self,
         original_query: str,
         refinement_framework: List[RefinementAspect],
+        parallel_config: Optional["ParallelConfig"] = None,
     ) -> QueryRefinementSession:
          
         with self.tracing_provider.trace_operation("initialize_refinement_session") as trace:
@@ -1056,50 +1058,45 @@ class QueryRefinementManager:
                 original_query=original_query,
             )
 
-            # Analyze each aspect sequentially in dependency order
-            # This allows later aspects to be analyzed with context from earlier ones
+            # Determine execution mode: parallel or sequential
+            use_parallel = parallel_config is not None and parallel_config.enabled
+            
+            if use_parallel:
+                # Parallel execution with dependency-aware level-by-level processing
+                logger.info("Using parallel execution for aspect analysis")
+                analysis_results = self._analyze_aspects_parallel(
+                    original_query=original_query,
+                    refinement_framework=refinement_framework,
+                    session=session,
+                    parallel_config=parallel_config,
+                )
+            else:
+                # Sequential execution (original behavior)
+                logger.debug("Using sequential execution for aspect analysis")
+                analysis_results = self._analyze_aspects_sequential(
+                    original_query=original_query,
+                    refinement_framework=refinement_framework,
+                    session=session,
+                )
+            
+            # Process analysis results and initialize steps
             aspects_needing_refinement_count = 0
             
             for aspect in refinement_framework:
                 # Add the aspect as a step
                 step = session.add_step(aspect)
                 
-                # Get dependency context from previously analyzed aspects
-                dependency_context = session.get_dependency_context(aspect.id)
-                analyzer_context = {
-                    dep_id: entry["value"]
-                    for dep_id, entry in dependency_context.items()
-                }
-
-                logger.debug(
-                    "Analyzing aspect '%s' with dependency context keys: %s",
-                    aspect.id,
-                    list(dependency_context.keys()) if dependency_context else [],
-                )
-                self.trace_emitter.emit(
-                    "aspect_analysis_start",
-                    metadata={
-                        "aspect_id": aspect.id,
-                        "depends_on": aspect.depends_on,
-                        "has_dependency_context": bool(dependency_context),
-                    }
-                )
+                # Get analysis result
+                analysis_result = analysis_results.get(aspect.id)
                 
-                # Analyze this specific aspect with its dependency context
-                analysis_result = self.query_analyzer.analyze_aspect(
-                    query=original_query,
-                    aspect=aspect,
-                    dependency_context=analyzer_context,
-                    llm_provider=self.llm_provider
-                )
-
-                self.trace_emitter.emit(
-                    "aspect_analysis_complete",
-                    metadata={
-                        "aspect_id": aspect.id,
-                        "needs_refinement": analysis_result.needs_refinement,
-                    }
-                )
+                if analysis_result is None:
+                    # Analysis failed - mark for refinement as a safe fallback
+                    logger.warning("Analysis failed for aspect %s - marking for refinement", aspect.id)
+                    step.is_complete = False
+                    step.analysis_reason = "Analysis could not be completed"
+                    step.analysis_suggested_question = aspect.description or f"Please provide details about {aspect.name}"
+                    aspects_needing_refinement_count += 1
+                    continue
                 
                 # Store the analysis results (from LLM's structured output)
                 step.analysis_reason = analysis_result.explanation
@@ -1138,6 +1135,148 @@ class QueryRefinementManager:
             )
             
         return session
+
+    def _analyze_aspects_sequential(
+        self,
+        original_query: str,
+        refinement_framework: List[RefinementAspect],
+        session: QueryRefinementSession,
+    ) -> Dict[str, "AspectAnalysisResult"]:
+        """
+        Analyze aspects sequentially in dependency order (original behavior).
+        
+        This is the default execution mode and fallback for parallel execution.
+        """
+        results = {}
+        
+        for aspect in refinement_framework:
+            # Get dependency context from previously analyzed aspects
+            dependency_context = session.get_dependency_context(aspect.id)
+            analyzer_context = {
+                dep_id: entry["value"]
+                for dep_id, entry in dependency_context.items()
+            }
+
+            logger.debug(
+                "Analyzing aspect '%s' with dependency context keys: %s",
+                aspect.id,
+                list(dependency_context.keys()) if dependency_context else [],
+            )
+            self.trace_emitter.emit(
+                "aspect_analysis_start",
+                metadata={
+                    "aspect_id": aspect.id,
+                    "depends_on": aspect.depends_on,
+                    "has_dependency_context": bool(dependency_context),
+                }
+            )
+            
+            # Analyze this specific aspect with its dependency context
+            try:
+                analysis_result = self.query_analyzer.analyze_aspect(
+                    query=original_query,
+                    aspect=aspect,
+                    dependency_context=analyzer_context,
+                    llm_provider=self.llm_provider
+                )
+                results[aspect.id] = analysis_result
+            except Exception as e:
+                logger.error(
+                    "Failed to analyze aspect %s: %s",
+                    aspect.id,
+                    e,
+                    exc_info=True
+                )
+                results[aspect.id] = None
+
+            self.trace_emitter.emit(
+                "aspect_analysis_complete",
+                metadata={
+                    "aspect_id": aspect.id,
+                    "needs_refinement": analysis_result.needs_refinement if analysis_result else None,
+                }
+            )
+        
+        return results
+
+    def _analyze_aspects_parallel(
+        self,
+        original_query: str,
+        refinement_framework: List[RefinementAspect],
+        session: QueryRefinementSession,
+        parallel_config: "ParallelConfig",
+    ) -> Dict[str, "AspectAnalysisResult"]:
+        """
+        Analyze aspects in parallel using dependency-aware level-by-level execution.
+        
+        Falls back to sequential execution on errors or if async execution fails.
+        """
+        try:
+            # Import here to avoid circular dependency
+            from .parallel import ParallelQueryAnalyzer
+            
+            # Create parallel analyzer
+            parallel_analyzer = ParallelQueryAnalyzer(
+                query_analyzer=self.query_analyzer,
+                config=parallel_config,
+                trace_emitter=self.trace_emitter
+            )
+            
+            # Define dependency context provider
+            def get_dependency_context(aspect_id: str) -> Dict[str, str]:
+                dependency_context = session.get_dependency_context(aspect_id)
+                return {
+                    dep_id: entry["value"]
+                    for dep_id, entry in dependency_context.items()
+                }
+            
+            # Run parallel analysis in event loop
+            try:
+                loop = asyncio.get_event_loop()
+                if loop.is_running():
+                    # Already in async context - this shouldn't happen in typical CLI usage
+                    # but could occur in API context
+                    logger.warning("Event loop already running - falling back to sequential execution")
+                    return self._analyze_aspects_sequential(
+                        original_query, refinement_framework, session
+                    )
+                else:
+                    results = loop.run_until_complete(
+                        parallel_analyzer.analyze_aspects_parallel(
+                            query=original_query,
+                            aspects=refinement_framework,
+                            llm_provider=self.llm_provider,
+                            dependency_context_provider=get_dependency_context,
+                            user_id=None,  # TODO: Pass user_id from session if available
+                        )
+                    )
+                    return results
+            except RuntimeError:
+                # No event loop - create one
+                results = asyncio.run(
+                    parallel_analyzer.analyze_aspects_parallel(
+                        query=original_query,
+                        aspects=refinement_framework,
+                        llm_provider=self.llm_provider,
+                        dependency_context_provider=get_dependency_context,
+                        user_id=None,
+                    )
+                )
+                return results
+        
+        except Exception as e:
+            logger.error(
+                "Parallel execution failed: %s - falling back to sequential",
+                e,
+                exc_info=True
+            )
+            self.trace_emitter.emit(
+                "parallel_execution_error",
+                metadata={"error": str(e), "fallback": "sequential"}
+            )
+            return self._analyze_aspects_sequential(
+                original_query, refinement_framework, session
+            )
 
     def ensure_step_is_ready(
         self,
