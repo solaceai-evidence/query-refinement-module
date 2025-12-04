@@ -1047,7 +1047,22 @@ class QueryRefinementManager:
         refinement_framework: List[RefinementAspect],
         parallel_config: Optional["ParallelConfig"] = None,
     ) -> QueryRefinementSession:
-         
+        """
+        Initialize a new refinement session by analyzing all aspects.
+        
+        This method orchestrates the session creation process:
+        1. Creates a new session
+        2. Runs analysis (parallel or sequential based on config)
+        3. Populates session steps with analysis results
+        
+        Args:
+            original_query: The user's initial query text
+            refinement_framework: List of aspects to refine
+            parallel_config: Optional configuration for parallel execution
+            
+        Returns:
+            Initialized QueryRefinementSession ready for user interaction
+        """
         with self.tracing_provider.trace_operation("initialize_refinement_session") as trace:
             if hasattr(trace, 'add_attribute'):
                 trace.add_attribute("original_query", original_query)
@@ -1057,88 +1072,159 @@ class QueryRefinementManager:
             logger.debug("Refinement framework aspects: %s",
                          [aspect.name for aspect in refinement_framework])
             
-            # Create a new session
-            session = QueryRefinementSession(
+            # Create session
+            session = self._create_session(original_query)
+            
+            # Run analysis based on configuration
+            analysis_results = self._run_aspect_analysis(
                 original_query=original_query,
+                refinement_framework=refinement_framework,
+                session=session,
+                parallel_config=parallel_config,
             )
-
-            # Determine execution mode: parallel or sequential
-            use_parallel = parallel_config is not None and parallel_config.enabled
             
-            if use_parallel:
-                # Parallel execution with dependency-aware level-by-level processing
-                logger.info("Using parallel execution for aspect analysis")
-                analysis_results = self._analyze_aspects_parallel(
-                    original_query=original_query,
-                    refinement_framework=refinement_framework,
-                    session=session,
-                    parallel_config=parallel_config,
-                )
-            else:
-                # Sequential execution (original behavior)
-                logger.debug("Using sequential execution for aspect analysis")
-                analysis_results = self._analyze_aspects_sequential(
-                    original_query=original_query,
-                    refinement_framework=refinement_framework,
-                    session=session,
-                )
-            
-            # Process analysis results and initialize steps
-            aspects_needing_refinement_count = 0
-            
-            for aspect in refinement_framework:
-                # Add the aspect as a step
-                step = session.add_step(aspect)
-                
-                # Get analysis result
-                analysis_result = analysis_results.get(aspect.id)
-                
-                if analysis_result is None:
-                    # Analysis failed - mark for refinement as a safe fallback
-                    logger.warning("Analysis failed for aspect %s - marking for refinement", aspect.id)
-                    step.is_complete = False
-                    step.analysis_reason = "Analysis could not be completed"
-                    step.analysis_suggested_question = aspect.description or f"Please provide details about {aspect.name}"
-                    aspects_needing_refinement_count += 1
-                    continue
-                
-                # Store the analysis results (from LLM's structured output)
-                step.analysis_reason = analysis_result.explanation
-                step.analysis_suggested_question = analysis_result.suggested_question
-                
-                if analysis_result.needs_refinement:
-                    # Aspect needs refinement - leave incomplete for process_next_step()
-                    step.is_complete = False
-                    aspects_needing_refinement_count += 1
-                    logger.debug("Aspect %s needs refinement: %s", aspect.name, analysis_result.explanation)
-                else:
-                    # Aspect is already clear - mark complete, original query has the info
-                    step.is_complete = True
-                    summary_text = (
-                        analysis_result.explanation
-                        or step.refinement_aspect.description
-                        or f"Aspect '{step.refinement_aspect.name}' is sufficiently specified in the original query."
-                    )
-                    step.initial_summary = summary_text.strip()
-                    logger.debug("Aspect %s is already clear in original query", aspect.name)
-            
-            logger.info(
-                "Session initialized with %d total steps (%d need refinement, %d already clear)", 
-                len(session.steps), 
-                aspects_needing_refinement_count,
-                len(session.steps) - aspects_needing_refinement_count
+            # Populate session with analysis results
+            aspects_needing_refinement_count = self._populate_session_steps(
+                session=session,
+                refinement_framework=refinement_framework,
+                analysis_results=analysis_results,
             )
-
-            self.trace_emitter.emit(
-                "session_initialized",
-                metadata={
-                    "total_steps": len(session.steps),
-                    "needs_refinement": aspects_needing_refinement_count,
-                    "already_clear": len(session.steps) - aspects_needing_refinement_count,
-                }
-            )
+            
+            # Log summary
+            self._log_session_summary(session, aspects_needing_refinement_count)
             
         return session
+
+    def _create_session(self, original_query: str) -> QueryRefinementSession:
+        """Create a new refinement session."""
+        return QueryRefinementSession(original_query=original_query)
+
+    def _run_aspect_analysis(
+        self,
+        original_query: str,
+        refinement_framework: List[RefinementAspect],
+        session: QueryRefinementSession,
+        parallel_config: Optional["ParallelConfig"],
+    ) -> Dict[str, "AspectAnalysisResult"]:
+        """
+        Run aspect analysis using parallel or sequential execution.
+        
+        Returns:
+            Dictionary mapping aspect IDs to their analysis results
+        """
+        use_parallel = parallel_config is not None and parallel_config.enabled
+        
+        if use_parallel:
+            logger.info("Using parallel execution for aspect analysis")
+            return self._analyze_aspects_parallel(
+                original_query=original_query,
+                refinement_framework=refinement_framework,
+                session=session,
+                parallel_config=parallel_config,
+            )
+        else:
+            logger.debug("Using sequential execution for aspect analysis")
+            return self._analyze_aspects_sequential(
+                original_query=original_query,
+                refinement_framework=refinement_framework,
+                session=session,
+            )
+
+    def _populate_session_steps(
+        self,
+        session: QueryRefinementSession,
+        refinement_framework: List[RefinementAspect],
+        analysis_results: Dict[str, "AspectAnalysisResult"],
+    ) -> int:
+        """
+        Populate session steps with analysis results.
+        
+        Returns:
+            Count of aspects needing refinement
+        """
+        aspects_needing_refinement_count = 0
+        
+        for aspect in refinement_framework:
+            step = session.add_step(aspect)
+            analysis_result = analysis_results.get(aspect.id)
+            
+            if analysis_result is None:
+                self._handle_failed_analysis(step, aspect)
+                aspects_needing_refinement_count += 1
+                continue
+            
+            # Store analysis results
+            step.analysis_reason = analysis_result.explanation
+            step.analysis_suggested_question = analysis_result.suggested_question
+            
+            if analysis_result.needs_refinement:
+                self._mark_step_needs_refinement(step, aspect, analysis_result)
+                aspects_needing_refinement_count += 1
+            else:
+                self._mark_step_complete(step, aspect, analysis_result)
+        
+        return aspects_needing_refinement_count
+
+    def _handle_failed_analysis(
+        self,
+        step: QueryAspectRefiner,
+        aspect: RefinementAspect,
+    ) -> None:
+        """Handle failed analysis by marking step for refinement."""
+        logger.warning("Analysis failed for aspect %s - marking for refinement", aspect.id)
+        step.is_complete = False
+        step.analysis_reason = "Analysis could not be completed"
+        step.analysis_suggested_question = aspect.description or f"Please provide details about {aspect.name}"
+
+    def _mark_step_needs_refinement(
+        self,
+        step: QueryAspectRefiner,
+        aspect: RefinementAspect,
+        analysis_result: "AspectAnalysisResult",
+    ) -> None:
+        """Mark step as needing refinement."""
+        step.is_complete = False
+        logger.debug("Aspect %s needs refinement: %s", aspect.name, analysis_result.explanation)
+
+    def _mark_step_complete(
+        self,
+        step: QueryAspectRefiner,
+        aspect: RefinementAspect,
+        analysis_result: "AspectAnalysisResult",
+    ) -> None:
+        """Mark step as complete with summary."""
+        step.is_complete = True
+        summary_text = (
+            analysis_result.explanation
+            or aspect.description
+            or f"Aspect '{aspect.name}' is sufficiently specified in the original query."
+        )
+        step.initial_summary = summary_text.strip()
+        logger.debug("Aspect %s is already clear in original query", aspect.name)
+
+    def _log_session_summary(
+        self,
+        session: QueryRefinementSession,
+        aspects_needing_refinement_count: int,
+    ) -> None:
+        """Log session initialization summary."""
+        already_clear_count = len(session.steps) - aspects_needing_refinement_count
+        
+        logger.info(
+            "Session initialized with %d total steps (%d need refinement, %d already clear)",
+            len(session.steps),
+            aspects_needing_refinement_count,
+            already_clear_count,
+        )
+
+        self.trace_emitter.emit(
+            "session_initialized",
+            metadata={
+                "total_steps": len(session.steps),
+                "needs_refinement": aspects_needing_refinement_count,
+                "already_clear": already_clear_count,
+            }
+        )
 
     def _analyze_aspects_sequential(
         self,
@@ -1404,9 +1490,11 @@ class QueryRefinementManager:
         """
         Process the next incomplete refinement step with exactly ONE LLM interaction.
 
-        Selects the next step whose dependencies are satisfied, builds dependency context
-        from completed steps (using refined values or original query references), calls
-        the LLM once, and stores the response.
+        Orchestrates:
+        1. Finding next ready step
+        2. Building dependency context
+        3. Calling LLM
+        4. Storing result
 
         Args:
             session: The refinement session to process
@@ -1416,104 +1504,171 @@ class QueryRefinementManager:
             processed, or None if there are no remaining steps.
         """
         with self.tracing_provider.trace_operation("process_next_step"):
-            while True:
-                step = session.get_active_step()
-
-                if step is None:
-                    logger.debug("No active step remaining to process")
-                    self.trace_emitter.emit(
-                        "no_eligible_step",
-                        metadata={"session_steps": len(session.steps)}
-                    )
-                    return None
-
-                if self.ensure_step_is_ready(session, step):
-                    break
-
-            aspect = step.refinement_aspect
+            # Find next ready step
+            step = self._find_next_ready_step(session)
             
-            # Build dependency context from completed steps
-            dependency_context = session.get_dependency_context(aspect.id)
+            if step is None:
+                return None
+            
+            # Execute step
+            return self._execute_step(session, step)
 
-            logger.debug(
-                "Processing aspect '%s' with dependency context keys: %s",
-                aspect.id,
-                list(dependency_context.keys()) if dependency_context else [],
-            )
-            self.trace_emitter.emit(
-                "aspect_processing_start",
-                metadata={
-                    "aspect_id": aspect.id,
-                    "needs_review": step.needs_review,
-                    "dependency_count": len(dependency_context),
-                }
-            )
+    def _find_next_ready_step(
+        self,
+        session: QueryRefinementSession
+    ) -> Optional[QueryAspectRefiner]:
+        """
+        Find the next step that is ready to process.
+        
+        Loops through active steps and checks readiness, handling dependencies.
+        
+        Returns:
+            Next ready step, or None if no steps remain.
+        """
+        while True:
+            step = session.get_active_step()
 
-            # Get prompts with dependency context
-            system_prompt, user_prompt = step.get_prompts(
-                query=session.original_query,
-                dependency_context=dependency_context
-            )
-
-            # Perform the LLM interaction with validation enforcement
-            response_text, parsed_payload, is_error, error_message = self._get_llm_response_with_validation(
-                aspect=aspect,
-                system_prompt=system_prompt,
-                user_prompt=user_prompt
-            )
-
-            if is_error:
-                failure_response = f"[Validation error: {error_message}]" if error_message else "[Validation error]"
-                question_text = step.analysis_suggested_question or aspect.name
-                step.add_follow_up(question=question_text, response=failure_response)
-                step.is_complete = True
+            if step is None:
+                logger.debug("No active step remaining to process")
                 self.trace_emitter.emit(
-                    "aspect_processing_failed",
-                    level="error",
-                    metadata={
-                        "aspect_id": aspect.id,
-                        "error": error_message,
-                    }
+                    "no_eligible_step",
+                    metadata={"session_steps": len(session.steps)}
                 )
-                return {
-                    "aspect_id": aspect.id,
-                    "aspect_name": aspect.name,
-                    "question": question_text,
-                    "response": failure_response,
-                    "error": True
-                }
+                return None
 
-            # Store the interaction in follow_up_history
-            question_text = step.analysis_suggested_question or aspect.name
-            step.add_follow_up(question=question_text, response=response_text)
+            if self.ensure_step_is_ready(session, step):
+                return step
 
-            # Mark step as complete after this single interaction
-            # (For multi-round follow-ups, external code can set needs_review=True)
-            step.is_complete = True
+    def _execute_step(
+        self,
+        session: QueryRefinementSession,
+        step: QueryAspectRefiner
+    ) -> Dict[str, Any]:
+        """
+        Execute a single refinement step: get prompts, call LLM, store result.
+        
+        Returns:
+            Dict with aspect_id, aspect_name, question, response, and error flag.
+        """
+        aspect = step.refinement_aspect
+        dependency_context = session.get_dependency_context(aspect.id)
+        
+        self._emit_step_processing_start(aspect.id, step.needs_review, len(dependency_context))
+        
+        # Get prompts and call LLM
+        system_prompt, user_prompt = step.get_prompts(
+            query=session.original_query,
+            dependency_context=dependency_context
+        )
+        
+        response_text, parsed_payload, is_error, error_message = self._get_llm_response_with_validation(
+            aspect=aspect,
+            system_prompt=system_prompt,
+            user_prompt=user_prompt
+        )
+        
+        # Handle error or success
+        if is_error:
+            return self._handle_step_error(step, aspect, error_message)
+        
+        return self._handle_step_success(step, aspect, response_text, parsed_payload)
 
-            logger.info(
-                "Processed aspect %s: %s",
-                aspect.id,
-                response_text[:80] + "..." if len(response_text) > 80 else response_text
-            )
-
-            self.trace_emitter.emit(
-                "aspect_processing_complete",
-                metadata={
-                    "aspect_id": aspect.id,
-                    "response_length": len(response_text),
-                    "structured": parsed_payload is not None,
-                }
-            )
-
-            return {
-                "aspect_id": aspect.id,
-                "aspect_name": aspect.name,
-                "question": question_text,
-                "response": response_text,
-                **({"structured_payload": parsed_payload} if parsed_payload is not None else {}),
-                "error": False
+    def _emit_step_processing_start(
+        self,
+        aspect_id: str,
+        needs_review: bool,
+        dependency_count: int
+    ) -> None:
+        """Emit logging and trace events for step processing start."""
+        logger.debug(
+            "Processing aspect '%s' with %d dependency context keys",
+            aspect_id,
+            dependency_count,
+        )
+        self.trace_emitter.emit(
+            "aspect_processing_start",
+            metadata={
+                "aspect_id": aspect_id,
+                "needs_review": needs_review,
+                "dependency_count": dependency_count,
             }
+        )
+
+    def _handle_step_error(
+        self,
+        step: QueryAspectRefiner,
+        aspect: RefinementAspect,
+        error_message: Optional[str]
+    ) -> Dict[str, Any]:
+        """
+        Handle step execution error by recording failure and marking complete.
+        
+        Returns:
+            Dict with error response.
+        """
+        failure_response = f"[Validation error: {error_message}]" if error_message else "[Validation error]"
+        question_text = step.analysis_suggested_question or aspect.name
+        
+        step.add_follow_up(question=question_text, response=failure_response)
+        step.is_complete = True
+        
+        self.trace_emitter.emit(
+            "aspect_processing_failed",
+            level="error",
+            metadata={
+                "aspect_id": aspect.id,
+                "error": error_message,
+            }
+        )
+        
+        return {
+            "aspect_id": aspect.id,
+            "aspect_name": aspect.name,
+            "question": question_text,
+            "response": failure_response,
+            "error": True
+        }
+
+    def _handle_step_success(
+        self,
+        step: QueryAspectRefiner,
+        aspect: RefinementAspect,
+        response_text: str,
+        parsed_payload: Optional[Dict[str, Any]]
+    ) -> Dict[str, Any]:
+        """
+        Handle successful step execution by storing response and marking complete.
+        
+        Returns:
+            Dict with successful response.
+        """
+        question_text = step.analysis_suggested_question or aspect.name
+        step.add_follow_up(question=question_text, response=response_text)
+        step.is_complete = True
+        
+        logger.info(
+            "Processed aspect %s: %s",
+            aspect.id,
+            response_text[:80] + "..." if len(response_text) > 80 else response_text
+        )
+        
+        self.trace_emitter.emit(
+            "aspect_processing_complete",
+            metadata={
+                "aspect_id": aspect.id,
+                "response_length": len(response_text),
+                "structured": parsed_payload is not None,
+            }
+        )
+        
+        return {
+            "aspect_id": aspect.id,
+            "aspect_name": aspect.name,
+            "question": question_text,
+            "response": response_text,
+            **({"structured_payload": parsed_payload} if parsed_payload is not None else {}),
+            "error": False
+        }
 
     def _get_llm_response_with_validation(
         self,
@@ -1521,14 +1676,14 @@ class QueryRefinementManager:
         system_prompt: str,
         user_prompt: str,
     ) -> tuple[str, Optional[Dict[str, Any]], bool, Optional[str]]:
-        """Call the LLM and enforce structured response validation when required.
+        """
+        Call the LLM and enforce structured response validation when required.
+        
+        Retries up to validation_max_retries times if validation fails.
 
         Returns:
             Tuple of (normalized_response_text, parsed_payload, is_error, error_message)
         """
-        prompt = user_prompt
-        base_prompt = user_prompt
-
         self.trace_emitter.emit(
             "llm_validation_start",
             metadata={
@@ -1537,164 +1692,249 @@ class QueryRefinementManager:
             }
         )
 
+        prompt = user_prompt
+        base_prompt = user_prompt
+
         for attempt in range(self.validation_max_retries + 1):
             attempt_number = attempt + 1
-            self.trace_emitter.emit(
-                "llm_completion_attempt",
-                metadata={
-                    "aspect_id": aspect.id,
-                    "attempt": attempt_number,
-                }
+            
+            # Call LLM
+            response_text, llm_error = self._call_llm(
+                aspect=aspect,
+                system_prompt=system_prompt,
+                user_prompt=prompt,
+                attempt_number=attempt_number,
             )
-            self.trace_emitter.emit(
-                "llm_prompt_attempt",
-                metadata={
-                    "aspect_id": aspect.id,
-                    "attempt": attempt_number,
-                    "system_prompt": system_prompt,
-                    "user_prompt": prompt,
-                },
-            )
-            logger.info(
-                "LLM prompt attempt | aspect=%s | attempt=%d | system_prompt=%s | user_prompt=%s",
-                aspect.id,
-                attempt_number,
-                system_prompt or "",
-                prompt,
-            )
-            try:
-                result = self.llm_provider.complete(
-                    system_prompt=system_prompt,
-                    user_prompt=prompt
-                )
-            except Exception as exc:  # pragma: no cover - surface provider exceptions
-                logger.exception(
-                    "LLM call failed while processing aspect %s on attempt %d: %s",
-                    aspect.id,
-                    attempt_number,
-                    exc,
-                )
-                self.trace_emitter.emit(
-                    "llm_completion_error",
-                    level="error",
-                    metadata={
-                        "aspect_id": aspect.id,
-                        "attempt": attempt_number,
-                        "error": str(exc),
-                    }
-                )
-                return "", None, True, f"LLM error: {exc}"
-
-            response_text = (result.context or "").strip()
-
+            
+            if llm_error:
+                return "", None, True, llm_error
+            
+            # If no schema required, return raw text
             if not aspect.response_format:
-                # No structured schema required; return raw text
-                self.trace_emitter.emit(
-                    "llm_validation_skipped",
-                    metadata={
-                        "aspect_id": aspect.id,
-                        "attempt": attempt_number,
-                    }
-                )
+                self._emit_validation_skipped(aspect.id, attempt_number)
                 return response_text, None, False, None
-
-            # Parse structured response
-            try:
-                parsed_payload = json.loads(response_text)
-            except json.JSONDecodeError as json_error:
-                error_message = f"Response is not valid JSON: {json_error}"
-                logger.warning(
-                    "Aspect %s produced non-JSON response on attempt %d: %s",
-                    aspect.id,
+            
+            # Parse and validate structured response
+            validation_result = self._validate_structured_response(
+                aspect=aspect,
+                response_text=response_text,
+                attempt_number=attempt_number,
+            )
+            
+            if validation_result.is_valid:
+                return validation_result.normalized_text, validation_result.parsed_payload, False, None
+            
+            # Retry if attempts remain
+            if attempt < self.validation_max_retries:
+                self._emit_validation_retry(aspect.id, attempt_number, validation_result.error_message)
+                prompt = self._augment_prompt_for_retry(
+                    base_prompt,
+                    validation_result.error_message,
                     attempt_number,
-                    error_message,
+                    response_text,
                 )
-                if attempt < self.validation_max_retries:
-                    self.trace_emitter.emit(
-                        "llm_validation_retry",
-                        level="warning",
-                        metadata={
-                            "aspect_id": aspect.id,
-                            "attempt": attempt_number,
-                            "error": error_message,
-                        }
-                    )
-                    prompt = self._augment_prompt_for_retry(base_prompt, error_message, attempt_number, response_text)
-                    continue
-                self.trace_emitter.emit(
-                    "llm_validation_failed",
-                    level="error",
-                    metadata={
-                        "aspect_id": aspect.id,
-                        "attempt": attempt_number,
-                        "error": error_message,
-                    }
-                )
-                return response_text, None, True, error_message
+                continue
+            
+            # Max retries exhausted
+            self._emit_validation_failed(aspect.id, attempt_number, validation_result.error_message)
+            return response_text, validation_result.parsed_payload, True, validation_result.error_message
 
-            is_valid, validation_error, warnings = aspect.validate_response_strict(parsed_payload)
+        return "", None, True, "Unknown validation failure"
 
-            if is_valid:
-                if warnings:
-                    logger.warning(
-                        "Response validation warnings for aspect %s: %s",
-                        aspect.id,
-                        "; ".join(warnings),
-                    )
-                    self.trace_emitter.emit(
-                        "llm_validation_warning",
-                        level="warning",
-                        metadata={
-                            "aspect_id": aspect.id,
-                            "attempt": attempt_number,
-                            "warnings": warnings,
-                        }
-                    )
-
-                normalized_text = json.dumps(parsed_payload, ensure_ascii=False)
-                self.trace_emitter.emit(
-                    "llm_validation_success",
-                    metadata={
-                        "aspect_id": aspect.id,
-                        "attempt": attempt_number,
-                    }
-                )
-                return normalized_text, parsed_payload, False, None
-
-            error_message = validation_error or "Structured response failed validation"
-            logger.warning(
-                "Aspect %s response failed schema validation on attempt %d: %s",
+    def _call_llm(
+        self,
+        aspect: RefinementAspect,
+        system_prompt: str,
+        user_prompt: str,
+        attempt_number: int,
+    ) -> tuple[str, Optional[str]]:
+        """
+        Call the LLM provider with the given prompts.
+        
+        Returns:
+            Tuple of (response_text, error_message). error_message is None on success.
+        """
+        self.trace_emitter.emit(
+            "llm_completion_attempt",
+            metadata={
+                "aspect_id": aspect.id,
+                "attempt": attempt_number,
+            }
+        )
+        self.trace_emitter.emit(
+            "llm_prompt_attempt",
+            metadata={
+                "aspect_id": aspect.id,
+                "attempt": attempt_number,
+                "system_prompt": system_prompt,
+                "user_prompt": user_prompt,
+            },
+        )
+        
+        logger.info(
+            "LLM prompt attempt | aspect=%s | attempt=%d | system_prompt=%s | user_prompt=%s",
+            aspect.id,
+            attempt_number,
+            system_prompt or "",
+            user_prompt,
+        )
+        
+        try:
+            result = self.llm_provider.complete(
+                system_prompt=system_prompt,
+                user_prompt=user_prompt
+            )
+            response_text = (result.context or "").strip()
+            return response_text, None
+            
+        except Exception as exc:  # pragma: no cover
+            logger.exception(
+                "LLM call failed while processing aspect %s on attempt %d: %s",
                 aspect.id,
                 attempt_number,
-                error_message,
+                exc,
             )
-
-            if attempt < self.validation_max_retries:
-                self.trace_emitter.emit(
-                    "llm_validation_retry",
-                    level="warning",
-                    metadata={
-                        "aspect_id": aspect.id,
-                        "attempt": attempt_number,
-                        "error": error_message,
-                    }
-                )
-                prompt = self._augment_prompt_for_retry(base_prompt, error_message, attempt_number, response_text)
-                continue
-
             self.trace_emitter.emit(
-                "llm_validation_failed",
+                "llm_completion_error",
                 level="error",
                 metadata={
                     "aspect_id": aspect.id,
                     "attempt": attempt_number,
-                    "error": error_message,
+                    "error": str(exc),
                 }
             )
-            return response_text, parsed_payload, True, error_message
+            return "", f"LLM error: {exc}"
 
-        # Should not be reached, but return safe fallback
-        return "", None, True, "Unknown validation failure"
+    @dataclass
+    class _ValidationResult:
+        """Result of structured response validation."""
+        is_valid: bool
+        normalized_text: Optional[str] = None
+        parsed_payload: Optional[Dict[str, Any]] = None
+        error_message: Optional[str] = None
+        warnings: Optional[List[str]] = None
+
+    def _validate_structured_response(
+        self,
+        aspect: RefinementAspect,
+        response_text: str,
+        attempt_number: int,
+    ) -> "_ValidationResult":
+        """
+        Parse and validate a structured JSON response.
+        
+        Returns:
+            ValidationResult with validation status and details
+        """
+        # Parse JSON
+        try:
+            parsed_payload = json.loads(response_text)
+        except json.JSONDecodeError as json_error:
+            error_message = f"Response is not valid JSON: {json_error}"
+            logger.warning(
+                "Aspect %s produced non-JSON response on attempt %d: %s",
+                aspect.id,
+                attempt_number,
+                error_message,
+            )
+            return self._ValidationResult(
+                is_valid=False,
+                parsed_payload=None,
+                error_message=error_message,
+            )
+        
+        # Validate against schema
+        is_valid, validation_error, warnings = aspect.validate_response_strict(parsed_payload)
+        
+        if is_valid:
+            if warnings:
+                logger.warning(
+                    "Response validation warnings for aspect %s: %s",
+                    aspect.id,
+                    "; ".join(warnings),
+                )
+                self.trace_emitter.emit(
+                    "llm_validation_warning",
+                    level="warning",
+                    metadata={
+                        "aspect_id": aspect.id,
+                        "attempt": attempt_number,
+                        "warnings": warnings,
+                    }
+                )
+            
+            normalized_text = json.dumps(parsed_payload, ensure_ascii=False)
+            self.trace_emitter.emit(
+                "llm_validation_success",
+                metadata={
+                    "aspect_id": aspect.id,
+                    "attempt": attempt_number,
+                }
+            )
+            return self._ValidationResult(
+                is_valid=True,
+                normalized_text=normalized_text,
+                parsed_payload=parsed_payload,
+                warnings=warnings,
+            )
+        
+        # Validation failed
+        error_message = validation_error or "Structured response failed validation"
+        logger.warning(
+            "Aspect %s response failed schema validation on attempt %d: %s",
+            aspect.id,
+            attempt_number,
+            error_message,
+        )
+        return self._ValidationResult(
+            is_valid=False,
+            parsed_payload=parsed_payload,
+            error_message=error_message,
+        )
+
+    def _emit_validation_skipped(self, aspect_id: str, attempt_number: int) -> None:
+        """Emit trace event for skipped validation."""
+        self.trace_emitter.emit(
+            "llm_validation_skipped",
+            metadata={
+                "aspect_id": aspect_id,
+                "attempt": attempt_number,
+            }
+        )
+
+    def _emit_validation_retry(
+        self,
+        aspect_id: str,
+        attempt_number: int,
+        error_message: str,
+    ) -> None:
+        """Emit trace event for validation retry."""
+        self.trace_emitter.emit(
+            "llm_validation_retry",
+            level="warning",
+            metadata={
+                "aspect_id": aspect_id,
+                "attempt": attempt_number,
+                "error": error_message,
+            }
+        )
+
+    def _emit_validation_failed(
+        self,
+        aspect_id: str,
+        attempt_number: int,
+        error_message: str,
+    ) -> None:
+        """Emit trace event for validation failure."""
+        self.trace_emitter.emit(
+            "llm_validation_failed",
+            level="error",
+            metadata={
+                "aspect_id": aspect_id,
+                "attempt": attempt_number,
+                "error": error_message,
+            }
+        )
 
     @staticmethod
     def _augment_prompt_for_retry(
