@@ -180,6 +180,7 @@ See [tests/README.md](tests/README.md) for complete testing guidelines, examples
 - [docs/api_integration_guide.md](docs/api_integration_guide.md) — wiring providers, analyzers, and tracing
 - [docs/user_commands.md](docs/user_commands.md) — interactive command reference
 - [docs/api_service.md](docs/api_service.md) — REST API documentation (see also [API_README.md](API_README.md))
+- [docs/parallel_execution.md](docs/parallel_execution.md) — parallel processing and rate limiting configuration
 - [examples/](examples/) — sample frameworks and YAML snippets
 
 ## Session Storage Options
@@ -244,4 +245,77 @@ poetry run query-refine --framework pico_advanced
 ```
 
 No additional model flags are required—the CLI automatically reuses the configured LLM stack.
+
+## Parallel Execution
+
+The system supports parallel processing of independent refinement aspects to improve performance when analyzing queries with multiple dimensions. Parallel execution automatically respects dependency relationships and includes built-in rate limiting to prevent exceeding API quotas.
+
+### CLI Parallel Mode
+
+Enable parallel execution in the CLI using command-line flags or environment variables:
+
+```bash
+# Enable parallel execution with command-line flag
+poetry run query-refine --framework pico_advanced --parallel
+
+# Disable parallel execution (default is sequential)
+poetry run query-refine --framework pico_advanced --no-parallel
+
+# Set default mode via environment variable
+export QUERY_REFINEMENT_PARALLEL_MODE=true
+poetry run query-refine --framework pico_advanced
+```
+
+When parallel mode is enabled, the CLI displays the configuration at startup:
+
+```text
+[Parallel Mode] max_concurrent=8, rate_limiter=enabled
+```
+
+### API Parallel Configuration
+
+The API service supports parallel execution through environment configuration. Set the following variables in your `.env` file:
+
+```bash
+# Enable parallel execution for API requests
+PARALLEL_EXECUTION_ENABLED=true
+
+# Configure concurrency limits
+PARALLEL_MAX_CONCURRENT=8
+
+# Configure rate limiting
+RATE_LIMIT_REQUESTS_PER_MINUTE=60
+RATE_LIMIT_TOKENS_PER_MINUTE=90000
+RATE_LIMIT_MAX_CONCURRENT_REQUESTS=10
+```
+
+### How It Works
+
+Parallel execution analyzes the dependency relationships between refinement aspects and processes them in levels:
+
+1. **Level 0**: All aspects with no dependencies are processed simultaneously
+2. **Level 1**: Aspects that depend only on Level 0 aspects are processed after Level 0 completes
+3. **Level N**: Each subsequent level waits for all previous levels to complete
+
+This approach ensures that aspects always have access to the information they depend on while maximizing parallelism where possible.
+
+### Rate Limiting
+
+The system includes automatic rate limiting to prevent exceeding API provider quotas:
+
+- **Request limits**: Controls the maximum number of API calls per minute
+- **Token limits**: Tracks token usage to stay within monthly or per-minute quotas
+- **Concurrent limits**: Prevents too many simultaneous requests
+- **Automatic retry**: Failed requests are automatically retried with exponential backoff
+
+Rate limits are enforced at the global level by default, ensuring that all requests across all sessions respect the configured limits.
+
+### Benefits
+
+- **Faster processing**: Independent aspects are analyzed simultaneously
+- **Automatic optimization**: The system determines the optimal execution order
+- **Safe concurrent access**: Built-in protection against race conditions in session storage
+- **Graceful degradation**: If circular dependencies are detected, the system falls back to sequential processing
+
+For detailed configuration options and troubleshooting, see [docs/parallel_execution.md](docs/parallel_execution.md).
 
