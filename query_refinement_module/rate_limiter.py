@@ -40,13 +40,13 @@ except ImportError:
 @dataclass
 class BackoffStrategy:
     """
-    Exponential backoff strategy with jitter for retry logic.
+    Exponential backoff strategy with randomized relay (jitter) for retry logic.
     
     Attributes:
         base_delay: Initial delay in seconds (e.g., 1.0).
         max_delay: Maximum delay cap in seconds (e.g., 60.0).
         multiplier: Exponential multiplier for each retry (e.g., 2.0).
-        jitter: Add randomness to avoid thundering herd (0.0-1.0).
+        jitter: Add randomness to prevent many clients retrying at the same time (0.0-1.0).
     """
     base_delay: float = 1.0
     max_delay: float = 60.0
