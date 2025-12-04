@@ -17,6 +17,8 @@ pip install query-refinement-module
 - Tracing hooks through `TraceEventEmitter` and providers
 - Session storage adapters (in-memory, Redis) for quick persistence choices
 - Local CLI wired to the same LLM/analyzer stack as remote deployments
+- Parallel execution with automatic rate limiting and dependency resolution
+- Concurrent session storage with built-in race condition protection
 
 ## Quick Start
 

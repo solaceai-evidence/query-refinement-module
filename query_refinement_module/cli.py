@@ -5,6 +5,7 @@ from __future__ import annotations
 from dotenv import load_dotenv
 
 import argparse
+import os
 import sys
 from typing import Optional
 
@@ -22,6 +23,7 @@ def build_manager(
     enable_tracing: bool,
     trace_dir: Optional[str] = None,
     log_dir: Optional[str] = None,
+    parallel_enabled: bool = True,
 ) -> QueryRefinementManager:
     logs_directory = log_dir or trace_dir
     if logs_directory:
@@ -39,10 +41,37 @@ def build_manager(
     provider = LiteLLMProvider(**settings.as_provider_kwargs())
     analyzer = LLMQueryAnalyzer(provider, **settings.as_analyzer_kwargs())
 
+    # Build parallel config if enabled
+    parallel_config = None
+    if parallel_enabled:
+        from .interfaces import RateLimitConfig
+        from .parallel import ParallelConfig
+        from .rate_limiter import TokenBucketRateLimiter, BackoffStrategy
+        
+        # Get rate limits from environment or provider defaults
+        rate_limit_config = RateLimitConfig.from_env()
+        if not rate_limit_config or not rate_limit_config.requests_per_minute:
+            # Use provider defaults
+            rate_limit_config = provider.get_rate_limits()
+        
+        rate_limiter = TokenBucketRateLimiter(
+            config=rate_limit_config,
+            scope="global",
+        )
+        
+        parallel_config = ParallelConfig(
+            enabled=True,
+            max_concurrent=rate_limit_config.max_concurrent or 5,
+            rate_limiter=rate_limiter,
+            backoff_strategy=BackoffStrategy(),
+            max_retries=3,
+        )
+
     return QueryRefinementManager(
         llm_provider=provider,
         query_analyzer=analyzer,
         tracing_provider=tracer,
+        parallel_config=parallel_config,
     )
 
 
@@ -76,13 +105,18 @@ def _print_summary(manager: QueryRefinementManager, session) -> None:
     print()
 
 
-def run_cli(manager: QueryRefinementManager, framework_name: str, query: str) -> None:
+def run_cli(manager: QueryRefinementManager, framework_name: str, query: str, parallel_enabled: bool = True) -> None:
     try:
         framework = registry.get_framework(framework_name)
     except ValueError as exc:
         print(f"Error: {exc}")
         return
 
+    if parallel_enabled and manager.parallel_config:
+        print(f"[Parallel Mode] Enabled with max {manager.parallel_config.max_concurrent} concurrent requests")
+    else:
+        print("[Sequential Mode] Processing aspects one at a time")
+    
     session = manager.initialize(query, framework)
     _print_summary(manager, session)
 
@@ -177,6 +211,21 @@ def parse_args(argv: Optional[list[str]] = None) -> argparse.Namespace:
     parser.add_argument("--trace", action="store_true", help="Enable verbose console tracing")
     parser.add_argument("--trace-dir", help="Write tracing operations and events to this directory")
     parser.add_argument("--log-dir", help="Directory for application logs (defaults to trace-dir when set)")
+    
+    # Parallel execution options
+    parallel_group = parser.add_mutually_exclusive_group()
+    parallel_group.add_argument(
+        "--parallel",
+        action="store_true",
+        default=None,
+        help="Enable parallel aspect analysis (default: enabled via QUERY_REFINEMENT_PARALLEL_MODE)"
+    )
+    parallel_group.add_argument(
+        "--no-parallel",
+        action="store_true",
+        help="Disable parallel execution, process aspects sequentially"
+    )
+    
     return parser.parse_args(argv)
 
 
@@ -228,12 +277,23 @@ def main(argv: Optional[list[str]] = None) -> None:
         return
 
     trace_enabled = bool(args.trace or args.trace_dir)
+    
+    # Determine parallel mode: CLI flags override environment variable
+    if args.no_parallel:
+        parallel_enabled = False
+    elif args.parallel:
+        parallel_enabled = True
+    else:
+        # Check environment variable (default: true)
+        env_parallel = os.getenv("QUERY_REFINEMENT_PARALLEL_MODE", "true").lower()
+        parallel_enabled = env_parallel in ("true", "1", "yes", "on")
 
     try:
         manager = build_manager(
             enable_tracing=trace_enabled,
             trace_dir=args.trace_dir,
             log_dir=args.log_dir,
+            parallel_enabled=parallel_enabled,
         )
     except RuntimeError as exc:
         print(f"Failed to initialise LLM provider: {exc}")
@@ -242,7 +302,7 @@ def main(argv: Optional[list[str]] = None) -> None:
         print(f"Invalid LLM configuration: {exc}")
         return
 
-    run_cli(manager, framework_name, query)
+    run_cli(manager, framework_name, query, parallel_enabled=parallel_enabled)
 
 
 if __name__ == "__main__":  # pragma: no cover

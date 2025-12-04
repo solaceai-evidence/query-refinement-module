@@ -1017,16 +1017,19 @@ class QueryRefinementManager:
         llm_provider: LLMProviderInterface,
         query_analyzer: QueryAnalyzerInterface,
         tracing_provider: Optional[TracingProviderInterface] = None,
+        parallel_config: Optional["ParallelConfig"] = None,
     ) -> None:
         self.llm_provider: LLMProviderInterface = llm_provider
         self.query_analyzer: QueryAnalyzerInterface = query_analyzer
         self.tracing_provider: TracingProviderInterface = tracing_provider or NoOpTracingProvider()
+        self.parallel_config: Optional["ParallelConfig"] = parallel_config
         self.trace_emitter: TraceEventEmitter = TraceEventEmitter(self.tracing_provider)
         logger.info(
-            "QueryRefinementManager initialized with LLM provider: %s, Query Analyzer: %s, Tracing Provider: %s",
+            "QueryRefinementManager initialized with LLM provider: %s, Query Analyzer: %s, Tracing Provider: %s, Parallel: %s",
             llm_provider.__class__.__name__,
             query_analyzer.__class__.__name__ if query_analyzer else "None",
-            self.tracing_provider.__class__.__name__
+            self.tracing_provider.__class__.__name__,
+            "enabled" if parallel_config else "disabled"
         )
         self.validation_max_retries: int = 2
         self.trace_emitter.emit(
@@ -1034,6 +1037,7 @@ class QueryRefinementManager:
             metadata={
                 "llm_provider": llm_provider.__class__.__name__,
                 "query_analyzer": query_analyzer.__class__.__name__ if query_analyzer else "None",
+                "parallel_enabled": parallel_config is not None,
             }
         )
 
