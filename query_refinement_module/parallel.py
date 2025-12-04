@@ -151,9 +151,8 @@ class DependencyGraph:
                 self._level_map[node] = level_idx
         
         logger.debug(
-            "Computed %d dependency levels: %s",
+            "Computed %d dependency levels",
             len(levels),
-            {f"L{i}": nodes for i, nodes in enumerate(levels)}
         )
         
         return levels
@@ -335,10 +334,9 @@ class ParallelQueryAnalyzer:
             self._emit_level_start(level_idx, level_aspect_ids)
             
             logger.debug(
-                "Executing dependency level %d with %d aspects: %s",
+                "Executing level %d: %d aspects",
                 level_idx,
                 len(level_aspect_ids),
-                level_aspect_ids
             )
             
             # Execute all aspects in this level in parallel

@@ -94,8 +94,8 @@ def test_format_dependency_context_formats(monkeypatch):
 
     session = StubSession()
     formatted = cli._format_dependency_context(session, "aspect")
-    assert formatted.startswith("Dependency context:")
-    assert "- Dependency: Answer" in formatted
+    assert formatted.startswith("📎 Dependency Context:")
+    assert "• Dependency: Answer" in formatted
 
 
 def test_print_summary_outputs(capsys):
@@ -113,9 +113,9 @@ def test_print_summary_outputs(capsys):
 
     cli._print_summary(StubManager(), object())
     out = capsys.readouterr().out
-    assert "Session summary:" in out
-    assert "[needs_refinement] A" in out
-    assert "-> Missing" in out
+    assert "SESSION SUMMARY" in out
+    assert "[NEEDS_REFINEMENT] A" in out
+    assert "→ Missing" in out
 
 
 def test_run_cli_handles_missing_framework(monkeypatch, capsys):
@@ -145,6 +145,7 @@ class StubSession:
         self._dependency_context = dependency_context or {}
         self.synthesis_requested = False
         self.command_calls: List[dict] = []
+        self.original_query = "query"
 
     def get_active_step(self):
         if self._step and not self._step.is_complete:
@@ -198,7 +199,9 @@ def test_run_cli_processes_answer(monkeypatch, capsys):
 
     out = capsys.readouterr().out
     assert "Recorded response" in out
-    assert "Refined query:" in out
+    assert "RESULTS" in out
+    assert "Original:" in out
+    assert "Refined:" in out
     assert step.follow_up_history[0]["response"] == "answer"
 
 
@@ -215,7 +218,7 @@ def test_run_cli_handles_command(monkeypatch, capsys):
 
     out = capsys.readouterr().out
     assert "Handled" in out
-    assert "Session ended early" in out
+    assert "RESULTS" in out
     assert session.command_calls
 
 

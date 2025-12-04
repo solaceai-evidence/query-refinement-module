@@ -470,8 +470,9 @@ class QueryRefinementSession:
         step_index = {step.refinement_aspect.id: step for step in self.steps}
         target_step = step_index.get(target_refinement_aspect_id)
         if not target_step:
-            logger.warning(
-                "Requested dependency context for unknown refinement aspect '%s'",
+            # This is expected during initialization before steps are populated
+            logger.debug(
+                "Dependency context requested for aspect '%s' before session populated",
                 target_refinement_aspect_id,
             )
             return {}
@@ -484,10 +485,10 @@ class QueryRefinementSession:
         for dep_id in dependencies:
             dep_step = step_index.get(dep_id)
             if not dep_step:
-                logger.warning(
-                    "Refinement aspect '%s' declares dependency on missing aspect '%s'",
-                    target_refinement_aspect_id,
+                logger.debug(
+                    "Dependency '%s' not yet available for aspect '%s'",
                     dep_id,
+                    target_refinement_aspect_id,
                 )
                 continue
 
@@ -571,13 +572,17 @@ class QueryRefinementSession:
         Returns:
             Human-readable conversation history.
         """
-        lines = [f"Original Query: {self.original_query}", ""]
+        lines = ["CONVERSATION HISTORY", "="*80]
+        lines.append(f"Original Query: {self.original_query}")
+        lines.append("="*80)
+        lines.append("")
         
         for step in self.steps:
             if not step.follow_up_history:
                 continue
                 
             lines.append(f"[{step.refinement_aspect.name}]")
+            lines.append("")
             
             for i, qa in enumerate(step.follow_up_history, 1):
                 interaction_type = "initial" if i == 1 else f"follow-up {i-1}"
@@ -1581,9 +1586,8 @@ class QueryRefinementManager:
     ) -> None:
         """Emit logging and trace events for step processing start."""
         logger.debug(
-            "Processing aspect '%s' with %d dependency context keys",
+            "Processing aspect '%s'",
             aspect_id,
-            dependency_count,
         )
         self.trace_emitter.emit(
             "aspect_processing_start",
