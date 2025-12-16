@@ -121,7 +121,7 @@ class LLMQueryAnalyzer(QueryAnalyzerInterface):
                 lines.append(f"- {dep_id}: {value}")
             prompt_sections.append("\n".join(lines))
 
-        prompt_sections.append(aspect.get_user_prompt(query=query))
+        prompt_sections.append(aspect.get_refinement_instructions_prompt(statement=query))
         return "\n\n".join(prompt_sections)
 
     @staticmethod
