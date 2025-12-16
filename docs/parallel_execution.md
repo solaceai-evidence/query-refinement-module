@@ -34,20 +34,20 @@ Consider a medical research framework:
 medical_research:
   - id: population
     name: Population
-    analysis_prompt: "What population is being studied?"
+    refinement_instructions: "What population is being studied?"
   
   - id: intervention
     name: Intervention
-    analysis_prompt: "What intervention is being tested?"
+    refinement_instructions: "What intervention is being tested?"
   
   - id: comparison
     name: Comparison
-    analysis_prompt: "What is the comparison group?"
+    refinement_instructions: "What is the comparison group?"
     depends_on: [population]
   
   - id: outcome
     name: Outcome
-    analysis_prompt: "What outcomes are measured?"
+    refinement_instructions: "What outcomes are measured?"
     depends_on: [population, intervention, comparison]
 ```
 

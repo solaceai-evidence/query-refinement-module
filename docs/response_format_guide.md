@@ -6,7 +6,7 @@ Every `RefinementAspect` automatically expects three base fields in the LLM resp
 | --- | --- | --- |
 | `needs_refinement` | boolean | Whether the aspect still requires clarification |
 | `explanation` | string | Short justification for the decision |
-| `suggested_question` | string | Follow-up question to ask (use an empty string when no refinement is needed) |
+| `clarifying_question` | string | Follow-up question to ask (use an empty string when no refinement is needed) |
 
 You do not need to mention these in your prompt; the manager always appends them to the generated instructions. The `response_format` section lets you extend the schema with additional fields without polluting the analysis prompt itself.
 
@@ -48,7 +48,7 @@ Respond in the following JSON format:
 {
   "needs_refinement": <boolean>,
   "explanation": "<string>",
-  "suggested_question": "<string>",
+  "clarifying_question": "<string>",
   "confidence": <float>,
   "priority": "<string>"
 }
@@ -68,7 +68,7 @@ The prompt always lists the base fields first, then the additional ones you decl
 - id: temporal_scope
   name: Temporal Scope
   description: Clarifies time period or timeframe
-  analysis_prompt: |
+  refinement_instructions: |
     Analyze temporal clarity in the following query:
 
     Query: {query}
@@ -100,7 +100,7 @@ At runtime, responses must include the base keys plus any optional extras you ch
 
 During execution `validate_response()` enforces:
 
-- All base fields exist and have the correct Python types (`bool` for `needs_refinement`, `str` for `explanation` and `suggested_question`).
+- All base fields exist and have the correct Python types (`bool` for `needs_refinement`, `str` for `explanation` and `clarifying_question`).
 - Additional fields that appear in the LLM payload match the declared types. Unexpected fields are permitted but noted by `validate_response_strict()` as warnings.
 
 ## 6. Recommended Standard Payload

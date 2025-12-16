@@ -235,8 +235,8 @@ def describe_framework(refinement_framework_name: str) -> Dict[str, Any]:
         "dimensions": [
             {
                 "id": dim.id,
-                "name": dim.name,
-                "description": dim.description
+                "name": dim.aspect_name,
+                "description": dim.aspect_description
             }
             for dim in refinement_framework
         ],

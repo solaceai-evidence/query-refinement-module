@@ -75,7 +75,7 @@ class LLMQueryAnalyzer(QueryAnalyzerInterface):
             return AspectAnalysisResult(
                 needs_refinement=True,
                 explanation="Unable to parse analyzer response; requesting manual clarification.",
-                suggested_question=aspect.name,
+                clarifying_question=aspect.aspect_name,
             )
 
         if "needs_refinement" not in payload:
@@ -86,25 +86,25 @@ class LLMQueryAnalyzer(QueryAnalyzerInterface):
             return AspectAnalysisResult(
                 needs_refinement=True,
                 explanation="Analyzer response missing required 'needs_refinement' field.",
-                suggested_question=aspect.name,
+                clarifying_question=aspect.aspect_name,
             )
 
         needs_refinement = self._coerce_bool(payload["needs_refinement"])
         explanation = payload.get("explanation") or ""
-        suggested_question = payload.get("suggested_question")
+        clarifying_question = payload.get("clarifying_question")
 
         if needs_refinement:
-            if not suggested_question:
+            if not clarifying_question:
                 logger.warning(
-                    "Analyzer response for aspect '%s' missing 'suggested_question'. Using aspect name as fallback.",
+                    "Analyzer response for aspect '%s' missing 'clarifying_question'. Using aspect name as fallback.",
                     aspect.id,
                 )
-                suggested_question = aspect.name
+                clarifying_question = aspect.aspect_name
 
         return AspectAnalysisResult(
             needs_refinement=needs_refinement,
             explanation=explanation,
-            suggested_question=suggested_question,
+            clarifying_question=clarifying_question,
         )
 
     def _build_prompt(

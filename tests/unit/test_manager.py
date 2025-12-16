@@ -46,7 +46,7 @@ class StubAnalyzer(QueryAnalyzerInterface):
         return AspectAnalysisResult(
             needs_refinement=False,
             explanation="This aspect is already clear",
-            suggested_question=None,
+            clarifying_question=None,
         )
 
 
@@ -55,7 +55,7 @@ class NeedsRefinementAnalyzer(QueryAnalyzerInterface):
         return AspectAnalysisResult(
             needs_refinement=True,
             explanation="Population details missing",
-            suggested_question="Which population are you studying?",
+            clarifying_question="Which population are you studying?",
         )
 
 
@@ -64,9 +64,9 @@ def _write_framework(tmp_path):
         """
         demo:
           - id: aspect_a
-            name: Aspect A
-            description: First aspect
-            analysis_prompt: |
+            aspect_name: Aspect A
+            aspect_description: First aspect
+            refinement_instructions: |
               Analyze {query}
             response_format:
               type: json

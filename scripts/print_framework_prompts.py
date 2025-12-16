@@ -20,17 +20,17 @@ def main():
 
     yaml_path = Path(sys.argv[1])
     framework_name = sys.argv[2]
-    query = "THE QUERY TO BE REFINED"
+    statement = "{statement}"
 
     aspects = load_framework(yaml_path, framework_name)
 
     print(f"\n=== Prompts for framework '{framework_name}' ({yaml_path}) ===\n")
     for aspect in aspects:
-        system_prompt, user_prompt = aspect.get_prompts(query)
-        print(f"# Aspect: {aspect.name} ({aspect.id})\n")
+        system_prompt, user_prompt = aspect.get_prompts(statement)
+        print(f"# Refinement Aspect(s): {aspect.aspect_name} ({aspect.id})\n")
         print("SYSTEM PROMPT:")
         print(system_prompt.strip())
-        print("\nUSER PROMPT:")
+        print("\nREFINEMENT INSTRUCTIONS:")
         print(user_prompt.strip())
         print("\n" + "-" * 80 + "\n")
 

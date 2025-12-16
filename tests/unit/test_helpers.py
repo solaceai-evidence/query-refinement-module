@@ -15,9 +15,9 @@ def make_aspect(
 ) -> RefinementAspect:
     return RefinementAspect(
         id=aspect_id,
-        name=name,
-        description=description,
-        analysis_prompt=analysis_prompt,
+        aspect_name=name,
+        aspect_description=description,
+        refinement_instructions=analysis_prompt,
         system_prompt=system_prompt,
         response_format=response_format,
         examples=examples,

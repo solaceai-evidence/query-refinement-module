@@ -44,9 +44,9 @@ def make_aspect(
 ) -> RefinementAspect:
     return RefinementAspect(
         id=aspect_id,
-        name=name,
-        description=description,
-        analysis_prompt=analysis_prompt,
+        aspect_name=name,
+        aspect_description=description,
+        refinement_instructions=analysis_prompt,
         system_prompt=system_prompt,
         response_format=response_format,
         examples=examples,
@@ -282,8 +282,8 @@ def test_query_aspect_refiner_follow_up_includes_query_without_placeholder():
     # Should have conversation history
     assert "What time period?" in prompt
     assert "Last 5 years" in prompt
-    # Should have the original query prepended since analysis_prompt lacks {query}
-    assert "Review this query: Effect of exercise on diabetes" in prompt
+    # Should have the original statement prepended since analysis_prompt lacks {query}
+    assert "Review the following user-submitted statement: Effect of exercise on diabetes" in prompt
     # Should have the analysis prompt content
     assert "Evaluate the temporal characteristics" in prompt
 
@@ -473,7 +473,7 @@ def test_manager_initialize_applies_dependency_context():
         responses=[],
         analysis_results={
             "a": AspectAnalysisResult(needs_refinement=False, explanation="Clear"),
-            "b": AspectAnalysisResult(needs_refinement=True, explanation="Missing detail", suggested_question="Q2"),
+            "b": AspectAnalysisResult(needs_refinement=True, explanation="Missing detail", clarifying_question="Q2"),
         },
     )
 
@@ -498,7 +498,7 @@ def test_ensure_step_is_ready_autocompletes_dependent_aspect():
             return AspectAnalysisResult(
                 needs_refinement=True,
                 explanation="Missing population",
-                suggested_question="Provide population",
+                clarifying_question="Provide population",
             )
         return AspectAnalysisResult(
             needs_refinement=False,
@@ -575,7 +575,7 @@ def test_process_next_step_enforces_json_validation():
         }
     )
     # First response invalid JSON, second valid
-    responses = ["not json", json.dumps({"needs_refinement": False, "explanation": "ok", "suggested_question": "", "confidence": 0.9})]
+    responses = ["not json", json.dumps({"needs_refinement": False, "explanation": "ok", "clarifying_question": "", "confidence": 0.9})]
     manager = build_manager(responses=responses, analysis_results={})
     session = QueryRefinementSession(original_query="query")
     step = session.add_step(aspect)
@@ -694,7 +694,7 @@ def test_get_initialization_summary_orders_results():
         responses=[],
         analysis_results={
             "a": AspectAnalysisResult(needs_refinement=False, explanation="Clear"),
-            "b": AspectAnalysisResult(needs_refinement=True, explanation="Need more", suggested_question="Q"),
+            "b": AspectAnalysisResult(needs_refinement=True, explanation="Need more", clarifying_question="Q"),
         },
     )
 
@@ -706,4 +706,4 @@ def test_get_initialization_summary_orders_results():
     assert summary["aspects_clear"] == 1
     statuses = [aspect_info["status"] for aspect_info in summary["aspects"]]
     assert statuses.count("needs_refinement") == 1
-    assert any("suggested_question" in info for info in summary["aspects"] if info["status"] == "needs_refinement")
+    assert any("clarifying_question" in info for info in summary["aspects"] if info["status"] == "needs_refinement")

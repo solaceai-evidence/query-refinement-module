@@ -6,7 +6,7 @@ characteristic along which a query can be refined.
 """
 
 from dataclasses import dataclass, field, asdict
-from typing import List, Optional, Any, Dict, TypedDict, Required, NotRequired
+from typing import List, Optional, Any, Dict, TypedDict, NotRequired
 import logging
 import json
 
@@ -15,19 +15,20 @@ logger = logging.getLogger(__name__)
 
 # Type definitions for example structures - each category has suggested fields
 class BaseExample(TypedDict):
-    """Base example with required query field."""
-    query: Required[str]  # Every example must have a query
-
+    """Base example - must have statement (primary) or query (legacy)."""
+    statement: NotRequired[str]  # Primary field: works for questions, aims, descriptions, paragraphs
+    query: NotRequired[str]  # Legacy field: maintained for backward compatibility
 
 class ClearExample(BaseExample, total=False):
     """
     Example demonstrating clear, complete specification.
     
     Suggested fields:
-        query: The example query (REQUIRED)
-        explanation: Why this example is clear and complete
+        statement: The statement/context for the example (REQUIRED)
+        query: Legacy alternative (DEPRECATED)
+        rationale: NotRequired[str]
     """
-    explanation: NotRequired[str]
+    rationale: NotRequired[str]
 
 
 class NeedsRefinementExample(BaseExample, total=False):
@@ -35,14 +36,15 @@ class NeedsRefinementExample(BaseExample, total=False):
     Example demonstrating missing or incomplete information.
     
     Suggested fields:
-        query: The example query (REQUIRED)
+        statement: The statement/context for the example (REQUIRED)
+        query: Legacy alternative (DEPRECATED)
         issue: What information is missing or incomplete
         missing: Specifically what details are absent
-        suggested_question: Example question to clarify the gap
+        example_question: Example question to clarify the gap
     """
     issue: NotRequired[str]
     missing: NotRequired[str]
-    suggested_question: NotRequired[str]
+    example_question: NotRequired[str]
 
 
 class PartialExample(BaseExample, total=False):
@@ -50,14 +52,15 @@ class PartialExample(BaseExample, total=False):
     Example demonstrating partially specified information.
     
     Suggested fields:
-        query: The example query (REQUIRED)
+        statement: The statement/context for the example (REQUIRED)
+        query: Legacy alternative (DEPRECATED)
         has: What information is present
         missing: What information is still needed
-        suggested_question: Example question to get missing details
+        example_question: Example question to get missing details
     """
     has: NotRequired[str]
     missing: NotRequired[str]
-    suggested_question: NotRequired[str]
+    example_question: NotRequired[str]
 
 
 class AmbiguousExample(BaseExample, total=False):
@@ -65,12 +68,15 @@ class AmbiguousExample(BaseExample, total=False):
     Example demonstrating vague or unclear specification.
     
     Suggested fields:
-        query: The example query (REQUIRED)
+        statement: The statement/context for the example (REQUIRED)
+        query: Legacy alternative (DEPRECATED)
         issue: What makes this example ambiguous or vague
-        suggested_question: Example question to clarify the ambiguity
+        example_question: Example question to clarify the ambiguity
+        guidance: Direction for the model on how to handle similar statements.
     """
     issue: NotRequired[str]
-    suggested_question: NotRequired[str]
+    example_question: NotRequired[str]
+    guidance: NotRequired[str]
 
 
 class OtherExample(BaseExample, total=False):
@@ -78,16 +84,17 @@ class OtherExample(BaseExample, total=False):
     Example capturing edge cases that do not map cleanly to the predefined buckets.
 
     Suggested fields:
-        query: The example query (REQUIRED)
+        query: an example query (REQUIRED if not domain)
+        domain: The domain/context for the example (REQUIRED if not query)
         issue: What makes this example unique or edge-case
         note: Additional context describing the pitfall or why it matters.
         guidance: Direction for the model on how to handle similar queries.
-        suggested_question: Example follow-up question if clarification is useful.
+        example_question: Example follow-up question if clarification is useful.
     """
     issue: NotRequired[str]
     note: NotRequired[str]
     guidance: NotRequired[str]
-    suggested_question: NotRequired[str]
+    example_question: NotRequired[str]
 
 
 class ExamplesDict(TypedDict, total=False):
@@ -128,7 +135,7 @@ class RefinementAspect:
     clarification, such as temporal scope, target population, methodology, etc.
 
     The aspect includes:
-    - An analysis prompt to determine if refinement is needed
+    - An to determine if refinement is needed
     - Optional system prompt to set the AI's role/persona
     - Optional example queries for few-shot learning and prompt engineering
     - A response format specification for consistent, structured responses
@@ -136,7 +143,7 @@ class RefinementAspect:
     - Extensible metadata
 
     Response Format Structure:
-    - Base fields (always included): needs_refinement, explanation, suggested_question
+    - Base fields (always included): needs_refinement, explanation, example_question
     - Custom fields: Add domain-specific fields via 'additional_fields'
     
     Example response_format:
@@ -154,24 +161,23 @@ class RefinementAspect:
 
     Attributes:
         id: Unique identifier for the refinement aspect
-        name: Human-readable name
-        description: Brief description of what this refinement aspect refines
+        aspect_name: Human-readable refinement aspect name
+        aspect_description: Brief description of what this refinement aspect refines
         system_prompt: Optional system-level prompt defining the AI's role/persona for this refinement aspect
-        analysis_prompt: Prompt template for analyzing the query (must include {query})
+        refinement_instructions: Developer-based Prompt template for analyzing the query (must include {query})
         examples: Optional example queries for few-shot learning and prompt engineering
         response_format: Expected response structure (optional, for structured responses)
         depends_on: List of refinement aspect IDs this refinement aspect depends on (for context)
-        allow_follow_up: Whether follow-up questions are allowed
-        max_follow_ups: Maximum number of follow-up rounds
+        allow_follow_up: Whether follow-up questions are allowed (default: True)
+        max_follow_ups: Maximum number of follow-up rounds allowed (default: 3)
         metadata: Additional metadata for extensibility
     """
     id: str
-    name: str
-    description: str
+    aspect_name: str
+    aspect_description: str
+    # developer prompt - should focus on analysis logic, not response format (REQUIRED)
+    refinement_instructions: str
     
-    # Analysis prompt - should focus on analysis logic, not response format (REQUIRED)
-    analysis_prompt: str
-
     # Optional: System prompt defining AI role/persona for this refinement aspect
     # Example: "You are a clinical research expert specializing in population definition."
     system_prompt: Optional[str] = None
@@ -192,24 +198,24 @@ class RefinementAspect:
     # Should this refinement aspect support follow-up question to the initial suggested question?
     allow_follow_up: bool = True
     # Maximum number of follow-ups allowed (if follow-ups are allowed)
-    max_follow_ups: int = 1
+    max_follow_ups: int = 3
 
     # Optional metadata for extensibility
     # e.g., domain, priority, examples, options, etc.
-    metadata: Dict[str, Any] = field(default_factory=dict)  
+    metadata: Dict[str, Any] = field(default_factory=dict)
 
     # Base schema fields that are always required in the response format
     BASE_SCHEMA_FIELDS = {
         "needs_refinement": "boolean",
         "explanation": "string",
-        "suggested_question": "string"
+        "clarifying_question": "string"
     }
 
     # Field descriptions for the base schema fields
     BASE_FIELD_DESCRIPTIONS = {
         "needs_refinement": "Whether this query specification needs clarification (true/false)",
-        "explanation": "Brief explanation of why refinement is or isn't needed",
-        "suggested_question": "The clarifying question to ask the user if refinement is needed; otherwise empty"
+        "explanation": "Brief explanation of why the query does or does not need refinement",
+        "clarifying_question": "The clarifying question to ask the user if refinement is needed; otherwise empty"
     }
 
     def __post_init__(self):
@@ -240,18 +246,18 @@ class RefinementAspect:
         if additional_fields:
             if not isinstance(additional_fields, dict):
                 raise ValueError(
-                    f"Schema '{self.name}': 'additional_fields' must be a dictionary"
+                    f"Schema '{self.aspect_name}': 'additional_fields' must be a dictionary"
                 )
             
             for field_name, field_type in additional_fields.items():
                 if not isinstance(field_type, str):
                     raise ValueError(
-                        f"Schema '{self.name}': Field type for '{field_name}' must be a string"
+                        f"Schema '{self.aspect_name}': Field type for '{field_name}' must be a string"
                     )
                 
                 if field_type.lower() not in valid_types:
                     raise ValueError(
-                        f"Schema '{self.name}': Invalid type '{field_type}' for field '{field_name}'. "
+                        f"Schema '{self.aspect_name}': Invalid type '{field_type}' for field '{field_name}'. "
                         f"Valid types: {', '.join(sorted(valid_types))}"
                     )
         
@@ -260,7 +266,7 @@ class RefinementAspect:
         if field_descriptions:
             if not isinstance(field_descriptions, dict):
                 logger.warning(
-                    f"Schema '{self.name}': 'field_descriptions' should be a dictionary"
+                    f"Schema '{self.aspect_name}': 'field_descriptions' should be a dictionary"
                 )
             else:
                 # Check for descriptions of fields that don't exist
@@ -269,7 +275,7 @@ class RefinementAspect:
                 
                 if extra_descriptions:
                     logger.warning(
-                        f"Schema '{self.name}': field_descriptions contains keys not in additional_fields: "
+                        f"Schema '{self.aspect_name}': field_descriptions contains keys not in additional_fields: "
                         f"{', '.join(sorted(extra_descriptions))}"
                     )
     
@@ -279,26 +285,26 @@ class RefinementAspect:
         
     Ensures:
     - examples is a dict
-    - Only valid category keys are used (clear, needs_refinement, partial, ambiguous, other)
+    - Only valid category keys are used (clear, needs_refinement, partial, vague_ambiguous, other)
         - Each category contains a list
-        - Each example in the list is a dict with at least a 'query' field
+        - Each example in the list is a dict with at least a 'query'/'statement' field
         
         Raises:
             ValueError: If examples structure is invalid
         """
         if not isinstance(self.examples, dict):
             raise ValueError(
-                f"Schema '{self.name}': 'examples' must be a dictionary"
+                f"Schema '{self.aspect_name}': 'examples' must be a dictionary"
             )
         
         # Valid category keys
-        valid_categories = {"clear", "needs_refinement", "partial", "ambiguous", "other"}
+        valid_categories = {"clear", "needs_refinement", "partial", "vague_ambiguous", "other"}
         
         # Check for invalid category keys
         invalid_keys = set(self.examples.keys()) - valid_categories
         if invalid_keys:
             raise ValueError(
-                f"Schema '{self.name}': Invalid example categories: {', '.join(sorted(invalid_keys))}. "
+                f"Schema '{self.aspect_name}': Invalid example categories: {', '.join(sorted(invalid_keys))}. "
                 f"Valid categories: {', '.join(sorted(valid_categories))}"
             )
         
@@ -306,73 +312,84 @@ class RefinementAspect:
         for category, examples_list in self.examples.items():
             if not isinstance(examples_list, list):
                 raise ValueError(
-                    f"Schema '{self.name}': examples['{category}'] must be a list"
+                    f"Schema '{self.aspect_name}': examples['{category}'] must be a list"
                 )
             
             # Validate each example in the category
             for idx, example in enumerate(examples_list, 1):
                 if not isinstance(example, dict):
                     raise ValueError(
-                        f"Schema '{self.name}': examples['{category}'][{idx}] must be a dictionary"
+                        f"Schema '{self.aspect_name}': examples['{category}'][{idx}] must be a dictionary"
                     )
                 
-                # Check for required 'query' field
-                if "query" not in example:
+                # Validate that example has at least query or statement
+                if "query" not in example and "statement" not in example:
                     raise ValueError(
-                        f"Schema '{self.name}': examples['{category}'][{idx}] missing required 'query' field"
+                        f"Schema '{self.aspect_name}': examples['{category}'][{idx}] must have either 'query' or 'statement' field"
                     )
                 
-                if not isinstance(example["query"], str):
+                if "query" in example and not isinstance(example["query"], str):
                     raise ValueError(
-                        f"Schema '{self.name}': examples['{category}'][{idx}]['query'] must be a string"
+                        f"Schema '{self.aspect_name}': examples['{category}'][{idx}]['query'] must be a string"
                     )
+                
+                if "statement" in example and not isinstance(example["statement"], str):
+                    raise ValueError(
+                        f"Schema '{self.aspect_name}': examples['{category}'][{idx}]['statement'] must be a string"
+                    )
+            
                 
                 # Validate optional fields are strings if present
                 optional_fields = {
-                    "explanation",
+                    "rationale",
                     "issue",
                     "missing",
                     "has",
-                    "suggested_question",
+                    "example_question",
+                    "clarifying_question",
+                    "explanation",
                     "note",
                     "guidance",
+                    "domain",
                 }
                 for field_name in example.keys():
-                    if field_name == "query":
+                    if field_name == "query" or field_name == "statement":
                         continue  # Already validated
                     
                     if field_name not in optional_fields:
                         logger.warning(
-                            f"Schema '{self.name}': examples['{category}'][{idx}] has unexpected field '{field_name}'. "
+                            f"Schema '{self.aspect_name}': examples['{category}'][{idx}] has unexpected field '{field_name}'. "
                             f"Valid fields: query (required), {', '.join(sorted(optional_fields))} (optional)"
                         )
                     
                     # Ensure the field value is a string
                     if not isinstance(example[field_name], str):
                         raise ValueError(
-                            f"Schema '{self.name}': examples['{category}'][{idx}]['{field_name}'] must be a string"
+                            f"Schema '{self.aspect_name}': examples['{category}'][{idx}]['{field_name}'] must be a string"
                         )
 
-    def get_user_prompt(self, query: str) -> str:
+    def get_refinement_instructions_prompt(self, statement: str) -> str:
         """
-        Generate the full user prompt including examples and response format instructions.
+        Generate the developer prompt including examples and response format instructions.
         
         Args:
-            query: The user's query to analyze
+            statement: The user's statement to be analyzed and refined
         Returns:
-            Complete user prompt with query inserted and response format appended
+            Complete developer prompt with statement inserted and response format appended
         """
-        # Always start with the query explicitly stated
+        # Always start with the statement explicitly stated
         prompt_parts = []
         
-        # Check if analysis_prompt contains {query} placeholder
-        if "{query}" in self.analysis_prompt:
-            # Format the analysis prompt with the query
-            prompt_parts.append(self.analysis_prompt.format(query=query))
+        # Check if refinement_instructions contains {query}/{input}/{statement} placeholder
+        if "{query}" in self.refinement_instructions or "{statement}" in self.refinement_instructions or "{input}" in self.refinement_instructions:
+            # Format the developer prompt with the statement
+            prompt_parts.append(
+                self.refinement_instructions.format(query=statement, statement=statement, input=statement)
+            )
         else:
-            # Prepend the query explicitly, then add the analysis prompt as-is
-            prompt_parts.append(f"Review this query: {query}")
-            prompt_parts.append(self.analysis_prompt)
+            # Prepend the statement explicitly, then add the analysis prompt as-is
+            prompt_parts.append(f"Review the following user-submitted statement: {statement}")
+            prompt_parts.append(self.refinement_instructions)
         
         # Inject examples if available
         if self.examples:
@@ -392,38 +409,38 @@ class RefinementAspect:
         Returns:
             System prompt if defined, otherwise a generic default with description
         """
-        if self.system_prompt:
+        if self.system_prompt and self.system_prompt.strip():
             return self.system_prompt
         
         # Default system prompt (concise to save tokens)
         return (
-            f"You refine research queries by analyzing: {self.name} ({self.description}).\n"
+            f"You refine research queries by analyzing: {self.aspect_name} ({self.aspect_description}).\n"
             f"Identify all missing, incomplete, ambiguous, or poorly scoped elements within this refinement aspect."
             f"Address all deficiencies in a single response by asking targeted, clarifying questions.\n"
         )
     
     def get_prompts(self, query: str) -> tuple[str, str]:
         """
-        Get both system and user prompts for this refinement aspect.
+        Get both system and developer prompts for this refinement aspect.
         
         Args:
             query: The user's query to analyze
             
         Returns:
-            Tuple of (system_prompt, user_prompt)
+            Tuple of (system_prompt, developer_prompt)
         """
-        return self.get_system_prompt(), self.get_user_prompt(query)
+        return self.get_system_prompt(), self.get_refinement_instructions_prompt(query)
 
     def _format_examples(self) -> str:
         """
         Format examples into a readable section for prompt inclusion.
         
-    Supports multiple example categories:
-    - clear: Examples with all information properly specified
-    - needs_refinement: Examples missing critical information
-    - partial: Examples with some but not all information
-    - ambiguous: Examples with vague or unclear specifications
-    - other: Edge cases or guidance that fall outside the standard buckets
+        Supports multiple example categories:
+        - clear: Examples with all information properly specified
+        - needs_refinement: Examples missing critical information
+        - partial: Examples with some but not all information
+        - ambiguous: Examples with vague or unclear specifications
+        - other: Edge cases or guidance that fall outside the standard buckets
         
         Returns:
             Formatted examples section, or empty string if no examples
@@ -438,8 +455,8 @@ class RefinementAspect:
             ("clear", "CLEAR SPECIFICATIONS:"),
             ("needs_refinement", "NEEDS REFINEMENT:"),
             ("partial", "PARTIAL INFORMATION:"),
-            ("ambiguous", "AMBIGUOUS:"),
-            ("other", "ADDITIONAL EDGE-CASE GUIDANCE:"),
+            ("vague_ambiguous", "VAGUE OR AMBIGUOUS:"),
+            ("other", "ADDITIONAL GUIDANCE:"),
         ]
         
         def ensure_period(text: str) -> str:
@@ -451,14 +468,18 @@ class RefinementAspect:
                 sections.append(header)
                 
                 for example in self.examples[category_key]:
-                    query = ensure_period(example.get("query", ""))
+                    # Support both 'statement' (primary) and 'query' (legacy) as the main example field
+                    statement = example.get("statement", "") or example.get("query", "")
+                    statement = ensure_period(statement)
                     
                     # Build example line based on available fields
-                    line_parts = [f'"{query}"']
+                    # Prefix the example with the field name for clarity (statement or legacy query)
+                    primary_field = "statement" if "statement" in example else "query"
+                    line_parts = [f"{primary_field}: \"{statement}\""]
                     
                     # Add explanatory fields in priority order
-                    if "explanation" in example:
-                        line_parts.append(f"Explanation: {ensure_period(example['explanation'])}")
+                    if "rationale" in example:
+                        line_parts.append(f"rationale: {ensure_period(example['rationale'])}")
                     elif "issue" in example:
                         line_parts.append(f"Issue: {ensure_period(example['issue'])}")
                     elif "missing" in example:
@@ -469,8 +490,8 @@ class RefinementAspect:
                         line_parts.append(f"Has: {ensure_period(example['has'])}")
                     
                     # Add optional suggested question for refinement examples
-                    if "suggested_question" in example:
-                        line_parts.append(f"Example Q: \"{ensure_period(example['suggested_question'])}\"")
+                    if "example_question" in example:
+                        line_parts.append(f"Example Q: \"{ensure_period(example['example_question'])}\"")
                     
                     # Add notes/guidance for 'other' examples 
                     if "note" in example:
@@ -551,8 +572,8 @@ class RefinementAspect:
         if not isinstance(response.get("explanation"), str):
             validation_errors.append("'explanation' must be a string")
         
-        if not isinstance(response.get("suggested_question"), str):
-            validation_errors.append("'suggested_question' must be a string")
+        if not isinstance(response.get("clarifying_question"), str):
+            validation_errors.append("'clarifying_question' must be a string")
         
         # Validate custom fields if response_format is defined
         if self.response_format:

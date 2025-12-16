@@ -47,28 +47,28 @@ aspects = [
     # Level 0: No dependencies
     RefinementAspect(
         id="population",
-        name="Population",
-        description="Define the target population"
+        aspect_name="Population",
+        aspect_description="Define the target population"
     ),
     RefinementAspect(
         id="intervention",
-        name="Intervention",
-        description="Specify the intervention being studied"
+        aspect_name="Intervention",
+        aspect_description="Specify the intervention being studied"
     ),
     
     # Level 1: Depends on Level 0
     RefinementAspect(
         id="outcomes",
-        name="Outcomes",
-        description="Define measurable outcomes",
+        aspect_name="Outcomes",
+        aspect_description="Define measurable outcomes",
         depends_on=["population", "intervention"]
     ),
     
     # Level 2: Depends on Level 1
     RefinementAspect(
         id="study_design",
-        name="Study Design",
-        description="Specify study methodology",
+        aspect_name="Study Design",
+        aspect_description="Specify study methodology",
         depends_on=["outcomes"]
     )
 ]

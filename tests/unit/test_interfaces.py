@@ -16,9 +16,9 @@ from query_refinement_module.schema import RefinementAspect
 def make_aspect(aspect_id: str = "aspect", name: str = "Aspect") -> RefinementAspect:
     return RefinementAspect(
         id=aspect_id,
-        name=name,
-        description=f"Description for {name}",
-        analysis_prompt="Analyze {query}",
+        aspect_name=name,
+        aspect_description=f"Description for {name}",
+        refinement_instructions="Analyze {query}",
         depends_on=[],
     )
 

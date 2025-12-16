@@ -61,7 +61,7 @@ Respond in the following JSON format:
 Field descriptions:
 - needs_refinement (boolean) (REQUIRED): Whether this query specification needs clarification (true/false)
 - explanation (string) (REQUIRED): Brief explanation of why refinement is or isn't needed
-- suggested_question (string) (REQUIRED): The clarifying question to ask the user if refinement is needed; otherwise empty
+- clarifying_question (string) (REQUIRED): The clarifying question to ask the user if refinement is needed; otherwise empty
 
 --------------------------------------------------------------------------------
 
@@ -111,7 +111,7 @@ Respond in the following JSON format:
 Field descriptions:
 - needs_refinement (boolean) (REQUIRED): Whether this query specification needs clarification (true/false)
 - explanation (string) (REQUIRED): Brief explanation of why refinement is or isn't needed
-- suggested_question (string) (REQUIRED): The clarifying question to ask the user if refinement is needed; otherwise empty
+- clarifying_question (string) (REQUIRED): The clarifying question to ask the user if refinement is needed; otherwise empty
 
 --------------------------------------------------------------------------------
 
@@ -188,7 +188,7 @@ Respond in the following JSON format:
 Field descriptions:
 - needs_refinement (boolean) (REQUIRED): Whether this query specification needs clarification (true/false)
 - explanation (string) (REQUIRED): Brief explanation of why refinement is or isn't needed
-- suggested_question (string) (REQUIRED): The clarifying question to ask the user if refinement is needed; otherwise empty
+- clarifying_question (string) (REQUIRED): The clarifying question to ask the user if refinement is needed; otherwise empty
 
 --------------------------------------------------------------------------------
 
@@ -265,7 +265,7 @@ Respond in the following JSON format:
 Field descriptions:
 - needs_refinement (boolean) (REQUIRED): Whether this query specification needs clarification (true/false)
 - explanation (string) (REQUIRED): Brief explanation of why refinement is or isn't needed
-- suggested_question (string) (REQUIRED): The clarifying question to ask the user if refinement is needed; otherwise empty
+- clarifying_question (string) (REQUIRED): The clarifying question to ask the user if refinement is needed; otherwise empty
 
 --------------------------------------------------------------------------------
 
@@ -337,7 +337,7 @@ Respond in the following JSON format:
 Field descriptions:
 - needs_refinement (boolean) (REQUIRED): Whether this query specification needs clarification (true/false)
 - explanation (string) (REQUIRED): Brief explanation of why refinement is or isn't needed
-- suggested_question (string) (REQUIRED): The clarifying question to ask the user if refinement is needed; otherwise empty
+- clarifying_question (string) (REQUIRED): The clarifying question to ask the user if refinement is needed; otherwise empty
 
 --------------------------------------------------------------------------------
 
@@ -411,7 +411,7 @@ Respond in the following JSON format:
 Field descriptions:
 - needs_refinement (boolean) (REQUIRED): Whether this query specification needs clarification (true/false)
 - explanation (string) (REQUIRED): Brief explanation of why refinement is or isn't needed
-- suggested_question (string) (REQUIRED): The clarifying question to ask the user if refinement is needed; otherwise empty
+- clarifying_question (string) (REQUIRED): The clarifying question to ask the user if refinement is needed; otherwise empty
 
 --------------------------------------------------------------------------------
 
@@ -478,6 +478,6 @@ Respond in the following JSON format:
 Field descriptions:
 - needs_refinement (boolean) (REQUIRED): Whether this query specification needs clarification (true/false)
 - explanation (string) (REQUIRED): Brief explanation of why refinement is or isn't needed
-- suggested_question (string) (REQUIRED): The clarifying question to ask the user if refinement is needed; otherwise empty
+- clarifying_question (string) (REQUIRED): The clarifying question to ask the user if refinement is needed; otherwise empty
 
 --------------------------------------------------------------------------------

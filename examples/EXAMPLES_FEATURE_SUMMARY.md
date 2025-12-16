@@ -19,7 +19,7 @@ class ExampleQuery(TypedDict, total=False):
     issue: str
     missing: str
     has: str
-    suggested_question: str
+    clarifying_question: str
 
 class ExamplesDict(TypedDict, total=False):
     """All categories are optional."""
@@ -74,7 +74,7 @@ examples:
   needs_refinement:
     - query: "Does exercise help with depression in adults?"
       issue: "No age range specified - 'adults' is too broad (18-100?)"
-      suggested_question: "What age range are you interested in?"
+      clarifying_question: "What age range are you interested in?"
   
   partial:
     - query: "Effects of diet intervention in women over 40"
@@ -126,7 +126,7 @@ my_dimension:
     name: Temporal Scope
     description: Clarifies time period or timeframe
     system_prompt: You are a research assistant... 
-    analysis_prompt: |
+    refinement_instructions: |
       Analyze temporal aspects like this...
     
     # Add examples (all categories optional)
@@ -138,7 +138,7 @@ my_dimension:
       needs_refinement:
         - query: "Recent studies on climate change"
           issue: "'Recent' is vague - last year? decade?"
-          suggested_question: "What time period do you consider 'recent'?"
+          clarifying_question: "What time period do you consider 'recent'?"
 ```
 
 ### In Code

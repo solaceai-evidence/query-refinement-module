@@ -8,6 +8,7 @@ class DummyAspect:
     def __init__(self, aspect_id="aspect", name="Aspect", system_prompt="System", user_prompt="Prompt: {query}"):
         self.id = aspect_id
         self.name = name
+        self.aspect_name = name  # Add aspect_name attribute for compatibility
         self._system_prompt = system_prompt
         self._user_prompt = user_prompt
 
@@ -49,7 +50,7 @@ def test_analyze_aspect_with_valid_payload():
 
     assert not result.needs_refinement
     assert result.explanation == "clear"
-    assert result.suggested_question is None
+    assert result.clarifying_question is None
 
     _, kwargs = provider.calls[0]
     assert kwargs["temperature"] == 0.2
@@ -63,7 +64,7 @@ def test_analyze_aspect_requires_provider():
 
 
 def test_analyze_aspect_accepts_override_provider():
-    override = RecordingProvider(['{"needs_refinement": true, "explanation": "details", "suggested_question": "Q"}'])
+    override = RecordingProvider(['{"needs_refinement": true, "explanation": "details", "clarifying_question": "Q"}'])
     analyzer = LLMQueryAnalyzer(llm_provider=None)
     aspect = DummyAspect()
 
@@ -71,7 +72,7 @@ def test_analyze_aspect_accepts_override_provider():
 
     assert result.needs_refinement
     assert result.explanation == "details"
-    assert result.suggested_question == "Q"
+    assert result.clarifying_question == "Q"
 
 
 def test_analyze_aspect_handles_missing_payload():
@@ -82,7 +83,7 @@ def test_analyze_aspect_handles_missing_payload():
 
     assert result.needs_refinement
     assert "Unable to parse" in result.explanation
-    assert result.suggested_question == "Population"
+    assert result.clarifying_question == "Population"
 
 
 def test_analyze_aspect_missing_required_field():
@@ -93,17 +94,17 @@ def test_analyze_aspect_missing_required_field():
 
     assert result.needs_refinement
     assert "missing required" in result.explanation
-    assert result.suggested_question == "Intervention"
+    assert result.clarifying_question == "Intervention"
 
 
-def test_analyze_aspect_missing_suggested_question():
-    analyzer, _ = build_analyzer(['{"needs_refinement": true, "explanation": "", "suggested_question": ""}'])
+def test_analyze_aspect_missing_clarifying_question():
+    analyzer, _ = build_analyzer(['{"needs_refinement": true, "explanation": "", "clarifying_question": ""}'])
     aspect = DummyAspect(name="Outcome")
 
     result = analyzer.analyze_aspect("query", aspect)
 
     assert result.needs_refinement
-    assert result.suggested_question == "Outcome"
+    assert result.clarifying_question == "Outcome"
 
 
 def test_build_prompt_with_dependency_context():

@@ -100,7 +100,7 @@ def run_loop(session: QueryRefinementSession, ask_llm):
         if not step:
             break
 
-        question_text = step.analysis_suggested_question or ""
+        question_text = step.analysis_clarifying_question or ""
 
         # Ask the model for the next question when needed
         if not step.follow_up_history:

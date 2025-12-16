@@ -135,9 +135,9 @@ def _build_next_prompt(session) -> Optional[Dict[str, Any]]:
     
     return {
         "aspect_id": step.refinement_aspect.id,
-        "aspect_name": step.refinement_aspect.name,
-        "question": step.analysis_suggested_question or step.refinement_aspect.description,
-        "description": step.refinement_aspect.description,
+        "aspect_name": step.refinement_aspect.aspect_name,
+        "question": step.analysis_suggested_question or step.refinement_aspect.aspect_description,
+        "description": step.refinement_aspect.aspect_description,
     }
 
 
@@ -236,7 +236,7 @@ def start_refinement(
         create_refinement_step(
             db,
             query_id=db_query.id,
-            aspect_name=step.refinement_aspect.name
+            aspect_name=step.refinement_aspect.aspect_name
         )
     
     # Get initialization summary
@@ -295,7 +295,7 @@ def submit_answer(
     
     # Add user's answer to follow-up history
     active_step.follow_up_history.append({
-        'question': active_step.analysis_suggested_question or active_step.refinement_aspect.name,
+        'question': active_step.analysis_suggested_question or active_step.refinement_aspect.aspect_name,
         'response': request.answer
     })
     
@@ -323,7 +323,7 @@ def submit_answer(
     # Get the corresponding database refinement step
     db_steps = get_query_refinement_steps(db, query_id)
     db_step = next(
-        (s for s in db_steps if s.aspect_name == active_step.refinement_aspect.name),
+        (s for s in db_steps if s.aspect_name == active_step.refinement_aspect.aspect_name),
         None
     )
     
@@ -337,7 +337,7 @@ def submit_answer(
     db_followup = create_followup(
         db,
         refinement_step_id=db_step.id,
-        question=active_step.analysis_suggested_question or active_step.refinement_aspect.name,
+        question=active_step.analysis_suggested_question or active_step.refinement_aspect.aspect_name,
         answer=request.answer
     )
     
@@ -350,9 +350,9 @@ def submit_answer(
         # Still need follow-up on same aspect
         next_prompt = {
             "aspect_id": active_step.refinement_aspect.id,
-            "aspect_name": active_step.refinement_aspect.name,
+            "aspect_name": active_step.refinement_aspect.aspect_name,
             "question": result.get('followup_question', ''),
-            "description": active_step.refinement_aspect.description,
+            "description": active_step.refinement_aspect.aspect_description,
         }
     else:
         # Move to next aspect
@@ -400,7 +400,7 @@ def get_refinement_status(
         original_query=db_query.original_query,
         refined_query=db_query.refined_query,
         is_complete=session.is_complete(),
-        current_aspect=active_step.refinement_aspect.name if active_step else None,
+        current_aspect=active_step.refinement_aspect.aspect_name if active_step else None,
         aspects_summary=summary
     )
 
@@ -439,7 +439,7 @@ def synthesize_refined_query(
     for db_step in db_steps:
         # Find corresponding step in session
         session_step = next(
-            (s for s in session.steps if s.refinement_aspect.name == db_step.aspect_name),
+            (s for s in session.steps if s.refinement_aspect.aspect_name == db_step.aspect_name),
             None
         )
         if session_step:

@@ -69,7 +69,7 @@ Initialize a new refinement session.
         "description": "What outcome is being measured",
         "status": "needs_refinement",
         "reason": "Stroke is mentioned but not specific...",
-        "suggested_question": "What specific stroke outcomes are you interested in?"
+        "clarifying_question": "What specific stroke outcomes are you interested in?"
       },
       {
         "id": "population",

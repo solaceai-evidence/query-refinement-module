@@ -14,9 +14,9 @@ from query_refinement_module.schema import RefinementAspect
 def make_aspect(aspect_id: str = "aspect") -> RefinementAspect:
     return RefinementAspect(
         id=aspect_id,
-        name=f"Aspect {aspect_id}",
-        description=f"Description {aspect_id}",
-        analysis_prompt="Analyze {query}",
+        aspect_name=f"Aspect {aspect_id}",
+        aspect_description=f"Description {aspect_id}",
+        refinement_instructions="Analyze {query}",
         depends_on=[],
     )
 
@@ -199,7 +199,15 @@ async def test_submit_user_message_command(monkeypatch):
 class ResponseStep:
     def __init__(self):
         self.analysis_suggested_question = "Ask?"
-        self.refinement_aspect = types.SimpleNamespace(name="Aspect", id="aspect", description="desc", get_user_prompt=lambda query: "prompt")
+        self.refinement_aspect = types.SimpleNamespace(
+            name="Aspect", 
+            aspect_name="Aspect",
+            id="aspect", 
+            description="desc",
+            aspect_description="desc",
+            get_user_prompt=lambda query: "prompt",
+            get_refinement_instructions_prompt=lambda statement: f"Analyze {statement}"
+        )
         self.analysis_reason = "reason"
         self.follow_up_history: List[Dict[str, str]] = []
         self.is_complete = False
@@ -304,7 +312,9 @@ def test_build_next_prompt_prefers_suggested_question():
         def __init__(self):
             self.id = "a"
             self.name = "Aspect"
-            self.description = "desc"
+            self.aspect_name = "Aspect"
+            self.aspect_description = "desc"
+            self.description = "desc"  # Legacy support
 
         def get_user_prompt(self, *, query):
             return "Prompt"
@@ -338,13 +348,20 @@ def test_build_next_prompt_uses_prompt_and_description():
         def __init__(self, raises=False):
             self.id = "a"
             self.name = "Aspect"
-            self.description = "desc"
+            self.aspect_name = "Aspect"
+            self.aspect_description = "desc"
+            self.description = "desc"  # Legacy support
             self.raises = raises
 
         def get_user_prompt(self, *, query):
             if self.raises:
                 raise RuntimeError("boom")
             return f"Prompt for {query}"
+        
+        def get_refinement_instructions_prompt(self, *, statement):
+            if self.raises:
+                raise RuntimeError("boom")
+            return f"Prompt for {statement}"
 
     class Session:
         def __init__(self):

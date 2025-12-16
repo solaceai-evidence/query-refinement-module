@@ -11,9 +11,9 @@ def _make_session(aspect_id: str = "aspect_a") -> QueryRefinementSession:
     session = QueryRefinementSession(original_query="Original question")
     aspect = RefinementAspect(
         id=aspect_id,
-        name="Aspect",
-        description="Test aspect",
-        analysis_prompt="Analyze {query}",
+        aspect_name="Aspect",
+        aspect_description="Test aspect",
+        refinement_instructions="Analyze {query}",
     )
     session.add_step(aspect)
     return session
