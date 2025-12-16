@@ -35,12 +35,22 @@ Information:
 - /steps                 - List all refinement steps
 
 These commands are detected via is_user_command() and processed via parse_user_command().
+
+Logging and Tracing:
+===================
+This module includes comprehensive logging and tracing support:
+- All major operations log entry, exit, and key events
+- Request IDs propagate through the call stack for distributed tracing
+- LLM interactions capture tokens, duration, and costs
+- Performance metrics are logged for optimization
+- Errors include full context for debugging
 """
 
 import asyncio
 import json
 import logging
 import textwrap
+import time
 from dataclasses import dataclass, field
 from enum import Enum
 from typing import Any, Callable, Dict, List, Optional
@@ -52,7 +62,9 @@ from .interfaces import (
 )
 from .providers import NoOpTracingProvider, TraceEventEmitter
 from .schema import RefinementAspect
+from .tracing import get_logger, OperationTimer
 
+# Module logger - use get_logger() in functions for request context
 logger = logging.getLogger(__name__)
 
 # =======

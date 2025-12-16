@@ -26,6 +26,7 @@ from query_refinement_module.db.models.user import Base
 from query_refinement_module.db.models.query_session import QuerySession
 from query_refinement_module.db.models.query import Query
 from query_refinement_module.db.models.refinement_step import RefinementStep
+from query_refinement_module.db.models.refinement_step_metadata import RefinementStepMetadata
 from query_refinement_module.db.models.feedback import Feedback
 from query_refinement_module.db.models.followup_history import FollowUpHistory
 

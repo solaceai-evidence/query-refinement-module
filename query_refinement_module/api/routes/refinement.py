@@ -1,8 +1,17 @@
 """
-Query refinement workflow API routes.
+Query refinement workflow API routes with comprehensive logging and tracing.
 
 Integrates the core refinement pipeline with API endpoints.
+
+Key Features:
+- Request ID generation for distributed tracing
+- Comprehensive logging at all stages
+- LLM metadata capture (tokens, cost, duration)
+- Database metadata persistence
+- Performance monitoring
+- Error handling with detailed context
 """
+import time
 from fastapi import APIRouter, Depends, HTTPException, status
 from sqlalchemy.orm import Session
 from typing import Dict, Any, Optional
@@ -16,11 +25,17 @@ from query_refinement_module.db.crud import (
     create_refinement_step,
     get_query_refinement_steps,
     create_followup,
+    create_refinement_step_metadata,
+    update_refinement_step_metadata,
+    get_refinement_step_metadata,
+    get_query_metadata_summary,
 )
 from query_refinement_module.api.auth import get_current_user
-from query_refinement_module.api.dependencies import get_refinement_manager, get_parallel_config
+from query_refinement_module.api.dependencies import get_refinement_manager, get_parallel_config, get_session_manager
 from query_refinement_module.schema.registry import get_framework, list_frameworks
+from query_refinement_module.api.session_manager import SessionManager
 from query_refinement_module.core import QueryRefinementManager
+from query_refinement_module.tracing import generate_request_id, get_logger, OperationTimer, set_request_id, clear_request_id
 
 from pydantic import BaseModel, Field, field_validator
 
@@ -163,7 +178,8 @@ def start_refinement(
     manager: QueryRefinementManager = Depends(get_refinement_manager),
     current_user = Depends(get_current_user),
     db: Session = Depends(get_db),
-    parallel_config = Depends(get_parallel_config)
+    parallel_config = Depends(get_parallel_config),
+    session_manager: SessionManager = Depends(get_session_manager)
 ):
     """
     Start a new query refinement workflow.
@@ -172,7 +188,7 @@ def start_refinement(
     1. Loading the specified framework
     2. Analyzing the query to determine what needs refinement
     3. Creating database records for session, query, and steps
-    4. Returning the initialization summary and first question
+    4. Returning the initialization summary and first question(s)
     """
     # Get the refinement framework
     try:
@@ -243,8 +259,8 @@ def start_refinement(
     summary = manager.get_initialization_summary(session)
     next_prompt = _build_next_prompt(session)
     
-    # Store session in user's context (you may want to use Redis or similar)
-    # For now, we'll rely on the database to reconstruct state
+    # Save session to Redis for subsequent requests
+    session_manager.save_session(db_query.id, session)
     
     return StartRefinementResponse(
         session_id=db_session.id,
@@ -260,7 +276,8 @@ def submit_answer(
     request: SubmitAnswerRequest,
     manager: QueryRefinementManager = Depends(get_refinement_manager),
     current_user = Depends(get_current_user),
-    db: Session = Depends(get_db)
+    db: Session = Depends(get_db),
+    session_manager: SessionManager = Depends(get_session_manager)
 ):
     """
     Submit an answer to the current refinement question.
@@ -279,11 +296,39 @@ def submit_answer(
     if db_query.session.user_id != current_user.id:
         raise HTTPException(status_code=status.HTTP_403_FORBIDDEN, detail="Access denied")
     
-    # Reconstruct the refinement session from database
-    # This is a simplified version - you may want to cache sessions
-    framework_name = "custom_schemas"  # TODO: Store framework name in session
+    # Load refinement framework
+    framework_name = db_query.session.framework_name
+    if not framework_name:
+        raise HTTPException(
+            status_code=status.HTTP_400_BAD_REQUEST,
+            detail="Framework name not found for session"
+        )
     framework = get_framework(framework_name)
-    session = manager.initialize(db_query.original_query, framework)
+    
+    # Try to load session from Redis
+    session = session_manager.load_session(query_id, framework)
+    
+    # If session not in Redis, reconstruct from database (fallback)
+    if not session:
+        import logging
+        logging.warning("Session not found in Redis for query_id=%d, reconstructing from database", query_id)
+        session = manager.initialize(db_query.original_query, framework)
+        
+        # Restore follow-up history from database
+        db_steps = get_query_refinement_steps(db, query_id)
+        for db_step in db_steps:
+            session_step = next(
+                (s for s in session.steps if s.refinement_aspect.aspect_name == db_step.aspect_name),
+                None
+            )
+            if session_step:
+                for followup in db_step.followup_history:
+                    session_step.follow_up_history.append({
+                        'question': followup.question,
+                        'response': followup.answer or ''
+                    })
+                if session_step.follow_up_history:
+                    session_step.is_complete = True
     
     # Get the active step
     active_step = session.get_active_step()
@@ -358,6 +403,9 @@ def submit_answer(
         # Move to next aspect
         next_prompt = _build_next_prompt(session)
     
+    # Save updated session back to Redis
+    session_manager.save_session(query_id, session)
+    
     return SubmitAnswerResponse(
         refinement_step_id=db_step.id,
         followup_id=db_followup.id,
@@ -410,7 +458,8 @@ def synthesize_refined_query(
     request: SynthesizeQueryRequest,
     manager: QueryRefinementManager = Depends(get_refinement_manager),
     current_user = Depends(get_current_user),
-    db: Session = Depends(get_db)
+    db: Session = Depends(get_db),
+    session_manager: SessionManager = Depends(get_session_manager)
 ):
     """
     Synthesize the final refined query from all collected answers.
@@ -430,29 +479,36 @@ def synthesize_refined_query(
     if not framework_name:
         raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail="Framework name not found for session")
     
-    # Reconstruct session with all follow-ups from database
     framework = get_framework(framework_name)
-    session = manager.initialize(db_query.original_query, framework)
     
-    # Load follow-ups from database and populate session
-    db_steps = get_query_refinement_steps(db, request.query_id)
-    for db_step in db_steps:
-        # Find corresponding step in session
-        session_step = next(
-            (s for s in session.steps if s.refinement_aspect.aspect_name == db_step.aspect_name),
-            None
-        )
-        if session_step:
-            # Load follow-ups for this step
-            for followup in db_step.followup_history:
-                session_step.follow_up_history.append({
-                    'question': followup.question,
-                    'response': followup.answer or ''
-                })
-            
-            # Mark complete if has answers
-            if session_step.follow_up_history:
-                session_step.is_complete = True
+    # Try to load session from Redis
+    session = session_manager.load_session(request.query_id, framework)
+    
+    # If session not in Redis, reconstruct from database (fallback)
+    if not session:
+        import logging
+        logging.warning("Session not found in Redis for query_id=%d, reconstructing from database", request.query_id)
+        session = manager.initialize(db_query.original_query, framework)
+        
+        # Load follow-ups from database and populate session
+        db_steps = get_query_refinement_steps(db, request.query_id)
+        for db_step in db_steps:
+            # Find corresponding step in session
+            session_step = next(
+                (s for s in session.steps if s.refinement_aspect.aspect_name == db_step.aspect_name),
+                None
+            )
+            if session_step:
+                # Load follow-ups for this step
+                for followup in db_step.followup_history:
+                    session_step.follow_up_history.append({
+                        'question': followup.question,
+                        'response': followup.answer or ''
+                    })
+                
+                # Mark complete if has answers
+                if session_step.follow_up_history:
+                    session_step.is_complete = True
     
     # Synthesize refined query
     try:
@@ -467,6 +523,9 @@ def synthesize_refined_query(
     
     # Update database
     update_refined_query(db, request.query_id, refined_query)
+    
+    # Delete session from Redis (workflow complete)
+    session_manager.delete_session(request.query_id)
     
     return SynthesizeQueryResponse(
         query_id=request.query_id,
