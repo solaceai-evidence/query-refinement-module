@@ -129,7 +129,7 @@ def test_run_cli_handles_missing_framework(monkeypatch, capsys):
 
 class StubStep:
     def __init__(self, name="Aspect", question: Optional[str] = None):
-        self.refinement_aspect = SimpleNamespace(name=name, id="aspect")
+        self.refinement_aspect = SimpleNamespace(aspect_name=name, id="aspect")
         self.analysis_suggested_question = question
         self.needs_review = False
         self.follow_up_history: List[dict] = []

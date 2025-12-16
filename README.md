@@ -74,7 +74,7 @@ my_framework:
       field_descriptions:
         needs_refinement: "Whether this dimension needs clarification"
         explanation: "Brief rationale"
-        suggested_question: "Single follow-up to resolve the gap"
+        clarifying_question: "Single follow-up to resolve the gap"
         confidence: "Confidence score 0.0-1.0 (optional)"
     allow_follow_up: true
     max_follow_ups: 2

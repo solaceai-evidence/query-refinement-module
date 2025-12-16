@@ -1,115 +1,135 @@
 pico:
-  - id: population
-    name: Population
-    description: The target group or patients being studied
-    depends_on: []  # No dependencies - analyzed first
-    
-    system_prompt: |
-      You are a clinical research expert specializing in population definition.
-      Your role is to ensure the target population is clearly specified.
-    
-    analysis_prompt: |
-      Analyze the query: {query}
-      
-      Determine if the population/participants are clearly defined.
-      Consider: age groups, health conditions, demographics, inclusion/exclusion criteria.
-      
-      If the population is vague or missing, suggest ONE specific question to clarify it.
-    
-    response_format:
-      type: json
-      field_descriptions:
-        needs_refinement: "Whether the population needs clarification"
-        explanation: "Brief explanation of the population analysis"
-        suggested_question: "Specific question to ask when clarification is required"
-    
-    allow_follow_up: true
-    max_follow_ups: 2
+- id: population
+  depends_on: []
+  system_prompt: 'You are a clinical research expert specializing in population definition.
 
-  - id: intervention
-    name: Intervention
-    description: The treatment, exposure, or action being studied
-    depends_on: [population]  # Depends on population context
-    
-    system_prompt: |
-      You are a clinical research expert specializing in interventions and treatments.
-      Consider the target population when evaluating intervention appropriateness.
-    
-    analysis_prompt: |
-      Analyze the query: {query}
-      
-      Determine if the intervention/treatment/exposure is clearly specified.
-      Consider: type of intervention, dosage, duration, frequency, delivery method.
-      
-      Ensure the intervention is appropriate for the specified population.
-      
-      If the intervention is vague or missing, suggest ONE specific question to clarify it.
-    
-    response_format:
-      type: json
-      field_descriptions:
-        needs_refinement: "Whether the intervention needs clarification"
-        explanation: "Brief explanation of the intervention analysis"
-        suggested_question: "Specific question to ask about intervention details"
-    
-    allow_follow_up: true
-    max_follow_ups: 2
+    Your role is to ensure the target population is clearly specified.
 
-  - id: comparison
-    name: Comparison
-    description: The alternative or control condition being compared
-    depends_on: [population, intervention]  # Depends on both
-    
-    system_prompt: |
-      You are a clinical research expert specializing in study design and comparisons.
-      Consider the population and intervention when evaluating appropriate comparisons.
-    
-    analysis_prompt: |
-      Analyze the query: {query}
-      
-      Determine if there is a comparison/control condition specified or implied.
-      Consider: placebo, standard care, alternative treatments, no treatment.
-      
-      The comparison should be appropriate for the population and intervention context.
-      
-      If comparison is needed but unclear, suggest ONE specific question to clarify it.
-      Note: Some queries may not require a comparison (descriptive studies).
-    
-    response_format:
-      type: json
-      field_descriptions:
-        needs_refinement: "Whether a comparison/control needs clarification"
-        explanation: "Brief explanation of the comparison analysis"
-        suggested_question: "Focused follow-up question about the comparison"
-    
-    allow_follow_up: true
-    max_follow_ups: 1
+    '
+  response_format:
+    type: json
+    field_descriptions:
+      needs_refinement: Whether the population needs clarification
+      explanation: Brief explanation of the population analysis
+      clarifying_question: Specific question to ask when clarification is required
+  allow_follow_up: true
+  max_follow_ups: 2
+  refinement_instructions: 'Analyze the query: {query}
 
-  - id: outcome
-    name: Outcome
-    description: The measured results or endpoints of interest
-    depends_on: [population, intervention]  # Depends on population and intervention
-    
-    system_prompt: |
-      You are a clinical research expert specializing in outcome measurement.
-      Consider the population and intervention when evaluating outcome appropriateness.
-    
-    analysis_prompt: |
-      Analyze the query: {query}
-      
-      Determine if the outcome/endpoint is clearly specified.
-      Consider: what is being measured, measurement tools, timeframe, clinical significance.
-      
-      Ensure the outcome is appropriate and measurable for the specified population and intervention.
-      
-      If the outcome is vague or missing, suggest ONE specific question to clarify it.
-    
-    response_format:
-      type: json
-      field_descriptions:
-        needs_refinement: "Whether the outcome specification needs clarification"
-        explanation: "Brief explanation of the outcome analysis"
-        suggested_question: "Specific question to refine outcome details"
-    
-    allow_follow_up: true
-    max_follow_ups: 2
+
+    Determine if the population/participants are clearly defined.
+
+    Consider: age groups, health conditions, demographics, inclusion/exclusion criteria.
+
+
+    If the population is vague or missing, suggest ONE specific question to clarify
+    it.
+
+    '
+  aspect_name: Population
+  aspect_description: The target group or patients being studied
+- id: intervention
+  depends_on:
+  - population
+  system_prompt: 'You are a clinical research expert specializing in interventions
+    and treatments.
+
+    Consider the target population when evaluating intervention appropriateness.
+
+    '
+  response_format:
+    type: json
+    field_descriptions:
+      needs_refinement: Whether the intervention needs clarification
+      explanation: Brief explanation of the intervention analysis
+      clarifying_question: Specific question to ask about intervention details
+  allow_follow_up: true
+  max_follow_ups: 2
+  refinement_instructions: 'Analyze the query: {query}
+
+
+    Determine if the intervention/treatment/exposure is clearly specified.
+
+    Consider: type of intervention, dosage, duration, frequency, delivery method.
+
+
+    Ensure the intervention is appropriate for the specified population.
+
+
+    If the intervention is vague or missing, suggest ONE specific question to clarify
+    it.
+
+    '
+  aspect_name: Intervention
+  aspect_description: The treatment, exposure, or action being studied
+- id: comparison
+  depends_on:
+  - population
+  - intervention
+  system_prompt: 'You are a clinical research expert specializing in study design
+    and comparisons.
+
+    Consider the population and intervention when evaluating appropriate comparisons.
+
+    '
+  response_format:
+    type: json
+    field_descriptions:
+      needs_refinement: Whether a comparison/control needs clarification
+      explanation: Brief explanation of the comparison analysis
+      clarifying_question: Focused follow-up question about the comparison
+  allow_follow_up: true
+  max_follow_ups: 1
+  refinement_instructions: 'Analyze the query: {query}
+
+
+    Determine if there is a comparison/control condition specified or implied.
+
+    Consider: placebo, standard care, alternative treatments, no treatment.
+
+
+    The comparison should be appropriate for the population and intervention context.
+
+
+    If comparison is needed but unclear, suggest ONE specific question to clarify
+    it.
+
+    Note: Some queries may not require a comparison (descriptive studies).
+
+    '
+  aspect_name: Comparison
+  aspect_description: The alternative or control condition being compared
+- id: outcome
+  depends_on:
+  - population
+  - intervention
+  system_prompt: 'You are a clinical research expert specializing in outcome measurement.
+
+    Consider the population and intervention when evaluating outcome appropriateness.
+
+    '
+  response_format:
+    type: json
+    field_descriptions:
+      needs_refinement: Whether the outcome specification needs clarification
+      explanation: Brief explanation of the outcome analysis
+      clarifying_question: Specific question to refine outcome details
+  allow_follow_up: true
+  max_follow_ups: 2
+  refinement_instructions: 'Analyze the query: {query}
+
+
+    Determine if the outcome/endpoint is clearly specified.
+
+    Consider: what is being measured, measurement tools, timeframe, clinical significance.
+
+
+    Ensure the outcome is appropriate and measurable for the specified population
+    and intervention.
+
+
+    If the outcome is vague or missing, suggest ONE specific question to clarify it.
+
+    '
+  aspect_name: Outcome
+  aspect_description: The measured results or endpoints of interest

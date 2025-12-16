@@ -13,9 +13,9 @@ def test_reload_from_env_loads_framework(monkeypatch, tmp_path):
         """
         demo:
           - id: aspect_a
-            name: Aspect A
-            description: Test aspect
-            analysis_prompt: |
+            aspect_name: Aspect A
+            aspect_description: Test aspect
+            refinement_instructions: |
               Analyze {query}
             examples:
               clear:
@@ -24,17 +24,17 @@ def test_reload_from_env_loads_framework(monkeypatch, tmp_path):
               needs_refinement:
                 - query: "What is the effect of drug X?"
                   issue: "The query does not specify the condition or population."
-                  suggested_question: "Which condition are you interested in?"
+                  clarifying_question: "Which condition are you interested in?"
                   missing: "condition, population"
               partial:
                 - query: "What is the effect of drug X on condition Y?"
                   has: "intervention, condition"
                   missing: "population"
-                  suggested_question: "Which population are you studying?"
-              ambiguous:
+                  clarifying_question: "Which population are you studying?"
+              vague_ambiguous:
                 - query: "How does drug X work?"
                   issue: "The query is too vague and could refer to multiple conditions."
-                  suggested_question: "What condition are you interested in regarding drug X?"
+                  clarifying_question: "What condition are you interested in regarding drug X?"
             response_format:
               type: json
         """
@@ -87,9 +87,9 @@ def test_list_frameworks_multiple(monkeypatch, tmp_path):
         """
         framework_one:
           - id: aspect_1
-            name: Aspect 1
-            description: First framework aspect
-            analysis_prompt: |
+            aspect_name: Aspect 1
+            aspect_description: First framework aspect
+            refinement_instructions: |
               Analyze {query}
             response_format:
               type: json
@@ -99,9 +99,9 @@ def test_list_frameworks_multiple(monkeypatch, tmp_path):
         """
         framework_two:
           - id: aspect_2
-            name: Aspect 2
-            description: Second framework aspect
-            analysis_prompt: |
+            aspect_name: Aspect 2
+            aspect_description: Second framework aspect
+            refinement_instructions: |
               Analyze {query}
             response_format:
               type: json
@@ -134,9 +134,9 @@ def test_get_last_load_error(monkeypatch, tmp_path):
         """
         framework_ok:
           - id: aspect_ok
-            name: Aspect OK
-            description: Valid aspect
-            analysis_prompt: |
+            aspect_name: Aspect OK
+            aspect_description: Valid aspect
+            refinement_instructions: |
               Analyze {query}
             response_format:
               type: json

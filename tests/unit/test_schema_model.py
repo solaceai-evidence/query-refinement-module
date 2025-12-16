@@ -8,9 +8,9 @@ from query_refinement_module.schema.model import RefinementAspect
 def make_aspect(**overrides) -> RefinementAspect:
     base_kwargs = {
         "id": "demo",
-        "name": "Demo Aspect",
-        "description": "Tracks demo behaviour",
-        "analysis_prompt": "Review this query: {query}",
+        "aspect_name": "Demo Aspect",
+        "aspect_description": "Tracks demo behaviour",
+        "refinement_instructions": "Review this query: {query}",
     }
     base_kwargs.update(overrides)
     return RefinementAspect(**base_kwargs)
@@ -20,15 +20,15 @@ def test_refinement_aspect_injects_query_when_no_placeholder():
     """Test that query is injected at the beginning if {query} placeholder is missing."""
     aspect = RefinementAspect(
         id="demo",
-        name="Missing Placeholder",
-        description="No placeholder in prompt",
-        analysis_prompt="Evaluate the demographic characteristics.",
+        aspect_name="Missing Placeholder",
+        aspect_description="No placeholder in prompt",
+        refinement_instructions="Evaluate the demographic characteristics.",
     )
     
-    user_prompt = aspect.get_user_prompt("What is the effect of exercise?")
+    user_prompt = aspect.get_refinement_instructions_prompt("What is the effect of exercise?")
     
-    # Should start with explicit query statement
-    assert user_prompt.startswith("Review this query: What is the effect of exercise?")
+    # Should start with explicit statement
+    assert user_prompt.startswith("Review the following user-submitted statement: What is the effect of exercise?")
     # Should still include the analysis prompt
     assert "Evaluate the demographic characteristics" in user_prompt
 
@@ -37,12 +37,12 @@ def test_refinement_aspect_uses_placeholder_when_present():
     """Test that query placeholder is properly substituted when present in analysis_prompt."""
     aspect = RefinementAspect(
         id="demo",
-        name="With Placeholder",
-        description="Has placeholder in prompt",
-        analysis_prompt="Analyze this query: {query}\n\nConsider all aspects.",
+        aspect_name="With Placeholder",
+        aspect_description="Has placeholder in prompt",
+        refinement_instructions="Analyze this query: {query}\n\nConsider all aspects.",
     )
     
-    user_prompt = aspect.get_user_prompt("What is the effect of exercise?")
+    user_prompt = aspect.get_refinement_instructions_prompt("What is the effect of exercise?")
     
     # Should have the query substituted in the analysis prompt
     assert "Analyze this query: What is the effect of exercise?" in user_prompt
@@ -64,7 +64,7 @@ def test_response_format_validates_allowed_types():
         {
             "needs_refinement": True,
             "explanation": "All good",
-            "suggested_question": "Clarify?",
+            "clarifying_question": "Clarify?",
             "score": 0.75,
         }
     )
@@ -82,7 +82,7 @@ def test_response_format_rejects_invalid_type():
 
 def test_examples_validation_rejects_unknown_category():
     with pytest.raises(ValueError) as excinfo:
-        make_aspect(examples={"unsupported": [{"query": "Example"}]})
+        make_aspect(examples={"unsupported": [{"statement": "Example"}]})
     assert "Invalid example categories" in str(excinfo.value)
 
 
@@ -92,7 +92,7 @@ def test_examples_validation_rejects_non_string_fields():
             examples={
                 "clear": [
                     {
-                        "query": "Example",
+                        "statement": "Example",
                         "explanation": 42,  # type: ignore[arg-type]
                     }
                 ]
@@ -114,16 +114,16 @@ def test_get_user_prompt_includes_examples_and_format():
         examples={
             "needs_refinement": [
                 {
-                    "query": "Does exercise help?",
+                    "statement": "Does exercise help?",
                     "issue": "Too broad",
-                    "suggested_question": "What type of exercise?",
+                    "example_question": "What type of exercise?",
                 }
             ]
         },
         response_format={"additional_fields": {"confidence": "float"}},
     )
 
-    prompt = aspect.get_user_prompt("Sample query")
+    prompt = aspect.get_refinement_instructions_prompt("Sample query")
 
     assert "Sample query" in prompt
     assert "NEEDS REFINEMENT:" in prompt
@@ -144,16 +144,16 @@ def test_format_examples_omits_missing_categories():
         examples={
             "clear": [
                 {
-                    "query": "Specific example",
+                    "statement": "Specific example",
                     "explanation": "Complete",
                 }
             ],
             "partial": [
                 {
-                    "query": "Missing",
+                    "statement": "Missing",
                     "has": "Age",
                     "missing": "Duration",
-                    "suggested_question": "For how long?",
+                    "example_question": "For how long?",
                 }
             ],
         }
@@ -199,7 +199,7 @@ def test_validate_response_type_errors():
         {
             "needs_refinement": "true",
             "explanation": 123,
-            "suggested_question": None,
+            "clarifying_question": None,
         }
     )
 
@@ -214,7 +214,7 @@ def test_validate_response_strict_warns_on_unexpected_fields():
         {
             "needs_refinement": False,
             "explanation": "All set",
-            "suggested_question": "",
+            "clarifying_question": "",
             "extra": "ignored",
         }
     )

@@ -21,16 +21,16 @@ class AspectAnalysisResult:
     This matches the structured output from LLM analysis (BASE_SCHEMA_FIELDS in RefinementAspect):
     - needs_refinement: boolean
     - explanation: string (why refinement is/isn't needed)
-    - suggested_question: string (the question to ask if refinement needed)
+    - clarifying_question: string (the question to ask if refinement needed)
     
     Attributes:
         needs_refinement: Whether the aspect needs refinement.
         reason: Explanation of why refinement is or isn't needed.
-        suggested_question: The question to ask the user (if needs_refinement=True).
+        clarifying_question: The question to ask the user (if needs_refinement=True).
     """
     needs_refinement: bool
     explanation: str
-    suggested_question: Optional[str] = None
+    clarifying_question: Optional[str] = None
 
 # ========
 # Rate Limiting Types

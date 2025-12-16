@@ -28,9 +28,9 @@ class DummyAnalyzer(QueryAnalyzerInterface):
 def make_aspect(id="aspect", allow_follow_up=True, max_follow_ups=2):
     return RefinementAspect(
         id=id,
-        name="Test Aspect",
-        description="desc",
-        analysis_prompt="Analyze {query}",
+        aspect_name="Test Aspect",
+        aspect_description="desc",
+        refinement_instructions="Analyze {query}",
         allow_follow_up=allow_follow_up,
         max_follow_ups=max_follow_ups,
     )
@@ -42,7 +42,7 @@ def test_followup_loop_stops_on_is_complete():
         '{"is_complete": true, "final_value": "Clear", "reasoning": "Clear"}'
     ]
     llm = DummyLLMProvider(responses)
-    analyzer = DummyAnalyzer({"aspect": AspectAnalysisResult(needs_refinement=True, explanation="", suggested_question="Q")})
+    analyzer = DummyAnalyzer({"aspect": AspectAnalysisResult(needs_refinement=True, explanation="", clarifying_question="Q")})
     manager = QueryRefinementManager(llm, analyzer)
     session = QueryRefinementSession("query")
     step = session.add_step(aspect)
@@ -60,7 +60,7 @@ def test_followup_loop_respects_max_rounds():
         '{"is_complete": false, "followup_question": "Clarify?", "reasoning": "Needs more"}'
     ]
     llm = DummyLLMProvider(responses)
-    analyzer = DummyAnalyzer({"aspect": AspectAnalysisResult(needs_refinement=True, explanation="", suggested_question="Q")})
+    analyzer = DummyAnalyzer({"aspect": AspectAnalysisResult(needs_refinement=True, explanation="", clarifying_question="Q")})
     manager = QueryRefinementManager(llm, analyzer)
     session = QueryRefinementSession("query")
     step = session.add_step(aspect)
@@ -76,7 +76,7 @@ def test_followup_loop_handles_llm_error():
         def complete(self, user_prompt, system_prompt=None, **kwargs):
             raise Exception("LLM error")
     llm = ErrorLLMProvider(responses)
-    analyzer = DummyAnalyzer({"aspect": AspectAnalysisResult(needs_refinement=True, explanation="", suggested_question="Q")})
+    analyzer = DummyAnalyzer({"aspect": AspectAnalysisResult(needs_refinement=True, explanation="", clarifying_question="Q")})
     manager = QueryRefinementManager(llm, analyzer)
     session = QueryRefinementSession("query")
     step = session.add_step(aspect)
@@ -91,7 +91,7 @@ def test_followup_loop_respects_user_command_skip(monkeypatch):
         '{"is_complete": false, "followup_question": "Clarify?", "reasoning": "Needs more"}'
     ]
     llm = DummyLLMProvider(responses)
-    analyzer = DummyAnalyzer({"aspect": AspectAnalysisResult(needs_refinement=True, explanation="", suggested_question="Q")})
+    analyzer = DummyAnalyzer({"aspect": AspectAnalysisResult(needs_refinement=True, explanation="", clarifying_question="Q")})
     manager = QueryRefinementManager(llm, analyzer)
     session = QueryRefinementSession("query")
     step = session.add_step(aspect)

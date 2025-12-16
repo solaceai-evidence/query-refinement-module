@@ -106,14 +106,14 @@ class QueryRefinementService:
             else:
                 question = (
                     active_step.analysis_suggested_question
-                    or active_step.refinement_aspect.name
+                    or active_step.refinement_aspect.aspect_name
                 )
                 active_step.add_follow_up(question=question, response=message)
                 active_step.is_complete = True
                 active_step.needs_review = False
                 success = True
                 response_message = (
-                    f"Recorded response for {active_step.refinement_aspect.name}."
+                    f"Recorded response for {active_step.refinement_aspect.aspect_name}."
                 )
 
         summary = self._manager.get_initialization_summary(session)
@@ -169,11 +169,11 @@ class QueryRefinementService:
         question = step.analysis_suggested_question
         if not question:
             try:
-                question = step.refinement_aspect.get_user_prompt(
-                    query=session.original_query
+                question = step.refinement_aspect.get_refinement_instructions_prompt(
+                    statement=session.original_query
                 )
             except Exception:  # pragma: no cover - best effort fallback
-                question = step.refinement_aspect.description
+                question = step.refinement_aspect.aspect_description
 
         dependency_context = {
             dep_id: entry["value"]
@@ -184,7 +184,7 @@ class QueryRefinementService:
 
         return NextPrompt(
             aspect_id=step.refinement_aspect.id,
-            aspect_name=step.refinement_aspect.name,
+            aspect_name=step.refinement_aspect.aspect_name,
             question=question,
             rationale=step.analysis_reason,
             dependency_context=dependency_context,

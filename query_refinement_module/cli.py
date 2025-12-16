@@ -148,7 +148,7 @@ def run_cli(manager: QueryRefinementManager, framework_name: str, query: str, pa
                     # Aspect resolved after refreshed analysis; move to next candidate.
                     continue
 
-            header = step.refinement_aspect.name
+            header = step.refinement_aspect.aspect_name
             question = step.analysis_suggested_question or header
             
             print("\n" + "─"*80)

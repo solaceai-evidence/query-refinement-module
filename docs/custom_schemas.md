@@ -19,9 +19,9 @@ Each top-level key represents a framework name. The value is an ordered list of 
 ```yaml
 my_framework:
   - id: population
-    name: Target Population
-    description: Define who the question is about
-    analysis_prompt: |
+    aspect_name: Target Population
+    aspect_description: Define who the question is about
+    refinement_instructions: |
       Analyze the following query and decide whether information about the population is missing.
 
       Query: {query}
@@ -35,11 +35,11 @@ my_framework:
 | Field | Type | Purpose |
 | --- | --- | --- |
 | `id` | string | Stable identifier unique inside the framework |
-| `name` | string | Human-readable label used in UIs/logs |
-| `description` | string | Short explanation of what the aspect refines |
-| `analysis_prompt` | string | Prompt template for analysis instructions |
+| `aspect_name` | string | Human-readable label used in UIs/logs |
+| `aspect_description` | string | Short explanation of what the aspect refines |
+| `refinement_instructions` | string | Prompt template for analysis instructions |
 
-The `analysis_prompt` may optionally include `{query}` as a placeholder. If present, the placeholder is replaced with the user's query at the specified location. If absent, the system automatically prepends `"Review this query: {query}"` at the beginning of the prompt to ensure the LLM always has context about what it is analyzing.
+The `refinement_instructions` may optionally include `{query}` as a placeholder. If present, the placeholder is replaced with the user's query at the specified location. If absent, the system automatically prepends `"Review this query: {query}"` at the beginning of the prompt to ensure the LLM always has context about what it is analyzing.
 
 ### 2.2 Optional fields (add only what you need)
 
@@ -48,12 +48,12 @@ The `analysis_prompt` may optionally include `{query}` as a placeholder. If pres
 #### Default system prompt (when `system_prompt` is omitted)
 
 ```text
-You refine research queries by analyzing: {aspect.name} ({aspect.description}).
+You refine research queries by analyzing: {aspect.aspect_name} ({aspect.aspect_description}).
 Identify all missing, incomplete, ambiguous, or poorly scoped elements within this refinement aspect.
 Address all deficiencies in a single response by asking targeted, clarifying questions.
 ```
 
-The system substitutes `{aspect.name}` and `{aspect.description}` at runtime. Provide an explicit `system_prompt` when you need stricter tone, role-play, or domain-specific vocabulary.
+The system substitutes `{aspect.aspect_name}` and `{aspect.aspect_description}` at runtime. Provide an explicit `system_prompt` when you need stricter tone, role-play, or domain-specific vocabulary.
 
 - `examples` (dict): Few-shot guidance, grouped by clarity category. Structure described in §4.
 - `response_format` (dict): Structured response contract. Details in §3.
@@ -70,7 +70,7 @@ The module always expects the base schema fields below and validates every LLM r
 | --- | --- | --- |
 | `needs_refinement` | boolean | Required; instructs the manager to ask the user |
 | `explanation` | string | Required; short diagnostic or acknowledgement |
-| `suggested_question` | string | Required; single follow-up question or empty when not needed |
+| `clarifying_question` | string | Required; single follow-up question to clarify the specification, or empty when not needed |
 
 To extend the schema, supply `response_format.additional_fields` with allowed types `string`, `boolean`, `integer`, `float`, `array`, or `object`. Pair custom fields with user-facing descriptions via `response_format.field_descriptions`.
 
@@ -95,10 +95,10 @@ The `examples` field accepts any combination of five clarity categories. Each ca
 | Category key | Optional fields | Purpose |
 | --- | --- | --- |
 | `clear` | `explanation` | Examples demonstrating complete, unambiguous specifications |
-| `needs_refinement` | `issue`, `missing`, `suggested_question` | Examples missing critical information |
-| `partial` | `has`, `missing`, `suggested_question` | Examples with some but not all necessary details |
-| `ambiguous` | `issue`, `suggested_question` | Examples with vague or unclear specifications |
-| `other` | `note`, `guidance`, `suggested_question` | Edge cases or special guidance outside standard categories |
+| `needs_refinement` | `issue`, `missing`, `example_question` | Examples missing critical information |
+| `partial` | `has`, `missing`, `example_question` | Examples with some but not all necessary details |
+| `vague_ambiguous` | `issue`, `example_question` | Examples with vague or unclear specifications |
+| `other` | `note`, `guidance`, `example_question` | Edge cases or special guidance outside standard categories |
 
 Example:
 
@@ -110,16 +110,16 @@ examples:
   needs_refinement:
     - query: Does aspirin reduce heart attack risk?
       issue: No population context or comparison group provided.
-      suggested_question: "Which patient group and comparator should we focus on?"
+      clarifying_question: "Which patient group and comparator should we focus on?"
   partial:
     - query: Compare metformin to placebo for cognition in older adults with diabetes.
       has: Population and comparison supplied.
       missing: Define cognitive outcome measure and timeframe.
-      suggested_question: "Which cognitive assessment and follow-up horizon matter most?"
+      clarifying_question: "Which cognitive assessment and follow-up horizon matter most?"
   ambiguous:
     - query: Evaluate new therapy for high-risk patients.
       issue: "High-risk" is undefined.
-      suggested_question: "What criteria define high-risk in this context?"
+      clarifying_question: "What criteria define high-risk in this context?"
   other:
     - query: Evaluate treatment outcomes for exactly 40-year-old women with postpartum depression.
       note: Hyper-specific qualifiers risk excluding useful evidence.
@@ -137,9 +137,9 @@ The loader validates structure and types at load time, raising errors for unknow
 ```yaml
 basic_project_scoping:
   - id: timeline
-    name: Timeline
-    description: Determine whether deadlines or milestones are specified.
-    analysis_prompt: |
+    aspect_name: Timeline
+    aspect_description: Determine whether deadlines or milestones are specified.
+    refinement_instructions: |
       Query: {query}
 
       Identify if a timeline is provided. If not, request a specific date range or deadline.
@@ -147,9 +147,9 @@ basic_project_scoping:
     max_follow_ups: 2
 
   - id: budget
-    name: Budget Constraints
-    description: Check for financial limitations.
-    analysis_prompt: |
+    aspect_name: Budget Constraints
+    aspect_description: Check for financial limitations.
+    refinement_instructions: |
       Decide whether budget parameters are defined; otherwise ask for a range.
     depends_on:
       - timeline
@@ -162,10 +162,10 @@ Notice the `budget` aspect omits the `{query}` placeholder. The system automatic
 ```yaml
 pico_advanced:
   - id: population_core
-    name: Population Fundamentals
-    description: Capture demographic and clinical qualifiers for the study population.
+    aspect_name: Population Fundamentals
+    aspect_description: Capture demographic and clinical qualifiers for the study population.
     system_prompt: You specialize in clarifying population characteristics for evidence synthesis.
-    analysis_prompt: |
+    refinement_instructions: |
       Evaluate whether the query clearly specifies the study population.
 
       Query: {query}
@@ -176,7 +176,7 @@ pico_advanced:
       needs_refinement:
         - query: Does immunotherapy help lung cancer patients?
           issue: Cancer stage and biomarker status unknown.
-          suggested_question: "Which lung cancer subtype, stage, and biomarker profile are relevant?"
+          example_question: "Which lung cancer subtype, stage, and biomarker profile are relevant?"
     response_format:
       additional_fields:
         specificity_score: float
@@ -189,9 +189,9 @@ pico_advanced:
       priority: critical
 
   - id: intervention_detail
-    name: Intervention Detail
-    description: Clarify exact intervention components, doses, and schedules.
-    analysis_prompt: |
+    aspect_name: Intervention Detail
+    aspect_description: Clarify exact intervention components, doses, and schedules.
+    refinement_instructions: |
       Query: {query}
 
       Review the intervention description and confirm agent, dose, frequency, and delivery setting.
@@ -204,9 +204,9 @@ pico_advanced:
       priority: high
 
   - id: outcome_measure
-    name: Primary Outcome
-    description: Determine the outcome metric and timeframe of interest.
-    analysis_prompt: |
+    aspect_name: Primary Outcome
+    aspect_description: Determine the outcome metric and timeframe of interest.
+    refinement_instructions: |
       Assess whether the query specifies measurable outcomes and follow-up duration.
       
       Query: {query}

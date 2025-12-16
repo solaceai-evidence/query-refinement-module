@@ -246,7 +246,7 @@ class QueryAspectRefiner:
     was_skipped: bool = False
     
     # Analysis result - stored from LLM's structured analysis output during initialize()
-    # Contains: reason (why refinement needed/not), suggested_question (what to ask)
+    # Contains: reason (why refinement needed/not), clarifying_question (what to ask)
     analysis_reason: Optional[str] = None
     analysis_suggested_question: Optional[str] = None
     initial_summary: Optional[str] = None
@@ -307,7 +307,7 @@ class QueryAspectRefiner:
                 )
 
         analysis_prompt_sections = [
-            self.refinement_aspect.get_user_prompt(query=query, **kwargs)
+            self.refinement_aspect.get_refinement_instructions_prompt(statement=query, **kwargs)
         ]
 
         if context_lines:
@@ -381,7 +381,7 @@ class QueryAspectRefiner:
         follow_up_preamble = textwrap.dedent(
             f"""
             FOLLOW-UP CONTEXT:
-            For aspect "{self.refinement_aspect.name}", review the conversation history. 
+            For aspect "{self.refinement_aspect.aspect_name}", review the conversation history. 
             Only ask for info that is still missing or unclear. 
             If complete, set ``needs_refinement`` to ``false`` and briefly explain why no further follow-up is needed.
             """
@@ -398,8 +398,8 @@ class QueryAspectRefiner:
             )
         history_section = "\n".join(history_section_lines)
 
-        base_prompt = self.refinement_aspect.get_user_prompt(
-            query=original_query
+        base_prompt = self.refinement_aspect.get_refinement_instructions_prompt(
+            statement=original_query
         )
 
         sections = [follow_up_preamble, history_section, base_prompt]
@@ -494,25 +494,25 @@ class QueryRefinementSession:
 
             if dep_step.final_response:
                 context[dep_id] = {
-                    "name": dep_step.refinement_aspect.name,
+                    "name": dep_step.refinement_aspect.aspect_name,
                     "value": dep_step.final_response,
                 }
             elif dep_step.follow_up_history:
                 latest_response = dep_step.follow_up_history[-1].get("response") or ""
                 context[dep_id] = {
-                    "name": dep_step.refinement_aspect.name,
+                    "name": dep_step.refinement_aspect.aspect_name,
                     "value": latest_response,
                 }
             elif dep_step.is_complete and not dep_step.was_skipped:
                 context[dep_id] = {
-                    "name": dep_step.refinement_aspect.name,
+                    "name": dep_step.refinement_aspect.aspect_name,
                     "value": (
-                        f"[{dep_step.refinement_aspect.name} is clear in original query: \"{self.original_query}\"]"
+                        f"[{dep_step.refinement_aspect.aspect_name} is clear in original query: \"{self.original_query}\"]"
                     ),
                 }
             elif dep_step.was_skipped:
                 context[dep_id] = {
-                    "name": dep_step.refinement_aspect.name,
+                    "name": dep_step.refinement_aspect.aspect_name,
                     "value": "[User declined to provide additional details for this aspect]",
                 }
 
@@ -546,7 +546,7 @@ class QueryRefinementSession:
 
             step_summaries.append(
                 {
-                    "refinement_aspect": step.refinement_aspect.name,
+                    "refinement_aspect": step.refinement_aspect.aspect_name,
                     "is_complete": step.is_complete,
                     "needs_review": step.needs_review,
                     "follow_up_count": step.follow_up_count,
@@ -581,7 +581,7 @@ class QueryRefinementSession:
             if not step.follow_up_history:
                 continue
                 
-            lines.append(f"[{step.refinement_aspect.name}]")
+            lines.append(f"[{step.refinement_aspect.aspect_name}]")
             lines.append("")
             
             for i, qa in enumerate(step.follow_up_history, 1):
@@ -659,7 +659,7 @@ class QueryRefinementSession:
                 step.is_complete = False
                 step.needs_review = True  # Flag for review, DON'T clear history
                 step.was_skipped = False
-                invalidated.append(step.refinement_aspect.name)
+                invalidated.append(step.refinement_aspect.aspect_name)
                 
                 # Recursively invalidate dependents of this step
                 sub_invalidated = self._invalidate_dependents(step.refinement_aspect.id)
@@ -691,7 +691,7 @@ class QueryRefinementSession:
         # Soft-invalidate dependent steps (preserve their history for review)
         invalidated = self._invalidate_dependents(prev_step.refinement_aspect.id)
         
-        message = f"Returned to step {active_idx}: {prev_step.refinement_aspect.name}"
+        message = f"Returned to step {active_idx}: {prev_step.refinement_aspect.aspect_name}"
         if invalidated:
             message += f". Marked for review: {', '.join(invalidated)}"
         
@@ -728,10 +728,10 @@ class QueryRefinementSession:
             if self.steps[i].is_complete or self.steps[i].follow_up_history:
                 self.steps[i].is_complete = False
                 self.steps[i].needs_review = True  # Preserve history, mark for review
-                if self.steps[i].refinement_aspect.name not in invalidated:
-                    invalidated.append(self.steps[i].refinement_aspect.name)
+                if self.steps[i].refinement_aspect.aspect_name not in invalidated:
+                    invalidated.append(self.steps[i].refinement_aspect.aspect_name)
         
-        message = f"Jumped to step {step_number}: {target_step.refinement_aspect.name}"
+        message = f"Jumped to step {step_number}: {target_step.refinement_aspect.aspect_name}"
         if invalidated:
             message += f". Marked for review: {', '.join(invalidated)}"
         
@@ -767,7 +767,7 @@ class QueryRefinementSession:
         return self._finalize_active_step(
             active,
             mark_skipped=True,
-            success_message=f"Skipped refinement aspect: {active.refinement_aspect.name}",
+            success_message=f"Skipped refinement aspect: {active.refinement_aspect.aspect_name}",
         )
 
     def _finish_current(self) -> Dict[str, Any]:
@@ -776,7 +776,7 @@ class QueryRefinementSession:
         if not active:
             return {"success": False, "message": "No active step to finish"}
 
-        message = f"Completed refinement aspect: {active.refinement_aspect.name}"
+        message = f"Completed refinement aspect: {active.refinement_aspect.aspect_name}"
         if not active.final_response:
             message += " (no additional details provided)."
 
@@ -832,7 +832,7 @@ class QueryRefinementSession:
         if active:
             active_idx = self.steps.index(active) + 1
             status_tag = " (needs review)" if active.needs_review else ""
-            status_lines.append(f"  Current: Step {active_idx} - {active.refinement_aspect.name}{status_tag}")
+            status_lines.append(f"  Current: Step {active_idx} - {active.refinement_aspect.aspect_name}{status_tag}")
         else:
             status_lines.append("  Current: Session complete")
         
@@ -859,7 +859,7 @@ class QueryRefinementSession:
                 status = "not started"
 
             followups = f" ({step.follow_up_count} follow-ups)" if step.follow_up_count > 0 else ""
-            lines.append(f"  {i}. [{status}] {step.refinement_aspect.name}{followups}")
+            lines.append(f"  {i}. [{status}] {step.refinement_aspect.aspect_name}{followups}")
         
         return {
             "success": True,
@@ -876,12 +876,12 @@ class QueryRefinementSession:
         """
         return {
             "original_query": self.original_query,
-            "refinement_aspects": [aspect.name for aspect in self.refinement_framework],
+            "refinement_aspects": [aspect.aspect_name for aspect in self.refinement_framework],
             "steps": [
                 {
                     "refinement_aspect_id": step.refinement_aspect.id,
-                    "refinement_aspect_name": step.refinement_aspect.name,
-                    "refinement_aspect_description": step.refinement_aspect.description,
+                    "refinement_aspect_name": step.refinement_aspect.aspect_name,
+                    "refinement_aspect_description": step.refinement_aspect.aspect_description,
                     # Multi-turn conversation
                     "follow_up_history": step.follow_up_history,
                     # Completion status
@@ -933,11 +933,11 @@ class QueryRefinementManager:
                 followup_question = parsed_payload.get("followup_question")
                 reasoning = parsed_payload.get("reasoning")
             if is_error:
-                step.add_follow_up(question=step.analysis_suggested_question or step.refinement_aspect.name, response=f"[Validation error: {error_message}]")
+                step.add_follow_up(question=step.analysis_suggested_question or step.refinement_aspect.aspect_name, response=f"[Validation error: {error_message}]")
                 step.is_complete = True
                 break
             step.add_follow_up(
-                question=followup_question or step.analysis_suggested_question or step.refinement_aspect.name,
+                question=followup_question or step.analysis_suggested_question or step.refinement_aspect.aspect_name,
                 response=response_text
             )
             rounds += 1
@@ -1008,7 +1008,7 @@ class QueryRefinementManager:
         """Build result dict for follow-up loop."""
         return {
             "aspect_id": step.refinement_aspect.id,
-            "aspect_name": step.refinement_aspect.name,
+            "aspect_name": step.refinement_aspect.aspect_name,
             "follow_up_history": step.follow_up_history,
             "is_complete": step.is_complete,
             "final_value": final_value,
@@ -1075,7 +1075,7 @@ class QueryRefinementManager:
 
             logger.info("Initializing refinement session for query: %s", original_query)
             logger.debug("Refinement framework aspects: %s",
-                         [aspect.name for aspect in refinement_framework])
+                         [aspect.aspect_name for aspect in refinement_framework])
             
             # Create session
             session = self._create_session(original_query)
@@ -1160,7 +1160,7 @@ class QueryRefinementManager:
             
             # Store analysis results
             step.analysis_reason = analysis_result.explanation
-            step.analysis_suggested_question = analysis_result.suggested_question
+            step.analysis_suggested_question = analysis_result.clarifying_question
             
             if analysis_result.needs_refinement:
                 self._mark_step_needs_refinement(step, aspect, analysis_result)
@@ -1179,7 +1179,7 @@ class QueryRefinementManager:
         logger.warning("Analysis failed for aspect %s - marking for refinement", aspect.id)
         step.is_complete = False
         step.analysis_reason = "Analysis could not be completed"
-        step.analysis_suggested_question = aspect.description or f"Please provide details about {aspect.name}"
+        step.analysis_suggested_question = aspect.aspect_description or f"Please provide details about {aspect.aspect_name}"
 
     def _mark_step_needs_refinement(
         self,
@@ -1189,7 +1189,7 @@ class QueryRefinementManager:
     ) -> None:
         """Mark step as needing refinement."""
         step.is_complete = False
-        logger.debug("Aspect %s needs refinement: %s", aspect.name, analysis_result.explanation)
+        logger.debug("Aspect %s needs refinement: %s", aspect.aspect_name, analysis_result.explanation)
 
     def _mark_step_complete(
         self,
@@ -1201,11 +1201,11 @@ class QueryRefinementManager:
         step.is_complete = True
         summary_text = (
             analysis_result.explanation
-            or aspect.description
-            or f"Aspect '{aspect.name}' is sufficiently specified in the original query."
+            or aspect.aspect_description
+            or f"Aspect '{aspect.aspect_name}' is sufficiently specified in the original query."
         )
         step.initial_summary = summary_text.strip()
-        logger.debug("Aspect %s is already clear in original query", aspect.name)
+        logger.debug("Aspect %s is already clear in original query", aspect.aspect_name)
 
     def _log_session_summary(
         self,
@@ -1458,7 +1458,7 @@ class QueryRefinementManager:
         )
 
         step.analysis_reason = analysis_result.explanation
-        step.analysis_suggested_question = analysis_result.suggested_question
+        step.analysis_suggested_question = analysis_result.clarifying_question
         step.needs_review = False
 
         if analysis_result.needs_refinement:
@@ -1473,8 +1473,8 @@ class QueryRefinementManager:
         step.was_skipped = False
         summary_text = (
             analysis_result.explanation
-            or aspect.description
-            or f"Aspect '{aspect.name}' is sufficiently specified after refreshed analysis."
+            or aspect.aspect_description
+            or f"Aspect '{aspect.aspect_name}' is sufficiently specified after refreshed analysis."
         )
         step.initial_summary = summary_text.strip()
 
@@ -1611,7 +1611,7 @@ class QueryRefinementManager:
             Dict with error response.
         """
         failure_response = f"[Validation error: {error_message}]" if error_message else "[Validation error]"
-        question_text = step.analysis_suggested_question or aspect.name
+        question_text = step.analysis_suggested_question or aspect.aspect_name
         
         step.add_follow_up(question=question_text, response=failure_response)
         step.is_complete = True
@@ -1627,7 +1627,7 @@ class QueryRefinementManager:
         
         return {
             "aspect_id": aspect.id,
-            "aspect_name": aspect.name,
+            "aspect_name": aspect.aspect_name,
             "question": question_text,
             "response": failure_response,
             "error": True
@@ -1646,7 +1646,7 @@ class QueryRefinementManager:
         Returns:
             Dict with successful response.
         """
-        question_text = step.analysis_suggested_question or aspect.name
+        question_text = step.analysis_suggested_question or aspect.aspect_name
         step.add_follow_up(question=question_text, response=response_text)
         step.is_complete = True
         
@@ -1667,7 +1667,7 @@ class QueryRefinementManager:
         
         return {
             "aspect_id": aspect.id,
-            "aspect_name": aspect.name,
+            "aspect_name": aspect.aspect_name,
             "question": question_text,
             "response": response_text,
             **({"structured_payload": parsed_payload} if parsed_payload is not None else {}),
@@ -2021,7 +2021,7 @@ class QueryRefinementManager:
         for step in session.steps:
             final_value = (step.final_response or "").strip()
             if final_value:
-                clarifications.append((step.refinement_aspect.name, final_value))
+                clarifications.append((step.refinement_aspect.aspect_name, final_value))
                 continue
 
             if step.was_skipped:
@@ -2030,7 +2030,7 @@ class QueryRefinementManager:
             if step.is_complete:
                 summary = (step.initial_summary or step.analysis_reason or "").strip()
                 if summary:
-                    baseline_summaries.append((step.refinement_aspect.name, summary))
+                    baseline_summaries.append((step.refinement_aspect.aspect_name, summary))
 
         return clarifications, baseline_summaries
 
@@ -2217,6 +2217,7 @@ class QueryRefinementManager:
               - status: "clear" or "needs_refinement"
               - description: aspect description
               - reason: explanation of why refinement is needed (for needs_refinement only)
+              - clarifying_question: suggested question to ask the user (for needs_refinement only)
         """
         aspects_needing_refinement = []
         aspects_clear = []
@@ -2224,8 +2225,8 @@ class QueryRefinementManager:
         for step in session.steps:
             aspect_info = {
                 "id": step.refinement_aspect.id,
-                "name": step.refinement_aspect.name,
-                "description": step.refinement_aspect.description,
+                "name": step.refinement_aspect.aspect_name,
+                "description": step.refinement_aspect.aspect_description,
                 "status": "clear" if step.is_complete else "needs_refinement"
             }
             
@@ -2234,7 +2235,7 @@ class QueryRefinementManager:
                 if step.analysis_reason:
                     aspect_info["reason"] = step.analysis_reason
                 if step.analysis_suggested_question:
-                    aspect_info["suggested_question"] = step.analysis_suggested_question
+                    aspect_info["clarifying_question"] = step.analysis_suggested_question
             
             if step.is_complete:
                 aspects_clear.append(aspect_info)

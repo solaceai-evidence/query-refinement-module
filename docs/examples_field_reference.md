@@ -27,24 +27,24 @@ examples:
   needs_refinement:
     - query: "Does exercise help with depression in adults?"
       issue: "'Adults' spans 18-80+ and setting is unspecified."
-      suggested_question: "Which age range and care setting should we target?"
+      clarifying_question: "Which age range and care setting should we target?"
 
   partial:
     - query: "Effects of diet intervention in women over 40"
       has: "Gender and minimum age are supplied."
       missing: "Upper age limit and geographic scope."
-      suggested_question: "Do you want to focus on a specific age band or region?"
+      clarifying_question: "Do you want to focus on a specific age band or region?"
 
   ambiguous:
     - query: "Intervention effectiveness in middle-aged adults"
       issue: "'Middle-aged' is subjective; clarify the numeric range."
-      suggested_question: "What exact ages define 'middle-aged' for this study?"
+      clarifying_question: "What exact ages define 'middle-aged' for this study?"
 
   other:
     - query: "Effectiveness of mindfulness training for exactly 40-year-old women with postpartum depression"
       note: "Hyper-specific demographic filters can shrink the candidate evidence base to almost nothing."
       guidance: "Confirm whether such granularity is really needed at the discovery stage or if a broader band (e.g., women 30-45) would be acceptable."
-      suggested_question: "Should we widen the age range or related qualifiers to capture more literature?"
+      clarifying_question: "Should we widen the age range or related qualifiers to capture more literature?"
 ```
 
 ## 3. Python Typing Helpers

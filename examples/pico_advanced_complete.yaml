@@ -1,563 +1,483 @@
 pico_advanced:
-  - id: population_demographics
-    name: Population Demographics
-    description: |
-      Defines the target population's basic demographic characteristics including
-      age range, gender, ethnicity, but excluding settings.
-    
-    analysis_prompt: |
-      **Query to Analyze:** "{query}"
-      
-      ## Required Demographic Dimensions
-      
-      1. **Age Range**: Is there a specific age range or age group mentioned?
-         - Examples: "18-65 years", "adults", "elderly 75+", "pediatric"
-         - Red flags: vague terms like "older", "younger" without numbers
-      
-      2. **Gender/Sex**: Is gender specification necessary and if so, is it provided?
-         - Consider: Is gender relevant to the research question?
-         - Examples: "postmenopausal women", "male athletes"
-      
-      3. **Ethnicity/Race**: Is ethnicity mentioned when relevant?
-         - Consider: Does the condition have ethnic disparities?
-         - Examples: "African American populations", "Asian populations"
-      
-      ## Analysis Framework
-      
-      Determine if the demographic specification is sufficient for:
-      1. Study replication
-      2. Results generalization
-      3. Ethical review requirements
-    
-    examples:
+- id: population_demographics
+  examples:
       clear:
-        - query: "Efficacy of metformin in adults aged 40-65 with BMI > 30"
-          explanation: "Age range precisely defined (40-65), specific population characteristic (BMI > 30)"
-        
-        - query: "Postmenopausal women aged 50-70 in urban clinical settings"
-          explanation: "Age (50-70), gender (women), life stage (postmenopausal), setting (urban clinical) all clearly specified"
-        
-        - query: "African American males aged 18-45 with hypertension in community health centers"
-          explanation: "Complete demographic profile: ethnicity, gender, age range, condition, and recruitment setting"
-      
+    - statement: Efficacy of metformin in adults aged 40-65 with BMI > 30
+      explanation: Age range precisely defined (40-65), specific population characteristic
+        (BMI > 30)
+    - statement: Postmenopausal women aged 50-70 in urban clinical settings
+      explanation: Age (50-70), gender (women), life stage (postmenopausal), setting
+        (urban clinical) all clearly specified
+    - statement: African American males aged 18-45 with hypertension in community health
+        centers
+      explanation: 'Complete demographic profile: ethnicity, gender, age range, condition,
+        and recruitment setting'
       needs_refinement:
-        - query: "Does exercise reduce depression in adults?"
-          issue: "'Adults' is too broad - could range from 18 to 100+ years"
-          missing: "Specific age range, gender considerations, geographic scope"
-          suggested_question: "What age range are you targeting? For example: young adults (18-35), middle-aged (36-64), or older adults (65+)?"
-        
-        - query: "Study on diabetes management in elderly patients"
-          issue: "'Elderly' is ambiguous - definitions vary from 60+ to 80+"
-          missing: "Precise age threshold, gender, setting"
-          suggested_question: "What specific age threshold defines 'elderly' for your study? (e.g., 65+, 70+, 75+)"
-        
-        - query: "Treatment outcomes in minority populations"
-          issue: "'Minority populations' is vague and could mean multiple groups"
-          missing: "Specific ethnic/racial groups, age, gender"
-          suggested_question: "Which specific population groups are you focusing on? (e.g., Hispanic/Latino, African American, Asian, Native American)"
-      
+    - statement: Does exercise reduce depression in adults?
+      issue: '''Adults'' is too broad - could range from 18 to 100+ years'
+      missing: Specific age range, gender considerations, geographic scope
+      clarifying_question: 'What age range are you targeting? For example: young adults
+        (18-35), middle-aged (36-64), or older adults (65+)?'
+    - statement: Study on diabetes management in elderly patients
+      issue: '''Elderly'' is ambiguous - definitions vary from 60+ to 80+'
+      missing: Precise age threshold, gender, setting
+      clarifying_question: What specific age threshold defines 'elderly' for your study?
+        (e.g., 65+, 70+, 75+)
+    - statement: Treatment outcomes in minority populations
+      issue: '''Minority populations'' is vague and could mean multiple groups'
+      missing: Specific ethnic/racial groups, age, gender
+      clarifying_question: Which specific population groups are you focusing on? (e.g.,
+        Hispanic/Latino, African American, Asian, Native American)
       partial:
-        - query: "Women over 40 with cardiovascular disease"
-          has: "Gender (women) and minimum age (40)"
-          missing: "Upper age limit, ethnicity (if CVD disparities relevant), geographic setting"
-          suggested_question: "Is there an upper age limit? Are you focusing on specific ethnic groups given CVD disparities?"
-        
-        - query: "Pediatric patients in tertiary care hospitals"
-          has: "Age category (pediatric) and setting (tertiary care)"
-          missing: "Specific age range within pediatrics (neonates, infants, children, adolescents?)"
-          suggested_question: "What age range within pediatrics? (0-1 year, 1-12 years, 12-18 years, or all pediatric ages)"
-      
-      ambiguous:
-        - query: "Middle-aged adults in diverse communities"
-          issue: "Both 'middle-aged' (typically 40-65 but varies) and 'diverse' are ambiguous"
-          suggested_question: "Can you specify: 1) Exact age range for 'middle-aged', and 2) What dimensions of diversity matter (ethnic, socioeconomic, geographic)?"
-        
-        - query: "Study in representative population sample"
-          issue: "'Representative' is context-dependent - representative of what population?"
-          suggested_question: "What population should this sample represent? Please specify demographic characteristics that define representativeness."
-
+    - statement: Women over 40 with cardiovascular disease
+      has: Gender (women) and minimum age (40)
+      missing: Upper age limit, ethnicity (if CVD disparities relevant), geographic
+        setting
+      clarifying_question: Is there an upper age limit? Are you focusing on specific
+        ethnic groups given CVD disparities?
+    - statement: Pediatric patients in tertiary care hospitals
+      has: Age category (pediatric) and setting (tertiary care)
+      missing: Specific age range within pediatrics (neonates, infants, children,
+        adolescents?)
+      clarifying_question: What age range within pediatrics? (0-1 year, 1-12 years,
+        12-18 years, or all pediatric ages)
       other:
-        - query: "Mindfulness program outcomes for exactly 40-year-old women diagnosed with postpartum depression within the last month"
-          note: "Extremely narrow demographic qualifiers can cause the literature search to miss closely related evidence (e.g., 35-45)."
-          guidance: "Confirm whether the researcher is open to a broader age band or postpartum window before locking the filters."
-          suggested_question: "Should we expand the age or postpartum interval to capture more applicable studies?"
-  - id: geographic_location
-    name: Geographic Location & Setting
-    description: |
-      Captures the geographic context referenced in a clinical research query,
-      including country, region, city, healthcare setting, and recruitment environment.
-      Precise location details clarify generalizability and feasibility.
-    analysis_prompt: |
-      Determine whether the geographic location and setting are sufficiently specified.
+    - statement: Mindfulness program outcomes for exactly 40-year-old women diagnosed
+        with postpartum depression within the last month
+      note: Extremely narrow demographic qualifiers can cause the literature search
+        to miss closely related evidence (e.g., 35-45).
+      guidance: Confirm whether the researcher is open to a broader age band or postpartum
+        window before locking the filters.
+      clarifying_question: Should we expand the age or postpartum interval to capture
+        more applicable studies?
+      vague_ambiguous:
+    - statement: Middle-aged adults in diverse communities
+      issue: Both 'middle-aged' (typically 40-65 but varies) and 'diverse' are ambiguous
+      clarifying_question: 'Can you specify: 1) Exact age range for ''middle-aged'',
+        and 2) What dimensions of diversity matter (ethnic, socioeconomic, geographic)?'
+    - statement: Study in representative population sample
+      issue: '''Representative'' is context-dependent - representative of what population?'
+      clarifying_question: What population should this sample represent? Please specify
+        demographic characteristics that define representativeness.
+  refinement_instructions: "**Query to Analyze:** \"{query}\"\n\n## Required Demographic\
+    \ Dimensions\n\n1. **Age Range**: Is there a specific age range or age group mentioned?\n\
+    \   - Examples: \"18-65 years\", \"adults\", \"elderly 75+\", \"pediatric\"\n\
+    \   - Red flags: vague terms like \"older\", \"younger\" without numbers\n\n2.\
+    \ **Gender/Sex**: Is gender specification necessary and if so, is it provided?\n\
+    \   - Consider: Is gender relevant to the research question?\n   - Examples: \"\
+    postmenopausal women\", \"male athletes\"\n\n3. **Ethnicity/Race**: Is ethnicity\
+    \ mentioned when relevant?\n   - Consider: Does the condition have ethnic disparities?\n\
+    \   - Examples: \"African American populations\", \"Asian populations\"\n\n##\
+    \ Analysis Framework\n\nDetermine if the demographic specification is sufficient\
+    \ for:\n1. Study replication\n2. Results generalization\n3. Ethical review requirements\n"
+  aspect_name: Population Demographics
+  aspect_description: 'Defines the target population''s basic demographic characteristics
+    including
 
-      ## Considerations
-      1. **Country/Region/City**: Is a specific place named (e.g., "Spain", "New York City", "West Africa")?
-      2. **Healthcare Setting**: Is the care context defined (e.g., "tertiary hospital", "community clinic", "home-based care")?
-      3. **Recruitment Context**: Is the population tied to a clear study context (e.g., "urban academic centers", "rural outreach programs")?
+    age range, gender, ethnicity, but excluding settings.
 
-      Use these details to judge whether replication, generalization, and feasibility are answerable without additional questions.
-    examples:
+    '
+- id: geographic_location
+  examples:
       clear:
-        - query: "Hypertension management in rural community health districts in India"
-          explanation: "Country (India), setting (district health services), and scope are explicit."
-        - query: "Diabetes outcomes monitored at tertiary care centers across São Paulo"
-          explanation: "City (São Paulo) and facility type (tertiary centers) are clearly defined."
-        - query: "Asthma prevalence studies conducted in city hospitals in Nairobi"
-          explanation: "City (Nairobi) and care setting (city hospitals) anchor the location."
+    - statement: Hypertension management in rural community health districts in India
+      explanation: Country (India), setting (district health services), and scope
+        are explicit.
+    - statement: Diabetes outcomes monitored at tertiary care centers across São Paulo
+      explanation: City (São Paulo) and facility type (tertiary centers) are clearly
+        defined.
+    - statement: Asthma prevalence studies conducted in city hospitals in Nairobi
+      explanation: City (Nairobi) and care setting (city hospitals) anchor the location.
       needs_refinement:
-        - query: "Cancer treatment in local hospitals"
-          issue: "'Local hospitals' lacks any location reference."
-          missing: "City, region, or country identifiers."
-          suggested_question: "Which city, region, or country do the 'local hospitals' refer to?"
-        - query: "Global trial enrolling patients from multiple continents"
-          issue: "Continents alone are too broad for planning."
-          missing: "Specific countries, regions, or sites."
-          suggested_question: "Which countries or regions will the trial cover?"
+    - statement: Cancer treatment in local hospitals
+      issue: '''Local hospitals'' lacks any location reference.'
+      missing: City, region, or country identifiers.
+      clarifying_question: Which city, region, or country do the 'local hospitals'
+        refer to?
+    - statement: Global trial enrolling patients from multiple continents
+      issue: Continents alone are too broad for planning.
+      missing: Specific countries, regions, or sites.
+      clarifying_question: Which countries or regions will the trial cover?
       partial:
-        - query: "Outcomes tracked in hospitals in Europe"
-          has: "Region (Europe) and setting (hospitals)."
-          missing: "hospital typology"
-          note: "Europe is broad; confirm whether that level of granularity is acceptable."
-          suggested_question: "Is Europe specific enough for your study, or can you point to a country/city and hospital type?"
-        - query: "Diabetes care delivered through clinics"
-          has: "Care setting (clinics)."
-          missing: "Geographic location of those clinics."
-          suggested_question: "Where are these clinics located (country, region, or city)?"
-      ambiguous:
-        - query: "Treatment studies in representative settings"
-          issue: "'Representative' has no geographic anchor."
-          suggested_question: "Which specific settings (cities, regions, or countries) are considered representative?"
-        - query: "Research in diverse communities"
-          issue: "'Diverse communities' lacks locational detail."
-          suggested_question: "Which communities and locations define 'diverse' in this context?"
-  - id: population_clinical_profile
-    name: Clinical Profile & Health Status
-    description: |
-      Specifies the primary health condition, disease stage, severity, comorbidities,
-      and relevant medical history. Critical for defining study eligibility and
-      expected treatment responses.
-    
-    depends_on:
-      - population_demographics
-      - geographic_location
-    
-    analysis_prompt: |
-      # TASK: Clinical Profile Analysis
-      
-      Analyze the clinical characteristics and health status specification.
-      
-      ## Clinical Profile Dimensions
-      
-      1. **Primary Condition/Diagnosis**
-         - Is the main health condition clearly identified?
-         - Is it specific enough? (e.g., "Type 2 diabetes" vs "diabetes")
-      
-      2. **Disease Stage/Phase**
-         - Is staging mentioned when relevant?
-         - Examples: early-stage, advanced, acute, chronic, remission
-      
-      3. **Severity Level**
-         - Is severity specified?
-         - Examples: mild, moderate, severe, or quantified measures
-      
-      4. **Comorbidities**
-         - Are concurrent conditions mentioned?
-         - Are exclusions for contraindicated comorbidities specified?
-      
-      5. **Treatment History**
-         - Is prior treatment status mentioned?
-         - Examples: treatment-naive, refractory, previously treated
-      
-      6. **Diagnostic Criteria**
-         - Are diagnostic standards mentioned?
-         - Examples: ICD codes, clinical guidelines, biomarker thresholds
-      
-      Evaluate whether the clinical profile enables:
-      - Accurate patient identification and recruitment
-      - Appropriate treatment selection
-      - Valid outcome interpretation
-    
-    examples:
-      clear:
-        - query: "Efficacy of SGLT2 inhibitors in Type 2 diabetes patients with HbA1c 7.5-10%, treatment-naive"
-          explanation: "Specific condition (Type 2 diabetes), severity marker (HbA1c 7.5-10%), treatment history (naive)"
-        
-        - query: "Outcomes of immunotherapy in stage IIIB non-small cell lung cancer, ECOG performance status 0-1"
-          explanation: "Precise diagnosis, stage (IIIB), cancer type (NSCLC), functional status (ECOG 0-1)"
-        
-        - query: "Management of acute severe asthma exacerbations requiring emergency department care"
-          explanation: "Condition (asthma), phase (acute), severity (severe), setting context (ED care required)"
-      
-      needs_refinement:
-        - query: "Treatment for diabetic patients"
-          issue: "Diabetes type not specified - Type 1, Type 2, gestational, MODY, etc. have different treatments"
-          missing: "Disease type, severity, duration, complications"
-          suggested_question: "What type of diabetes? (Type 1, Type 2, gestational) And what level of glycemic control? (e.g., HbA1c range)"
-        
-        - query: "Study on cancer treatment outcomes"
-          issue: "No cancer type, stage, or histology specified"
-          missing: "Cancer type, stage, grade, molecular markers"
-          suggested_question: "Which cancer type and stage are you studying? Are there specific histological or molecular characteristics?"
-        
-        - query: "Intervention in patients with heart problems"
-          issue: "'Heart problems' is far too vague - hundreds of cardiac conditions exist"
-          missing: "Specific cardiac diagnosis, severity, functional class"
-          suggested_question: "What specific cardiac condition? (e.g., heart failure, coronary artery disease, arrhythmia) And what severity?"
-      
-      partial:
-        - query: "Effects of statins in patients with moderate hyperlipidemia"
-          has: "Condition (hyperlipidemia) and severity (moderate)"
-          missing: "Specific lipid ranges defining 'moderate', comorbidities, prior treatment attempts"
-          suggested_question: "What LDL or total cholesterol range defines 'moderate' for your study? Any relevant comorbidities or prior statin use?"
-        
-        - query: "Study in hypertensive patients with diabetes"
-          has: "Two conditions specified (hypertension, diabetes)"
-          missing: "BP range, diabetes type, severity of both conditions, other comorbidities"
-          suggested_question: "What BP range defines hypertension in your study? What type and control level of diabetes?"
-      
-      ambiguous:
-        - query: "Treatment in patients with refractory disease"
-          issue: "'Refractory' to which treatments? How many prior treatment failures?"
-          suggested_question: "Refractory to which specific treatments? How many prior treatment lines? What defines 'refractory' in your protocol?"
-        
-        - query: "Study in high-risk cardiovascular patients"
-          issue: "'High-risk' is subjective - needs risk score or specific criteria"
-          suggested_question: "What defines 'high-risk'? (e.g., Framingham score, specific risk factors, prior events)"
-  
-  - id: intervention_specification
-    name: Intervention Specification
-    description: |
-      Details the treatment, procedure, or exposure being studied including
-      specific agents, dosing, duration, frequency, and delivery method.
-    
-    depends_on:
-      - population_demographics
-      - geographic_location
-      - population_clinical_profile
-    
-    analysis_prompt: |
-      **Query to Analyze:** "{query}"
-      
-      # TASK: Intervention Specification Analysis
-      
-      Analyze whether the intervention is sufficiently detailed for study replication.
-      
-      ## Intervention Dimensions
-      
-      1. **Intervention Type**
-         - Pharmacological (drug, biologic)
-         - Procedural (surgery, device)
-         - Behavioral (therapy, lifestyle)
-         - Diagnostic (test, screening)
-      
-      2. **Specific Agent/Method**
-         - Generic/brand name for drugs
-         - Specific procedure or technique
-         - Defined behavioral protocol
-      
-      3. **Dosing/Intensity** (if applicable)
-         - Dose amount and units
-         - Frequency (daily, weekly)
-         - Timing (morning, with meals)
-      
-      4. **Duration**
-         - Treatment length
-         - Follow-up period
-      
-      5. **Delivery Method**
-         - Route (oral, IV, subcutaneous)
-         - Setting (inpatient, outpatient, home)
-         - Provider type
-      
-      6. **Adjunct Treatments**
-         - Concurrent therapies
-         - Background medications
-         - Supportive care protocols
-    
-    examples:
-      clear:
-        - query: "Metformin 1000mg twice daily for 6 months vs placebo in newly diagnosed Type 2 diabetes"
-          explanation: "Drug (metformin), dose (1000mg), frequency (twice daily), duration (6 months), comparison (placebo)"
-        
-        - query: "Laparoscopic Roux-en-Y gastric bypass performed by experienced bariatric surgeons"
-          explanation: "Specific surgical technique (laparoscopic Roux-en-Y), provider qualification (experienced bariatric surgeons)"
-        
-        - query: "Cognitive Behavioral Therapy, 12 weekly 60-minute sessions delivered by licensed clinical psychologists"
-          explanation: "Therapy type (CBT), frequency (weekly), duration (12 sessions), session length (60 min), provider (licensed psychologists)"
-      
-      needs_refinement:
-        - query: "Effects of medication on blood pressure"
-          issue: "No medication specified, no dosing information"
-          missing: "Drug name, dose, frequency, duration, route"
-          suggested_question: "Which medication are you studying? Please specify the drug name, dose, frequency, and treatment duration."
-        
-        - query: "Study on surgery outcomes"
-          issue: "Type of surgery not specified"
-          missing: "Surgical procedure, approach (open vs laparoscopic), setting"
-          suggested_question: "What specific surgical procedure? What surgical approach? (e.g., open, laparoscopic, robotic)"
-        
-        - query: "Exercise intervention for weight loss"
-          issue: "Exercise type, intensity, frequency, duration all unspecified"
-          missing: "Exercise modality, intensity level, frequency, session duration, total program length"
-          suggested_question: "What type of exercise? (aerobic, resistance, both) What intensity, frequency, and program duration?"
-      
-      partial:
-        - query: "Atorvastatin treatment for hyperlipidemia"
-          has: "Drug name (atorvastatin), indication (hyperlipidemia)"
-          missing: "Dose, frequency, treatment duration, titration protocol"
-          suggested_question: "What dose of atorvastatin? (10mg, 20mg, 40mg, 80mg) What frequency and treatment duration?"
-        
-        - query: "Physical therapy twice weekly for knee osteoarthritis"
-          has: "Intervention type (physical therapy), frequency (twice weekly), condition"
-          missing: "Specific PT protocol, session duration, total treatment length, therapy components"
-          suggested_question: "What specific PT protocol? How long are sessions? What is the total treatment duration?"
-      
-      ambiguous:
-        - query: "High-dose vitamin D supplementation"
-          issue: "'High-dose' is relative - could be 2,000 IU or 50,000 IU depending on context"
-          suggested_question: "What specific dose of vitamin D? (e.g., 2,000 IU daily, 50,000 IU weekly)"
-        
-        - query: "Intensive glycemic control in diabetes"
-          issue: "'Intensive' is subjective - needs target HbA1c or glucose range"
-          suggested_question: "What target defines 'intensive control'? (e.g., HbA1c <6.5%, fasting glucose 80-110 mg/dL)"
-  - id: comparison_group
-    name: Comparison/Control Group
-    description: |
-      Defines what the intervention is compared against: placebo, standard care,
-      alternative treatment, or no treatment. Critical for establishing causality.
-    
-    depends_on:
-      - intervention_specification
-    
-    analysis_prompt: |
-      # TASK: Comparison Group Analysis
-      
-      Analyze whether an appropriate comparison/control group is specified.
-      
-      ## Comparison Types
-      
-      1. **Placebo Control**
-         - Inert substance/sham procedure
-         - Blinding considerations
-      
-      2. **Standard Care/Treatment**
-         - Current guideline-recommended treatment
-         - Usual care protocols
-      
-      3. **Alternative Active Treatment**
-         - Different drug/dose/intervention
-         - Head-to-head comparison
-      
-      4. **No Treatment**
-         - Watchful waiting
-         - Natural history observation
-      
-      5. **Dose Comparison**
-         - Different doses of same intervention
-      
-      ## Key Questions
-      
-      - Is a comparator mentioned?
-      - Is the comparator appropriate for the research question?
-      - Is the comparator as well-defined as the intervention?
-      - Are ethical considerations addressed (especially for no-treatment controls)?
-    
-    examples:
-      clear:
-        - query: "Metformin vs placebo in prediabetic adults"
-          explanation: "Clear active intervention (metformin) vs inert control (placebo)"
-        
-        - query: "New anticoagulant compared to warfarin (standard care) in atrial fibrillation"
-          explanation: "Novel treatment vs established standard of care explicitly stated"
-        
-        - query: "High-intensity statins vs moderate-intensity statins in secondary prevention"
-          explanation: "Head-to-head comparison of two active dose strategies"
-      
-      needs_refinement:
-        - query: "Effects of new drug on blood pressure"
-          issue: "No comparison group mentioned"
-          missing: "Comparator specification"
-          suggested_question: "What will you compare the new drug against? (e.g., placebo, current standard treatment, another active drug)"
-        
-        - query: "Study of surgical intervention"
-          issue: "No comparison - surgery vs what?"
-          missing: "Control/comparison group"
-          suggested_question: "What is the comparison? (e.g., surgery vs medical management, surgery vs observation, one surgical technique vs another)"
-      
-      partial:
-        - query: "Cognitive therapy vs usual care in depression"
-          has: "Intervention (cognitive therapy) and comparison type (usual care)"
-          missing: "'Usual care' not defined - varies by setting and provider"
-          suggested_question: "Can you specify what 'usual care' includes in your setting? (e.g., medications only, supportive counseling, monitoring frequency)"
-        
-        - query: "New treatment compared to current options"
-          has: "Comparison concept mentioned"
-          missing: "Specific comparator not identified"
-          suggested_question: "What specific current treatment(s) will serve as the comparator? (e.g., specific drug names, specific procedures)"
-      
-      ambiguous:
-        - query: "Drug A versus control in hypertension"
-          issue: "'Control' could mean placebo, standard care, or no treatment"
-          suggested_question: "What does 'control' mean in your study? (placebo, standard antihypertensive therapy, or no treatment)"
-        
-        - query: "Intervention vs standard therapy"
-          issue: "'Standard therapy' varies by geography, guidelines, and time period"
-          suggested_question: "What specific treatment(s) constitute 'standard therapy' in your context? (e.g., specific drugs, specific guidelines)"
+    - statement: Outcomes tracked in hospitals in Europe
+      has: Region (Europe) and setting (hospitals).
+      missing: hospital typology
+      note: Europe is broad; confirm whether that level of granularity is acceptable.
+      clarifying_question: Is Europe specific enough for your study, or can you point
+        to a country/city and hospital type?
+    - statement: Diabetes care delivered through clinics
+      has: Care setting (clinics).
+      missing: Geographic location of those clinics.
+      clarifying_question: Where are these clinics located (country, region, or city)?
+      vague_ambiguous:
+    - statement: Treatment studies in representative settings
+      issue: '''Representative'' has no geographic anchor.'
+      clarifying_question: Which specific settings (cities, regions, or countries)
+        are considered representative?
+    - statement: Research in diverse communities
+      issue: '''Diverse communities'' lacks locational detail.'
+      clarifying_question: Which communities and locations define 'diverse' in this
+        context?
+  refinement_instructions: 'Determine whether the geographic location and setting
+    are sufficiently specified.
 
-  - id: primary_outcomes
-    name: Primary Outcomes
-    description: |
-      Specifies the main outcomes of interest including measurement methods,
-      timepoints, and clinical significance thresholds.
-    
-    depends_on:
-      - intervention_specification
-      - population_clinical_profile
-    
-    analysis_prompt: |
-      # TASK: Primary Outcome Analysis
-      
-      Analyze whether primary outcomes are adequately specified.
-      
-      ## Outcome Dimensions
-      
-      1. **Outcome Type**
-         - Clinical outcomes (mortality, morbidity)
-         - Surrogate/biomarker outcomes
-         - Patient-reported outcomes (PROs)
-         - Functional outcomes
-         - Safety/adverse events
-      
-      2. **Measurement Method**
-         - Specific instruments/scales
-         - Laboratory tests
-         - Imaging modalities
-         - Validated questionnaires
-      
-      3. **Timepoint(s)**
-         - When outcomes measured
-         - Follow-up duration
-         - Multiple assessment points
-      
-      4. **Clinical Significance**
-         - Minimal clinically important difference (MCID)
-         - Target effect size
-         - Superiority vs non-inferiority
-      
-      5. **Primary vs Secondary**
-         - Is primary outcome identified?
-         - Are secondary outcomes distinguished?
-    
-    examples:
+
+    ## Considerations
+
+    1. **Country/Region/City**: Is a specific place named (e.g., "Spain", "New York
+    City", "West Africa")?
+
+    2. **Healthcare Setting**: Is the care context defined (e.g., "tertiary hospital",
+    "community clinic", "home-based care")?
+
+    3. **Recruitment Context**: Is the population tied to a clear study context (e.g.,
+    "urban academic centers", "rural outreach programs")?
+
+
+    Use these details to judge whether replication, generalization, and feasibility
+    are answerable without additional questions.
+
+    '
+  aspect_name: Geographic Location & Setting
+  aspect_description: 'Captures the geographic context referenced in a clinical research
+    query,
+
+    including country, region, city, healthcare setting, and recruitment environment.
+
+    Precise location details clarify generalizability and feasibility.
+
+    '
+- id: population_clinical_profile
+  depends_on:
+  - population_demographics
+  - geographic_location
+  examples:
       clear:
-        - query: "Effect of intervention on all-cause mortality at 5 years"
-          explanation: "Specific outcome (all-cause mortality), clear timepoint (5 years)"
-        
-        - query: "Change in HbA1c from baseline to 6 months, with target reduction ≥0.5%"
-          explanation: "Specific biomarker (HbA1c), timeframe (baseline to 6 months), clinical significance threshold (≥0.5%)"
-        
-        - query: "Quality of life measured by SF-36 at 3, 6, and 12 months post-intervention"
-          explanation: "Specific validated instrument (SF-36), multiple timepoints (3, 6, 12 months)"
-      
+    - statement: Efficacy of SGLT2 inhibitors in Type 2 diabetes patients with HbA1c 7.5-10%,
+        treatment-naive
+      explanation: Specific condition (Type 2 diabetes), severity marker (HbA1c 7.5-10%),
+        treatment history (naive)
+    - statement: Outcomes of immunotherapy in stage IIIB non-small cell lung cancer, ECOG
+        performance status 0-1
+      explanation: Precise diagnosis, stage (IIIB), cancer type (NSCLC), functional
+        status (ECOG 0-1)
+    - statement: Management of acute severe asthma exacerbations requiring emergency department
+        care
+      explanation: Condition (asthma), phase (acute), severity (severe), setting context
+        (ED care required)
       needs_refinement:
-        - query: "Study on treatment effectiveness"
-          issue: "'Effectiveness' not defined - needs specific measurable outcome"
-          missing: "Specific outcome measure, measurement method, timepoint"
-          suggested_question: "How will you measure effectiveness? (e.g., specific clinical outcomes, biomarkers, patient-reported measures)"
-        
-        - query: "Research on improving patient outcomes"
-          issue: "'Outcomes' is vague - could mean dozens of different measures"
-          missing: "Specific outcome(s), measurement tools, assessment timing"
-          suggested_question: "What specific outcome(s) will you measure? When will they be assessed?"
-        
-        - query: "Trial measuring quality of life improvement"
-          issue: "QOL mentioned but no instrument specified"
-          missing: "QOL instrument, measurement timepoints, MCID"
-          suggested_question: "Which quality of life instrument will you use? (e.g., SF-36, EQ-5D, disease-specific) When will you assess it?"
-      
+    - statement: Treatment for diabetic patients
+      issue: Diabetes type not specified - Type 1, Type 2, gestational, MODY, etc.
+        have different treatments
+      missing: Disease type, severity, duration, complications
+      clarifying_question: What type of diabetes? (Type 1, Type 2, gestational) And
+        what level of glycemic control? (e.g., HbA1c range)
+    - statement: Study on cancer treatment outcomes
+      issue: No cancer type, stage, or histology specified
+      missing: Cancer type, stage, grade, molecular markers
+      clarifying_question: Which cancer type and stage are you studying? Are there
+        specific histological or molecular characteristics?
+    - statement: Intervention in patients with heart problems
+      issue: '''Heart problems'' is far too vague - hundreds of cardiac conditions
+        exist'
+      missing: Specific cardiac diagnosis, severity, functional class
+      clarifying_question: What specific cardiac condition? (e.g., heart failure, coronary
+        artery disease, arrhythmia) And what severity?
       partial:
-        - query: "Effect on blood pressure reduction"
-          has: "General outcome category (blood pressure)"
-          missing: "Specific BP parameter (systolic, diastolic, mean arterial), target reduction, measurement protocol, timepoint"
-          suggested_question: "Which BP parameter? (systolic, diastolic, or both) What measurement protocol? When will it be assessed?"
-        
-        - query: "Change in depression scores using validated scales"
-          has: "Outcome type (depression), mentions validation"
-          missing: "Specific scale, timepoints, MCID"
-          suggested_question: "Which depression scale? (PHQ-9, Beck Depression Inventory, HAM-D) At what timepoints? What change is clinically meaningful?"
-      
-      ambiguous:
-        - query: "Study on long-term outcomes of surgery"
-          issue: "'Long-term' is relative (could be 1 year or 10 years), 'outcomes' unspecified"
-          suggested_question: "What is the follow-up duration? What specific outcomes will you measure? (e.g., survival, complications, functional status)"
-        
-        - query: "Research on significant improvement in symptoms"
-          issue: "'Significant' (statistical vs clinical?) and 'symptoms' (which ones?) both vague"
-          suggested_question: "Which specific symptoms? How will you measure them? What defines a clinically meaningful improvement?"
-  
-  - id: study_design_context
-    name: Study Design & Methodological Context
-    description: |
-      Clarifies the intended study design, setting, sample size considerations,
-      and methodological approach. Helps determine feasibility and appropriate
-      statistical methods.
-    
-    depends_on:
-      - population_demographics
-      - intervention_specification
-      - comparison_group
-      - primary_outcomes
-    
-    analysis_prompt: |
-      # TASK: Study Design & Context Analysis
-      
-      Analyze whether study design and methodological context are specified.
-      
-      ## Design Dimensions
-      
-      1. **Study Type**
-         - RCT (parallel, crossover, cluster)
-         - Observational (cohort, case-control)
-         - Systematic review/meta-analysis
-         - Pragmatic trial
-      
-      2. **Setting**
-         - Healthcare setting type
-         - Geographic scope
-         - Single-center vs multi-center
-      
-      3. **Sample Size**
-         - Target enrollment
-         - Sample size rationale
-         - Power considerations
-      
-      4. **Duration**
-         - Study timeline
-         - Recruitment period
-         - Follow-up length
-      
-      5. **Special Considerations**
-         - Blinding/masking
-         - Randomization method
-         - Statistical approach
-         - Interim analyses
-    
-    examples:
+    - statement: Effects of statins in patients with moderate hyperlipidemia
+      has: Condition (hyperlipidemia) and severity (moderate)
+      missing: Specific lipid ranges defining 'moderate', comorbidities, prior treatment
+        attempts
+      clarifying_question: What LDL or total cholesterol range defines 'moderate' for
+        your study? Any relevant comorbidities or prior statin use?
+    - statement: Study in hypertensive patients with diabetes
+      has: Two conditions specified (hypertension, diabetes)
+      missing: BP range, diabetes type, severity of both conditions, other comorbidities
+      clarifying_question: What BP range defines hypertension in your study? What type
+        and control level of diabetes?
+      vague_ambiguous:
+    - statement: Treatment in patients with refractory disease
+      issue: '''Refractory'' to which treatments? How many prior treatment failures?'
+      clarifying_question: Refractory to which specific treatments? How many prior
+        treatment lines? What defines 'refractory' in your protocol?
+    - statement: Study in high-risk cardiovascular patients
+      issue: '''High-risk'' is subjective - needs risk score or specific criteria'
+      clarifying_question: What defines 'high-risk'? (e.g., Framingham score, specific
+        risk factors, prior events)
+  refinement_instructions: "# TASK: Clinical Profile Analysis\n\nAnalyze the clinical\
+    \ characteristics and health status specification.\n\n## Clinical Profile Dimensions\n\
+    \n1. **Primary Condition/Diagnosis**\n   - Is the main health condition clearly\
+    \ identified?\n   - Is it specific enough? (e.g., \"Type 2 diabetes\" vs \"diabetes\"\
+    )\n\n2. **Disease Stage/Phase**\n   - Is staging mentioned when relevant?\n  \
+    \ - Examples: early-stage, advanced, acute, chronic, remission\n\n3. **Severity\
+    \ Level**\n   - Is severity specified?\n   - Examples: mild, moderate, severe,\
+    \ or quantified measures\n\n4. **Comorbidities**\n   - Are concurrent conditions\
+    \ mentioned?\n   - Are exclusions for contraindicated comorbidities specified?\n\
+    \n5. **Treatment History**\n   - Is prior treatment status mentioned?\n   - Examples:\
+    \ treatment-naive, refractory, previously treated\n\n6. **Diagnostic Criteria**\n\
+    \   - Are diagnostic standards mentioned?\n   - Examples: ICD codes, clinical\
+    \ guidelines, biomarker thresholds\n\nEvaluate whether the clinical profile enables:\n\
+    - Accurate patient identification and recruitment\n- Appropriate treatment selection\n\
+    - Valid outcome interpretation\n"
+  aspect_name: Clinical Profile & Health Status
+  aspect_description: 'Specifies the primary health condition, disease stage, severity,
+    comorbidities,
+
+    and relevant medical history. Critical for defining study eligibility and
+
+    expected treatment responses.
+
+    '
+- id: intervention_specification
+  depends_on:
+  - population_demographics
+  - geographic_location
+  - population_clinical_profile
+  examples:
       clear:
-        - query: "Multicenter RCT of drug A vs placebo in 500 patients with 12-month follow-up"
-          explanation: "Study type (RCT), setting (multicenter), sample size (500), duration (12 months) all specified"
-        
-        - query: "Double-blind placebo-controlled parallel-group trial across 20 US academic medical centers"
-          explanation: "Design details (double-blind, placebo-controlled, parallel), setting (20 academic centers, US location)"
-      
+    - statement: Metformin 1000mg twice daily for 6 months vs placebo in newly diagnosed
+        Type 2 diabetes
+      explanation: Drug (metformin), dose (1000mg), frequency (twice daily), duration
+        (6 months), comparison (placebo)
+    - statement: Laparoscopic Roux-en-Y gastric bypass performed by experienced bariatric
+        surgeons
+      explanation: Specific surgical technique (laparoscopic Roux-en-Y), provider
+        qualification (experienced bariatric surgeons)
+    - statement: Cognitive Behavioral Therapy, 12 weekly 60-minute sessions delivered
+        by licensed clinical psychologists
+      explanation: Therapy type (CBT), frequency (weekly), duration (12 sessions),
+        session length (60 min), provider (licensed psychologists)
       needs_refinement:
-        - query: "Study comparing two treatments"
-          issue: "Study design not specified"
-          missing: "Study type, setting, duration"
-          suggested_question: "What study design? (e.g., randomized controlled trial, observational cohort, systematic review)"
-      
+    - statement: Effects of medication on blood pressure
+      issue: No medication specified, no dosing information
+      missing: Drug name, dose, frequency, duration, route
+      clarifying_question: Which medication are you studying? Please specify the drug
+        name, dose, frequency, and treatment duration.
+    - statement: Study on surgery outcomes
+      issue: Type of surgery not specified
+      missing: Surgical procedure, approach (open vs laparoscopic), setting
+      clarifying_question: What specific surgical procedure? What surgical approach?
+        (e.g., open, laparoscopic, robotic)
+    - statement: Exercise intervention for weight loss
+      issue: Exercise type, intensity, frequency, duration all unspecified
+      missing: Exercise modality, intensity level, frequency, session duration, total
+        program length
+      clarifying_question: What type of exercise? (aerobic, resistance, both) What
+        intensity, frequency, and program duration?
       partial:
-        - query: "RCT comparing interventions in hospital setting"
-          has: "Study type (RCT), general setting (hospital)"
-          missing: "Sample size, duration, specific hospital type, blinding approach"
-          suggested_question: "What is your target sample size? Study duration? Single-center or multi-center?"
+    - statement: Atorvastatin treatment for hyperlipidemia
+      has: Drug name (atorvastatin), indication (hyperlipidemia)
+      missing: Dose, frequency, treatment duration, titration protocol
+      clarifying_question: What dose of atorvastatin? (10mg, 20mg, 40mg, 80mg) What
+        frequency and treatment duration?
+    - statement: Physical therapy twice weekly for knee osteoarthritis
+      has: Intervention type (physical therapy), frequency (twice weekly), condition
+      missing: Specific PT protocol, session duration, total treatment length, therapy
+        components
+      clarifying_question: What specific PT protocol? How long are sessions? What is
+        the total treatment duration?
+      vague_ambiguous:
+    - statement: High-dose vitamin D supplementation
+      issue: '''High-dose'' is relative - could be 2,000 IU or 50,000 IU depending
+        on context'
+      clarifying_question: What specific dose of vitamin D? (e.g., 2,000 IU daily,
+        50,000 IU weekly)
+    - statement: Intensive glycemic control in diabetes
+      issue: '''Intensive'' is subjective - needs target HbA1c or glucose range'
+      clarifying_question: What target defines 'intensive control'? (e.g., HbA1c <6.5%,
+        fasting glucose 80-110 mg/dL)
+  refinement_instructions: "**Query to Analyze:** \"{query}\"\n\n# TASK: Intervention\
+    \ Specification Analysis\n\nAnalyze whether the intervention is sufficiently detailed\
+    \ for study replication.\n\n## Intervention Dimensions\n\n1. **Intervention Type**\n\
+    \   - Pharmacological (drug, biologic)\n   - Procedural (surgery, device)\n  \
+    \ - Behavioral (therapy, lifestyle)\n   - Diagnostic (test, screening)\n\n2. **Specific\
+    \ Agent/Method**\n   - Generic/brand name for drugs\n   - Specific procedure or\
+    \ technique\n   - Defined behavioral protocol\n\n3. **Dosing/Intensity** (if applicable)\n\
+    \   - Dose amount and units\n   - Frequency (daily, weekly)\n   - Timing (morning,\
+    \ with meals)\n\n4. **Duration**\n   - Treatment length\n   - Follow-up period\n\
+    \n5. **Delivery Method**\n   - Route (oral, IV, subcutaneous)\n   - Setting (inpatient,\
+    \ outpatient, home)\n   - Provider type\n\n6. **Adjunct Treatments**\n   - Concurrent\
+    \ therapies\n   - Background medications\n   - Supportive care protocols\n"
+  aspect_name: Intervention Specification
+  aspect_description: 'Details the treatment, procedure, or exposure being studied
+    including
+
+    specific agents, dosing, duration, frequency, and delivery method.
+
+    '
+- id: comparison_group
+  depends_on:
+  - intervention_specification
+  examples:
+      clear:
+    - statement: Metformin vs placebo in prediabetic adults
+      explanation: Clear active intervention (metformin) vs inert control (placebo)
+    - statement: New anticoagulant compared to warfarin (standard care) in atrial fibrillation
+      explanation: Novel treatment vs established standard of care explicitly stated
+    - statement: High-intensity statins vs moderate-intensity statins in secondary prevention
+      explanation: Head-to-head comparison of two active dose strategies
+      needs_refinement:
+    - statement: Effects of new drug on blood pressure
+      issue: No comparison group mentioned
+      missing: Comparator specification
+      clarifying_question: What will you compare the new drug against? (e.g., placebo,
+        current standard treatment, another active drug)
+    - statement: Study of surgical intervention
+      issue: No comparison - surgery vs what?
+      missing: Control/comparison group
+      clarifying_question: What is the comparison? (e.g., surgery vs medical management,
+        surgery vs observation, one surgical technique vs another)
+      partial:
+    - statement: Cognitive therapy vs usual care in depression
+      has: Intervention (cognitive therapy) and comparison type (usual care)
+      missing: '''Usual care'' not defined - varies by setting and provider'
+      clarifying_question: Can you specify what 'usual care' includes in your setting?
+        (e.g., medications only, supportive counseling, monitoring frequency)
+    - statement: New treatment compared to current options
+      has: Comparison concept mentioned
+      missing: Specific comparator not identified
+      clarifying_question: What specific current treatment(s) will serve as the comparator?
+        (e.g., specific drug names, specific procedures)
+      vague_ambiguous:
+    - statement: Drug A versus control in hypertension
+      issue: '''Control'' could mean placebo, standard care, or no treatment'
+      clarifying_question: What does 'control' mean in your study? (placebo, standard
+        antihypertensive therapy, or no treatment)
+    - statement: Intervention vs standard therapy
+      issue: '''Standard therapy'' varies by geography, guidelines, and time period'
+      clarifying_question: What specific treatment(s) constitute 'standard therapy'
+        in your context? (e.g., specific drugs, specific guidelines)
+  refinement_instructions: "# TASK: Comparison Group Analysis\n\nAnalyze whether an\
+    \ appropriate comparison/control group is specified.\n\n## Comparison Types\n\n\
+    1. **Placebo Control**\n   - Inert substance/sham procedure\n   - Blinding considerations\n\
+    \n2. **Standard Care/Treatment**\n   - Current guideline-recommended treatment\n\
+    \   - Usual care protocols\n\n3. **Alternative Active Treatment**\n   - Different\
+    \ drug/dose/intervention\n   - Head-to-head comparison\n\n4. **No Treatment**\n\
+    \   - Watchful waiting\n   - Natural history observation\n\n5. **Dose Comparison**\n\
+    \   - Different doses of same intervention\n\n## Key Questions\n\n- Is a comparator\
+    \ mentioned?\n- Is the comparator appropriate for the research question?\n- Is\
+    \ the comparator as well-defined as the intervention?\n- Are ethical considerations\
+    \ addressed (especially for no-treatment controls)?\n"
+  aspect_name: Comparison/Control Group
+  aspect_description: 'Defines what the intervention is compared against: placebo,
+    standard care,
+
+    alternative treatment, or no treatment. Critical for establishing causality.
+
+    '
+- id: primary_outcomes
+  depends_on:
+  - intervention_specification
+  - population_clinical_profile
+  examples:
+      clear:
+    - statement: Effect of intervention on all-cause mortality at 5 years
+      explanation: Specific outcome (all-cause mortality), clear timepoint (5 years)
+    - statement: Change in HbA1c from baseline to 6 months, with target reduction ≥0.5%
+      explanation: Specific biomarker (HbA1c), timeframe (baseline to 6 months), clinical
+        significance threshold (≥0.5%)
+    - statement: Quality of life measured by SF-36 at 3, 6, and 12 months post-intervention
+      explanation: Specific validated instrument (SF-36), multiple timepoints (3,
+        6, 12 months)
+      needs_refinement:
+    - statement: Study on treatment effectiveness
+      issue: '''Effectiveness'' not defined - needs specific measurable outcome'
+      missing: Specific outcome measure, measurement method, timepoint
+      clarifying_question: How will you measure effectiveness? (e.g., specific clinical
+        outcomes, biomarkers, patient-reported measures)
+    - statement: Research on improving patient outcomes
+      issue: '''Outcomes'' is vague - could mean dozens of different measures'
+      missing: Specific outcome(s), measurement tools, assessment timing
+      clarifying_question: What specific outcome(s) will you measure? When will they
+        be assessed?
+    - statement: Trial measuring quality of life improvement
+      issue: QOL mentioned but no instrument specified
+      missing: QOL instrument, measurement timepoints, MCID
+      clarifying_question: Which quality of life instrument will you use? (e.g., SF-36,
+        EQ-5D, disease-specific) When will you assess it?
+      partial:
+    - statement: Effect on blood pressure reduction
+      has: General outcome category (blood pressure)
+      missing: Specific BP parameter (systolic, diastolic, mean arterial), target
+        reduction, measurement protocol, timepoint
+      clarifying_question: Which BP parameter? (systolic, diastolic, or both) What
+        measurement protocol? When will it be assessed?
+    - statement: Change in depression scores using validated scales
+      has: Outcome type (depression), mentions validation
+      missing: Specific scale, timepoints, MCID
+      clarifying_question: Which depression scale? (PHQ-9, Beck Depression Inventory,
+        HAM-D) At what timepoints? What change is clinically meaningful?
+      vague_ambiguous:
+    - statement: Study on long-term outcomes of surgery
+      issue: '''Long-term'' is relative (could be 1 year or 10 years), ''outcomes''
+        unspecified'
+      clarifying_question: What is the follow-up duration? What specific outcomes will
+        you measure? (e.g., survival, complications, functional status)
+    - statement: Research on significant improvement in symptoms
+      issue: '''Significant'' (statistical vs clinical?) and ''symptoms'' (which ones?)
+        both vague'
+      clarifying_question: Which specific symptoms? How will you measure them? What
+        defines a clinically meaningful improvement?
+  refinement_instructions: "# TASK: Primary Outcome Analysis\n\nAnalyze whether primary\
+    \ outcomes are adequately specified.\n\n## Outcome Dimensions\n\n1. **Outcome\
+    \ Type**\n   - Clinical outcomes (mortality, morbidity)\n   - Surrogate/biomarker\
+    \ outcomes\n   - Patient-reported outcomes (PROs)\n   - Functional outcomes\n\
+    \   - Safety/adverse events\n\n2. **Measurement Method**\n   - Specific instruments/scales\n\
+    \   - Laboratory tests\n   - Imaging modalities\n   - Validated questionnaires\n\
+    \n3. **Timepoint(s)**\n   - When outcomes measured\n   - Follow-up duration\n\
+    \   - Multiple assessment points\n\n4. **Clinical Significance**\n   - Minimal\
+    \ clinically important difference (MCID)\n   - Target effect size\n   - Superiority\
+    \ vs non-inferiority\n\n5. **Primary vs Secondary**\n   - Is primary outcome identified?\n\
+    \   - Are secondary outcomes distinguished?\n"
+  aspect_name: Primary Outcomes
+  aspect_description: 'Specifies the main outcomes of interest including measurement
+    methods,
+
+    timepoints, and clinical significance thresholds.
+
+    '
+- id: study_design_context
+  depends_on:
+  - population_demographics
+  - intervention_specification
+  - comparison_group
+  - primary_outcomes
+  examples:
+      clear:
+    - statement: Multicenter RCT of drug A vs placebo in 500 patients with 12-month follow-up
+      explanation: Study type (RCT), setting (multicenter), sample size (500), duration
+        (12 months) all specified
+    - statement: Double-blind placebo-controlled parallel-group trial across 20 US academic
+        medical centers
+      explanation: Design details (double-blind, placebo-controlled, parallel), setting
+        (20 academic centers, US location)
+      needs_refinement:
+    - statement: Study comparing two treatments
+      issue: Study design not specified
+      missing: Study type, setting, duration
+      clarifying_question: What study design? (e.g., randomized controlled trial, observational
+        cohort, systematic review)
+      partial:
+    - statement: RCT comparing interventions in hospital setting
+      has: Study type (RCT), general setting (hospital)
+      missing: Sample size, duration, specific hospital type, blinding approach
+      clarifying_question: What is your target sample size? Study duration? Single-center
+        or multi-center?
+  refinement_instructions: "# TASK: Study Design & Context Analysis\n\nAnalyze whether\
+    \ study design and methodological context are specified.\n\n## Design Dimensions\n\
+    \n1. **Study Type**\n   - RCT (parallel, crossover, cluster)\n   - Observational\
+    \ (cohort, case-control)\n   - Systematic review/meta-analysis\n   - Pragmatic\
+    \ trial\n\n2. **Setting**\n   - Healthcare setting type\n   - Geographic scope\n\
+    \   - Single-center vs multi-center\n\n3. **Sample Size**\n   - Target enrollment\n\
+    \   - Sample size rationale\n   - Power considerations\n\n4. **Duration**\n  \
+    \ - Study timeline\n   - Recruitment period\n   - Follow-up length\n\n5. **Special\
+    \ Considerations**\n   - Blinding/masking\n   - Randomization method\n   - Statistical\
+    \ approach\n   - Interim analyses\n"
+  aspect_name: Study Design & Methodological Context
+  aspect_description: 'Clarifies the intended study design, setting, sample size considerations,
+
+    and methodological approach. Helps determine feasibility and appropriate
+
+    statistical methods.
+
+    '

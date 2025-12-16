@@ -79,7 +79,7 @@ class InitializeResponse(BaseModel):
     #       "description": "What outcome is being measured",
     #       "status": "needs_refinement",
     #       "reason": "Stroke is mentioned but not specific...",
-    #       "suggested_question": "What specific stroke outcomes are you interested in?"
+    #       "clarifying_question": "What specific stroke outcomes are you interested in?"
     #     },
     #     ...
     #   ]
@@ -225,7 +225,7 @@ async def process_refinement_step(request: ProcessStepRequest):
             step = session.get_active_step()
             if step:
                 step.add_follow_up(
-                    question=step.analysis_suggested_question or step.refinement_aspect.name,
+                    question=step.analysis_clarifying_question or step.refinement_aspect.name,
                     response=request.user_response
                 )
                 step.is_complete = True

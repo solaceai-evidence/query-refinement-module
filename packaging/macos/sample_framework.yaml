@@ -1,9 +1,7 @@
-# Sample refinement framework used during packaging builds.
-# Replace with your own content when running the app.
 example_framework:
-  - id: example-aspect
-    name: Example Aspect
-    question: What is your example input?
-    description: Sample prompt dimension to satisfy build-time validation.
-    dependencies: []
-    category: general
+- id: example-aspect
+  question: What is your example input?
+  dependencies: []
+  category: general
+  aspect_name: Example Aspect
+  aspect_description: Sample prompt dimension to satisfy build-time validation.
