@@ -1279,6 +1279,7 @@ class QueryRefinementManager:
             )
             
             # Analyze this specific aspect with its dependency context
+            analysis_result = None
             try:
                 analysis_result = self.query_analyzer.analyze_aspect(
                     query=original_query,
@@ -1287,6 +1288,14 @@ class QueryRefinementManager:
                     llm_provider=self.llm_provider
                 )
                 results[aspect.id] = analysis_result
+                
+                self.trace_emitter.emit(
+                    "aspect_analysis_complete",
+                    metadata={
+                        "aspect_id": aspect.id,
+                        "needs_refinement": analysis_result.needs_refinement,
+                    }
+                )
             except Exception as e:
                 logger.error(
                     "Failed to analyze aspect %s: %s",
@@ -1295,14 +1304,14 @@ class QueryRefinementManager:
                     exc_info=True
                 )
                 results[aspect.id] = None
-
-            self.trace_emitter.emit(
-                "aspect_analysis_complete",
-                metadata={
-                    "aspect_id": aspect.id,
-                    "needs_refinement": analysis_result.needs_refinement if analysis_result else None,
-                }
-            )
+                
+                self.trace_emitter.emit(
+                    "aspect_analysis_complete",
+                    metadata={
+                        "aspect_id": aspect.id,
+                        "needs_refinement": None,
+                    }
+                )
         
         return results
 
