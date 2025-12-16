@@ -49,9 +49,16 @@ class Settings(BaseSettings):
     llm_adaptive_increase_factor: float = Field(default=1.05, description="Increase factor during recovery (1.05 = 5% increase)")
     llm_adaptive_increase_interval: int = Field(default=60, description="Recovery adjustment interval in seconds")
     
+    # Redis Configuration (shared across features)
+    redis_url: str = Field(default="redis://localhost:6379/0", description="Redis URL for caching and rate limiting")
+    
+    # Session Management
+    session_storage_backend: str = Field(default="redis", description="Session storage: 'redis' or 'memory'")
+    session_ttl_seconds: int = Field(default=3600, description="Session expiration time in seconds (1 hour)")
+    session_key_prefix: str = Field(default="qr:session:", description="Redis key prefix for sessions")
+    
     # Rate limiter backend
     rate_limiter_backend: str = Field(default="memory", description="Rate limiter backend: 'memory' or 'redis'")
-    redis_url: str = Field(default="redis://localhost:6379/0", description="Redis URL for distributed rate limiting")
     redis_rate_limit_prefix: str = Field(default="qr:ratelimit", description="Redis key prefix for rate limit data")
     
     # Parallel Execution Configuration

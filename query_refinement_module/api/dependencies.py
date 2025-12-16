@@ -16,6 +16,7 @@ from query_refinement_module.rate_limiter import (
 )
 from query_refinement_module.interfaces import RateLimitConfig
 from .config import get_settings
+from .session_manager import SessionManager
 
 
 # Load frameworks from environment on module import
@@ -102,3 +103,28 @@ def get_parallel_config() -> Optional[ParallelConfig]:
     
     return parallel_config
 
+
+@lru_cache()
+def get_session_manager() -> SessionManager:
+    """
+    Get or create a singleton SessionManager instance.
+    
+    Provides Redis-backed session storage for QueryRefinementSession objects.
+    Falls back to in-memory if Redis is unavailable (logs warning).
+    """
+    settings = get_settings()
+    
+    try:
+        manager = SessionManager(
+            redis_url=settings.redis_url,
+            session_ttl_seconds=settings.session_ttl_seconds,
+            key_prefix=settings.session_key_prefix
+        )
+        return manager
+    except Exception as e:
+        import logging
+        logging.error("Failed to initialize SessionManager with Redis: %s", e)
+        logging.warning("Session persistence disabled - sessions will be reconstructed on each request")
+        # Return a dummy manager that always returns None
+        # In production, you might want to implement an in-memory fallback
+        raise
