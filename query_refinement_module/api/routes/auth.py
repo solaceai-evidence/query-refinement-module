@@ -7,7 +7,7 @@ from sqlalchemy.orm import Session
 from datetime import timedelta
 
 from query_refinement_module.db.session import get_db
-from query_refinement_module.db.crud import create_user, get_user_by_email
+from query_refinement_module.db.crud import create_user, get_user_by_username, get_user_by_email, verify_user_password
 from query_refinement_module.api.schemas import UserCreate, UserResponse, Token
 from query_refinement_module.api.auth import (
     get_password_hash,
@@ -26,24 +26,35 @@ def register(user_data: UserCreate, db: Session = Depends(get_db)):
     """
     Register a new user.
     
-    - **email**: Valid email address
-    - **name**: User's display name
-    - **password**: Password (minimum 8 characters)
+    - **username**: Unique username (3-50 characters, alphanumeric, underscore, hyphen)
+    - **email**: Optional email address
+    - **name**: Optional display name
+    - **password**: Password (minimum 8 characters with uppercase, lowercase, digit, special char)
     """
-    # Check if user already exists
-    existing_user = get_user_by_email(db, email=user_data.email)
+    # Check if username already exists
+    existing_user = get_user_by_username(db, username=user_data.username)
     if existing_user:
         raise HTTPException(
             status_code=status.HTTP_400_BAD_REQUEST,
-            detail="Email already registered"
+            detail="Username already registered"
         )
+    
+    # Check if email already exists (if provided)
+    if user_data.email:
+        existing_email = get_user_by_email(db, email=user_data.email)
+        if existing_email:
+            raise HTTPException(
+                status_code=status.HTTP_400_BAD_REQUEST,
+                detail="Email already registered"
+            )
     
     # Create new user with hashed password
     user = create_user(
         db,
+        username=user_data.username,
+        password=user_data.password,
         email=user_data.email,
-        name=user_data.name,
-        password=user_data.password
+        name=user_data.name
     )
     
     return user
@@ -55,35 +66,28 @@ def login(
     db: Session = Depends(get_db)
 ):
     """
-    Login with email and password to get an access token.
+    Login with username/email and password to get an access token.
     
-    - **username**: User's email address
+    - **username**: User's username or email address
     - **password**: User's password
     
     Returns a JWT access token for authenticated requests.
+    The system automatically detects whether the identifier is a username or email.
     """
-    # Get user by email (OAuth2 uses 'username' field)
-    user = get_user_by_email(db, email=form_data.username)
+    # Verify user credentials (supports both username and email)
+    user = verify_user_password(db, identifier=form_data.username, password=form_data.password)
     
     if not user:
         raise HTTPException(
             status_code=status.HTTP_401_UNAUTHORIZED,
-            detail="Incorrect email or password",
+            detail="Incorrect username/email or password",
             headers={"WWW-Authenticate": "Bearer"},
         )
     
-    # Verify password
-    if not verify_password(form_data.password, user.password_hash):
-        raise HTTPException(
-            status_code=status.HTTP_401_UNAUTHORIZED,
-            detail="Incorrect email or password",
-            headers={"WWW-Authenticate": "Bearer"},
-        )
-    
-    # Create access token
+    # Create access token with username in sub claim
     access_token_expires = timedelta(minutes=settings.access_token_expire_minutes)
     access_token = create_access_token(
-        data={"sub": user.email}, expires_delta=access_token_expires
+        data={"sub": user.username}, expires_delta=access_token_expires
     )
     
     return {"access_token": access_token, "token_type": "bearer"}

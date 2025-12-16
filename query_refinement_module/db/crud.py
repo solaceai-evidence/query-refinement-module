@@ -19,16 +19,32 @@ pwd_context = CryptContext(schemes=["bcrypt"], deprecated="auto")
 # User CRUD Operations
 # ==========================================
 
-def create_user(db: Session, email: str, name: str, password: str) -> User:
-    """Create a new user with hashed password."""
+def create_user(db: Session, username: str, password: str, email: Optional[str] = None, name: Optional[str] = None) -> User:
+    """Create a new user with hashed password.
+    
+    Args:
+        db: Database session
+        username: Unique username (required)
+        password: Plain text password to hash
+        email: Optional email address
+        name: Optional display name
+    
+    Returns:
+        Created User instance
+    """
     # Truncate password to 72 characters for bcrypt compatibility
     truncated_password = password[:72]
     password_hash = pwd_context.hash(truncated_password)
-    user = User(email=email, name=name, password_hash=password_hash)
+    user = User(username=username, email=email, name=name, password_hash=password_hash)
     db.add(user)
     db.commit()
     db.refresh(user)
     return user
+
+
+def get_user_by_username(db: Session, username: str) -> Optional[User]:
+    """Retrieve a user by username."""
+    return db.query(User).filter(User.username == username).first()
 
 
 def get_user_by_email(db: Session, email: str) -> Optional[User]:
@@ -36,14 +52,42 @@ def get_user_by_email(db: Session, email: str) -> Optional[User]:
     return db.query(User).filter(User.email == email).first()
 
 
+def get_user_by_username_or_email(db: Session, identifier: str) -> Optional[User]:
+    """Retrieve a user by username or email.
+    
+    Checks if identifier contains '@' to determine if it's an email,
+    otherwise treats it as username.
+    
+    Args:
+        db: Database session
+        identifier: Username or email address
+        
+    Returns:
+        User instance if found, None otherwise
+    """
+    if '@' in identifier:
+        return get_user_by_email(db, identifier)
+    else:
+        return get_user_by_username(db, identifier)
+
+
 def get_user_by_id(db: Session, user_id: int) -> Optional[User]:
     """Retrieve a user by ID."""
     return db.query(User).filter(User.id == user_id).first()
 
 
-def verify_user_password(db: Session, email: str, password: str) -> Optional[User]:
-    """Verify user credentials and return user if valid."""
-    user = get_user_by_email(db, email)
+def verify_user_password(db: Session, identifier: str, password: str) -> Optional[User]:
+    """Verify user credentials and return user if valid.
+    
+    Args:
+        db: Database session
+        identifier: Username or email address
+        password: Plain text password to verify
+        
+    Returns:
+        User instance if credentials valid, None otherwise
+    """
+    user = get_user_by_username_or_email(db, identifier)
     if user:
         # Truncate password to 72 characters for bcrypt compatibility
         truncated_password = password[:72]

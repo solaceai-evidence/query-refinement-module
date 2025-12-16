@@ -1,7 +1,7 @@
 pico_advanced:
 - id: population_demographics
   examples:
-      clear:
+    clear:
     - statement: Efficacy of metformin in adults aged 40-65 with BMI > 30
       explanation: Age range precisely defined (40-65), specific population characteristic
         (BMI > 30)

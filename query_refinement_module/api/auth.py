@@ -10,7 +10,7 @@ from fastapi.security import OAuth2PasswordBearer
 from sqlalchemy.orm import Session
 
 from query_refinement_module.db.session import get_db
-from query_refinement_module.db.crud import get_user_by_email
+from query_refinement_module.db.crud import get_user_by_username
 from query_refinement_module.api.config import get_settings
 
 settings = get_settings()
@@ -68,11 +68,11 @@ async def get_current_user(
     if payload is None:
         raise credentials_exception
     
-    email: str = payload.get("sub")
-    if email is None:
+    username: str = payload.get("sub")
+    if username is None:
         raise credentials_exception
     
-    user = get_user_by_email(db, email=email)
+    user = get_user_by_username(db, username=username)
     if user is None:
         raise credentials_exception
     

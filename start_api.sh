@@ -1,0 +1,28 @@
+#!/bin/bash
+# Start the Query Refinement API server using Poetry's virtual environment
+
+echo "🚀 Starting Query Refinement API Server..."
+echo ""
+
+# Check if .env file exists
+if [ ! -f ".env" ]; then
+    echo "⚠️  Warning: .env file not found"
+    echo "   Creating from .env.example..."
+    cp .env.example .env
+    echo "   ℹ️  Please edit .env with your API keys and settings"
+    echo ""
+fi
+
+# Check if REFINEMENT_FRAMEWORK_PATH is set in .env
+if ! grep -q "^REFINEMENT_FRAMEWORK_PATH=" .env; then
+    echo "⚠️  Warning: REFINEMENT_FRAMEWORK_PATH not set in .env"
+    echo "   Using default: examples/pico_template.yaml"
+    echo ""
+fi
+
+echo "📦 Using Poetry virtual environment..."
+echo ""
+
+# Start the server with Poetry
+poetry run uvicorn query_refinement_module.api.main:app --reload --host 0.0.0.0 --port 8000
+

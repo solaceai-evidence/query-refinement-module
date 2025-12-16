@@ -13,8 +13,15 @@ import re
 
 class UserCreate(BaseModel):
     """Schema for user registration."""
-    email: EmailStr
-    name: str = Field(..., min_length=1, max_length=100, description="User's full name")
+    username: str = Field(
+        ..., 
+        min_length=3, 
+        max_length=50, 
+        pattern=r'^[a-zA-Z0-9_-]+$',
+        description="Username (3-50 chars, alphanumeric, underscore, hyphen only)"
+    )
+    email: Optional[EmailStr] = Field(None, description="Optional email address")
+    name: Optional[str] = Field(None, min_length=1, max_length=100, description="User's display name")
     password: str = Field(
         ..., 
         min_length=8,
@@ -22,13 +29,26 @@ class UserCreate(BaseModel):
         description="Password must be at least 8 characters with uppercase, lowercase, digit, and special character"
     )
     
+    @field_validator('username')
+    @classmethod
+    def username_valid(cls, v: str) -> str:
+        """Validate username format."""
+        if not v or not v.strip():
+            raise ValueError("Username cannot be empty or just whitespace")
+        v = v.strip()
+        if not re.match(r'^[a-zA-Z0-9_-]+$', v):
+            raise ValueError("Username can only contain letters, numbers, underscores, and hyphens")
+        return v
+    
     @field_validator('name')
     @classmethod
-    def name_not_empty(cls, v: str) -> str:
-        """Validate that name is not just whitespace."""
-        if not v or not v.strip():
-            raise ValueError("Name cannot be empty or just whitespace")
-        return v.strip()
+    def name_not_empty(cls, v: Optional[str]) -> Optional[str]:
+        """Validate that name is not just whitespace if provided."""
+        if v is not None:
+            if not v.strip():
+                raise ValueError("Name cannot be empty or just whitespace")
+            return v.strip()
+        return v
     
     @field_validator('password')
     @classmethod
@@ -50,8 +70,9 @@ class UserCreate(BaseModel):
 class UserResponse(BaseModel):
     """Schema for user data in responses."""
     id: int
-    email: str
-    name: str
+    username: str
+    email: Optional[str] = None
+    name: Optional[str] = None
     created_at: datetime
     
     class Config:
@@ -66,7 +87,7 @@ class Token(BaseModel):
 
 class TokenData(BaseModel):
     """Schema for decoded token data."""
-    email: Optional[str] = None
+    username: Optional[str] = None
 
 
 # ==========================================
