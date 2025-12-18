@@ -27,8 +27,9 @@ def test_refinement_aspect_injects_query_when_no_placeholder():
     
     user_prompt = aspect.get_refinement_instructions_prompt("What is the effect of exercise?")
     
-    # Should start with explicit statement
-    assert user_prompt.startswith("Review the following user-submitted statement: What is the effect of exercise?")
+    # Should include the analysis header and the user statement
+    assert "Analyze this research input" in user_prompt
+    assert "What is the effect of exercise?" in user_prompt
     # Should still include the analysis prompt
     assert "Evaluate the demographic characteristics" in user_prompt
 
@@ -102,14 +103,14 @@ def test_examples_validation_rejects_non_string_fields():
 
 def test_default_system_prompt_uses_name_and_description():
     aspect = make_aspect()
-    prompt = aspect.get_system_prompt()
+    prompt = aspect.get_system_role()
 
     assert "Demo Aspect" in prompt
     assert "Tracks demo behaviour" in prompt
     assert "asking targeted, clarifying questions" in prompt
 
 
-def test_get_user_prompt_includes_examples_and_format():
+def test_get_refinement_instructions_prompt_includes_examples_and_format():
     aspect = make_aspect(
         examples={
             "needs_refinement": [

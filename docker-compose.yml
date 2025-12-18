@@ -1,0 +1,143 @@
+# Docker Compose configuration for Query Refinement API
+#
+# Services:
+# - api: FastAPI application with Gunicorn
+# - postgres: PostgreSQL database
+# - redis: Redis cache for sessions and rate limiting
+#
+# Usage:
+#   Development: docker-compose up
+#   Production:  docker-compose -f docker-compose.yml -f docker-compose.prod.yml up -d
+
+version: '3.8'
+
+services:
+  # PostgreSQL Database
+  postgres:
+    image: postgres:16-alpine
+    container_name: query-refinement-db
+    environment:
+      POSTGRES_DB: ${POSTGRES_DB:-query_refinement}
+      POSTGRES_USER: ${POSTGRES_USER:-qruser}
+      POSTGRES_PASSWORD: ${POSTGRES_PASSWORD:-changeme}
+      POSTGRES_INITDB_ARGS: "-E UTF8 --locale=en_US.UTF-8"
+    volumes:
+      - postgres_data:/var/lib/postgresql/data
+      - ./init-db.sql:/docker-entrypoint-initdb.d/init-db.sql:ro
+    ports:
+      - "${POSTGRES_PORT:-5432}:5432"
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U ${POSTGRES_USER:-qruser} -d ${POSTGRES_DB:-query_refinement}"]
+      interval: 10s
+      timeout: 5s
+      retries: 5
+    networks:
+      - query-refinement-network
+    restart: unless-stopped
+
+  # Redis Cache
+  redis:
+    image: redis:7-alpine
+    container_name: query-refinement-redis
+    command: redis-server --appendonly yes --maxmemory 512mb --maxmemory-policy allkeys-lru
+    volumes:
+      - redis_data:/data
+    ports:
+      - "${REDIS_PORT:-6379}:6379"
+    healthcheck:
+      test: ["CMD", "redis-cli", "ping"]
+      interval: 10s
+      timeout: 3s
+      retries: 3
+    networks:
+      - query-refinement-network
+    restart: unless-stopped
+
+  # FastAPI Application
+  api:
+    build:
+      context: .
+      dockerfile: Dockerfile
+    container_name: query-refinement-api
+    depends_on:
+      postgres:
+        condition: service_healthy
+      redis:
+        condition: service_healthy
+    environment:
+      # Application
+      ENVIRONMENT: ${ENVIRONMENT:-production}
+      DEBUG: ${DEBUG:-false}
+      LOG_LEVEL: ${LOG_LEVEL:-INFO}
+      LOG_FORMAT: ${LOG_FORMAT:-json}
+      
+      # Database (PostgreSQL)
+      DATABASE_URL: postgresql://${POSTGRES_USER:-qruser}:${POSTGRES_PASSWORD:-changeme}@postgres:5432/${POSTGRES_DB:-query_refinement}
+      DB_POOL_SIZE: ${DB_POOL_SIZE:-5}
+      DB_MAX_OVERFLOW: ${DB_MAX_OVERFLOW:-10}
+      DB_POOL_TIMEOUT: ${DB_POOL_TIMEOUT:-30.0}
+      DB_POOL_RECYCLE: ${DB_POOL_RECYCLE:-3600}
+      DB_POOL_PRE_PING: ${DB_POOL_PRE_PING:-true}
+      
+      # Redis
+      REDIS_URL: redis://redis:6379/0
+      SESSION_STORAGE_BACKEND: redis
+      SESSION_TTL_SECONDS: ${SESSION_TTL_SECONDS:-3600}
+      RATE_LIMITER_BACKEND: redis
+      
+      # Security
+      SECRET_KEY: ${SECRET_KEY:-please-change-this-secret-key-in-production}
+      ACCESS_TOKEN_EXPIRE_MINUTES: ${ACCESS_TOKEN_EXPIRE_MINUTES:-30}
+      
+      # CORS (comma-separated origins)
+      ALLOWED_ORIGINS: ${ALLOWED_ORIGINS:-http://localhost:3000,http://localhost:8000}
+      
+      # LLM Configuration
+      REFINEMENT_FRAMEWORK_PATH: ${REFINEMENT_FRAMEWORK_PATH:-/app/examples/pico_template.yaml}
+      QUERY_REFINEMENT_LLM_MODEL: ${QUERY_REFINEMENT_LLM_MODEL:-anthropic/claude-sonnet-4-20250514}
+      QUERY_REFINEMENT_LLM_API_KEY: ${QUERY_REFINEMENT_LLM_API_KEY}
+      QUERY_REFINEMENT_LLM_TEMPERATURE: ${QUERY_REFINEMENT_LLM_TEMPERATURE:-0.2}
+      
+      # Rate Limiting
+      LLM_RATE_LIMIT_RPM: ${LLM_RATE_LIMIT_RPM:-50}
+      LLM_MAX_CONCURRENT: ${LLM_MAX_CONCURRENT:-5}
+      
+      # Server
+      WORKERS: ${WORKERS:-4}
+      WORKER_TIMEOUT: ${WORKER_TIMEOUT:-120}
+    ports:
+      - "${API_PORT:-8000}:8000"
+    volumes:
+      - ./examples:/app/examples:ro
+      - ./logs:/app/logs
+    healthcheck:
+      test: ["CMD", "python", "-c", "import requests; requests.get('http://localhost:8000/health', timeout=5)"]
+      interval: 30s
+      timeout: 10s
+      start_period: 40s
+      retries: 3
+    networks:
+      - query-refinement-network
+    restart: unless-stopped
+    # Run database migrations on startup
+    command: >
+      sh -c "
+        echo 'Waiting for database...' &&
+        sleep 5 &&
+        echo 'Running database migrations...' &&
+        alembic upgrade head &&
+        echo 'Starting application...' &&
+        gunicorn -c gunicorn_conf.py query_refinement_module.api.main:app
+      "
+
+# Volumes for persistent data
+volumes:
+  postgres_data:
+    driver: local
+  redis_data:
+    driver: local
+
+# Network for service communication
+networks:
+  query-refinement-network:
+    driver: bridge

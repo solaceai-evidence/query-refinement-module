@@ -30,6 +30,10 @@ python-multipart = "^0.0.20"
 pydantic-settings = "^2.12.0"
 email-validator = "^2.3.0"
 bcrypt = ">=3.2.0,<4.0.0"
+# Production dependencies
+psycopg2-binary = "^2.9.9"  # PostgreSQL adapter
+gunicorn = "^23.0.0"  # Production WSGI server
+python-json-logger = "^3.2.1"  # Structured JSON logging
 
 [tool.poetry.group.dev.dependencies]
 pytest = ">=8.4.2,<9.0.0"
@@ -38,6 +42,7 @@ mypy = ">=1.18.2,<2.0.0"
 pytest-cov = "^7.0.0"
 pytest-asyncio = "^1.2.0"
 alembic = "^1.17.2"
+locust = "^2.42.6"
 
 [tool.poetry.scripts]
 query-refine = "query_refinement_module.cli:main"

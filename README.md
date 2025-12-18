@@ -10,7 +10,7 @@ pip install query-refinement-module
 
 ## Features
 
-- Dependency-aware refinement across user-defined aspects
+- Dependency-aware refinement across user-defined refinement aspects
 - YAML frameworks loaded via `REFINEMENT_FRAMEWORK_PATH`
 - Structured-response validation with automated retries
 - Built-in follow-up history, summaries, and conversation exports
@@ -63,23 +63,13 @@ export REFINEMENT_FRAMEWORK_PATH=/path/to/your/custom_schemas.yaml
 ```yaml
 my_framework:
   - id: dimension_id
-    name: Dimension Name
-    description: What this dimension refines
-    analysis_prompt: |
-      Analyze the query: {query}
+    aspect_name: Dimension Name
+    aspect_description: What this dimension refines
+    refinement_instructions: |
+      Analyze the research input: {input}
       Focus on the considerations relevant to this dimension.
-    response_format:
-      additional_fields:
-        confidence: float
-      field_descriptions:
-        needs_refinement: "Whether this dimension needs clarification"
-        explanation: "Brief rationale"
-        clarifying_question: "Single follow-up to resolve the gap"
-        confidence: "Confidence score 0.0-1.0 (optional)"
     allow_follow_up: true
     max_follow_ups: 2
-    metadata:
-      priority: high
 ```
 
 Then load it via the registry:
@@ -95,7 +85,7 @@ framework = registry.get_framework("my_framework")
 - `pip install pyyaml`
 - Set the `REFINEMENT_FRAMEWORK_PATH` environment variable
 
-See [docs/custom_schemas.md](docs/custom_schemas.md) for end-to-end guidance on authoring refinement frameworks.
+See [docs/custom_schemas.md](docs/custom_schemas.md) for guidance on authoring refinement frameworks.
 
 ## Usage
 

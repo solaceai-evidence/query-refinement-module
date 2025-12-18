@@ -46,7 +46,7 @@ class LLMQueryAnalyzer(QueryAnalyzerInterface):
         if provider is None:
             raise ValueError("LLM provider must be supplied to analyze aspects")
 
-        system_prompt = aspect.get_system_prompt()
+        system_prompt = aspect.get_system_role()
         user_prompt = self._build_prompt(query, aspect, dependency_context)
 
         dependency_keys = sorted(dependency_context.keys()) if dependency_context else []
@@ -121,8 +121,10 @@ class LLMQueryAnalyzer(QueryAnalyzerInterface):
                 lines.append(f"- {dep_id}: {value}")
             prompt_sections.append("\n".join(lines))
 
-        prompt_sections.append(aspect.get_refinement_instructions_prompt(statement=query))
-        return "\n\n".join(prompt_sections)
+        # Use the standardized API for aspect prompts
+        return "\n\n".join(
+            prompt_sections + [aspect.get_refinement_instructions_prompt(statement=query)]
+        )
 
     @staticmethod
     def _coerce_bool(value: Any) -> bool:

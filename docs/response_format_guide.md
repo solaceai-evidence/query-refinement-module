@@ -38,7 +38,7 @@ Any other keys (for example `type` for documentation) are ignored by the validat
 
 ## 3. Generated Instructions
 
-When you call `RefinementAspect.get_user_prompt(...)`, the manager appends something like the following to your analysis prompt:
+When you call `RefinementAspect.get_refinement_instructions_prompt(...)`, the manager appends something like the following to your analysis prompt:
 
 ```text
 Respond in the following JSON format:

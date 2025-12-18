@@ -33,20 +33,20 @@ Consider a medical research framework:
 ```yaml
 medical_research:
   - id: population
-    name: Population
+    aspect_name: Population
     refinement_instructions: "What population is being studied?"
   
   - id: intervention
-    name: Intervention
+    aspect_name: Intervention
     refinement_instructions: "What intervention is being tested?"
   
   - id: comparison
-    name: Comparison
+    aspect_name: Comparison
     refinement_instructions: "What is the comparison group?"
     depends_on: [population]
   
   - id: outcome
-    name: Outcome
+    aspect_name: Outcome
     refinement_instructions: "What outcomes are measured?"
     depends_on: [population, intervention, comparison]
 ```

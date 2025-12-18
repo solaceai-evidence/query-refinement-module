@@ -8,10 +8,9 @@ followup_evaluation:
 
     Confirm completeness, flag inconsistencies, and propose at most one additional
     question when more detail is required.
-
     '
   examples:
-      clear:
+    clear:
     - statement: 'Aspect: Time Period, Latest Answer: ''2020-2023'''
       user_answer: 2020-2023
       explanation: Specific date range provided - ready to use
@@ -81,7 +80,7 @@ followup_evaluation:
 
     Context block:
 
-    {query}
+    {input}
 
 
     Checklist:
@@ -149,7 +148,7 @@ followup_evaluation:
 
     Context block:
 
-    {query}
+    {input}
 
 
     Decide whether the latest answer is specific, unambiguous, and consistent with

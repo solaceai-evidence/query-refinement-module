@@ -1,3 +1,5 @@
+# Documentation displaying the full-text version of the mph_dissertation.yaml file containing prompts to help students with their MPH research ideas for dissertation
+
 # MPH-specific System Prompt
 
 ## SYSTEM PROMPT:

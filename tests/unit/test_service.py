@@ -205,8 +205,7 @@ class ResponseStep:
             id="aspect", 
             description="desc",
             aspect_description="desc",
-            get_user_prompt=lambda query: "prompt",
-            get_refinement_instructions_prompt=lambda statement: f"Analyze {statement}"
+            get_refinement_instructions_prompt=lambda *, statement: f"Analyze {statement}"
         )
         self.analysis_reason = "reason"
         self.follow_up_history: List[Dict[str, str]] = []
@@ -316,7 +315,7 @@ def test_build_next_prompt_prefers_suggested_question():
             self.aspect_description = "desc"
             self.description = "desc"  # Legacy support
 
-        def get_user_prompt(self, *, query):
+        def get_refinement_instructions_prompt(self, *, statement):
             return "Prompt"
 
     class Session:
@@ -353,10 +352,10 @@ def test_build_next_prompt_uses_prompt_and_description():
             self.description = "desc"  # Legacy support
             self.raises = raises
 
-        def get_user_prompt(self, *, query):
+        def get_refinement_instructions_prompt(self, *, statement):
             if self.raises:
                 raise RuntimeError("boom")
-            return f"Prompt for {query}"
+            return f"Prompt for {statement}"
         
         def get_refinement_instructions_prompt(self, *, statement):
             if self.raises:

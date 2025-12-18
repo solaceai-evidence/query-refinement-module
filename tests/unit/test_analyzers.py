@@ -15,8 +15,12 @@ class DummyAspect:
     def get_system_prompt(self):
         return self._system_prompt
 
-    def get_user_prompt(self, *, query):
-        return self._user_prompt.format(query=query)
+    def get_refinement_instructions_prompt(self, *, statement):
+        # New API: accept named 'statement' parameter used across the system
+        try:
+            return self._user_prompt.format(query=statement)
+        except Exception:
+            return self._user_prompt.format(statement=statement)
 
 
 class RecordingProvider(LLMProviderInterface):

@@ -105,7 +105,7 @@ class QueryRefinementService:
                 response_message = "Refinement session is already complete."
             else:
                 question = (
-                    active_step.analysis_suggested_question
+                    active_step.refinement_question
                     or active_step.refinement_aspect.aspect_name
                 )
                 active_step.add_follow_up(question=question, response=message)
@@ -166,7 +166,7 @@ class QueryRefinementService:
         if not step:
             return None
 
-        question = step.analysis_suggested_question
+        question = step.refinement_question
         if not question:
             try:
                 question = step.refinement_aspect.get_refinement_instructions_prompt(
@@ -186,6 +186,6 @@ class QueryRefinementService:
             aspect_id=step.refinement_aspect.id,
             aspect_name=step.refinement_aspect.aspect_name,
             question=question,
-            rationale=step.analysis_reason,
+            rationale=step.needs_refinement_rationale,
             dependency_context=dependency_context,
         )

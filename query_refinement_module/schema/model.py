@@ -10,6 +10,10 @@ from typing import List, Optional, Any, Dict, TypedDict, NotRequired
 import logging
 import json
 
+from ..prompt.system_role import (
+    DEFAULT_SYSTEM_PROMPT_REFINEMENT_START,
+)
+
 logger = logging.getLogger(__name__)
 
 
@@ -377,18 +381,19 @@ class RefinementAspect:
         Returns:
             Complete developer prompt with statement inserted and response format appended
         """
-        # Always start with the statement explicitly stated
         prompt_parts = []
+
+        # Always start with the user's research input explicitly stated
         
         # Check if refinement_instructions contains {query}/{input}/{statement} placeholder
-        if "{query}" in self.refinement_instructions or "{statement}" in self.refinement_instructions or "{input}" in self.refinement_instructions:
-            # Format the developer prompt with the statement
+        if "{input}" in self.refinement_instructions or "{statement}" in self.refinement_instructions or "{query}" in self.refinement_instructions:
+            # Format the developer prompt with the statement submitted by the user
             prompt_parts.append(
-                self.refinement_instructions.format(query=statement, statement=statement, input=statement)
+                self.refinement_instructions.format(query=statement, statement=statement,input=statement)
             )
         else:
-            # Prepend the statement explicitly, then add the analysis prompt as-is
-            prompt_parts.append(f"Review the following user-submitted statement: {statement}")
+            # Prepend the user's input explicitly, then add the analysis prompt as-is
+            prompt_parts.append(f"## Analyze this research input: {statement}.\n")
             prompt_parts.append(self.refinement_instructions)
         
         # Inject examples if available
@@ -402,22 +407,18 @@ class RefinementAspect:
         
         return "\n\n".join(prompt_parts)
     
-    def get_system_prompt(self) -> str:
+    def get_system_role(self) -> str:
         """
-        Get the system prompt for this refinement aspect.
+        Get the system role prompt for this refinement aspect.
         
         Returns:
-            System prompt if defined, otherwise a generic default with description
+            System role prompt if defined, otherwise a generic default with description
         """
         if self.system_prompt and self.system_prompt.strip():
             return self.system_prompt
         
         # Default system prompt (concise to save tokens)
-        return (
-            f"You refine research queries by analyzing: {self.aspect_name} ({self.aspect_description}).\n"
-            f"Identify all missing, incomplete, ambiguous, or poorly scoped elements within this refinement aspect."
-            f"Address all deficiencies in a single response by asking targeted, clarifying questions.\n"
-        )
+        return DEFAULT_SYSTEM_PROMPT_REFINEMENT_START
     
     def get_prompts(self, query: str) -> tuple[str, str]:
         """
@@ -429,7 +430,7 @@ class RefinementAspect:
         Returns:
             Tuple of (system_prompt, developer_prompt)
         """
-        return self.get_system_prompt(), self.get_refinement_instructions_prompt(query)
+        return self.get_system_role(), self.get_refinement_instructions_prompt(query)
 
     def _format_examples(self) -> str:
         """
