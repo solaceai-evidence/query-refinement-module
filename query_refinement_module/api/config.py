@@ -9,23 +9,63 @@ from pydantic_settings import BaseSettings, SettingsConfigDict
 
 
 class Settings(BaseSettings):
-    """Application settings automatically loaded from environment variables."""
+    """
+    Application settings automatically loaded from environment variables.
+    
+    Supports environment-specific configuration for development, staging, and production.
+    Set ENVIRONMENT=production to enable production settings.
+    """
     
     # App metadata
     app_name: str = "Query Refinement API"
     app_version: str = "0.2.0"
     debug: bool = False
+    environment: str = Field(default="development", description="Environment: development, staging, production")
     
-    # Database
+    # Database Configuration
+    # SQLite for development: sqlite:///query_refinement.db
+    # PostgreSQL for production: postgresql://user:password@host:port/dbname
     database_url: str = Field(default="sqlite:///query_refinement.db")
+    
+    # Database Connection Pooling (for PostgreSQL)
+    db_pool_size: int = Field(default=5, description="Number of persistent connections to maintain")
+    db_max_overflow: int = Field(default=10, description="Max connections beyond pool_size")
+    db_pool_timeout: float = Field(default=30.0, description="Seconds to wait for connection from pool")
+    db_pool_recycle: int = Field(default=3600, description="Recycle connections after N seconds")
+    db_pool_pre_ping: bool = Field(default=True, description="Test connections before using")
+    db_echo: bool = Field(default=False, description="Log all SQL queries")
     
     # Security
     secret_key: str = Field(default="your-secret-key-change-this-in-production")
     algorithm: str = "HS256"
     access_token_expire_minutes: int = 30
     
-    # CORS
-    allowed_origins: List[str] = ["http://localhost:3000", "http://localhost:8000"]
+    # CORS Configuration (environment-specific)
+    # Development: localhost origins
+    # Production: Add your frontend domains, e.g., ["https://yourdomain.com", "https://app.yourdomain.com"]
+    allowed_origins: List[str] = Field(
+        default=["http://localhost:3000", "http://localhost:8000"],
+        description="CORS allowed origins (comma-separated in env: ALLOWED_ORIGINS=https://app.com,https://www.app.com)"
+    )
+    cors_allow_credentials: bool = Field(default=True, description="Allow credentials in CORS requests")
+    cors_allow_methods: List[str] = Field(default=["GET", "POST", "PUT", "DELETE", "OPTIONS"], description="Allowed HTTP methods")
+    cors_allow_headers: List[str] = Field(default=["*"], description="Allowed headers")
+    cors_max_age: int = Field(default=600, description="CORS preflight cache duration in seconds")
+    
+    # Logging Configuration
+    log_level: str = Field(default="INFO", description="Logging level: DEBUG, INFO, WARNING, ERROR, CRITICAL")
+    log_format: str = Field(default="text", description="Log format: text or json (use json for production)")
+    log_file: Optional[str] = Field(default=None, description="Path to log file (None = stdout only)")
+    
+    # Server Configuration
+    host: str = Field(default="0.0.0.0", description="Server bind address")
+    port: int = Field(default=8000, description="Server port")
+    workers: int = Field(default=4, description="Number of Gunicorn worker processes (production)")
+    worker_class: str = Field(default="uvicorn.workers.UvicornWorker", description="Gunicorn worker class")
+    worker_timeout: int = Field(default=120, description="Worker timeout in seconds")
+    keepalive: int = Field(default=5, description="Keepalive seconds")
+    max_requests: int = Field(default=1000, description="Max requests per worker before restart")
+    max_requests_jitter: int = Field(default=100, description="Jitter for max_requests")
     
     # LLM Provider (automatically loaded from .env with case-insensitive matching)
     refinement_framework_path: str = Field(default="/dev/null")

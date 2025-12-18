@@ -1,295 +1,204 @@
 pico_population_subdimensions:
-- id: population_demographics
-  examples:
+  - id: population_demographics
+    aspect_name: Population Demographics
+    aspect_description:
+      "Clarifies basic demographic characteristics: age, gender, ethnicity,
+      geographic location."
+    refinement_instructions: "# TASK: Demographic Characteristics Analysis
+
+      Analyze if the query specifies the target population's basic demographic profile.
+
+      Query: {input}
+
+
+      Focus ONLY on demographic dimensions:
+
+      1. Age range or age groups
+
+      2. Gender/sex specification
+
+      3. Ethnicity or racial groups (if relevant)
+
+      4. Geographic region or population setting
+
+      [Focused prompt continues...]"
+    examples:
       clear:
-    - statement: Does aerobic exercise reduce depression in adults aged 18-65?
-      explanation: Age range clearly specified (18-65), adult population identified
-    - statement: Efficacy of statins in postmenopausal women with hyperlipidemia
-      explanation: Gender (women), life stage (postmenopausal) clearly defined
-    - statement: Outcomes of cognitive therapy in elderly patients 75+ years in nursing
-        homes
-      explanation: Age threshold (75+), setting (nursing homes), and population (elderly)
-        all clear
+        - statement: adults aged 18-65, nursing homes
+          explanation: Age range clearly specified (18-65), adult population identified, gender is implied, setting (nursing homes) clear
+        - statement: postmenopausal women, urban areas
+          explanation: Gender (women), life stage (postmenopausal) clearly defined, setting (urban areas) specified
+        - statement: elderly patients 75+ years in nursing homes
+          explanation: Age threshold (75+), setting (nursing homes), and population (elderly) all clear
       needs_refinement:
-    - statement: Does exercise help with depression in adults?
-      issue: No age range specified - 'adults' is too broad (18-100?)
-      clarifying_question: What age range are you interested in? For example, young
-        adults (18-35), middle-aged (36-64), or older adults (65+)?
-    - statement: Treatment outcomes in patients with diabetes
-      issue: No demographic context - missing age, gender, setting
-      clarifying_question: 'Can you specify the demographic characteristics? For instance:
-        age range, gender, or care setting?'
-    - statement: Study on medication adherence in elderly population
-      issue: '''Elderly'' is vague - could mean 65+, 70+, 75+, or 80+'
-      clarifying_question: What age threshold defines 'elderly' for your research?
-        (e.g., 65+, 75+)
+        - statement: adults
+          issue: No age range specified - 'adults' is too broad (18-100?)
+          example_question: What age range are you interested in? For example, young adults (18-35), middle-aged (36-64), or older adults (65+)?
+        - statement: Treatment outcomes in patients with diabetes
+          issue: No demographic context - missing age, gender, setting
+          example_question: "Can you specify the demographic characteristics? (age range, gender, and care setting)"
+        - statement: Study on medication adherence in elderly population
+          issue: "'Elderly' is vague - could mean 65+, 70+, 75+, or 80+, gender and care setting missing"
       partial:
-    - statement: Effects of diet intervention in women over 40
-      has: Gender (women) and minimum age (40)
-      missing: No upper age limit, ethnicity, or geographic scope
-      clarifying_question: Is there a specific upper age limit or geographic region
-        you're focusing on?
-    - statement: Hypertension management in urban African American populations
-      has: Ethnicity (African American) and setting (urban)
-      missing: No age range specified
-      clarifying_question: What age range are you targeting for this study?
+        - statement: women over 40
+          has: Gender (women) and minimum age (40)
+          missing: No upper age limit, ethnicity, or geographic scope
+          example_question: Is there a specific upper age limit, care setting or geographic region you're focusing on?
+        - statement: urban African American populations
+          has: Ethnicity (African American) and setting (urban)
+          missing: No age range specified
+          example_question: What age range are you targeting for this study?
       vague_ambiguous:
-    - statement: Intervention effectiveness in middle-aged adults
-      issue: '''Middle-aged'' is ambiguous - typically 40-65, but varies by source'
-      clarifying_question: Can you specify the exact age range you consider 'middle-aged'?
-    - statement: Study in diverse patient populations
-      issue: '''Diverse'' is vague - diverse in what way? Age, ethnicity, geography?'
-      clarifying_question: What diversity dimensions are important for your research?
-        (age, ethnicity, gender, geography)
-  response_format:
-    additional_fields:
-      age_specified: boolean
-      gender_specified: boolean
-      ethnicity_relevant: boolean
-      geographic_scope_clear: boolean
-  allow_follow_up: true
-  max_follow_ups: 2
-  metadata:
-    domain: clinical_research
-    framework: PICO
-    pico_component: Population
-    subdimension: Demographics
-    priority: high
-    typical_order: 1
-  refinement_instructions: '# TASK: Demographic Characteristics Analysis
+        - statement: Intervention effectiveness in middle-aged adults
+          issue: "'Middle-aged' is ambiguous - typically 40-65, but varies by source"
+          example_question: Can you specify the exact age range you consider 'middle-aged'?
+        - statement: Study in diverse patient populations
+          issue: "'Diverse' is vague - diverse in what way? Age, ethnicity, geography?"
+          example_question:
+            What diversity dimensions are important for your research?
+            (age, ethnicity, gender, geography)
+    allow_follow_up: true
+    max_follow_ups: 2
 
-
-    Analyze if the query specifies the target population''s basic demographic profile.
-
-
-    Query: {query}
-
-
-    Focus ONLY on demographic dimensions:
-
-    1. Age range or age groups
-
-    2. Gender/sex specification
-
-    3. Ethnicity or racial groups (if relevant)
-
-    4. Geographic region or population setting
-
-
-    [Focused prompt continues...]
-
-    '
-  aspect_name: Population Demographics
-  aspect_description: 'Clarifies basic demographic characteristics: age, gender, ethnicity,
-    geographic location.
-
-    '
-- id: population_clinical_condition
-  examples:
+  - id: population_clinical_condition
+    examples:
       clear:
-    - statement: Efficacy of chemotherapy in stage III colorectal cancer patients
-      explanation: Disease (colorectal cancer) and stage (III) clearly specified
-    - statement: Management of acute severe asthma exacerbations in emergency settings
-      explanation: Condition (asthma), phase (acute), and severity (severe) all defined
-      needs_refinement:
-    - statement: Treatment for diabetes patients
-      issue: Type of diabetes not specified (Type 1, Type 2, gestational?)
-      clarifying_question: What type of diabetes are you focusing on? (Type 1, Type
-        2, gestational, or other)
-    - statement: Outcomes in cancer patients
-      issue: No cancer type or stage specified
-      clarifying_question: Which cancer type and stage are you interested in?
+        - statement: Efficacy of chemotherapy in stage III colorectal cancer patients
+          explanation: Disease (colorectal cancer) and stage (III) clearly specified
+        - statement: Management of acute severe asthma exacerbations in emergency settings
+          explanation: Condition (asthma), phase (acute), and severity (severe) all defined
+          needs_refinement:
+        - statement: Treatment for diabetes patients
+          issue: Type of diabetes not specified (Type 1, Type 2, gestational?)
+          example_question:
+            What type of diabetes are you focusing on? (Type 1, Type
+            2, gestational, or other)
+        - statement: Outcomes in cancer patients
+          issue: No cancer type or stage specified
+          example_question: Which cancer type and stage are you interested in?
       partial:
-    - statement: Effects of medication in moderate depression
-      has: Condition (depression) and severity (moderate)
-      missing: No specification of depression type (major, persistent, etc.)
-      clarifying_question: Are you focusing on a specific depression subtype? (e.g.,
-        major depressive disorder, persistent depressive disorder)
-  response_format:
-    additional_fields:
-      diagnosis_specificity: string
-      stage_specified: boolean
-      severity_clear: boolean
-      diagnostic_criteria_mentioned: boolean
-  allow_follow_up: true
-  max_follow_ups: 2
-  metadata:
-    domain: clinical_research
-    framework: PICO
-    pico_component: Population
-    subdimension: Clinical_Condition
-    priority: critical
-    typical_order: 2
-  refinement_instructions: '# TASK: Clinical Condition Analysis
+        - statement: Effects of medication in moderate depression
+          has: Condition (depression) and severity (moderate)
+          missing: No specification of depression type (major, persistent, etc.)
+          example_question: Are you focusing on a specific depression subtype? (e.g., major depressive disorder, persistent depressive disorder)
+    allow_follow_up: true
+    max_follow_ups: 2
+    refinement_instructions: "# TASK: Clinical Condition Analysis
+
+      Analyze if the query adequately specifies the target clinical condition.
+
+      Query: {input}
+
+      Focus ONLY on clinical condition dimensions:
+
+      1. Primary diagnosis or health condition
+
+      2. Disease stage or phase (early, advanced, acute, chronic)
+
+      3. Severity level or classification
+
+      4. Diagnostic criteria used
 
 
-    Analyze if the query adequately specifies the target clinical condition.
-
-
-    Query: {query}
-
-
-    Focus ONLY on clinical condition dimensions:
-
-    1. Primary diagnosis or health condition
-
-    2. Disease stage or phase (early, advanced, acute, chronic)
-
-    3. Severity level or classification
-
-    4. Diagnostic criteria used
-
-
-    [Focused prompt continues...]
-
-    '
-  aspect_name: Clinical Condition Specification
-  aspect_description: 'Clarifies the primary health condition, disease stage, and
-    severity.
-
-    '
-- id: population_comorbidities
-  examples:
+      [Focused prompt continues...]"
+    aspect_name: Clinical Condition Specification
+    aspect_description: "Clarifies the primary health condition, disease stage, and severity."
+  - id: population_comorbidities
+    examples:
       clear:
-    - statement: Effects of ACE inhibitors in diabetic patients with hypertension
-      explanation: Primary condition (diabetes) and comorbidity (hypertension) both
-        specified
-    - statement: Statin therapy in patients with CVD and no prior statin use
-      explanation: Condition clear and prior treatment history specified
-      needs_refinement:
-    - statement: Intervention in patients with multiple conditions
-      issue: No specific comorbidities mentioned
-      clarifying_question: Which specific comorbidities are relevant to your study?
+        - statement: Effects of ACE inhibitors in diabetic patients with hypertension
+          explanation:
+            Primary condition (diabetes) and comorbidity (hypertension) both
+            specified
+        - statement: Statin therapy in patients with CVD and no prior statin use
+          explanation: Condition clear and prior treatment history specified
+          needs_refinement:
+        - statement: Intervention in patients with multiple conditions
+          issue: No specific comorbidities mentioned
+          example_question: Which specific comorbidities are relevant to your study?
       partial:
-    - statement: Treatment in heart failure patients with renal impairment
-      has: Primary condition (heart failure) and one comorbidity (renal impairment)
-      missing: Severity of renal impairment not specified
-      clarifying_question: What level of renal impairment are you considering? (mild,
-        moderate, severe)
-  response_format:
-    additional_fields:
-      comorbidity_considerations: array
-      prior_treatment_relevance: boolean
-      treatment_history_specified: boolean
-  allow_follow_up: true
-  max_follow_ups: 2
-  metadata:
-    domain: clinical_research
-    framework: PICO
-    pico_component: Population
-    subdimension: Comorbidities_History
-    priority: medium
-    typical_order: 3
-  refinement_instructions: '# TASK: Comorbidities and Medical History Analysis
+        - statement: Treatment in heart failure patients with renal impairment
+          has: Primary condition (heart failure) and one comorbidity (renal impairment)
+          missing: Severity of renal impairment not specified
+          example_question:
+            What level of renal impairment are you considering? (mild,
+            moderate, severe)
+    allow_follow_up: true
+    max_follow_ups: 2
+    refinement_instructions: "# TASK: Comorbidities and Medical History Analysis
 
 
-    Analyze if the query specifies relevant comorbidities and medical history.
+      Analyze if the query specifies relevant comorbidities and medical history.
 
 
-    Query: {query}
+      Query: {input}
 
 
-    Focus on comorbidity dimensions and prior treatment context.
-
-    '
-  aspect_name: Comorbidities & Medical History
-  aspect_description: 'Clarifies concurrent conditions, prior treatments, and relevant
-    medical history.
-
-    '
-- id: population_eligibility_criteria
-  examples:
+      Focus on comorbidity dimensions and prior treatment context."
+    aspect_name: Comorbidities & Medical History
+    aspect_description:
+      "Clarifies concurrent conditions, prior treatments, and relevant
+      medical history."
+  - id: population_eligibility_criteria
+    examples:
       clear:
-    - statement: Trial for patients with HbA1c > 7.5% and BMI 25-40
-      explanation: Specific biomarker threshold (HbA1c) and BMI range clearly defined
-    - statement: Study excluding patients on immunosuppressants or with active infection
-      explanation: Clear exclusion criteria specified
+        - statement: Trial for patients with HbA1c > 7.5% and BMI 25-40
+          explanation: Specific biomarker threshold (HbA1c) and BMI range clearly defined
+        - statement: Study excluding patients on immunosuppressants or with active infection
+          explanation: Clear exclusion criteria specified
       needs_refinement:
-    - statement: Study in patients with elevated markers
-      issue: Which markers? What elevation threshold?
-      clarifying_question: Which biomarkers are you measuring, and what defines 'elevated'?
+        - statement: Study in patients with elevated markers
+          issue: Which markers? What elevation threshold?
+          example_question: Which biomarkers are you measuring, and what defines 'elevated'?
       partial:
-    - statement: Patients with systolic BP > 140 mmHg
-      has: One specific inclusion criterion (BP threshold)
-      missing: Other eligibility criteria unclear
-      clarifying_question: Are there other inclusion or exclusion criteria to specify?
-  response_format:
-    additional_fields:
-      inclusion_criteria_specified: array
-      exclusion_criteria_specified: array
-      biomarker_requirements_clear: boolean
-  allow_follow_up: true
-  max_follow_ups: 3
-  metadata:
-    domain: clinical_research
-    framework: PICO
-    pico_component: Population
-    subdimension: Eligibility_Criteria
-    priority: medium
-    typical_order: 4
-  refinement_instructions: '# TASK: Eligibility Criteria Analysis
+        - statement: Patients with systolic BP > 140 mmHg
+          has: One specific inclusion criterion (BP threshold)
+          missing: Other eligibility criteria unclear
+          example_question: Are there other inclusion or exclusion criteria to specify?
+    refinement_instructions: "# TASK: Eligibility Criteria Analysis
 
 
-    Analyze if the query specifies eligibility criteria clearly.
+      Analyze if the query specifies eligibility criteria clearly.
 
 
-    Query: {query}
+      Query: {input}
 
 
-    Focus on inclusion/exclusion criteria and biomarker requirements.
-
-    '
-  aspect_name: Inclusion/Exclusion Criteria
-  aspect_description: 'Clarifies specific eligibility parameters, biomarkers, and
-    contraindications.
-
-    '
-- id: population_special_considerations
-  examples:
+      Focus on inclusion/exclusion criteria and biomarker requirements."
+    aspect_name: Inclusion/Exclusion Criteria
+    aspect_description:
+      "Clarifies specific eligibility parameters, biomarkers, and
+      contraindications."
+  - id: population_special_considerations
+    examples:
       clear:
-    - statement: Study in pregnant women during second trimester in urban hospitals
-      explanation: Special population (pregnant) and setting (urban hospitals) clearly
-        defined
-    - statement: Trial recruiting elderly patients from nursing home facilities
-      explanation: Special population context and recruitment setting specified
+        - statement: Study in pregnant women during second trimester in urban hospitals
+          explanation:
+            Special population (pregnant) and setting (urban hospitals) clearly
+            defined
+        - statement: Trial recruiting elderly patients from nursing home facilities
+          explanation: Special population context and recruitment setting specified
       needs_refinement:
-    - statement: Study in vulnerable populations
-      issue: Which vulnerable populations specifically?
-      clarifying_question: Which vulnerable population groups are you focusing on?
-        (e.g., pregnant women, children, immunocompromised)
+        - statement: Study in vulnerable populations
+          issue: Which vulnerable populations specifically?
+          example_question:
+            Which vulnerable population groups are you focusing on?
+            (e.g., pregnant women, children, immunocompromised)
       partial:
-    - statement: Research in pediatric populations
-      has: Special population (pediatric) identified
-      missing: No setting or recruitment context specified
-      clarifying_question: What is the study setting? (e.g., hospitals, clinics, community)
-  response_format:
-    additional_fields:
-      special_populations_relevant: array
-      recruitment_setting_specified: boolean
-      sample_size_implications: string
-  allow_follow_up: true
-  max_follow_ups: 1
-  metadata:
-    domain: clinical_research
-    framework: PICO
-    pico_component: Population
-    subdimension: Special_Populations_Setting
-    priority: low
-    typical_order: 5
-  refinement_instructions: '# TASK: Special Populations and Setting Analysis
+        - statement: Research in pediatric populations
+          has: Special population (pediatric) identified
+          missing: No setting or recruitment context specified
+          example_question: What is the study setting? (e.g., hospitals, clinics, community)
+    refinement_instructions: "# TASK: Special Populations and Setting Analysis
 
 
-    Analyze if the query specifies special population considerations and study setting.
+      Analyze if the query specifies special population considerations and study setting.
 
 
-    Query: {query}
+      Query: {input}
 
 
-    Focus on special populations (e.g., pregnant, pediatric, elderly) and recruitment
-    context.
-
-    '
-  aspect_name: Special Populations & Study Setting
-  aspect_description: 'Clarifies special population groups and recruitment/study setting.
-
-    '
+      Focus on special populations (e.g., pregnant, pediatric, elderly) and recruitment
+      context."
+    aspect_name: Special Populations & Study Setting
+    aspect_description: "Clarifies special population groups and recruitment/study setting."

@@ -245,8 +245,8 @@ class SessionManager:
             "is_complete": step.is_complete,
             "needs_review": step.needs_review,
             "was_skipped": step.was_skipped,
-            "analysis_reason": step.analysis_reason,
-            "analysis_suggested_question": step.analysis_suggested_question,
+            "needs_refinement_rationale": step.needs_refinement_rationale,
+            "refinement_question": step.refinement_question,
             "initial_summary": step.initial_summary
         }
     
@@ -287,8 +287,8 @@ class SessionManager:
                 is_complete=step_data.get("is_complete", False),
                 needs_review=step_data.get("needs_review", False),
                 was_skipped=step_data.get("was_skipped", False),
-                analysis_reason=step_data.get("analysis_reason"),
-                analysis_suggested_question=step_data.get("analysis_suggested_question"),
+                needs_refinement_rationale=step_data.get("analysis_reason"),
+                refinement_question=step_data.get("analysis_suggested_question"),
                 initial_summary=step_data.get("initial_summary")
             )
             

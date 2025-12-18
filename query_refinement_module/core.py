@@ -50,7 +50,6 @@ import asyncio
 import json
 import logging
 import textwrap
-import time
 from dataclasses import dataclass, field
 from enum import Enum
 from typing import Any, Callable, Dict, List, Optional
@@ -62,7 +61,11 @@ from .interfaces import (
 )
 from .providers import NoOpTracingProvider, TraceEventEmitter
 from .schema import RefinementAspect
-from .tracing import get_logger, OperationTimer
+
+from .prompt.system_role import (
+    SYSTEM_PROMPT_REFINEMENT_END_LOWER,
+    SYSTEM_PROMPT_REFINEMENT_END_UPPER,
+)
 
 # Module logger - use get_logger() in functions for request context
 logger = logging.getLogger(__name__)
@@ -258,9 +261,9 @@ class QueryAspectRefiner:
     was_skipped: bool = False
     
     # Analysis result - stored from LLM's structured analysis output during initialize()
-    # Contains: reason (why refinement needed/not), clarifying_question (what to ask)
-    analysis_reason: Optional[str] = None
-    analysis_suggested_question: Optional[str] = None
+    # Contains: needs_refinement_rationale (why refinement needed/not), refinement_question (what to ask)
+    needs_refinement_rationale: Optional[str] = None
+    refinement_question: Optional[str] = None
     initial_summary: Optional[str] = None
     
     @property
@@ -275,14 +278,14 @@ class QueryAspectRefiner:
             return None
         return self.follow_up_history[-1]['response']
 
-    def get_system_prompt(self) -> str:
+    def get_system_role(self) -> str:
         """
-        Get the system prompt for this refinement aspect.
+        Get the system role prompt for this refinement aspect.
         
         Returns:
             System prompt string (from refinement aspect or default)
         """
-        return self.refinement_aspect.get_system_prompt()
+        return self.refinement_aspect.get_system_role()
     
     def get_prompts(self, query: str, dependency_context: Optional[Dict[str, str]] = None, **kwargs) -> tuple[str, str]:
         """
@@ -297,7 +300,7 @@ class QueryAspectRefiner:
         Returns:
             Tuple of (system_prompt, analysis_prompt)
         """
-        system_prompt = self.refinement_aspect.get_system_prompt()
+        system_prompt = self.refinement_aspect.get_system_role()
 
         context_lines: List[str] = []
         missing_deps: List[str] = []
@@ -318,20 +321,22 @@ class QueryAspectRefiner:
                     missing_deps,
                 )
 
-        analysis_prompt_sections = [
+        refinement_instructions_prompt_sections = [
             self.refinement_aspect.get_refinement_instructions_prompt(statement=query, **kwargs)
         ]
 
         if context_lines:
-            analysis_prompt_sections.extend(
+            refinement_instructions_prompt_sections.extend(
                 [
                     "",
-                    "Previous refinements (use these details when evaluating this aspect):",
+                    "### Previous refinements (authoritative context)\n"
+                    "Use the following confirmed refinements as fixed constraints when evaluating the user-submitted input, "
+                    "according to the definition of this refinement aspect:",
                     *context_lines,
                 ]
             )
 
-        return system_prompt, "\n".join(analysis_prompt_sections)
+        return system_prompt, "\n".join(refinement_instructions_prompt_sections)
     
     def can_ask_followup(self) -> bool:
         """
@@ -364,7 +369,6 @@ class QueryAspectRefiner:
             history_lines.append(f" Q: {qa.get('question', '')}")
             history_lines.append(f" A: {qa.get('response', '')}")
         return "\n".join(history_lines)
-    
     
     def format_follow_up_prompt_template(
         self,
@@ -945,18 +949,18 @@ class QueryRefinementManager:
                 followup_question = parsed_payload.get("followup_question")
                 reasoning = parsed_payload.get("reasoning")
             if is_error:
-                step.add_follow_up(question=step.analysis_suggested_question or step.refinement_aspect.aspect_name, response=f"[Validation error: {error_message}]")
+                step.add_follow_up(question=step.refinement_question or step.refinement_aspect.aspect_name, response=f"[Validation error: {error_message}]")
                 step.is_complete = True
                 break
             step.add_follow_up(
-                question=followup_question or step.analysis_suggested_question or step.refinement_aspect.aspect_name,
+                question=followup_question or step.refinement_question or step.refinement_aspect.aspect_name,
                 response=response_text
             )
             rounds += 1
             if rounds == max_followups:
                 if parsed_payload and parsed_payload.get("is_complete", False):
                     step.is_complete = True
-                    step.analysis_reason = reasoning
+                    step.needs_refinement_rationale = reasoning
                     if final_value is not None:
                         step.initial_summary = final_value
                     else:
@@ -966,13 +970,13 @@ class QueryRefinementManager:
                 break
             if parsed_payload and parsed_payload.get("is_complete", False):
                 step.is_complete = True
-                step.analysis_reason = reasoning
+                step.needs_refinement_rationale = reasoning
                 if final_value is not None:
                     step.initial_summary = final_value
                 else:
                     step.initial_summary = response_text
                 break
-            step.analysis_suggested_question = followup_question
+            step.refinement_question = followup_question
 
         final_value = self._extract_final_value(step)
         return self._build_followup_result(step, final_value, rounds)
@@ -1171,8 +1175,8 @@ class QueryRefinementManager:
                 continue
             
             # Store analysis results
-            step.analysis_reason = analysis_result.explanation
-            step.analysis_suggested_question = analysis_result.clarifying_question
+            step.needs_refinement_rationale = analysis_result.explanation
+            step.refinement_question = analysis_result.clarifying_question
             
             if analysis_result.needs_refinement:
                 self._mark_step_needs_refinement(step, aspect, analysis_result)
@@ -1190,8 +1194,8 @@ class QueryRefinementManager:
         """Handle failed analysis by marking step for refinement."""
         logger.warning("Analysis failed for aspect %s - marking for refinement", aspect.id)
         step.is_complete = False
-        step.analysis_reason = "Analysis could not be completed"
-        step.analysis_suggested_question = aspect.aspect_description or f"Please provide details about {aspect.aspect_name}"
+        step.needs_refinement_rationale = "Analysis could not be completed"
+        step.refinement_question = aspect.aspect_description or f"Please provide details about {aspect.aspect_name}"
 
     def _mark_step_needs_refinement(
         self,
@@ -1478,8 +1482,8 @@ class QueryRefinementManager:
             llm_provider=self.llm_provider,
         )
 
-        step.analysis_reason = analysis_result.explanation
-        step.analysis_suggested_question = analysis_result.clarifying_question
+        step.needs_refinement_rationale = analysis_result.explanation
+        step.refinement_question = analysis_result.clarifying_question
         step.needs_review = False
 
         if analysis_result.needs_refinement:
@@ -1632,7 +1636,7 @@ class QueryRefinementManager:
             Dict with error response.
         """
         failure_response = f"[Validation error: {error_message}]" if error_message else "[Validation error]"
-        question_text = step.analysis_suggested_question or aspect.aspect_name
+        question_text = step.refinement_question or aspect.aspect_name
         
         step.add_follow_up(question=question_text, response=failure_response)
         step.is_complete = True
@@ -1667,7 +1671,7 @@ class QueryRefinementManager:
         Returns:
             Dict with successful response.
         """
-        question_text = step.analysis_suggested_question or aspect.aspect_name
+        question_text = step.refinement_question or aspect.aspect_name
         step.add_follow_up(question=question_text, response=response_text)
         step.is_complete = True
         
@@ -2023,7 +2027,7 @@ class QueryRefinementManager:
                 f"Follow-up prompts require at least one recorded response for aspect '{step.refinement_aspect.id}'."
             )
 
-        system_prompt = step.get_system_prompt()
+        system_prompt = step.get_system_role()
         user_prompt = step.format_follow_up_prompt_template(
             original_query=session.original_query,
             include_examples=include_examples,
@@ -2049,7 +2053,7 @@ class QueryRefinementManager:
                 continue
 
             if step.is_complete:
-                summary = (step.initial_summary or step.analysis_reason or "").strip()
+                summary = (step.initial_summary or step.needs_refinement_rationale or "").strip()
                 if summary:
                     baseline_summaries.append((step.refinement_aspect.aspect_name, summary))
 
@@ -2095,15 +2099,10 @@ class QueryRefinementManager:
             }
 
         # TODO: extend and adapt the final refined query prompt to provide synonyms and a paragraph
-        system_prompt = (
-            "You are an expert research assistant who rewrites research queries. "
-            "Blend the initial query with clarified aspect details into a single, "
-            "well-formed refined query or paragraph. Do not add new information beyond the "
-            "provided clarifications."
-        )
+        system_prompt = SYSTEM_PROMPT_REFINEMENT_END_UPPER
 
         user_sections = [
-            "ORIGINAL QUERY:",
+            "ORIGINAL USER-SUBMITTED RESEARCH INPUT:",
             session.original_query.strip(),
             "",
         ]
@@ -2129,10 +2128,7 @@ class QueryRefinementManager:
             ])
 
         user_sections.append(
-            (
-                "Compose a single refined query that integrates all provided details. "
-                "Return only the refined query text without extra commentary."
-            )
+            SYSTEM_PROMPT_REFINEMENT_END_LOWER
         )
 
         if additional_guidance:
@@ -2253,10 +2249,10 @@ class QueryRefinementManager:
             
             # Add analysis details for aspects that need refinement
             if not step.is_complete:
-                if step.analysis_reason:
-                    aspect_info["reason"] = step.analysis_reason
-                if step.analysis_suggested_question:
-                    aspect_info["clarifying_question"] = step.analysis_suggested_question
+                if step.needs_refinement_rationale:
+                    aspect_info["reason"] = step.needs_refinement_rationale
+                if step.refinement_question:
+                    aspect_info["clarifying_question"] = step.refinement_question
             
             if step.is_complete:
                 aspects_clear.append(aspect_info)

@@ -340,7 +340,7 @@ def submit_answer(
     
     # Add user's answer to follow-up history
     active_step.follow_up_history.append({
-        'question': active_step.analysis_suggested_question or active_step.refinement_aspect.aspect_name,
+        'question': active_step.refinement_question or active_step.refinement_aspect.aspect_name,
         'response': request.answer
     })
     
@@ -382,7 +382,7 @@ def submit_answer(
     db_followup = create_followup(
         db,
         refinement_step_id=db_step.id,
-        question=active_step.analysis_suggested_question or active_step.refinement_aspect.aspect_name,
+        question=active_step.refinement_question or active_step.refinement_aspect.aspect_name,
         answer=request.answer
     )
     

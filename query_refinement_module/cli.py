@@ -149,7 +149,7 @@ def run_cli(manager: QueryRefinementManager, framework_name: str, query: str, pa
                     continue
 
             header = step.refinement_aspect.aspect_name
-            question = step.analysis_suggested_question or header
+            question = step.refinement_question or header
             
             print("\n" + "─"*80)
             if step.needs_review:

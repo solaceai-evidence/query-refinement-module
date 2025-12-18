@@ -521,7 +521,7 @@ def test_ensure_step_is_ready_autocompletes_dependent_aspect():
     step_a.initial_summary = "Population captured in original query"
 
     step_b.is_complete = False
-    step_b.analysis_suggested_question = "Need population"
+    step_b.refinement_question = "Need population"
 
     ready = manager.ensure_step_is_ready(session, step_b)
 
@@ -557,7 +557,7 @@ def test_process_next_step_records_follow_up_without_schema():
     manager = build_manager(responses=["Answer"], analysis_results={})
     session = QueryRefinementSession(original_query="query")
     step = session.add_step(aspect)
-    step.analysis_suggested_question = "Question?"
+    step.refinement_question = "Question?"
 
     result = manager.process_next_step(session)
 
@@ -579,7 +579,7 @@ def test_process_next_step_enforces_json_validation():
     manager = build_manager(responses=responses, analysis_results={})
     session = QueryRefinementSession(original_query="query")
     step = session.add_step(aspect)
-    step.analysis_suggested_question = "Question?"
+    step.refinement_question = "Question?"
 
     result = manager.process_next_step(session)
 
@@ -599,7 +599,7 @@ def test_process_next_step_returns_error_after_failed_validation():
     manager = build_manager(responses=responses, analysis_results={})
     session = QueryRefinementSession(original_query="query")
     step = session.add_step(aspect)
-    step.analysis_suggested_question = "Question?"
+    step.refinement_question = "Question?"
 
     result = manager.process_next_step(session)
 
@@ -680,7 +680,7 @@ def test_run_full_refinement_processes_steps():
     manager = build_manager(responses=["answer"], analysis_results={})
     session = QueryRefinementSession(original_query="query")
     step = session.add_step(aspect)
-    step.analysis_suggested_question = "Q"
+    step.refinement_question = "Q"
 
     manager.run_full_refinement(session)
     assert step.is_complete
