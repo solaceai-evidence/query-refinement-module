@@ -1398,6 +1398,120 @@ class QueryRefinementManager:
                 original_query, refinement_framework, session
             )
 
+    async def initialize_streaming(
+        self,
+        original_query: str,
+        refinement_framework: List[RefinementAspect],
+        parallel_config: Optional["ParallelConfig"] = None,
+    ):
+        """
+        Initialize a new refinement session with streaming results.
+        
+        Yields analysis results as each dependency level completes, enabling
+        incremental UI updates and faster perceived performance.
+        
+        Args:
+            original_query: The user's initial query text
+            refinement_framework: List of aspects to refine
+            parallel_config: Optional configuration for parallel execution
+            
+        Yields:
+            Tuple of (session, level_idx, level_results, metadata, is_final)
+            - session: QueryRefinementSession (partial until is_final=True)
+            - level_idx: Index of completed level (None if final)
+            - level_results: Dict of AspectAnalysisResults for this level
+            - metadata: Execution metadata (timing, counts)
+            - is_final: True on final yield with complete session
+        """
+        with self.tracing_provider.trace_operation("initialize_refinement_session_streaming") as trace:
+            if hasattr(trace, 'add_attribute'):
+                trace.add_attribute("original_query", original_query)
+                trace.add_attribute("num_refinement_aspects", len(refinement_framework))
+
+            logger.info("Initializing refinement session (streaming) for query: %s", original_query)
+            logger.debug("Refinement framework aspects: %s",
+                         [aspect.aspect_name for aspect in refinement_framework])
+            
+            # Create session
+            session = self._create_session(original_query)
+            
+            use_parallel = parallel_config is not None and parallel_config.enabled
+            
+            if not use_parallel:
+                # Fallback to non-streaming for sequential execution
+                analysis_results = self._analyze_aspects_sequential(
+                    original_query=original_query,
+                    refinement_framework=refinement_framework,
+                    session=session,
+                )
+                aspects_needing_refinement_count = self._populate_session_steps(
+                    session=session,
+                    refinement_framework=refinement_framework,
+                    analysis_results=analysis_results,
+                )
+                self._log_session_summary(session, aspects_needing_refinement_count)
+                yield session, None, analysis_results, {"total_aspects": len(refinement_framework)}, True
+                return
+            
+            # Run parallel analysis with streaming
+            try:
+                from .parallel import ParallelQueryAnalyzer
+                
+                parallel_analyzer = ParallelQueryAnalyzer(
+                    query_analyzer=self.query_analyzer,
+                    config=parallel_config,
+                    trace_emitter=self.trace_emitter
+                )
+                
+                def get_dependency_context(aspect_id: str) -> Dict[str, str]:
+                    dependency_context = session.get_dependency_context(aspect_id)
+                    return {
+                        dep_id: entry["value"]
+                        for dep_id, entry in dependency_context.items()
+                    }
+                
+                # Stream results as each level completes - simple async iteration
+                all_results: Dict[str, "AspectAnalysisResult"] = {}
+                
+                logger.debug("Starting async streaming iteration")
+                async for level_idx, level_results, metadata in parallel_analyzer.analyze_aspects_parallel_streaming(
+                    query=original_query,
+                    aspects=refinement_framework,
+                    llm_provider=self.llm_provider,
+                    dependency_context_provider=get_dependency_context,
+                    user_id=None,
+                ):
+                    all_results.update(level_results)
+                    logger.debug("Yielding level %d results with %d aspects", level_idx, len(level_results))
+                    yield session, level_idx, level_results, metadata, False
+                
+                # Populate final session with all results
+                aspects_needing_refinement_count = self._populate_session_steps(
+                    session=session,
+                    refinement_framework=refinement_framework,
+                    analysis_results=all_results,
+                )
+                self._log_session_summary(session, aspects_needing_refinement_count)
+                
+                # Yield final complete session
+                yield session, None, all_results, {"total_aspects": len(refinement_framework), "final": True}, True
+                
+            except Exception as e:
+                logger.error("Streaming initialization failed: %s - falling back", e, exc_info=True)
+                self.trace_emitter.emit(
+                    "streaming_initialization_error",
+                    metadata={"error": str(e), "fallback": "non-streaming"}
+                )
+                # Fallback to non-streaming
+                analysis_results = self._analyze_aspects_sequential(
+                    original_query, refinement_framework, session
+                )
+                aspects_needing_refinement_count = self._populate_session_steps(
+                    session, refinement_framework, analysis_results
+                )
+                self._log_session_summary(session, aspects_needing_refinement_count)
+                yield session, None, analysis_results, {"total_aspects": len(refinement_framework)}, True
+
     def ensure_step_is_ready(
         self,
         session: QueryRefinementSession,

@@ -199,6 +199,7 @@ async def test_submit_user_message_command(monkeypatch):
 class ResponseStep:
     def __init__(self):
         self.analysis_suggested_question = "Ask?"
+        self.refinement_question = "Ask?"  # Main question attribute
         self.refinement_aspect = types.SimpleNamespace(
             name="Aspect", 
             aspect_name="Aspect",

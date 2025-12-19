@@ -21,6 +21,7 @@ python = ">=3.12"
 pyyaml = ">=6.0.3,<7.0.0"
 redis = ">=5.0.0,<6.0.0"
 litellm = ">=1.43.0,<2.0.0"
+httpx = "^0.28.1"  # Async HTTP client with connection pooling
 python-dotenv = "^1.2.1"
 fastapi = "^0.123.3"
 uvicorn = {extras = ["standard"], version = "^0.38.0"}

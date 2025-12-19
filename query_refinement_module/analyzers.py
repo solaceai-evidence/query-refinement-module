@@ -35,6 +35,92 @@ class LLMQueryAnalyzer(QueryAnalyzerInterface):
         self._max_tokens = max_tokens
         self._completion_kwargs = completion_kwargs or {}
 
+    async def analyze_aspect_async(
+        self,
+        query: str,
+        aspect,
+        dependency_context: Optional[Dict[str, str]] = None,
+        llm_provider: Optional[LLMProviderInterface] = None,
+    ) -> AspectAnalysisResult:
+        """Async version of analyze_aspect for parallel execution."""
+        provider = llm_provider or self._llm
+        if provider is None:
+            raise ValueError("LLM provider must be supplied to analyze aspects")
+
+        system_prompt = aspect.get_system_role()
+        user_prompt = self._build_prompt(query, aspect, dependency_context)
+
+        dependency_keys = sorted(dependency_context.keys()) if dependency_context else []
+        logger.info(
+            "Analyzer prompt dispatched (async) | aspect=%s | dependency_keys=%s | system_prompt=%s | user_prompt=%s",
+            aspect.id,
+            dependency_keys,
+            system_prompt or "",
+            user_prompt,
+        )
+
+        # Use async complete if available, fallback to sync
+        if hasattr(provider, 'complete_async'):
+            result = await provider.complete_async(
+                user_prompt=user_prompt,
+                system_prompt=system_prompt,
+                temperature=self._temperature,
+                max_tokens=self._max_tokens,
+                **self._completion_kwargs,
+            )
+        else:
+            # Fallback to sync complete wrapped in asyncio.to_thread
+            import asyncio
+            result = await asyncio.to_thread(
+                provider.complete,
+                user_prompt=user_prompt,
+                system_prompt=system_prompt,
+                temperature=self._temperature,
+                max_tokens=self._max_tokens,
+                **self._completion_kwargs,
+            )
+
+        payload = self._parse_payload(result.context)
+        if payload is None:
+            logger.warning(
+                "Failed to parse analyzer response for aspect '%s'. Falling back to manual refinement.",
+                aspect.id,
+            )
+            return AspectAnalysisResult(
+                needs_refinement=True,
+                explanation="Unable to parse analyzer response; requesting manual clarification.",
+                clarifying_question=aspect.aspect_name,
+            )
+
+        if "needs_refinement" not in payload:
+            logger.warning(
+                "Analyzer response for aspect '%s' missing 'needs_refinement'; defaulting to manual refinement.",
+                aspect.id,
+            )
+            return AspectAnalysisResult(
+                needs_refinement=True,
+                explanation="Analyzer response missing required 'needs_refinement' field.",
+                clarifying_question=aspect.aspect_name,
+            )
+
+        needs_refinement = self._coerce_bool(payload["needs_refinement"])
+        explanation = payload.get("explanation") or ""
+        clarifying_question = payload.get("clarifying_question")
+
+        if needs_refinement:
+            if not clarifying_question:
+                logger.warning(
+                    "Analyzer response for aspect '%s' missing 'clarifying_question'. Using aspect name as fallback.",
+                    aspect.id,
+                )
+                clarifying_question = aspect.aspect_name
+
+        return AspectAnalysisResult(
+            needs_refinement=needs_refinement,
+            explanation=explanation,
+            clarifying_question=clarifying_question,
+        )
+
     def analyze_aspect(
         self,
         query: str,

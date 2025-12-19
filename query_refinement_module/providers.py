@@ -30,6 +30,11 @@ try:  # validated at runtime when Redis storage is instantiated
 except ImportError:  # handled with explicit runtime error
     redis = None
 
+try:  # optional dependency for HTTP connection pooling
+    import httpx  # type: ignore[import]
+except ImportError:
+    httpx = None
+
 from .interfaces import (
     LLMCompletionResult,
     LLMProviderInterface,
@@ -421,6 +426,146 @@ class LiteLLMProvider(LLMProviderInterface):
         self._api_key = api_key
         self._api_base = api_base
         self._default_completion_kwargs = default_completion_kwargs or {}
+        
+        # Initialize persistent HTTP client for connection pooling (if httpx available)
+        self._http_client: Optional[Any] = None
+        if httpx is not None:
+            self._http_client = httpx.AsyncClient(
+                limits=httpx.Limits(
+                    max_connections=20,
+                    max_keepalive_connections=10,
+                    keepalive_expiry=30.0,
+                ),
+                timeout=httpx.Timeout(60.0),
+            )
+            logger.debug("Initialized HTTP connection pool for LiteLLM provider")
+
+    async def complete_async(
+        self,
+        user_prompt: str,
+        system_prompt: Optional[str] = None,
+        model: Optional[str] = None,
+        temperature: float = 0.0,
+        max_tokens: Optional[int] = None,
+        **kwargs: Any,
+    ) -> LLMCompletionResult:
+        """Complete a prompt asynchronously with automatic retry on rate limit errors."""
+        if litellm is None:
+            raise RuntimeError(
+                "litellm package is required for LiteLLMProvider. Install with 'pip install litellm'."
+            )
+
+        target_model = model or self._default_model
+        if not target_model:
+            raise ValueError("Model must be supplied either at initialization or call time")
+
+        messages = []
+        if system_prompt:
+            messages.append({"role": "system", "content": system_prompt})
+        messages.append({"role": "user", "content": user_prompt})
+
+        completion_kwargs: Dict[str, Any] = {**self._default_completion_kwargs, **kwargs}
+        completion_kwargs.setdefault("temperature", temperature)
+        if max_tokens is not None and "max_tokens" not in completion_kwargs:
+            completion_kwargs["max_tokens"] = max_tokens
+
+        logger.info(
+            "Dispatching async completion",
+            extra={
+                "llm_provider": "litellm",
+                "model": target_model,
+                "temperature": completion_kwargs.get("temperature"),
+                "max_tokens": completion_kwargs.get("max_tokens"),
+            },
+        )
+
+        # Retry logic with exponential backoff
+        max_retries = 3
+        base_delay = 1.0
+        
+        for attempt in range(max_retries + 1):
+            try:
+                # Use async acompletion for true async I/O
+                response = await litellm.acompletion(
+                    model=target_model,
+                    messages=messages,
+                    api_key=self._api_key,
+                    api_base=self._api_base,
+                    client=self._http_client,  # Use persistent HTTP client if available
+                    **completion_kwargs,
+                )
+
+                message = response["choices"][0]["message"].get("content", "")
+                usage = response.get("usage", {})
+                total_tokens = usage.get("total_tokens")
+                
+                # Parse rate limit headers if available
+                response_headers = getattr(response, "_hidden_params", {}).get("response_headers", {})
+                rate_limit_info = self._parse_rate_limit_headers(response_headers)
+
+                metadata = {
+                    "provider": "litellm",
+                    "model": target_model,
+                    "usage": usage,
+                    "response_id": response.get("id"),
+                    "prompt_tokens": usage.get("prompt_tokens"),
+                    "completion_tokens": usage.get("completion_tokens"),
+                }
+                
+                if rate_limit_info:
+                    metadata["rate_limit_info"] = rate_limit_info
+
+                logger.info(
+                    "Completion received",
+                    extra={
+                        "llm_provider": "litellm",
+                        "model": target_model,
+                        "total_tokens": total_tokens,
+                        "attempt": attempt + 1,
+                    },
+                )
+
+                return LLMCompletionResult(
+                    context=message,
+                    model=target_model,
+                    total_tokens=total_tokens,
+                    metadata=metadata,
+                )
+                
+            except Exception as e:
+                # Check if this is a rate limit error
+                is_rate_limit_error = self._is_rate_limit_error(e)
+                
+                if is_rate_limit_error and attempt < max_retries:
+                    # Extract retry_after from error or use exponential backoff
+                    retry_after = self._extract_retry_after(e)
+                    if retry_after is None:
+                        retry_after = base_delay * (2 ** attempt)
+                    
+                    logger.warning(
+                        "Rate limit hit, retrying after %s seconds (attempt %d/%d)",
+                        retry_after,
+                        attempt + 1,
+                        max_retries,
+                        exc_info=False,
+                    )
+                    
+                    # Use async sleep instead of blocking time.sleep
+                    await asyncio.sleep(retry_after)
+                    continue
+                
+                # For rate limit errors on final attempt, raise RateLimitExceeded
+                if is_rate_limit_error:
+                    retry_after = self._extract_retry_after(e) or 60.0
+                    raise RateLimitExceeded(
+                        message=f"Rate limit exceeded for model {target_model}: {str(e)}",
+                        retry_after=retry_after,
+                        limit_type="provider",
+                        scope="global",
+                    )
+                
+                # Non-rate-limit errors are raised immediately
+                raise
 
     def complete(
         self,
@@ -431,7 +576,7 @@ class LiteLLMProvider(LLMProviderInterface):
         max_tokens: Optional[int] = None,
         **kwargs: Any,
     ) -> LLMCompletionResult:
-        """Complete a prompt with automatic retry on rate limit errors."""
+        """Complete a prompt with automatic retry on rate limit errors (synchronous wrapper)."""
         if litellm is None:
             raise RuntimeError(
                 "litellm package is required for LiteLLMProvider. Install with 'pip install litellm'."
@@ -530,7 +675,17 @@ class LiteLLMProvider(LLMProviderInterface):
                         exc_info=False,
                     )
                     
-                    time.sleep(retry_after)
+                    # Run async completion in sync context
+                    try:
+                        loop = asyncio.get_event_loop()
+                        if loop.is_running():
+                            # In async context already - can't block
+                            time.sleep(retry_after)
+                        else:
+                            loop.run_until_complete(asyncio.sleep(retry_after))
+                    except RuntimeError:
+                        # No event loop - just use regular sleep
+                        time.sleep(retry_after)
                     continue
                 
                 # For rate limit errors on final attempt, raise RateLimitExceeded
