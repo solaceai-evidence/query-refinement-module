@@ -119,10 +119,11 @@ def test_print_summary_outputs(capsys):
 
 
 def test_run_cli_handles_missing_framework(monkeypatch, capsys):
+    import asyncio
     manager = SimpleNamespace()
     monkeypatch.setattr(cli.registry, "get_framework", lambda name: (_ for _ in ()).throw(ValueError("missing")))
 
-    cli.run_cli(manager, "demo", "query")
+    asyncio.run(cli.run_cli(manager, "demo", "query"))
     out = capsys.readouterr().out
     assert "Error: missing" in out
 
@@ -131,6 +132,7 @@ class StubStep:
     def __init__(self, name="Aspect", question: Optional[str] = None):
         self.refinement_aspect = SimpleNamespace(aspect_name=name, id="aspect")
         self.analysis_suggested_question = question
+        self.refinement_question = question
         self.needs_review = False
         self.follow_up_history: List[dict] = []
         self.is_complete = False
@@ -187,6 +189,7 @@ class StubManager:
 
 
 def test_run_cli_processes_answer(monkeypatch, capsys):
+    import asyncio
     step = StubStep(question="Ask?")
     session = StubSession(step)
     manager = StubManager(session)
@@ -195,7 +198,7 @@ def test_run_cli_processes_answer(monkeypatch, capsys):
     monkeypatch.setattr(cli.registry, "get_framework", lambda name: [])
     monkeypatch.setattr("builtins.input", lambda prompt="": next(inputs))
 
-    cli.run_cli(manager, "demo", "query")
+    asyncio.run(cli.run_cli(manager, "demo", "query"))
 
     out = capsys.readouterr().out
     assert "Recorded response" in out
@@ -206,6 +209,7 @@ def test_run_cli_processes_answer(monkeypatch, capsys):
 
 
 def test_run_cli_handles_command(monkeypatch, capsys):
+    import asyncio
     step = StubStep()
     session = StubSession(step)
     manager = StubManager(session)
@@ -214,7 +218,7 @@ def test_run_cli_handles_command(monkeypatch, capsys):
     monkeypatch.setattr(cli.registry, "get_framework", lambda name: [])
     monkeypatch.setattr("builtins.input", lambda prompt="": next(inputs))
 
-    cli.run_cli(manager, "demo", "query")
+    asyncio.run(cli.run_cli(manager, "demo", "query"))
 
     out = capsys.readouterr().out
     assert "Handled" in out
@@ -398,7 +402,9 @@ def test_main_invokes_run_cli(monkeypatch):
         "build_manager",
         lambda enable_tracing, trace_dir=None, log_dir=None, parallel_enabled=True: "manager",
     )
-    monkeypatch.setattr(cli, "run_cli", lambda manager, framework, query, parallel_enabled=True: called.update({"manager": manager, "framework": framework, "query": query}))
+    async def fake_run_cli(manager, framework, query, parallel_enabled=True):
+        called.update({"manager": manager, "framework": framework, "query": query})
+    monkeypatch.setattr(cli, "run_cli", fake_run_cli)
 
     cli.main([])
     assert called == {"manager": "manager", "framework": "A", "query": "query"}

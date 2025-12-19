@@ -326,12 +326,16 @@ def test_build_next_prompt_prefers_suggested_question():
         def get_active_step(self):
             step = types.SimpleNamespace(
                 analysis_suggested_question="Ask",
+                refinement_question="Ask",
                 refinement_aspect=Aspect(),
                 analysis_reason="why",
+                needs_refinement_rationale="why",
             )
             step.refinement_aspect = Aspect()
             step.analysis_suggested_question = "Ask"
+            step.refinement_question = "Ask"
             step.analysis_reason = "why"
+            step.needs_refinement_rationale = "why"
             return step
 
         def get_dependency_context(self, aspect_id):
@@ -376,8 +380,10 @@ def test_build_next_prompt_uses_prompt_and_description():
                 aspect = Aspect(raises=True)
             step = types.SimpleNamespace(
                 analysis_suggested_question=None,
+                refinement_question=None,
                 refinement_aspect=aspect,
                 analysis_reason=None,
+                needs_refinement_rationale=None,
             )
             return step
 
