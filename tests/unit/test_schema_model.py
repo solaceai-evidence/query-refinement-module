@@ -107,7 +107,7 @@ def test_default_system_prompt_uses_name_and_description():
 
     assert "Demo Aspect" in prompt
     assert "Tracks demo behaviour" in prompt
-    assert "asking targeted, clarifying questions" in prompt
+    assert "asking focused clarifying questions" in prompt
 
 
 def test_get_refinement_instructions_prompt_includes_examples_and_format():

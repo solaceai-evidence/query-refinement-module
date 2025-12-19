@@ -417,8 +417,14 @@ class RefinementAspect:
         if self.system_prompt and self.system_prompt.strip():
             return self.system_prompt
         
-        # Default system prompt (concise to save tokens)
-        return DEFAULT_SYSTEM_PROMPT_REFINEMENT_START
+        # Default system prompt (concise to save tokens) - format template variables
+        try:
+            return DEFAULT_SYSTEM_PROMPT_REFINEMENT_START.format(
+                self=self
+            )
+        except (KeyError, AttributeError):
+            # Fallback if formatting fails
+            return DEFAULT_SYSTEM_PROMPT_REFINEMENT_START
     
     def get_prompts(self, query: str) -> tuple[str, str]:
         """

@@ -12,7 +12,7 @@ class DummyAspect:
         self._system_prompt = system_prompt
         self._user_prompt = user_prompt
 
-    def get_system_prompt(self):
+    def get_system_role(self):
         return self._system_prompt
 
     def get_refinement_instructions_prompt(self, *, statement):
