@@ -1,10 +1,11 @@
-"""Synchronous command-line interface for local query refinement testing."""
+"""Async command-line interface for query refinement testing."""
 
 from __future__ import annotations
 
 from dotenv import load_dotenv
 
 import argparse
+import asyncio
 import os
 import sys
 from typing import Optional
@@ -107,7 +108,7 @@ def _print_summary(manager: QueryRefinementManager, session) -> None:
     print("="*80)
 
 
-def run_cli(manager: QueryRefinementManager, framework_name: str, query: str, parallel_enabled: bool = True) -> None:
+async def run_cli(manager: QueryRefinementManager, framework_name: str, query: str, parallel_enabled: bool = True) -> None:
     try:
         framework = registry.get_framework(framework_name)
     except ValueError as exc:
@@ -121,8 +122,53 @@ def run_cli(manager: QueryRefinementManager, framework_name: str, query: str, pa
         print("📝 SEQUENTIAL MODE: Processing one aspect at a time")
     print("="*80)
     
-    session = manager.initialize(query, framework)
-    _print_summary(manager, session)
+    # Use streaming initialization if parallel mode is enabled
+    session = None
+    if parallel_enabled and manager.parallel_config:
+        print("\n🔄 Analyzing aspects (results will stream as they complete)...\n")
+        
+        try:
+            async for session_partial, level_idx, level_results, metadata, is_final in manager.initialize_streaming(
+                query, framework, manager.parallel_config
+            ):
+                session = session_partial
+                
+                if is_final:
+                    # Final result - print summary
+                    break
+                
+                # Intermediate result - show progress
+                total_completed = metadata.get("total_completed", 0)
+                total_aspects = metadata.get("total_aspects", 0)
+                elapsed = metadata.get("elapsed_time", 0)
+                successful = metadata.get("successful_in_level", 0)
+                failed = metadata.get("failed_in_level", 0)
+                
+                print(f"✓ Level {level_idx + 1}/{metadata.get('total_levels', '?')} complete: "
+                      f"{successful}/{len(level_results)} aspects successful "
+                      f"[{total_completed}/{total_aspects} total, {elapsed:.1f}s]")
+                
+                # Show which aspects were analyzed in this level
+                for aspect_id, result in level_results.items():
+                    if result:
+                        status = "✓ clear" if not result.needs_refinement else "→ needs refinement"
+                        print(f"  {status}: {aspect_id}")
+                    else:
+                        print(f"  ✗ failed: {aspect_id}")
+                
+                print()
+        except Exception as e:
+            print(f"⚠️  Streaming initialization failed: {e}")
+            import traceback
+            traceback.print_exc()
+            print("Falling back to standard initialization...\n")
+            session = manager.initialize(query, framework)
+    else:
+        # Non-streaming (sequential or fallback)
+        session = manager.initialize(query, framework)
+    
+    if session:
+        _print_summary(manager, session)
 
     print("\n" + "="*80)
     print("INSTRUCTIONS")
@@ -163,7 +209,15 @@ def run_cli(manager: QueryRefinementManager, framework_name: str, query: str, pa
                 print(f"\n{context_text}\n")
 
             print(f"{question}\n")
-            user_input = input("→ ").strip()
+            
+            # Use async-friendly input - wrap blocking input in executor
+            try:
+                user_input = await asyncio.to_thread(input, "→ ")
+                user_input = user_input.strip()
+            except (KeyboardInterrupt, asyncio.CancelledError):
+                print("\n\n🛑 Session interrupted. Exiting...")
+                interrupted = True
+                break
             if not user_input:
                 continue
 
@@ -206,6 +260,11 @@ def run_cli(manager: QueryRefinementManager, framework_name: str, query: str, pa
         interrupted = True
         print("\n" + "="*80)
         print("Session interrupted by user.")
+        print("="*80)
+    except asyncio.CancelledError:
+        interrupted = True
+        print("\n" + "="*80)
+        print("Session cancelled.")
         print("="*80)
 
     if interrupted:
@@ -311,7 +370,12 @@ def main(argv: Optional[list[str]] = None) -> None:
         print(f"Invalid LLM configuration: {exc}")
         return
 
-    run_cli(manager, framework_name, query, parallel_enabled=parallel_enabled)
+    try:
+        asyncio.run(run_cli(manager, framework_name, query, parallel_enabled=parallel_enabled))
+    except KeyboardInterrupt:
+        print("\n\n🛑 Session interrupted. Goodbye!")
+    except asyncio.CancelledError:
+        print("\n\n🛑 Session cancelled. Goodbye!")
 
 
 if __name__ == "__main__":  # pragma: no cover

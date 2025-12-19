@@ -256,6 +256,128 @@ class ParallelQueryAnalyzer:
         
         return results
 
+    async def analyze_aspects_parallel_streaming(
+        self,
+        query: str,
+        aspects: List["RefinementAspect"],
+        llm_provider: LLMProviderInterface,
+        dependency_context_provider: Callable[[str], Dict[str, str]],
+        user_id: Optional[str] = None
+    ):
+        """
+        Analyze multiple aspects in parallel with streaming results per level.
+        
+        Yields results as each dependency level completes, enabling incremental
+        display and faster perceived performance.
+        
+        Args:
+            query: Original query to analyze.
+            aspects: List of refinement aspects to analyze.
+            llm_provider: LLM provider for analysis.
+            dependency_context_provider: Function to get dependency context for an aspect_id.
+            user_id: Optional user ID for rate limiting.
+        
+        Yields:
+            Tuple of (level_idx, level_results, metadata) after each level completes.
+            - level_idx: Index of completed level
+            - level_results: Dict mapping aspect_id to AspectAnalysisResult for this level
+            - metadata: Dict with execution info (total_levels, level_count, elapsed_time)
+        """
+        start_time = time.time()
+        
+        logger.info(
+            "Starting streaming parallel analysis: %d aspects total",
+            len(aspects)
+        )
+        self._emit_execution_start(len(aspects))
+        
+        # Build and validate dependency graph
+        dep_graph, aspect_map = self._build_dependency_graph(aspects)
+        logger.debug("Dependency graph built: %d nodes", len(aspect_map))
+        
+        # Get execution levels (with fallback to sequential on error)
+        levels = await self._get_execution_levels(
+            dep_graph, query, aspects, llm_provider, dependency_context_provider, user_id
+        )
+        
+        if levels is None:
+            # Fallback already executed by _get_execution_levels
+            logger.warning("Streaming aborted: fallback to sequential executed")
+            return
+        
+        logger.info("Computed %d dependency levels for execution", len(levels))
+        if self.trace_emitter:
+            self.trace_emitter.emit(
+                "streaming_levels_computed",
+                metadata={
+                    "num_levels": len(levels),
+                    "level_sizes": [len(level) for level in levels],
+                }
+            )
+        
+        # Execute levels and yield results incrementally
+        all_results: Dict[str, "AspectAnalysisResult"] = {}
+        
+        for level_idx, level_aspect_ids in enumerate(levels):
+            logger.info(
+                "Starting level %d/%d with %d aspects: %s",
+                level_idx + 1,
+                len(levels),
+                len(level_aspect_ids),
+                level_aspect_ids
+            )
+            self._emit_level_start(level_idx, level_aspect_ids)
+            
+            logger.debug(
+                "Executing level %d: %d aspects",
+                level_idx,
+                len(level_aspect_ids),
+            )
+            
+            # Execute all aspects in this level in parallel
+            level_results = await self._execute_level(
+                query=query,
+                aspect_ids=level_aspect_ids,
+                aspect_map=aspect_map,
+                llm_provider=llm_provider,
+                dependency_context_provider=dependency_context_provider,
+                user_id=user_id
+            )
+            
+            all_results.update(level_results)
+            
+            # Log level completion
+            successful = len([r for r in level_results.values() if r is not None])
+            failed = len(level_results) - successful
+            logger.info(
+                "Level %d complete: %d/%d aspects successful, %d failed, %d total completed",
+                level_idx,
+                successful,
+                len(level_results),
+                failed,
+                len(all_results)
+            )
+            
+            self._emit_level_complete(level_idx, level_results)
+            
+            # Yield this level's results immediately
+            elapsed_time = time.time() - start_time
+            metadata = {
+                "total_levels": len(levels),
+                "level_count": len(level_aspect_ids),
+                "elapsed_time": elapsed_time,
+                "total_completed": len(all_results),
+                "total_aspects": len(aspects),
+                "successful_in_level": successful,
+                "failed_in_level": failed,
+            }
+            
+            logger.debug("Yielding level %d results to consumer", level_idx)
+            yield level_idx, level_results, metadata
+        
+        # Report final metrics
+        self._emit_execution_complete(all_results, aspects, levels, start_time)
+
     def _build_dependency_graph(
         self,
         aspects: List["RefinementAspect"]
@@ -530,12 +652,23 @@ class ParallelQueryAnalyzer:
                     dependency_context = dependency_context_provider(aspect.id)
                     
                     # Analyze aspect (this is the actual LLM call)
-                    result = self.query_analyzer.analyze_aspect(
-                        query=query,
-                        aspect=aspect,
-                        dependency_context=dependency_context,
-                        llm_provider=llm_provider
-                    )
+                    # Use async version if available
+                    if hasattr(self.query_analyzer, 'analyze_aspect_async'):
+                        result = await self.query_analyzer.analyze_aspect_async(
+                            query=query,
+                            aspect=aspect,
+                            dependency_context=dependency_context,
+                            llm_provider=llm_provider
+                        )
+                    else:
+                        # Fallback to sync version wrapped in to_thread
+                        result = await asyncio.to_thread(
+                            self.query_analyzer.analyze_aspect,
+                            query=query,
+                            aspect=aspect,
+                            dependency_context=dependency_context,
+                            llm_provider=llm_provider
+                        )
                     
                     return result
                 
