@@ -40,7 +40,7 @@ class ParallelConfig:
     enabled: bool = True
     max_concurrent: int = 8
     rate_limiter: Optional[RateLimiterInterface] = None
-    backoff_strategy: BackoffStrategy = None
+    backoff_strategy: Optional[BackoffStrategy] = None
     max_retries: int = 3
     
     def __post_init__(self):
@@ -161,6 +161,7 @@ class DependencyGraph:
         """Get the dependency level for a specific node."""
         if self._level_map is None:
             self.get_levels()
+        assert self._level_map is not None  # get_levels() populates _level_map
         return self._level_map.get(node, -1)
 
 
@@ -547,6 +548,7 @@ class ParallelQueryAnalyzer:
                 last_error = e
                 
                 # Calculate backoff delay
+                assert self.config.backoff_strategy is not None
                 delay = self.config.backoff_strategy.calculate_delay(attempt)
                 
                 logger.warning(
