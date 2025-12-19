@@ -65,7 +65,14 @@ Produce a JSON object with the following fields:
 - Maximizes semantic matching potential by using clear, specific terminology
 - Maintains the user's intended meaning and research focus
 
-6. **refined_statement_keywords**: Create a keyword-optimized version by:
+6. **refined_query**: Create a natural-language research query optimized for semantic search that:
+- Synthesizes all topical content from the user's original input and refinements
+- Excludes metadata already extracted into other fields (years, venues, authors, fields)
+- Uses complete, well-formed sentences that capture the full research scope
+- Maximizes semantic matching potential by using clear, specific terminology
+- Maintains the user's intended meaning and research focus
+
+7. **refined_statement_keywords**: Create a keyword-optimized version by:
 - Extracting high-signal terms from the refined statement
 - Removing stop words and connectors
 - Retaining domain-specific terminology and concepts
