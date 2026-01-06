@@ -1,0 +1,75 @@
+.question-renderer {
+    background: white;
+    padding: 30px;
+    border-radius: 10px;
+    box-shadow: 0 2px 8px rgba(0, 0, 0, 0.1);
+    margin-bottom: 20px;
+}
+
+.question-box {
+    margin-bottom: 20px;
+}
+
+.question-label {
+    font-weight: 600;
+    color: #667eea;
+    margin-bottom: 10px;
+    font-size: 14px;
+    text-transform: uppercase;
+    letter-spacing: 0.5px;
+}
+
+.question-text {
+    font-size: 18px;
+    color: #333;
+    line-height: 1.6;
+}
+
+.answer-form {
+    display: flex;
+    flex-direction: column;
+    gap: 15px;
+}
+
+.answer-form textarea {
+    width: 100%;
+    padding: 15px;
+    border: 1px solid #ddd;
+    border-radius: 5px;
+    font-size: 16px;
+    font-family: inherit;
+    resize: vertical;
+    box-sizing: border-box;
+}
+
+.answer-form textarea:focus {
+    outline: none;
+    border-color: #667eea;
+}
+
+.answer-form textarea:disabled {
+    background: #f5f5f5;
+    cursor: not-allowed;
+}
+
+.btn-submit {
+    align-self: flex-end;
+    padding: 12px 30px;
+    background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
+    color: white;
+    border: none;
+    border-radius: 5px;
+    font-size: 16px;
+    font-weight: 500;
+    cursor: pointer;
+    transition: transform 0.2s;
+}
+
+.btn-submit:hover:not(:disabled) {
+    transform: translateY(-2px);
+}
+
+.btn-submit:disabled {
+    opacity: 0.6;
+    cursor: not-allowed;
+}

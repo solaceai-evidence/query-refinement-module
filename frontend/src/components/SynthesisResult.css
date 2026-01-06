@@ -1,0 +1,151 @@
+.synthesis-result {
+    max-width: 900px;
+    margin: 0 auto;
+    padding: 20px;
+}
+
+.synthesis-result h2 {
+    text-align: center;
+    color: #28a745;
+    font-size: 32px;
+    margin-bottom: 30px;
+}
+
+.result-section {
+    background: white;
+    padding: 25px;
+    border-radius: 10px;
+    box-shadow: 0 2px 8px rgba(0, 0, 0, 0.1);
+    margin-bottom: 20px;
+}
+
+.result-section h3 {
+    margin: 0 0 15px 0;
+    color: #333;
+    font-size: 18px;
+}
+
+.refined-query {
+    background: #f8f9fa;
+    padding: 20px;
+    border-radius: 5px;
+    font-size: 16px;
+    line-height: 1.6;
+    color: #333;
+    border-left: 4px solid #667eea;
+    margin-bottom: 15px;
+}
+
+.result-actions {
+    display: flex;
+    gap: 10px;
+}
+
+.btn-secondary {
+    padding: 10px 20px;
+    background: white;
+    color: #667eea;
+    border: 2px solid #667eea;
+    border-radius: 5px;
+    font-size: 14px;
+    cursor: pointer;
+    transition: all 0.2s;
+}
+
+.btn-secondary:hover {
+    background: #667eea;
+    color: white;
+}
+
+.metadata {
+    display: flex;
+    flex-direction: column;
+    gap: 10px;
+}
+
+.metadata-item {
+    display: flex;
+    padding: 10px;
+    background: #f8f9fa;
+    border-radius: 5px;
+}
+
+.metadata-key {
+    font-weight: 600;
+    color: #667eea;
+    margin-right: 10px;
+}
+
+.metadata-value {
+    color: #666;
+}
+
+.feedback-form {
+    display: flex;
+    flex-direction: column;
+    gap: 15px;
+}
+
+.rating-stars {
+    display: flex;
+    gap: 10px;
+    font-size: 36px;
+}
+
+.star {
+    cursor: pointer;
+    color: #ddd;
+    transition: color 0.2s;
+}
+
+.star:hover,
+.star.active {
+    color: #ffc107;
+}
+
+.feedback-form textarea {
+    width: 100%;
+    padding: 12px;
+    border: 1px solid #ddd;
+    border-radius: 5px;
+    font-size: 14px;
+    font-family: inherit;
+    resize: vertical;
+    box-sizing: border-box;
+}
+
+.feedback-form textarea:focus {
+    outline: none;
+    border-color: #667eea;
+}
+
+.feedback-success {
+    background: #d4edda;
+    color: #155724;
+    padding: 15px;
+    border-radius: 5px;
+    text-align: center;
+    font-weight: 500;
+}
+
+.btn-submit {
+    align-self: flex-start;
+    padding: 10px 25px;
+    background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
+    color: white;
+    border: none;
+    border-radius: 5px;
+    font-size: 14px;
+    font-weight: 500;
+    cursor: pointer;
+    transition: transform 0.2s;
+}
+
+.btn-submit:hover:not(:disabled) {
+    transform: translateY(-2px);
+}
+
+.btn-submit:disabled {
+    opacity: 0.6;
+    cursor: not-allowed;
+}
