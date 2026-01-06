@@ -5,6 +5,10 @@ import asyncio
 import sys
 from io import StringIO
 from unittest.mock import patch
+from dotenv import load_dotenv
+
+# Load environment variables from .env file
+load_dotenv()
 
 async def test_cli_simulation():
     """Simulate CLI interaction to test async behavior."""

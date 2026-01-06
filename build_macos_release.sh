@@ -31,7 +31,7 @@ if [ "$ARCH" = "arm64" ]; then
     echo "----------------------------------------"
     
     # Build using the main spec file
-    poetry run pyinstaller QueryRefine.spec --distpath dist/QueryRefine-arm64 --workpath build/QueryRefine-arm64 --clean --noconfirm
+    poetry run pyinstaller packaging/macos/QueryRefine.spec --distpath dist/QueryRefine-arm64 --workpath build/QueryRefine-arm64 --clean --noconfirm
     
     echo "✓ ARM64 build complete"
     echo ""
@@ -41,11 +41,11 @@ if [ "$ARCH" = "arm64" ]; then
     
     # Copy launcher scripts
     cp packaging/macos/*.command "${RELEASE_DIR}/arm64/" 2>/dev/null || true
-    cp packaging/macos/sample.env "${RELEASE_DIR}/arm64/.env.sample"
+    cp packaging/macos/sample.env "${RELEASE_DIR}/arm64/sample.env"
     cp packaging/macos/sample_framework.yaml "${RELEASE_DIR}/arm64/"
     
     # Copy the built application
-    cp -r dist/QueryRefine-arm64/QueryRefine "${RELEASE_DIR}/arm64/"
+    cp -r dist/QueryRefine-arm64/QueryRefine.app "${RELEASE_DIR}/arm64/"
     
     # Create README
     cat > "${RELEASE_DIR}/arm64/README.txt" << 'EOF'
@@ -94,11 +94,11 @@ else
     
     # Copy launcher scripts
     cp packaging/macos/*.command "${RELEASE_DIR}/x86_64/" 2>/dev/null || true
-    cp packaging/macos/sample.env "${RELEASE_DIR}/x86_64/.env.sample"
+    cp packaging/macos/sample.env "${RELEASE_DIR}/x86_64/sample.env"
     cp packaging/macos/sample_framework.yaml "${RELEASE_DIR}/x86_64/"
     
     # Copy the built application
-    cp -r dist/QueryRefine-x86_64/QueryRefine "${RELEASE_DIR}/x86_64/"
+    cp -r dist/QueryRefine-x86_64/QueryRefine.app "${RELEASE_DIR}/x86_64/"
     
     # Create README
     cat > "${RELEASE_DIR}/x86_64/README.txt" << 'EOF'
@@ -146,3 +146,4 @@ echo "To distribute:"
 echo "  - Share the .tar.gz file with your colleagues"
 echo "  - Recipients should extract and follow the README.txt"
 echo ""
+ 
