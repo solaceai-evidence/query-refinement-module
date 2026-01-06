@@ -14,7 +14,7 @@ Key Features:
 import time
 from fastapi import APIRouter, Depends, HTTPException, status
 from sqlalchemy.orm import Session
-from typing import Dict, Any, Optional
+from typing import Dict, Any, Optional, Union, List
 
 from query_refinement_module.db.session import get_db
 from query_refinement_module.db.crud import (
@@ -34,7 +34,12 @@ from query_refinement_module.api.auth import get_current_user
 from query_refinement_module.api.dependencies import get_refinement_manager, get_parallel_config, get_session_manager
 from query_refinement_module.schema.registry import get_framework, list_frameworks
 from query_refinement_module.api.session_manager import SessionManager
-from query_refinement_module.core import QueryRefinementManager
+from query_refinement_module.core import (
+    QueryRefinementManager,
+    is_user_command,
+    parse_user_command,
+    UserCommand,
+)
 from query_refinement_module.tracing import generate_request_id, get_logger, OperationTimer, set_request_id, clear_request_id
 
 from pydantic import BaseModel, Field, field_validator
@@ -95,7 +100,11 @@ class SubmitAnswerRequest(BaseModel):
         ..., 
         min_length=1,
         max_length=2000,
-        description="User's answer to the current question"
+        description="User's answer to the current question or a command (e.g., /status, /back)"
+    )
+    force: Optional[bool] = Field(
+        False,
+        description="Force navigation commands that invalidate dependent aspects"
     )
     
     @field_validator('answer')
@@ -113,6 +122,21 @@ class SubmitAnswerResponse(BaseModel):
     followup_id: int = Field(..., description="ID of the follow-up entry")
     is_complete: bool = Field(..., description="Whether the aspect is complete")
     next_prompt: Optional[Dict[str, Any]] = Field(None, description="Next question if follow-up needed")
+
+
+class CommandResponse(BaseModel):
+    """Response when user issues a command instead of answering."""
+    command_type: str = Field(..., description="Type of command executed (status, back, skip, etc.)")
+    success: bool = Field(..., description="Whether command executed successfully")
+    message: str = Field(..., description="Human-readable feedback message")
+    next_prompt: Optional[Dict[str, Any]] = Field(None, description="Next question after command execution")
+    
+    # Optional fields for specific commands
+    invalidated_aspects: Optional[List[str]] = Field(None, description="Aspects marked for review (/back, /goto)")
+    synthesis_ready: Optional[bool] = Field(None, description="True if session ready for synthesis (/submit)")
+    step_summary: Optional[Dict[str, Any]] = Field(None, description="Step statistics (/status)")
+    step_list: Optional[List[Dict[str, Any]]] = Field(None, description="All steps with status (/steps)")
+    force_required: Optional[bool] = Field(None, description="True if command requires force=true flag")
 
 
 class GetRefinementStatusResponse(BaseModel):
@@ -151,9 +175,99 @@ def _build_next_prompt(session) -> Optional[Dict[str, Any]]:
     return {
         "aspect_id": step.refinement_aspect.id,
         "aspect_name": step.refinement_aspect.aspect_name,
-        "question": step.analysis_suggested_question or step.refinement_aspect.aspect_description,
+        "question": step.refinement_question or step.refinement_aspect.aspect_description,
         "description": step.refinement_aspect.aspect_description,
     }
+
+
+def _build_command_response(
+    command_type: str,
+    payload: Dict[str, Any],
+    session,
+    force_confirmation_needed: bool = False
+) -> CommandResponse:
+    """Build CommandResponse based on command type and execution payload.
+    
+    Args:
+        command_type: The command type (status, back, goto, etc.)
+        payload: Result from session.handle_command()
+        session: QueryRefinementSession instance
+        force_confirmation_needed: Whether force flag is required
+    
+    Returns:
+        CommandResponse with appropriate fields populated
+    """
+    success = payload.get("success", False)
+    message = payload.get("message", "")
+    
+    # Build base response
+    response = CommandResponse(
+        command_type=command_type,
+        success=success,
+        message=message,
+        next_prompt=None,
+        invalidated_aspects=None,
+        synthesis_ready=None,
+        step_summary=None,
+        step_list=None,
+        force_required=None
+    )
+    
+    # If command failed or needs force confirmation, preserve current prompt
+    if not success or force_confirmation_needed:
+        response.next_prompt = _build_next_prompt(session)
+        if force_confirmation_needed:
+            response.force_required = True
+            response.invalidated_aspects = payload.get("invalidated", [])
+        return response
+    
+    # Command-specific response fields
+    if command_type in ["status"]:
+        response.step_summary = payload.get("summary")
+        response.next_prompt = _build_next_prompt(session)
+    
+    elif command_type in ["steps"]:
+        # Serialize steps to JSON-compatible format
+        steps = payload.get("steps", [])
+        active_step = session.get_active_step()
+        if steps:
+            response.step_list = [
+                {
+                    "aspect_name": step.refinement_aspect.aspect_name,
+                    "aspect_id": step.refinement_aspect.id,
+                    "is_complete": step.is_complete,
+                    "needs_review": step.needs_review,
+                    "was_skipped": step.was_skipped,
+                    "follow_up_count": step.follow_up_count,
+                    "status": (
+                        "completed" if step.is_complete and not step.needs_review else
+                        "needs review" if step.needs_review else
+                        "active" if step == active_step else
+                        "not started"
+                    ),
+                }
+                for step in steps
+            ]
+        response.next_prompt = _build_next_prompt(session)
+    
+    elif command_type in ["help"]:
+        # Help message is in 'message' field, show current prompt
+        response.next_prompt = _build_next_prompt(session)
+    
+    elif command_type in ["submit", "end"]:
+        response.synthesis_ready = True
+        response.next_prompt = None
+    
+    elif command_type in ["back", "prev", "previous", "goto", "restart"]:
+        # Navigation commands - show new active step
+        response.invalidated_aspects = payload.get("invalidated", [])
+        response.next_prompt = _build_next_prompt(session)
+    
+    elif command_type in ["skip", "done"]:
+        # Control commands - advance to next step
+        response.next_prompt = _build_next_prompt(session)
+    
+    return response
 
 
 # ==========================================
@@ -270,7 +384,7 @@ def start_refinement(
     )
 
 
-@router.post("/queries/{query_id}/answer", response_model=SubmitAnswerResponse)
+@router.post("/queries/{query_id}/answer", response_model=Union[SubmitAnswerResponse, CommandResponse])
 def submit_answer(
     query_id: int,
     request: SubmitAnswerRequest,
@@ -280,13 +394,19 @@ def submit_answer(
     session_manager: SessionManager = Depends(get_session_manager)
 ):
     """
-    Submit an answer to the current refinement question.
+    Submit an answer to the current refinement question, or execute a command.
     
-    This processes the user's answer and:
-    1. Stores it in the follow-up history
+    Regular answer processing:
+    1. Stores answer in the follow-up history
     2. Runs the follow-up loop to check if more clarification is needed
     3. Marks the aspect as complete if satisfied
     4. Returns the next question if follow-up is needed, or moves to next aspect
+    
+    Command processing (input starts with /):
+    - Information commands (/status, /steps, /help): Return session state
+    - Navigation commands (/back, /goto, /restart): Modify session state and return new active step
+    - Control commands (/skip, /done): Mark current step complete and advance
+    - Synthesis command (/submit, /end): Flag session ready for synthesis
     """
     # Get query and verify ownership
     db_query = get_query(db, query_id)
@@ -330,6 +450,58 @@ def submit_answer(
                 if session_step.follow_up_history:
                     session_step.is_complete = True
     
+    # ============================================================
+    # COMMAND DETECTION: Check if input is a command (starts with /)
+    # ============================================================
+    user_input = request.answer.strip()
+    
+    if is_user_command(user_input):
+        # Parse the command
+        cmd_result = parse_user_command(user_input)
+        
+        # Handle invalid command
+        if not cmd_result.is_valid:
+            return _build_command_response(
+                command_type=cmd_result.command.value,
+                payload={"success": False, "message": cmd_result.error_message or "Invalid command"},
+                session=session,
+                force_confirmation_needed=False
+            )
+        
+        # Execute the command
+        command_payload = session.handle_command(cmd_result)
+        command_type = cmd_result.command.value
+        
+        # Check if force confirmation is needed for navigation commands
+        force_confirmation_needed = False
+        if not request.force and command_type in ["back", "prev", "previous", "goto", "restart"]:
+            invalidated = command_payload.get("invalidated", [])
+            if invalidated and command_payload.get("success", False):
+                # Navigation would invalidate dependent aspects - require confirmation
+                force_confirmation_needed = True
+                command_payload["message"] = (
+                    f"{command_payload.get('message', '')} "
+                    f"This will invalidate {len(invalidated)} dependent aspect(s). "
+                    f"Resend with force=true to proceed."
+                )
+        
+        # Save session state for state-mutating commands
+        if command_payload.get("success", False) and not force_confirmation_needed:
+            if command_type in ["back", "prev", "previous", "goto", "restart", "skip", "done", "submit", "end"]:
+                session_manager.save_session(query_id, session)
+        
+        # Build and return command response
+        return _build_command_response(
+            command_type=command_type,
+            payload=command_payload,
+            session=session,
+            force_confirmation_needed=force_confirmation_needed
+        )
+    
+    # ============================================================
+    # REGULAR ANSWER PROCESSING (not a command)
+    # ============================================================
+    
     # Get the active step
     active_step = session.get_active_step()
     if not active_step:
@@ -341,7 +513,7 @@ def submit_answer(
     # Add user's answer to follow-up history
     active_step.follow_up_history.append({
         'question': active_step.refinement_question or active_step.refinement_aspect.aspect_name,
-        'response': request.answer
+        'response': user_input
     })
     
     # Run follow-up loop to check if aspect is complete
@@ -383,7 +555,7 @@ def submit_answer(
         db,
         refinement_step_id=db_step.id,
         question=active_step.refinement_question or active_step.refinement_aspect.aspect_name,
-        answer=request.answer
+        answer=user_input
     )
     
     # Check if aspect is complete
