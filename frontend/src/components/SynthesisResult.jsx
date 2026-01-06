@@ -3,14 +3,14 @@ import { refinementService } from '../services/refinement';
 import './SynthesisResult.css';
 
 const SynthesisResult = ({ queryId, synthesis }) => {
-    const [rating, setRating] = useState(0);
     const [comment, setComment] = useState('');
     const [feedbackSubmitted, setFeedbackSubmitted] = useState(false);
 
     const handleFeedbackSubmit = async (e) => {
         e.preventDefault();
         try {
-            await refinementService.submitFeedback(queryId, rating, comment || null);
+            // Send feedback without rating (research-focused comments only)
+            await refinementService.submitFeedback(queryId, null, comment);
             setFeedbackSubmitted(true);
         } catch (error) {
             console.error('Failed to submit feedback:', error);
@@ -66,34 +66,37 @@ const SynthesisResult = ({ queryId, synthesis }) => {
             )}
 
             <div className="result-section">
-                <h3>Provide Feedback</h3>
+                <h3>Share Your Experience</h3>
+                <p className="feedback-intro">
+                    Your feedback helps us improve this tool and contributes to research on AI-assisted dissertation planning.
+                </p>
                 {feedbackSubmitted ? (
                     <div className="feedback-success">
-                        Thank you for your feedback!
+                        Thank you for your feedback! Your input is valuable for our research.
                     </div>
                 ) : (
                     <form onSubmit={handleFeedbackSubmit} className="feedback-form">
-                        <div className="rating-stars">
-                            {[1, 2, 3, 4, 5].map((star) => (
-                                <span
-                                    key={star}
-                                    className={`star ${rating >= star ? 'active' : ''}`}
-                                    onClick={() => setRating(star)}
-                                >
-                                    ★
-                                </span>
-                            ))}
+                        <div className="feedback-questions">
+                            <p className="feedback-prompt">Please reflect on your experience:</p>
+                            <ul className="feedback-guide">
+                                <li><strong>Time efficiency:</strong> How much time did this tool save compared to manually reviewing literature or brainstorming alone?</li>
+                                <li><strong>Confidence level:</strong> How confident were you in your research topic before and after using this tool?</li>
+                                <li><strong>Question quality:</strong> How would you rate the quality and relevance of the questions the chatbot asked?</li>
+                                <li><strong>Limitations:</strong> In what areas did the chatbot fall short or fail to meet your expectations?</li>
+                                <li><strong>Ease of use:</strong> How easy or difficult was it to use this tool?</li>
+                            </ul>
                         </div>
                         <textarea
                             value={comment}
                             onChange={(e) => setComment(e.target.value)}
-                            placeholder="Optional: Share your thoughts about this refinement..."
-                            rows={3}
+                            placeholder="Please address the questions above in your feedback. Be as specific as possible - your insights will help improve this tool and contribute to research on AI-assisted dissertation planning."
+                            rows={8}
+                            required
                         />
                         <button
                             type="submit"
                             className="btn-submit"
-                            disabled={rating === 0}
+                            disabled={!comment.trim()}
                         >
                             Submit Feedback
                         </button>

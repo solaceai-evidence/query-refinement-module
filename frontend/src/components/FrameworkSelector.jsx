@@ -24,7 +24,7 @@ const FrameworkSelector = ({ onSelect }) => {
     };
 
     if (loading) {
-        return <div className="framework-loading">Loading frameworks...</div>;
+        return <div className="framework-loading">Loading refinement frameworks...</div>;
     }
 
     if (error) {

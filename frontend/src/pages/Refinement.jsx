@@ -72,7 +72,7 @@ const Refinement = () => {
             setSessionId(response.session_id);
             setQueryId(response.query_id);
             setCurrentQuestion(response.next_prompt);
-            setCurrentAspectId(response.aspect_id);
+            setCurrentAspectId(response.next_prompt?.aspect_id);
             setAspects(response.summary?.aspects || []);
             setStage('refinement');
 
@@ -114,22 +114,18 @@ const Refinement = () => {
                 answer
             );
 
-            // Add question to history
+            // Add question to history if next_prompt exists
             if (response.next_prompt) {
                 setConversationHistory(prev => [...prev, {
                     type: 'question',
                     content: response.next_prompt,
-                    aspectId: response.aspect_id
+                    aspectId: response.next_prompt.aspect_id
                 }]);
-            }
-
-            if (response.status === 'ready_for_synthesis') {
-                // All aspects complete, get synthesis
-                await handleSynthesis();
-            } else {
                 setCurrentQuestion(response.next_prompt);
-                setCurrentAspectId(response.aspect_id);
-                setAspects(response.summary?.aspects || []);
+                setCurrentAspectId(response.next_prompt.aspect_id);
+            } else if (response.is_complete) {
+                // Aspect complete, check if all aspects are done
+                await handleSynthesis();
             }
         } catch (err) {
             setError(err.response?.data?.detail || 'Failed to process answer');
@@ -176,7 +172,7 @@ const Refinement = () => {
     return (
         <div className="refinement-page">
             <header className="refinement-header">
-                <h1>Query Refinement</h1>
+                <h1>MPH Dissertation Research Advisor</h1>
                 <div className="header-actions">
                     {stage !== 'framework-selection' && (
                         <button onClick={handleStartOver} className="btn-link">

@@ -19,7 +19,7 @@ conda activate query-refinement
 # Install dependencies (if not already done)
 pip install -r requirements.txt
 
-# Create .env file (if not exists)
+# Create .env file (if not exists) -use available .env.example file-
 cat > .env << 'EOF'
 DATABASE_URL=sqlite:///query_refinement.db
 SECRET_KEY=dev-secret-key
