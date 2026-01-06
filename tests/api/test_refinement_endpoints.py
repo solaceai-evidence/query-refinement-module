@@ -274,6 +274,376 @@ def test_invalid_framework():
     print("✓ Invalid framework properly rejected")
 
 
+def test_command_status():
+    """Test /status command returns session summary."""
+    token = register_and_login()
+    headers = {"Authorization": f"Bearer {token}"}
+    
+    # Start a refinement session
+    start_response = requests.post(
+        f"{BASE_URL}/api/refinement/start",
+        json={
+            "original_query": "effects of aspirin on stroke prevention",
+            "framework_name": "pico_advanced"
+        },
+        headers=headers
+    )
+    assert start_response.status_code == 201
+    query_id = start_response.json()["query_id"]
+    
+    # Send /status command
+    response = requests.post(
+        f"{BASE_URL}/api/refinement/queries/{query_id}/answer",
+        json={"answer": "/status"},
+        headers=headers
+    )
+    
+    assert response.status_code == 200
+    data = response.json()
+    
+    # Verify it's a command response
+    assert "command_type" in data
+    assert data["command_type"] == "status"
+    assert data["success"] is True
+    assert "message" in data
+    assert "step_summary" in data
+    assert "next_prompt" in data
+    
+    # Verify step summary structure
+    summary = data["step_summary"]
+    assert "total_steps" in summary
+    assert "completed" in summary
+    
+    print("✓ /status command returns session summary")
+
+
+def test_command_steps():
+    """Test /steps command returns list of all steps."""
+    token = register_and_login()
+    headers = {"Authorization": f"Bearer {token}"}
+    
+    # Start a refinement session
+    start_response = requests.post(
+        f"{BASE_URL}/api/refinement/start",
+        json={
+            "original_query": "effects of aspirin on stroke prevention",
+            "framework_name": "pico_advanced"
+        },
+        headers=headers
+    )
+    assert start_response.status_code == 201
+    query_id = start_response.json()["query_id"]
+    
+    # Send /steps command
+    response = requests.post(
+        f"{BASE_URL}/api/refinement/queries/{query_id}/answer",
+        json={"answer": "/steps"},
+        headers=headers
+    )
+    
+    assert response.status_code == 200
+    data = response.json()
+    
+    # Verify it's a command response
+    assert data["command_type"] == "steps"
+    assert data["success"] is True
+    assert "step_list" in data
+    assert isinstance(data["step_list"], list)
+    assert len(data["step_list"]) > 0
+    
+    print("✓ /steps command returns list of steps")
+
+
+def test_command_help():
+    """Test /help command returns help text."""
+    token = register_and_login()
+    headers = {"Authorization": f"Bearer {token}"}
+    
+    # Start a refinement session
+    start_response = requests.post(
+        f"{BASE_URL}/api/refinement/start",
+        json={
+            "original_query": "effects of aspirin on stroke prevention",
+            "framework_name": "pico_advanced"
+        },
+        headers=headers
+    )
+    assert start_response.status_code == 201
+    query_id = start_response.json()["query_id"]
+    
+    # Send /help command
+    response = requests.post(
+        f"{BASE_URL}/api/refinement/queries/{query_id}/answer",
+        json={"answer": "/help"},
+        headers=headers
+    )
+    
+    assert response.status_code == 200
+    data = response.json()
+    
+    # Verify it's a command response
+    assert data["command_type"] == "help"
+    assert data["success"] is True
+    assert "message" in data
+    assert "NAVIGATION" in data["message"] or "navigation" in data["message"].lower()
+    
+    print("✓ /help command returns help text")
+
+
+def test_command_skip():
+    """Test /skip command advances to next aspect."""
+    token = register_and_login()
+    headers = {"Authorization": f"Bearer {token}"}
+    
+    # Start a refinement session
+    start_response = requests.post(
+        f"{BASE_URL}/api/refinement/start",
+        json={
+            "original_query": "effects of aspirin on stroke prevention",
+            "framework_name": "pico_advanced"
+        },
+        headers=headers
+    )
+    assert start_response.status_code == 201
+    query_id = start_response.json()["query_id"]
+    first_prompt = start_response.json()["next_prompt"]
+    
+    # Send /skip command
+    response = requests.post(
+        f"{BASE_URL}/api/refinement/queries/{query_id}/answer",
+        json={"answer": "/skip"},
+        headers=headers
+    )
+    
+    assert response.status_code == 200
+    data = response.json()
+    
+    # Verify it's a command response
+    assert data["command_type"] == "skip"
+    assert data["success"] is True
+    
+    # Verify we moved to next aspect (or completed if only one aspect)
+    if data["next_prompt"]:
+        assert data["next_prompt"]["aspect_id"] != first_prompt["aspect_id"]
+    
+    print("✓ /skip command advances workflow")
+
+
+def test_command_submit():
+    """Test /submit command flags session for synthesis."""
+    token = register_and_login()
+    headers = {"Authorization": f"Bearer {token}"}
+    
+    # Start a refinement session
+    start_response = requests.post(
+        f"{BASE_URL}/api/refinement/start",
+        json={
+            "original_query": "effects of aspirin on stroke prevention",
+            "framework_name": "pico_advanced"
+        },
+        headers=headers
+    )
+    assert start_response.status_code == 201
+    query_id = start_response.json()["query_id"]
+    
+    # Send /submit command
+    response = requests.post(
+        f"{BASE_URL}/api/refinement/queries/{query_id}/answer",
+        json={"answer": "/submit"},
+        headers=headers
+    )
+    
+    assert response.status_code == 200
+    data = response.json()
+    
+    # Verify it's a command response
+    assert data["command_type"] == "submit"
+    assert data["success"] is True
+    assert data["synthesis_ready"] is True
+    assert data["next_prompt"] is None
+    
+    print("✓ /submit command enables synthesis")
+
+
+def test_command_back_after_answer():
+    """Test /back command returns to previous step."""
+    token = register_and_login()
+    headers = {"Authorization": f"Bearer {token}"}
+    
+    # Start a refinement session
+    start_response = requests.post(
+        f"{BASE_URL}/api/refinement/start",
+        json={
+            "original_query": "effects of aspirin on stroke prevention",
+            "framework_name": "pico_advanced"
+        },
+        headers=headers
+    )
+    assert start_response.status_code == 201
+    query_id = start_response.json()["query_id"]
+    first_aspect = start_response.json()["next_prompt"]["aspect_id"]
+    
+    # Answer first question
+    answer_response = requests.post(
+        f"{BASE_URL}/api/refinement/queries/{query_id}/answer",
+        json={"answer": "Adults over 50 years old"},
+        headers=headers
+    )
+    assert answer_response.status_code == 200
+    
+    # If we moved to second aspect, go back
+    if answer_response.json().get("next_prompt"):
+        second_aspect = answer_response.json()["next_prompt"]["aspect_id"]
+        if second_aspect != first_aspect:
+            # Send /back command
+            back_response = requests.post(
+                f"{BASE_URL}/api/refinement/queries/{query_id}/answer",
+                json={"answer": "/back", "force": True},  # Use force to bypass confirmation
+                headers=headers
+            )
+            
+            assert back_response.status_code == 200
+            data = back_response.json()
+            
+            # Verify it's a command response
+            assert data["command_type"] in ["back", "prev"]
+            assert data["success"] is True
+            
+            # Verify we're back at first aspect
+            if data["next_prompt"]:
+                assert data["next_prompt"]["aspect_id"] == first_aspect
+    
+    print("✓ /back command returns to previous step")
+
+
+def test_command_goto_validation():
+    """Test /goto command validates step number."""
+    token = register_and_login()
+    headers = {"Authorization": f"Bearer {token}"}
+    
+    # Start a refinement session
+    start_response = requests.post(
+        f"{BASE_URL}/api/refinement/start",
+        json={
+            "original_query": "effects of aspirin on stroke prevention",
+            "framework_name": "pico_advanced"
+        },
+        headers=headers
+    )
+    assert start_response.status_code == 201
+    query_id = start_response.json()["query_id"]
+    
+    # Try /goto with invalid step number (too high)
+    response = requests.post(
+        f"{BASE_URL}/api/refinement/queries/{query_id}/answer",
+        json={"answer": "/goto 999"},
+        headers=headers
+    )
+    
+    assert response.status_code == 200
+    data = response.json()
+    
+    # Should fail validation
+    assert data["command_type"] == "goto"
+    assert data["success"] is False
+    assert "message" in data
+    
+    print("✓ /goto command validates step number")
+
+
+def test_command_invalid():
+    """Test invalid command handling."""
+    token = register_and_login()
+    headers = {"Authorization": f"Bearer {token}"}
+    
+    # Start a refinement session
+    start_response = requests.post(
+        f"{BASE_URL}/api/refinement/start",
+        json={
+            "original_query": "effects of aspirin on stroke prevention",
+            "framework_name": "pico_advanced"
+        },
+        headers=headers
+    )
+    assert start_response.status_code == 201
+    query_id = start_response.json()["query_id"]
+    
+    # Send invalid command
+    response = requests.post(
+        f"{BASE_URL}/api/refinement/queries/{query_id}/answer",
+        json={"answer": "/invalid"},
+        headers=headers
+    )
+    
+    assert response.status_code == 200
+    data = response.json()
+    
+    # Should return error
+    assert data["success"] is False
+    assert "message" in data
+    
+    print("✓ Invalid command properly rejected")
+
+
+def test_command_force_confirmation():
+    """Test force confirmation for navigation commands."""
+    token = register_and_login()
+    headers = {"Authorization": f"Bearer {token}"}
+    
+    # Start a refinement session with framework that has dependencies
+    start_response = requests.post(
+        f"{BASE_URL}/api/refinement/start",
+        json={
+            "original_query": "effects of aspirin on stroke prevention",
+            "framework_name": "pico_advanced_complete"  # Has dependencies
+        },
+        headers=headers
+    )
+    
+    # If framework not available, skip test
+    if start_response.status_code == 404:
+        print("⊘ Skipping force confirmation test (framework not available)")
+        return
+        
+    assert start_response.status_code == 201
+    query_id = start_response.json()["query_id"]
+    
+    # Answer first question to move forward
+    requests.post(
+        f"{BASE_URL}/api/refinement/queries/{query_id}/answer",
+        json={"answer": "Adults over 50 years old"},
+        headers=headers
+    )
+    
+    # Try /restart without force flag
+    response = requests.post(
+        f"{BASE_URL}/api/refinement/queries/{query_id}/answer",
+        json={"answer": "/restart", "force": False},
+        headers=headers
+    )
+    
+    data = response.json()
+    
+    # Should require force confirmation if there are invalidated aspects
+    if data.get("force_required"):
+        assert data["success"] is False
+        assert "force=true" in data["message"]
+        
+        # Now send with force=true
+        force_response = requests.post(
+            f"{BASE_URL}/api/refinement/queries/{query_id}/answer",
+            json={"answer": "/restart", "force": True},
+            headers=headers
+        )
+        
+        force_data = force_response.json()
+        assert force_data["success"] is True
+        
+        print("✓ Force confirmation working for navigation commands")
+    else:
+        print("⊘ Force confirmation not triggered (no dependent aspects)")
+
+
 if __name__ == "__main__":
     print("\n" + "="*60)
     print("REFINEMENT WORKFLOW API TESTS")
@@ -296,6 +666,15 @@ if __name__ == "__main__":
         ("Synthesize Query", test_synthesize_query),
         ("Unauthorized Access", test_unauthorized_access),
         ("Invalid Framework", test_invalid_framework),
+        ("Command: /status", test_command_status),
+        ("Command: /steps", test_command_steps),
+        ("Command: /help", test_command_help),
+        ("Command: /skip", test_command_skip),
+        ("Command: /submit", test_command_submit),
+        ("Command: /back", test_command_back_after_answer),
+        ("Command: /goto validation", test_command_goto_validation),
+        ("Command: Invalid command", test_command_invalid),
+        ("Command: Force confirmation", test_command_force_confirmation),
     ]
     
     passed = 0
