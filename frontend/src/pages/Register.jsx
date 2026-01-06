@@ -5,7 +5,8 @@ import './Auth.css';
 
 const Register = () => {
     const [username, setUsername] = useState('');
-    const [email, setEmail] = useState('');
+    // Email temporarily disabled for student testing - uncomment below to re-enable
+    // const [email, setEmail] = useState('');
     const [password, setPassword] = useState('');
     const [confirmPassword, setConfirmPassword] = useState('');
     const [error, setError] = useState('');
@@ -22,13 +23,31 @@ const Register = () => {
             return;
         }
 
-        if (password.length < 6) {
-            setError('Password must be at least 6 characters');
+        // Validate password strength (backend requirements)
+        if (password.length < 8) {
+            setError('Password must be at least 8 characters');
+            return;
+        }
+        if (!/[A-Z]/.test(password)) {
+            setError('Password must contain at least one uppercase letter');
+            return;
+        }
+        if (!/[a-z]/.test(password)) {
+            setError('Password must contain at least one lowercase letter');
+            return;
+        }
+        if (!/[0-9]/.test(password)) {
+            setError('Password must contain at least one digit');
+            return;
+        }
+        if (!/[!@#$%^&*(),.?":{}|<>]/.test(password)) {
+            setError('Password must contain at least one special character (!@#$%^&*(),.?":{}|<>)');
             return;
         }
 
         setLoading(true);
-        const result = await register(username, password, email);
+        // Email temporarily disabled - change undefined to email variable to re-enable
+        const result = await register(username, password, undefined);
 
         if (result.success) {
             navigate('/');
@@ -42,7 +61,7 @@ const Register = () => {
     return (
         <div className="auth-container">
             <div className="auth-card">
-                <h1>Query Refinement</h1>
+                <h1>MPH Dissertation Research Advisor</h1>
                 <h2>Register</h2>
 
                 {error && <div className="error-message">{error}</div>}
@@ -60,7 +79,8 @@ const Register = () => {
                         />
                     </div>
 
-                    <div className="form-group">
+                    {/* Email field temporarily hidden for student testing - uncomment to re-enable */}
+                    {/* <div className="form-group">
                         <label htmlFor="email">Email</label>
                         <input
                             id="email"
@@ -70,7 +90,7 @@ const Register = () => {
                             required
                             disabled={loading}
                         />
-                    </div>
+                    </div> */}
 
                     <div className="form-group">
                         <label htmlFor="password">Password</label>
@@ -82,6 +102,9 @@ const Register = () => {
                             required
                             disabled={loading}
                         />
+                        <small className="password-hint">
+                            Must be 8+ characters with uppercase, lowercase, digit, and special character
+                        </small>
                     </div>
 
                     <div className="form-group">

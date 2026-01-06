@@ -11,18 +11,15 @@ export const refinementService = {
     async startRefinement(frameworkName, initialQuery) {
         const response = await apiClient.post('/api/refinement/start', {
             framework_name: frameworkName,
-            initial_query: initialQuery
+            original_query: initialQuery
         });
         return response.data;
     },
 
     // Continue refinement conversation
     async continueRefinement(sessionId, queryId, aspectId, userResponse) {
-        const response = await apiClient.post('/api/refinement/continue', {
-            session_id: sessionId,
-            query_id: queryId,
-            aspect_id: aspectId,
-            user_response: userResponse
+        const response = await apiClient.post(`/api/refinement/queries/${queryId}/answer`, {
+            answer: userResponse
         });
         return response.data;
     },
@@ -30,7 +27,6 @@ export const refinementService = {
     // Get synthesis (final result)
     async getSynthesis(sessionId, queryId) {
         const response = await apiClient.post('/api/refinement/synthesize', {
-            session_id: sessionId,
             query_id: queryId
         });
         return response.data;
@@ -51,11 +47,11 @@ export const refinementService = {
     },
 
     // Submit feedback
-    async submitFeedback(queryId, rating, comment = null) {
+    async submitFeedback(queryId, rating, comments = null) {
         const response = await apiClient.post('/api/feedback', {
             query_id: queryId,
             rating,
-            comment
+            comments
         });
         return response.data;
     }

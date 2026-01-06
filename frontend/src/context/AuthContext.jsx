@@ -19,7 +19,7 @@ export const AuthProvider = ({ children }) => {
 
     const login = async (username, password) => {
         try {
-            const response = await apiClient.post('/api/auth/token',
+            const response = await apiClient.post('/api/auth/login',
                 new URLSearchParams({
                     username,
                     password,
@@ -47,13 +47,16 @@ export const AuthProvider = ({ children }) => {
         }
     };
 
-    const register = async (username, password, email) => {
+    const register = async (username, password, email = undefined) => {
         try {
-            await apiClient.post('/api/auth/register', {
+            // Only include email in request if provided (for future production use)
+            const requestData = {
                 username,
                 password,
-                email
-            });
+                ...(email && { email }) // Conditionally add email if it exists
+            };
+
+            await apiClient.post('/api/auth/register', requestData);
 
             // Auto-login after registration
             return await login(username, password);

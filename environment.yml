@@ -4,7 +4,7 @@
 # or conda env create -f environment.yml
 # Use this to set up a consistent environment for development and testing
 # use poetry to activate each project's environment and manage dependencies
-name: exp_poetry
+name: query-refinement
 channels:
   - conda-forge
   - nodefaults # Disable default channels to avoid conflicts
