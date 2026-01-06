@@ -11,6 +11,10 @@ import os
 from pathlib import Path
 from typing import List, Dict, Any, Optional
 import logging
+from dotenv import load_dotenv
+
+# Load environment variables from .env file
+load_dotenv()
 
 from .model import RefinementAspect
 from .dependencies import sort_aspects_by_dependencies
