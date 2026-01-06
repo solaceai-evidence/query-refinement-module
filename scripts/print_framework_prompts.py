@@ -28,7 +28,7 @@ def main():
     for aspect in aspects:
         system_prompt, user_prompt = aspect.get_prompts(statement)
         print(f"# Refinement Aspect(s): {aspect.aspect_name} ({aspect.id})\n")
-        print("SYSTEM PROMPT:")
+        print("SYSTEM ROLE PROMPT:")
         print(system_prompt.strip())
         print("\nREFINEMENT INSTRUCTIONS:")
         print(user_prompt.strip())
