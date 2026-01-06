@@ -8,11 +8,15 @@ Features:
 - Rate limiting middleware
 """
 import logging
+from dotenv import load_dotenv
 from fastapi import FastAPI, Request
 from fastapi.middleware.cors import CORSMiddleware
 from fastapi.responses import JSONResponse
 from fastapi.exceptions import RequestValidationError
 from pydantic import ValidationError
+
+# Load environment variables from .env file
+load_dotenv()
 
 from query_refinement_module.api.config import get_settings
 from query_refinement_module.api.routes import auth, queries, feedback, refinement

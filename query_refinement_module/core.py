@@ -1005,14 +1005,19 @@ class QueryRefinementManager:
         final_value = None
         if step.follow_up_history:
             last_response = step.follow_up_history[-1]["response"]
-            try:
-                payload = json.loads(last_response)
-                if "final_value" in payload:
-                    final_value = payload["final_value"]
-                if payload.get("is_complete", False):
-                    step.is_complete = True
-            except Exception as exc:
-                logger.warning(f"Failed to parse final_value from last response: {exc}")
+            # Only try to parse as JSON if it looks like JSON (starts with '{' or '[')
+            if last_response and last_response.strip().startswith(('{', '[')):
+                try:
+                    payload = json.loads(last_response)
+                    if "final_value" in payload:
+                        final_value = payload["final_value"]
+                    if payload.get("is_complete", False):
+                        step.is_complete = True
+                except Exception as exc:
+                    logger.warning(f"Failed to parse final_value from last response: {exc}")
+            # If it's a plain text response (user answer), just use it as-is
+            elif last_response:
+                final_value = last_response
         return final_value
 
     def _build_followup_result(
