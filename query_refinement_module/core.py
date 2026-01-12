@@ -944,10 +944,12 @@ class QueryRefinementManager:
                 system_prompt=system_prompt,
                 user_prompt=user_prompt
             )
+            
             if parsed_payload:
                 final_value = parsed_payload.get("final_value")
-                followup_question = parsed_payload.get("followup_question")
-                reasoning = parsed_payload.get("reasoning")
+                # BASE_SCHEMA_FIELDS uses "clarifying_question", not "followup_question"
+                followup_question = parsed_payload.get("clarifying_question") or parsed_payload.get("followup_question")
+                reasoning = parsed_payload.get("reasoning") or parsed_payload.get("explanation")
             if is_error:
                 step.add_follow_up(question=step.refinement_question or step.refinement_aspect.aspect_name, response=f"[Validation error: {error_message}]")
                 step.is_complete = True
@@ -976,7 +978,9 @@ class QueryRefinementManager:
                 else:
                     step.initial_summary = response_text
                 break
-            step.refinement_question = followup_question
+            # Only update refinement_question if followup_question is not empty
+            if followup_question:
+                step.refinement_question = followup_question
 
         final_value = self._extract_final_value(step)
         return self._build_followup_result(step, final_value, rounds)
@@ -1857,10 +1861,12 @@ class QueryRefinementManager:
             if llm_error:
                 return "", None, True, llm_error
             
-            # If no schema required, return raw text
-            if not aspect.response_format:
-                self._emit_validation_skipped(aspect.id, attempt_number)
-                return response_text, None, False, None
+            # Log raw response for debugging
+            logger.info(
+                "Raw LLM response for aspect '%s': %s",
+                aspect.id,
+                response_text[:500] if response_text else "(empty)"
+            )
             
             # Parse and validate structured response
             validation_result = self._validate_structured_response(
@@ -1928,6 +1934,10 @@ class QueryRefinementManager:
         )
         
         try:
+            # Note: response_format parameter is not used because:
+            # 1. Not all LLM providers support it consistently (especially Claude via LiteLLM)
+            # 2. We handle JSON parsing with markdown stripping as a robust fallback
+            # 3. Prompt engineering + validation works reliably across all models
             result = self.llm_provider.complete(
                 system_prompt=system_prompt,
                 user_prompt=user_prompt
@@ -1974,9 +1984,20 @@ class QueryRefinementManager:
         Returns:
             ValidationResult with validation status and details
         """
+        # Strip markdown code fences if present (fallback for older responses or non-JSON mode)
+        cleaned_text = response_text.strip()
+        if cleaned_text.startswith("```"):
+            lines = cleaned_text.splitlines()
+            if len(lines) >= 2 and lines[0].startswith("```"):
+                # Drop opening fence and optional closing fence
+                body = lines[1:]
+                if body and body[-1].startswith("```"):
+                    body = body[:-1]
+                cleaned_text = "\n".join(body)
+        
         # Parse JSON
         try:
-            parsed_payload = json.loads(response_text)
+            parsed_payload = json.loads(cleaned_text)
         except json.JSONDecodeError as json_error:
             error_message = f"Response is not valid JSON: {json_error}"
             logger.warning(

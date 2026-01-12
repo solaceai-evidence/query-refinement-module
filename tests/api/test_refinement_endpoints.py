@@ -6,9 +6,9 @@ import requests
 # Test configuration
 BASE_URL = "http://localhost:8000"
 TEST_USER = {
+    "username": "refine_test_user",
     "email": "refine_test@example.com",
-    "password": "TestPass123!",
-    "name": "Refinement Test User"
+    "password": "TestPass123!"
 }
 
 
@@ -36,7 +36,7 @@ def register_and_login() -> str:
     response = requests.post(
         f"{BASE_URL}/api/auth/login",
         data={
-            "username": TEST_USER["email"],
+            "username": TEST_USER["username"],
             "password": TEST_USER["password"]
         }
     )
