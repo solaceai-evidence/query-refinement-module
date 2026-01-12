@@ -1,5 +1,16 @@
 import './CommandHistoryItem.css';
 
+/**
+ * @typedef {import('../types/api').CommandHistoryItemProps} CommandHistoryItemProps
+ * @typedef {import('../types/api').CommandResult} CommandResult
+ * @typedef {import('../types/api').StepListItem} StepListItem
+ */
+
+/**
+ * Component for displaying executed command in conversation history
+ * @param {CommandHistoryItemProps} props
+ * @returns {JSX.Element}
+ */
 const CommandHistoryItem = ({ command, result }) => {
     const getCommandIcon = (cmdType) => {
         const icons = {

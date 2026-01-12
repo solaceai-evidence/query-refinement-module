@@ -1,5 +1,14 @@
 import './CommandButtons.css';
 
+/**
+ * @typedef {import('../types/api').CommandButtonsProps} CommandButtonsProps
+ */
+
+/**
+ * Quick action buttons for user commands
+ * @param {CommandButtonsProps} props
+ * @returns {JSX.Element}
+ */
 const CommandButtons = ({ onCommand, disabled }) => {
     const commands = [
         {
