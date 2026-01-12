@@ -1,4 +1,5 @@
 import './CommandHistoryItem.css';
+import { getCommandIcon } from '../constants/commands';
 
 /**
  * @typedef {import('../types/api').CommandHistoryItemProps} CommandHistoryItemProps
@@ -12,21 +13,6 @@ import './CommandHistoryItem.css';
  * @returns {JSX.Element}
  */
 const CommandHistoryItem = ({ command, result }) => {
-    const getCommandIcon = (cmdType) => {
-        const icons = {
-            'status': '📊',
-            'steps': '📋',
-            'help': '❓',
-            'skip': '⏭️',
-            'done': '✅',
-            'back': '◀️',
-            'goto': '🎯',
-            'restart': '🔄',
-            'submit': '🏁',
-            'end': '🏁'
-        };
-        return icons[cmdType] || '⚡';
-    };
 
     const getStatusClass = () => {
         if (!result) return 'command-pending';
@@ -36,7 +22,7 @@ const CommandHistoryItem = ({ command, result }) => {
     return (
         <div className={`command-history-item ${getStatusClass()}`}>
             <div className="command-history-header">
-                <span className="command-icon">{getCommandIcon(result?.type || command.replace('/', ''))}</span>
+                <span className="command-icon">{getCommandIcon(result?.type || command)}</span>
                 <span className="command-text">{command}</span>
                 <span className="command-badge">{result?.type?.toUpperCase() || 'EXECUTED'}</span>
             </div>
