@@ -1,4 +1,5 @@
 import './CommandButtons.css';
+import { USER_COMMANDS, COMMAND_METADATA, getCommandsByCategory } from '../constants/commands';
 
 /**
  * @typedef {import('../types/api').CommandButtonsProps} CommandButtonsProps
@@ -10,69 +11,25 @@ import './CommandButtons.css';
  * @returns {JSX.Element}
  */
 const CommandButtons = ({ onCommand, disabled }) => {
-    const commands = [
-        {
-            command: '/status',
-            label: 'Status',
-            hint: 'View progress summary',
-            icon: '📊',
-            category: 'info'
-        },
-        {
-            command: '/steps',
-            label: 'Steps',
-            hint: 'List all refinement steps',
-            icon: '📋',
-            category: 'info'
-        },
-        {
-            command: '/help',
-            label: 'Help',
-            hint: 'Show available commands',
-            icon: '❓',
-            category: 'info'
-        },
-        {
-            command: '/skip',
-            label: 'Skip',
-            hint: 'Skip current question',
-            icon: '⏭️',
-            category: 'control'
-        },
-        {
-            command: '/done',
-            label: 'Done',
-            hint: 'Mark current step complete',
-            icon: '✅',
-            category: 'control'
-        },
-        {
-            command: '/back',
-            label: 'Back',
-            hint: 'Go to previous question',
-            icon: '◀️',
-            category: 'navigation'
-        },
-        {
-            command: '/restart',
-            label: 'Restart',
-            hint: 'Start refinement from beginning',
-            icon: '🔄',
-            category: 'navigation'
-        },
-        {
-            command: '/submit',
-            label: 'Submit',
-            hint: 'Finish refinement now',
-            icon: '🏁',
-            category: 'control'
-        }
-    ];
+    // Build command list from centralized definitions
+    const infoCommands = getCommandsByCategory('info');
+    const controlCommands = getCommandsByCategory('control').filter(
+        ({ command }) => command !== USER_COMMANDS.SUBMIT // Filter out submit, we'll add it separately
+    );
+    const navigationCommands = getCommandsByCategory('navigation').filter(
+        ({ command }) => command !== USER_COMMANDS.GOTO // Filter out goto, handled separately
+    );
+
+    // Add submit command explicitly
+    controlCommands.push({
+        command: USER_COMMANDS.SUBMIT,
+        metadata: COMMAND_METADATA[USER_COMMANDS.SUBMIT]
+    });
 
     const handleGoto = () => {
         const stepNum = prompt('Enter step number to jump to:');
         if (stepNum && !isNaN(stepNum)) {
-            onCommand(`/goto ${stepNum}`);
+            onCommand(`${USER_COMMANDS.GOTO} ${stepNum}`);
         }
     };
 
@@ -84,16 +41,16 @@ const CommandButtons = ({ onCommand, disabled }) => {
                 <div className="command-section">
                     <div className="section-label">Info</div>
                     <div className="command-button-group">
-                        {commands.filter(cmd => cmd.category === 'info').map((cmd) => (
+                        {infoCommands.map(({ command, metadata }) => (
                             <button
-                                key={cmd.command}
+                                key={command}
                                 className="command-btn"
-                                onClick={() => onCommand(cmd.command)}
+                                onClick={() => onCommand(command)}
                                 disabled={disabled}
-                                title={cmd.hint}
+                                title={metadata.hint}
                             >
-                                <span className="command-icon">{cmd.icon}</span>
-                                <span className="command-text">{cmd.label}</span>
+                                <span className="command-icon">{metadata.icon}</span>
+                                <span className="command-text">{metadata.label}</span>
                             </button>
                         ))}
                     </div>
@@ -102,16 +59,16 @@ const CommandButtons = ({ onCommand, disabled }) => {
                 <div className="command-section">
                     <div className="section-label">Control</div>
                     <div className="command-button-group">
-                        {commands.filter(cmd => cmd.category === 'control').map((cmd) => (
+                        {controlCommands.map(({ command, metadata }) => (
                             <button
-                                key={cmd.command}
+                                key={command}
                                 className="command-btn"
-                                onClick={() => onCommand(cmd.command)}
+                                onClick={() => onCommand(command)}
                                 disabled={disabled}
-                                title={cmd.hint}
+                                title={metadata.hint}
                             >
-                                <span className="command-icon">{cmd.icon}</span>
-                                <span className="command-text">{cmd.label}</span>
+                                <span className="command-icon">{metadata.icon}</span>
+                                <span className="command-text">{metadata.label}</span>
                             </button>
                         ))}
                     </div>
@@ -120,26 +77,26 @@ const CommandButtons = ({ onCommand, disabled }) => {
                 <div className="command-section">
                     <div className="section-label">Navigation</div>
                     <div className="command-button-group">
-                        {commands.filter(cmd => cmd.category === 'navigation').map((cmd) => (
+                        {navigationCommands.map(({ command, metadata }) => (
                             <button
-                                key={cmd.command}
+                                key={command}
                                 className="command-btn"
-                                onClick={() => onCommand(cmd.command)}
+                                onClick={() => onCommand(command)}
                                 disabled={disabled}
-                                title={cmd.hint}
+                                title={metadata.hint}
                             >
-                                <span className="command-icon">{cmd.icon}</span>
-                                <span className="command-text">{cmd.label}</span>
+                                <span className="command-icon">{metadata.icon}</span>
+                                <span className="command-text">{metadata.label}</span>
                             </button>
                         ))}
                         <button
                             className="command-btn"
                             onClick={handleGoto}
                             disabled={disabled}
-                            title="Jump to specific step"
+                            title={COMMAND_METADATA[USER_COMMANDS.GOTO].hint}
                         >
-                            <span className="command-icon">🎯</span>
-                            <span className="command-text">Go To</span>
+                            <span className="command-icon">{COMMAND_METADATA[USER_COMMANDS.GOTO].icon}</span>
+                            <span className="command-text">{COMMAND_METADATA[USER_COMMANDS.GOTO].label}</span>
                         </button>
                     </div>
                 </div>

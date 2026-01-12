@@ -9,6 +9,7 @@ import CommandHistoryItem from '../components/CommandHistoryItem';
 import { refinementService } from '../services/refinement';
 import { useAuth } from '../context/AuthContext';
 import { isCommandResponse, createHistoryItem } from '../types';
+import { isUserCommand } from '../constants/commands';
 import './Refinement.css';
 
 /**
@@ -114,7 +115,8 @@ const Refinement = () => {
      */
     const handleAnswer = async (answer) => {
         console.log('[TRACE] handleAnswer called with:', answer);
-        console.log('[TRACE] Is command:', answer.startsWith('/'));
+        const isCommand = isUserCommand(answer);
+        console.log('[TRACE] Is valid command:', isCommand);
 
         setLoading(true);
         setError(null);
@@ -122,36 +124,29 @@ const Refinement = () => {
 
         try {
             // Add answer or command to history
-            if (answer.startsWith('/')) {
-                console.log('[COMMAND TRACE] Adding command to history:', answer);
-                setConversationHistory(prev => [...prev,
-                createHistoryItem('command', answer, { aspectId: currentAspectId })
-                ]);
-            } else {
-                console.log('[TRACE] Adding answer to history');
-                setConversationHistory(prev => [...prev,
+            if (isCommand) {
                 createHistoryItem('answer', answer, { aspectId: currentAspectId })
                 ]);
             }
 
-            console.log('[TRACE] Calling continueRefinement API...');
-            const response = await refinementService.continueRefinement(
-                sessionId,
-                queryId,
-                answer
-            );
+console.log('[TRACE] Calling continueRefinement API...');
+const response = await refinementService.continueRefinement(
+    sessionId,
+    queryId,
+    answer
+);
 
-            console.log('[TRACE] Response received:', {
-                hasCommandType: !!response.command_type,
-                commandType: response.command_type,
-                hasNextPrompt: !!response.next_prompt,
-                nextPromptAspectName: response.next_prompt?.aspect_name,
-                hasQuestion: !!response.next_prompt?.question
-            });
+console.log('[TRACE] Response received:', {
+    hasCommandType: !!response.command_type,
+    commandType: response.command_type,
+    hasNextPrompt: !!response.next_prompt,
+    nextPromptAspectName: response.next_prompt?.aspect_name,
+    hasQuestion: !!response.next_prompt?.question
+});
 
-            // Check if this is a command response
-            if (response.command_type) {
-                isCommandResponse(response) RESPONSE]Type: ${ response.command_type }, Success: ${ response.success } `);
+// Check if this is a command response
+if (response.command_type) {
+    isCommandResponse(response) RESPONSE]Type: ${ response.command_type }, Success: ${ response.success } `);
                 console.log('[COMMAND RESPONSE] Message:', response.message);
 
                 /** @type {CommandResult} */
