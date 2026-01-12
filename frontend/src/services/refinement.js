@@ -17,7 +17,7 @@ export const refinementService = {
     },
 
     // Continue refinement conversation
-    async continueRefinement(sessionId, queryId, aspectId, userResponse) {
+    async continueRefinement(sessionId, queryId, userResponse) {
         const response = await apiClient.post(`/api/refinement/queries/${queryId}/answer`, {
             answer: userResponse
         });
@@ -25,7 +25,7 @@ export const refinementService = {
     },
 
     // Get synthesis (final result)
-    async getSynthesis(sessionId, queryId) {
+    async getSynthesis(queryId) {
         const response = await apiClient.post('/api/refinement/synthesize', {
             query_id: queryId
         });
@@ -35,6 +35,12 @@ export const refinementService = {
     // Get query details
     async getQuery(queryId) {
         const response = await apiClient.get(`/api/queries/${queryId}`);
+        return response.data;
+    },
+
+    // Get refinement status
+    async getStatus(queryId) {
+        const response = await apiClient.get(`/api/refinement/queries/${queryId}/status`);
         return response.data;
     },
 

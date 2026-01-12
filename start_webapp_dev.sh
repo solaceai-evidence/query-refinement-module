@@ -11,15 +11,29 @@ echo ""
 GREEN='\033[0;32m'
 BLUE='\033[0;34m'
 YELLOW='\033[1;33m'
+RED='\033[0;31m'
 NC='\033[0m' # No Color
 
-# Check if backend dependencies are installed
-echo -e "${BLUE}Checking backend dependencies...${NC}"
-if [ ! -d "venv" ] && [ ! -d ".venv" ]; then
-    echo -e "${YELLOW}Virtual environment not found. Please create one first:${NC}"
-    echo "  conda env create -f environment.yml"
-    echo "  conda activate query-refinement"
+# Check if conda environment is active
+echo -e "${BLUE}Checking conda environment...${NC}"
+if [[ "$CONDA_DEFAULT_ENV" != "query-refinement" ]]; then
+    echo -e "${RED}Error: query-refinement conda environment is not active${NC}"
+    echo ""
+    echo "Please activate the environment first:"
+    echo "  ${GREEN}conda activate query-refinement${NC}"
+    echo ""
+    echo "If the environment doesn't exist, create it:"
+    echo "  ${GREEN}conda env create -f environment.yml${NC}"
+    echo "  ${GREEN}conda activate query-refinement${NC}"
+    echo "  ${GREEN}poetry install${NC}"
     exit 1
+fi
+
+# Check if poetry dependencies are installed
+echo -e "${BLUE}Checking poetry dependencies...${NC}"
+if ! poetry check --quiet 2>/dev/null; then
+    echo -e "${YELLOW}Installing Python dependencies with poetry...${NC}"
+    poetry install
 fi
 
 # Check if frontend dependencies are installed
@@ -57,7 +71,7 @@ fi
 
 # Start backend in background
 echo -e "${BLUE}Starting backend API...${NC}"
-python -m uvicorn query_refinement_module.api.main:app --reload --host 0.0.0.0 --port 8000 > backend.log 2>&1 &
+poetry run uvicorn query_refinement_module.api.main:app --reload --host 0.0.0.0 --port 8000 > backend.log 2>&1 &
 BACKEND_PID=$!
 echo -e "${GREEN}Backend started (PID: $BACKEND_PID)${NC}"
 echo "  API: http://localhost:8000"

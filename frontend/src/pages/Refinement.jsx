@@ -4,6 +4,8 @@ import FrameworkSelector from '../components/FrameworkSelector';
 import QuestionRenderer from '../components/QuestionRenderer';
 import AspectStatusPanel from '../components/AspectStatusPanel';
 import SynthesisResult from '../components/SynthesisResult';
+import CommandButtons from '../components/CommandButtons';
+import CommandHistoryItem from '../components/CommandHistoryItem';
 import { refinementService } from '../services/refinement';
 import { useAuth } from '../context/AuthContext';
 import './Refinement.css';
@@ -21,6 +23,7 @@ const Refinement = () => {
     const [loading, setLoading] = useState(false);
     const [error, setError] = useState(null);
     const [conversationHistory, setConversationHistory] = useState([]);
+    const [commandResult, setCommandResult] = useState(null);
     const { logout } = useAuth();
     const navigate = useNavigate();
 
@@ -96,53 +99,176 @@ const Refinement = () => {
     };
 
     const handleAnswer = async (answer) => {
+        console.log('[TRACE] handleAnswer called with:', answer);
+        console.log('[TRACE] Is command:', answer.startsWith('/'));
+
         setLoading(true);
         setError(null);
+        setCommandResult(null); // Clear any previous command result
 
         try {
-            // Add answer to history
-            setConversationHistory(prev => [...prev, {
-                type: 'answer',
-                content: answer,
-                aspectId: currentAspectId
-            }]);
+            // Add answer or command to history
+            if (answer.startsWith('/')) {
+                console.log('[COMMAND TRACE] Adding command to history:', answer);
+                setConversationHistory(prev => [...prev, {
+                    type: 'command',
+                    content: answer,
+                    aspectId: currentAspectId,
+                    timestamp: new Date().toISOString()
+                }]);
+            } else {
+                console.log('[TRACE] Adding answer to history');
+                setConversationHistory(prev => [...prev, {
+                    type: 'answer',
+                    content: answer,
+                    aspectId: currentAspectId,
+                    timestamp: new Date().toISOString()
+                }]);
+            }
 
+            console.log('[TRACE] Calling continueRefinement API...');
             const response = await refinementService.continueRefinement(
                 sessionId,
                 queryId,
-                currentAspectId,
                 answer
             );
 
-            // Add question to history if next_prompt exists
-            if (response.next_prompt) {
-                setConversationHistory(prev => [...prev, {
-                    type: 'question',
-                    content: response.next_prompt,
-                    aspectId: response.next_prompt.aspect_id
-                }]);
-                setCurrentQuestion(response.next_prompt);
-                setCurrentAspectId(response.next_prompt.aspect_id);
-            } else if (response.is_complete) {
-                // Aspect complete, check if all aspects are done
-                await handleSynthesis();
+            console.log('[TRACE] Response received:', {
+                hasCommandType: !!response.command_type,
+                commandType: response.command_type,
+                hasNextPrompt: !!response.next_prompt,
+                nextPromptAspectName: response.next_prompt?.aspect_name,
+                hasQuestion: !!response.next_prompt?.question
+            });
+
+            // Check if this is a command response
+            if (response.command_type) {
+                console.log(`[COMMAND RESPONSE] Type: ${response.command_type}, Success: ${response.success}`);
+                console.log('[COMMAND RESPONSE] Message:', response.message);
+
+                const commandResultData = {
+                    type: response.command_type,
+                    message: response.message,
+                    success: response.success,
+                    step_summary: response.step_summary,
+                    step_list: response.step_list,
+                    invalidated_aspects: response.invalidated_aspects
+                };
+
+                console.log('[COMMAND RESPONSE] Setting command result:', commandResultData);
+
+                // Add command result to history
+                setConversationHistory(prev => {
+                    // Update the last command entry with the result
+                    const newHistory = [...prev];
+                    const lastCommandIndex = newHistory.length - 1;
+                    if (newHistory[lastCommandIndex]?.type === 'command') {
+                        newHistory[lastCommandIndex].result = commandResultData;
+                        console.log('[COMMAND TRACE] Updated command in history with result');
+                    }
+                    return newHistory;
+                });
+
+                // Only update question if command provides next_prompt
+                if (response.next_prompt) {
+                    console.log('[COMMAND RESPONSE] Processing next_prompt');
+
+                    if (response.next_prompt.question) {
+                        console.log('[COMMAND RESPONSE] Adding new question to history');
+                        console.log('[COMMAND RESPONSE] Question preview:', response.next_prompt.question.substring(0, 100));
+
+                        setConversationHistory(prev => [...prev, {
+                            type: 'question',
+                            content: response.next_prompt.question,
+                            aspectId: response.next_prompt.aspect_id,
+                            aspectName: response.next_prompt.aspect_name,
+                            timestamp: new Date().toISOString()
+                        }]);
+                    } else {
+                        console.warn('[COMMAND RESPONSE] next_prompt exists but question is empty/null');
+                    }
+
+                    console.log('[COMMAND RESPONSE] Updating current question state');
+                    setCurrentQuestion(response.next_prompt);
+                    setCurrentAspectId(response.next_prompt.aspect_id);
+                } else {
+                    console.log('[COMMAND RESPONSE] No next_prompt - may trigger synthesis');
+                    setCurrentQuestion(null);
+                    setCurrentAspectId(null);
+                    await handleSynthesis();
+                }
+
+                // Update aspects status for navigation commands
+                await updateAspectStatus();
+            } else {
+                console.log('[TRACE] Regular answer response (not a command)');
+
+                // Regular answer response - add question to history if next_prompt exists
+                if (response.next_prompt) {
+                    if (response.next_prompt.question) {
+                        console.log('[TRACE] Adding next question to history');
+                        setConversationHistory(prev => [...prev, {
+                            type: 'question',
+                            content: response.next_prompt.question,
+                            aspectId: response.next_prompt.aspect_id,
+                            aspectName: response.next_prompt.aspect_name,
+                            timestamp: new Date().toISOString()
+                        }]);
+                    } else {
+                        console.warn('[TRACE] next_prompt.question is null or empty');
+                    }
+                    setCurrentQuestion(response.next_prompt);
+                    setCurrentAspectId(response.next_prompt.aspect_id);
+                } else {
+                    console.log('[TRACE] No next_prompt - may trigger synthesis');
+                    setCurrentQuestion(null);
+                    setCurrentAspectId(null);
+                    await handleSynthesis();
+                }
+
+                // Fetch updated status to refresh aspects
+                await updateAspectStatus();
             }
         } catch (err) {
-            setError(err.response?.data?.detail || 'Failed to process answer');
+            console.error('[ERROR] Error in handleAnswer:', err);
+            console.error('[ERROR] Error response:', err.response?.data);
+            setError(err.response?.data?.detail || err.message || 'Failed to process answer');
         } finally {
+            console.log('[TRACE] handleAnswer complete, setting loading to false');
             setLoading(false);
         }
     };
 
+    const updateAspectStatus = async () => {
+        if (!queryId) return;
+        try {
+            const status = await refinementService.getStatus(queryId);
+            setAspects(status.aspects_summary?.aspects || []);
+        } catch (err) {
+            console.error('Failed to update status:', err);
+        }
+    };
+
+    const handleCommand = async (command) => {
+        console.log('[COMMAND HANDLER] User clicked command:', command);
+        console.log('[COMMAND HANDLER] Current sessionId:', sessionId);
+        console.log('[COMMAND HANDLER] Current queryId:', queryId);
+        console.log('[COMMAND HANDLER] Current aspectId:', currentAspectId);
+        // Commands are handled through handleAnswer
+        await handleAnswer(command);
+    };
+
     const handleSynthesis = async () => {
+        if (!queryId || !sessionId) return;
+
         setLoading(true);
         try {
-            const response = await refinementService.getSynthesis(sessionId, queryId);
-            setSynthesis(response);
+            const result = await refinementService.getSynthesis(sessionId, queryId);
+            setSynthesis(result);
             setStage('synthesis');
-            clearSession();
+            clearSession(); // Clear saved session after completion
         } catch (err) {
-            setError(err.response?.data?.detail || 'Failed to generate synthesis');
+            setError(err.response?.data?.detail || 'Failed to synthesize query');
         } finally {
             setLoading(false);
         }
@@ -160,6 +286,7 @@ const Refinement = () => {
         setAspects([]);
         setSynthesis(null);
         setConversationHistory([]);
+        setCommandResult(null);
         setError(null);
     };
 
@@ -235,25 +362,45 @@ const Refinement = () => {
                             <AspectStatusPanel aspects={aspects} />
                         </div>
                         <div className="refinement-main">
-                            {conversationHistory.length > 0 && (
-                                <div className="conversation-history">
-                                    {conversationHistory.map((item, index) => (
-                                        <div key={index} className={`history-item ${item.type}`}>
-                                            <div className="history-label">
-                                                {item.type === 'query' ? 'Initial Query' :
-                                                    item.type === 'question' ? 'Question' : 'Your Answer'}
-                                            </div>
-                                            <div className="history-content">{item.content}</div>
-                                        </div>
-                                    ))}
+                            <div className="conversation-container">
+                                {conversationHistory.length > 0 && (
+                                    <div className="conversation-history">
+                                        {conversationHistory.map((item, index) => {
+                                            if (item.type === 'command') {
+                                                return (
+                                                    <CommandHistoryItem
+                                                        key={`${item.timestamp}-${index}`}
+                                                        command={item.content}
+                                                        result={item.result}
+                                                    />
+                                                );
+                                            }
+                                            return (
+                                                <div key={`${item.timestamp}-${index}`} className={`history-item ${item.type}`}>
+                                                    <div className="history-label">
+                                                        {item.type === 'query' ? '📝 Initial Query' :
+                                                            item.type === 'question' ? `❓ Question${item.aspectName ? ` (${item.aspectName})` : ''}` :
+                                                                '💬 Your Answer'}
+                                                    </div>
+                                                    <div className="history-content">{item.content}</div>
+                                                </div>
+                                            );
+                                        })}
+                                    </div>
+                                )}
+                            </div>
+                            {currentQuestion && currentQuestion.question && (
+                                <div className="question-input-fixed">
+                                    <QuestionRenderer
+                                        question={currentQuestion.question}
+                                        onAnswer={handleAnswer}
+                                        loading={loading}
+                                    />
+                                    <CommandButtons
+                                        onCommand={handleCommand}
+                                        disabled={loading}
+                                    />
                                 </div>
-                            )}
-                            {currentQuestion && (
-                                <QuestionRenderer
-                                    question={currentQuestion}
-                                    onAnswer={handleAnswer}
-                                    loading={loading}
-                                />
                             )}
                         </div>
                     </div>

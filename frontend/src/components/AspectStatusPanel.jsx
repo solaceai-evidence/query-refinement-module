@@ -28,11 +28,11 @@ const AspectStatusPanel = ({ aspects }) => {
             <div className="aspects-list">
                 {aspects.map((aspect, index) => (
                     <div
-                        key={aspect.aspect_id || index}
+                        key={aspect.id || aspect.aspect_id || index}
                         className={`aspect-item ${getStatusClass(aspect.status)}`}
                     >
                         <span className="status-icon">{getStatusIcon(aspect.status)}</span>
-                        <span className="aspect-name">{aspect.aspect_id}</span>
+                        <span className="aspect-name">{aspect.name || aspect.aspect_name || aspect.id}</span>
                         <span className="status-badge">{aspect.status.replace('_', ' ')}</span>
                     </div>
                 ))}
