@@ -8,7 +8,16 @@ import CommandButtons from '../components/CommandButtons';
 import CommandHistoryItem from '../components/CommandHistoryItem';
 import { refinementService } from '../services/refinement';
 import { useAuth } from '../context/AuthContext';
+import { isCommandResponse, createHistoryItem } from '../types';
 import './Refinement.css';
+
+/**
+ * @typedef {import('../types/api').NextPrompt} NextPrompt
+ * @typedef {import('../types/api').ConversationHistoryItem} ConversationHistoryItem
+ * @typedef {import('../types/api').CommandResult} CommandResult
+ * @typedef {import('../types/api').AspectSummary} AspectSummary
+ * @typedef {import('../types/api').SynthesizeQueryResponse} SynthesizeQueryResponse
+ */
 
 const Refinement = () => {
     const [stage, setStage] = useState('framework-selection'); // framework-selection, initial-query, refinement, synthesis
@@ -98,6 +107,11 @@ const Refinement = () => {
         }
     };
 
+    /**
+     * Handle user answer or command submission
+     * @param {string} answer - User's answer or command
+     * @returns {Promise<void>}
+     */
     const handleAnswer = async (answer) => {
         console.log('[TRACE] handleAnswer called with:', answer);
         console.log('[TRACE] Is command:', answer.startsWith('/'));
@@ -110,20 +124,14 @@ const Refinement = () => {
             // Add answer or command to history
             if (answer.startsWith('/')) {
                 console.log('[COMMAND TRACE] Adding command to history:', answer);
-                setConversationHistory(prev => [...prev, {
-                    type: 'command',
-                    content: answer,
-                    aspectId: currentAspectId,
-                    timestamp: new Date().toISOString()
-                }]);
+                setConversationHistory(prev => [...prev,
+                createHistoryItem('command', answer, { aspectId: currentAspectId })
+                ]);
             } else {
                 console.log('[TRACE] Adding answer to history');
-                setConversationHistory(prev => [...prev, {
-                    type: 'answer',
-                    content: answer,
-                    aspectId: currentAspectId,
-                    timestamp: new Date().toISOString()
-                }]);
+                setConversationHistory(prev => [...prev,
+                createHistoryItem('answer', answer, { aspectId: currentAspectId })
+                ]);
             }
 
             console.log('[TRACE] Calling continueRefinement API...');
@@ -143,9 +151,10 @@ const Refinement = () => {
 
             // Check if this is a command response
             if (response.command_type) {
-                console.log(`[COMMAND RESPONSE] Type: ${response.command_type}, Success: ${response.success}`);
+                isCommandResponse(response) RESPONSE]Type: ${ response.command_type }, Success: ${ response.success } `);
                 console.log('[COMMAND RESPONSE] Message:', response.message);
 
+                /** @type {CommandResult} */
                 const commandResultData = {
                     type: response.command_type,
                     message: response.message,
@@ -177,12 +186,11 @@ const Refinement = () => {
                         console.log('[COMMAND RESPONSE] Adding new question to history');
                         console.log('[COMMAND RESPONSE] Question preview:', response.next_prompt.question.substring(0, 100));
 
-                        setConversationHistory(prev => [...prev, {
-                            type: 'question',
-                            content: response.next_prompt.question,
-                            aspectId: response.next_prompt.aspect_id,
-                            aspectName: response.next_prompt.aspect_name,
-                            timestamp: new Date().toISOString()
+                            createHistoryItem('question', response.next_prompt.question, {
+                                aspectId: response.next_prompt.aspect_id,
+                                aspectName: response.next_prompt.aspect_name
+                            })
+                           timestamp: new Date().toISOString()
                         }]);
                     } else {
                         console.warn('[COMMAND RESPONSE] next_prompt exists but question is empty/null');
@@ -207,13 +215,12 @@ const Refinement = () => {
                 if (response.next_prompt) {
                     if (response.next_prompt.question) {
                         console.log('[TRACE] Adding next question to history');
-                        setConversationHistory(prev => [...prev, {
-                            type: 'question',
-                            content: response.next_prompt.question,
-                            aspectId: response.next_prompt.aspect_id,
-                            aspectName: response.next_prompt.aspect_name,
-                            timestamp: new Date().toISOString()
-                        }]);
+                        setConversationHistory(prev => [...prev, 
+                            createHistoryItem('question', response.next_prompt.question, {
+                                aspectId: response.next_prompt.aspect_id,
+                                aspectName: response.next_prompt.aspect_name
+                            })
+                        ]);
                     } else {
                         console.warn('[TRACE] next_prompt.question is null or empty');
                     }
@@ -240,6 +247,11 @@ const Refinement = () => {
     };
 
     const updateAspectStatus = async () => {
+    /**
+     * Update aspect status from API
+     * @returns {Promise<void>}
+     */
+    const updateAspectStatus = async () => {
         if (!queryId) return;
         try {
             const status = await refinementService.getStatus(queryId);
@@ -249,8 +261,16 @@ const Refinement = () => {
         }
     };
 
-    const handleCommand = async (command) => {
+    /**
+     * Handle command button click
+     * @param {string} command - Command string (e.g., "/skip")
+     * @returns {Promise<void>}
+     */    const handleCommand = async (command) => {
         console.log('[COMMAND HANDLER] User clicked command:', command);
+    /**
+     * Request synthesis of refined query
+     * @returns {Promise<void>}
+     */
         console.log('[COMMAND HANDLER] Current sessionId:', sessionId);
         console.log('[COMMAND HANDLER] Current queryId:', queryId);
         console.log('[COMMAND HANDLER] Current aspectId:', currentAspectId);
@@ -369,17 +389,17 @@ const Refinement = () => {
                                             if (item.type === 'command') {
                                                 return (
                                                     <CommandHistoryItem
-                                                        key={`${item.timestamp}-${index}`}
+                                                        key={`${ item.timestamp } -${ index } `}
                                                         command={item.content}
                                                         result={item.result}
                                                     />
                                                 );
                                             }
                                             return (
-                                                <div key={`${item.timestamp}-${index}`} className={`history-item ${item.type}`}>
+                                                <div key={`${ item.timestamp } -${ index } `} className={`history - item ${ item.type } `}>
                                                     <div className="history-label">
                                                         {item.type === 'query' ? '📝 Initial Query' :
-                                                            item.type === 'question' ? `❓ Question${item.aspectName ? ` (${item.aspectName})` : ''}` :
+                                                            item.type === 'question' ? `❓ Question${ item.aspectName ? ` (${item.aspectName})` : '' } ` :
                                                                 '💬 Your Answer'}
                                                     </div>
                                                     <div className="history-content">{item.content}</div>
