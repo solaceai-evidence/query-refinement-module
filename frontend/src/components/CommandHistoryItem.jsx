@@ -30,7 +30,9 @@ const CommandHistoryItem = ({ command, result }) => {
             {result && (
                 <div className="command-history-body">
                     <div className="command-message">
-                        {result.message}
+                        {result.message.split('\n').map((line, idx) => (
+                            <div key={idx}>{line || '\u00A0'}</div>
+                        ))}
                     </div>
 
                     {result.step_summary && (

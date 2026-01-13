@@ -11,10 +11,13 @@ Key Features:
 - Performance monitoring
 - Error handling with detailed context
 """
+import logging
 import time
 from fastapi import APIRouter, Depends, HTTPException, status
 from sqlalchemy.orm import Session
 from typing import Dict, Any, Optional, Union, List
+
+logger = logging.getLogger(__name__)
 
 from query_refinement_module.db.session import get_db
 from query_refinement_module.db.crud import (
@@ -360,8 +363,7 @@ def start_refinement(
             detail=f"LLM service request timed out: {str(e)}"
         )
     except Exception as e:
-        import logging
-        logging.error(f"Error initializing refinement session: {str(e)}", exc_info=True)
+        logger.error(f"Error initializing refinement session: {str(e)}", exc_info=True)
         
         # Check for specific LLM errors
         error_str = str(e).lower()
@@ -459,8 +461,7 @@ def submit_answer(
     
     # If session not in Redis, reconstruct from database (fallback)
     if not session:
-        import logging
-        logging.warning("Session not found in Redis for query_id=%d, reconstructing from database", query_id)
+        logger.warning("Session not found in Redis for query_id=%d, reconstructing from database", query_id)
         session = manager.initialize(db_query.original_query, framework)
         
         # Restore follow-up history from database
@@ -478,6 +479,12 @@ def submit_answer(
                     })
                 if session_step.follow_up_history:
                     session_step.is_complete = True
+                    # Restore the last question asked (needed for proper state)
+                    last_followup = db_step.followup_history[-1]
+                    session_step.refinement_question = last_followup.question
+        
+        # Re-cache the reconstructed session
+        session_manager.save_session(query_id, session)
     
     # ============================================================
     # COMMAND DETECTION: Check if input is a command (starts with /)
@@ -492,7 +499,7 @@ def submit_answer(
         
         # Parse the command
         cmd_result = parse_user_command(user_input)
-        logger.info(f"[Query {query_id}] Command parsed - valid: {cmd_result.is_valid}, command: {cmd_result.command}, arg: {cmd_result.arg}")
+        logger.info(f"[Query {query_id}] Command parsed - valid: {cmd_result.is_valid}, command: {cmd_result.command}, arg: {cmd_result.argument}")
         
         # Handle invalid command
         if not cmd_result.is_valid:
@@ -519,10 +526,12 @@ def submit_answer(
                 # Navigation would invalidate dependent aspects - require confirmation
                 force_confirmation_needed = True
                 logger.info(f"[Query {query_id}] Force confirmation needed - would invalidate: {invalidated}")
+                # Mark as NOT successful since confirmation is needed
+                command_payload["success"] = False
                 command_payload["message"] = (
-                    f"{command_payload.get('message', '')} "
-                    f"This will invalidate {len(invalidated)} dependent aspect(s). "
-                    f"Resend with force=true to proceed."
+                    f"⚠️ Warning: This action will invalidate {len(invalidated)} dependent aspect(s): "
+                    f"{', '.join(invalidated)}. This means you'll need to re-answer those aspects. "
+                    f"Click 'Confirm' to proceed."
                 )
         
         # Save session state for state-mutating commands
@@ -571,8 +580,7 @@ def submit_answer(
             detail=f"LLM service request timed out: {str(e)}"
         )
     except Exception as e:
-        import logging
-        logging.error(f"Error in follow-up loop: {str(e)}", exc_info=True)
+        logger.error(f"Error in follow-up loop: {str(e)}", exc_info=True)
         raise HTTPException(
             status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
             detail=f"Failed to process answer: {str(e)}"
@@ -633,7 +641,8 @@ def get_refinement_status(
     query_id: int,
     manager: QueryRefinementManager = Depends(get_refinement_manager),
     current_user = Depends(get_current_user),
-    db: Session = Depends(get_db)
+    db: Session = Depends(get_db),
+    session_manager: SessionManager = Depends(get_session_manager)
 ):
     """
     Get the current status of a refinement workflow.
@@ -650,9 +659,14 @@ def get_refinement_status(
     if not framework_name:
         raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail="Framework name not found for session")
     
-    # Reconstruct session to get status
+    # Load session from Redis cache first (fast)
     framework = get_framework(framework_name)
-    session = manager.initialize(db_query.original_query, framework)
+    session = session_manager.load_session(query_id, framework)
+    
+    # Fallback: Reconstruct from database if Redis miss
+    if not session:
+        logger.info(f"[Status] Redis miss for query {query_id}, reconstructing from database")
+        session = _reconstruct_session_from_db(db, db_query, framework, session_manager)
     
     summary = manager.get_initialization_summary(session)
     active_step = session.get_active_step()
@@ -700,8 +714,7 @@ def synthesize_refined_query(
     
     # If session not in Redis, reconstruct from database (fallback)
     if not session:
-        import logging
-        logging.warning("Session not found in Redis for query_id=%d, reconstructing from database", request.query_id)
+        logger.warning("Session not found in Redis for query_id=%d, reconstructing from database", request.query_id)
         session = manager.initialize(db_query.original_query, framework)
         
         # Load follow-ups from database and populate session

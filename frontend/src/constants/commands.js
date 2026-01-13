@@ -52,64 +52,86 @@ export const COMMAND_ALIASES = {
 
 /**
  * Command metadata for UI display
- * @type {Object.<string, {label: string, icon: string, hint: string, category: string}>}
+ * @type {Object.<string, {label: string, icon: string, hint: string, category: string, behavior: string}>}
  */
 export const COMMAND_METADATA = {
     [USER_COMMANDS.STATUS]: {
         label: 'Status',
         icon: '📊',
         hint: 'View progress summary',
-        category: 'info'
+        category: 'info',
+        behavior: 'informational' // Don't change flow state
     },
     [USER_COMMANDS.STEPS]: {
         label: 'Steps',
         icon: '📋',
         hint: 'List all refinement steps',
-        category: 'info'
+        category: 'info',
+        behavior: 'informational' // Don't change flow state
     },
     [USER_COMMANDS.HELP]: {
         label: 'Help',
         icon: '❓',
         hint: 'Show available commands',
-        category: 'info'
+        category: 'info',
+        behavior: 'informational' // Don't change flow state
     },
     [USER_COMMANDS.SKIP]: {
         label: 'Skip',
         icon: '⏭️',
         hint: 'Skip current question',
-        category: 'control'
+        category: 'control',
+        behavior: 'navigation' // Changes current question
     },
     [USER_COMMANDS.DONE]: {
         label: 'Done',
         icon: '✅',
         hint: 'Mark current step complete',
-        category: 'control'
+        category: 'control',
+        behavior: 'navigation' // Changes current question
     },
     [USER_COMMANDS.BACK]: {
         label: 'Back',
         icon: '◀️',
         hint: 'Go to previous question',
-        category: 'navigation'
+        category: 'navigation',
+        behavior: 'navigation' // Changes current question
     },
     [USER_COMMANDS.RESTART]: {
         label: 'Restart',
         icon: '🔄',
         hint: 'Start refinement from beginning',
-        category: 'navigation'
+        category: 'navigation',
+        behavior: 'navigation' // Changes current question
     },
     [USER_COMMANDS.SUBMIT]: {
         label: 'Submit',
         icon: '🏁',
         hint: 'Finish refinement now',
-        category: 'control'
+        category: 'control',
+        behavior: 'terminating' // Ends the flow
     },
     [USER_COMMANDS.GOTO]: {
         label: 'Go To',
         icon: '🎯',
         hint: 'Jump to specific step',
-        category: 'navigation'
+        category: 'navigation',
+        behavior: 'navigation' // Changes current question
     }
 };
+
+/**
+ * Check if a command is informational (doesn't change flow state)
+ * @param {string} command - Command string
+ * @returns {boolean} True if command is informational
+ */
+export function isInformationalCommand(command) {
+    const parsed = parseCommand(command);
+    if (!parsed) return false;
+
+    const metadata = COMMAND_METADATA[parsed.command];
+    return metadata?.behavior === 'informational';
+}
 
 /**
  * Check if a string is a valid user command
