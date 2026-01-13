@@ -1,10 +1,11 @@
 #!/bin/bash
 
 # Query Refinement Web App - Development Startup Script
+#This script starts Redis, the backend API, and the frontend dev server.
 
-set -e
+set -e # exit on error
 
-echo "🚀 Starting Query Refinement Web App (Development Mode)"
+echo "Starting Query Refinement Web App (Development Mode)"
 echo ""
 
 # Colors for output
@@ -14,8 +15,34 @@ YELLOW='\033[1;33m'
 RED='\033[0;31m'
 NC='\033[0m' # No Color
 
+# check if Redis is running
+echo -e "${YELLOW}[1/6] Checking Redis service...${NC}"
+if ! redis-cli ping > /dev/null 2>&1; then
+    echo -e "${YELLOW}Warning: Redis is not running. Starting Redis via Docker compose...${NC}"
+    docker-compose -f docker-compose.yml up -d redis
+    echo -e "${GREEN}Redis started via Docker compose.${NC}"
+    sleep 2
+else
+    echo -e "${GREEN}Redis is already running.${NC}"
+fi
+
+# Check if PostgreSQL is needed (optional, based on .env file)
+if grep -q "DATABASE_URL=postgresql" .env 2>/dev/null; then
+    echo -e "${YELLOW}[2/6] Checking PostgreSQL service...${NC}"
+    if ! docker ps | grep -q query-refinement-db; then
+        echo -e "${YELLOW}Warning: PostgreSQL is not running. Starting PostgreSQL via Docker compose...${NC}"
+        docker-compose -f docker-compose.yml up -d postgres
+        echo -e "${GREEN}PostgreSQL started via Docker compose.${NC}"
+        sleep 3
+    else
+        echo -e "${GREEN}PostgreSQL is already running.${NC}"
+    fi
+else
+    echo -e "${BLUE}[2/6] PostgreSQL not configured (using in-memory storage)${NC}"
+fi
+
 # Check if conda environment is active
-echo -e "${BLUE}Checking conda environment...${NC}"
+echo -e "${BLUE}[3/6] Checking conda environment...${NC}"
 if [[ "$CONDA_DEFAULT_ENV" != "query-refinement" ]]; then
     echo -e "${RED}Error: query-refinement conda environment is not active${NC}"
     echo ""
@@ -30,14 +57,14 @@ if [[ "$CONDA_DEFAULT_ENV" != "query-refinement" ]]; then
 fi
 
 # Check if poetry dependencies are installed
-echo -e "${BLUE}Checking poetry dependencies...${NC}"
+echo -e "${BLUE}[4/6] Checking poetry dependencies...${NC}"
 if ! poetry check --quiet 2>/dev/null; then
     echo -e "${YELLOW}Installing Python dependencies with poetry...${NC}"
     poetry install
 fi
 
 # Check if frontend dependencies are installed
-echo -e "${BLUE}Checking frontend dependencies...${NC}"
+echo -e "${BLUE}[4/6] Checking frontend dependencies...${NC}"
 if [ ! -d "frontend/node_modules" ]; then
     echo -e "${YELLOW}Installing frontend dependencies...${NC}"
     cd frontend
@@ -59,18 +86,26 @@ EOF
     echo -e "${GREEN}Created .env file. Please update QUERY_REFINEMENT_LLM_API_KEY${NC}"
 fi
 
-# Start Redis if not running
-echo -e "${BLUE}Checking Redis...${NC}"
-if ! redis-cli ping &>/dev/null; then
-    echo -e "${YELLOW}Redis not running. Please start Redis:${NC}"
-    echo "  brew services start redis  # macOS"
-    echo "  sudo systemctl start redis # Linux"
-    echo ""
-    echo -e "${YELLOW}Or run without Redis (memory-based session storage)${NC}"
+# Check and clean up existing processes
+echo -e "${BLUE}[4/6] Checking for existing processes...${NC}"
+EXISTING_BACKEND=$(lsof -ti:8000 2>/dev/null || true)
+EXISTING_FRONTEND=$(lsof -ti:5173 2>/dev/null || true)
+
+if [ ! -z "$EXISTING_BACKEND" ]; then
+    echo -e "${YELLOW}Found existing backend process on port 8000. Stopping...${NC}"
+    kill -9 $EXISTING_BACKEND 2>/dev/null
+    sleep 1
 fi
 
+if [ ! -z "$EXISTING_FRONTEND" ]; then
+    echo -e "${YELLOW}Found existing frontend process on port 5173. Stopping...${NC}"
+    kill -9 $EXISTING_FRONTEND 2>/dev/null
+    sleep 1
+fi
+
+
 # Start backend in background
-echo -e "${BLUE}Starting backend API...${NC}"
+echo -e "${BLUE}[5/6] Starting backend API...${NC}"
 poetry run uvicorn query_refinement_module.api.main:app --reload --host 0.0.0.0 --port 8000 > backend.log 2>&1 &
 BACKEND_PID=$!
 echo -e "${GREEN}Backend started (PID: $BACKEND_PID)${NC}"
@@ -92,8 +127,23 @@ for i in {1..30}; do
 done
 
 # Start frontend
-echo -e "${BLUE}Starting frontend...${NC}"
+echo -e "${BLUE}[6/6] Starting frontend...${NC}"
 cd frontend
+
+# Verify Vite proxy configuration exists
+if ! grep -q "'/api'" vite.config.js; then
+    echo -e "${RED}⚠️  WARNING: Vite proxy configuration not found in vite.config.js!${NC}"
+    echo -e "${YELLOW}API requests may fail. Proxy should forward /api to http://localhost:8000${NC}"
+else
+    echo -e "${GREEN}✓ Vite proxy configuration verified${NC}"
+fi
+
+# Clear Vite cache for clean start
+if [ -d "node_modules/.vite" ]; then
+    echo -e "${YELLOW}Clearing Vite cache...${NC}"
+    rm -rf node_modules/.vite
+fi
+
 npm run dev > ../frontend.log 2>&1 &
 FRONTEND_PID=$!
 cd ..

@@ -9,6 +9,7 @@ Key Features:
 - TTL-based automatic expiration
 - Graceful error handling with detailed logging
 - Session statistics and monitoring
+- Automatic retry logic for Redis connection failures
 
 Performance Impact:
 - Eliminates redundant LLM initialization calls
@@ -17,11 +18,12 @@ Performance Impact:
 """
 import json
 import logging
+import time
 from typing import Optional, Dict, Any, List
 from datetime import timedelta
 
 import redis
-from redis.exceptions import RedisError
+from redis.exceptions import RedisError, ConnectionError
 
 from query_refinement_module.core import QueryRefinementSession, QueryAspectRefiner
 from query_refinement_module.schema.model import RefinementAspect
@@ -40,13 +42,16 @@ class SessionManager:
     - Redis storage with TTL
     - Session retrieval by query_id
     - Automatic cleanup via Redis expiration
+    - Retry logic for transient failures
     """
     
     def __init__(
         self,
         redis_url: str = "redis://localhost:6379/0",
         session_ttl_seconds: int = 3600,
-        key_prefix: str = "qr:session:"
+        key_prefix: str = "qr:session:",
+        max_retries: int = 3,
+        retry_delay: float = 0.5
     ):
         """
         Initialize session manager with Redis connection.
@@ -55,10 +60,14 @@ class SessionManager:
             redis_url: Redis connection URL (redis://host:port/db)
             session_ttl_seconds: Session expiration time in seconds (default: 1 hour)
             key_prefix: Prefix for Redis keys to namespace sessions
+            max_retries: Maximum retry attempts for Redis operations
+            retry_delay: Delay between retries in seconds
         """
         self.redis_client = redis.from_url(redis_url, decode_responses=True)
         self.session_ttl = session_ttl_seconds
         self.key_prefix = key_prefix
+        self.max_retries = max_retries
+        self.retry_delay = retry_delay
         
         # Test connection
         try:
@@ -68,13 +77,40 @@ class SessionManager:
             logger.error("Failed to connect to Redis: %s", e)
             raise
     
+    def _retry_operation(self, operation_name: str, operation_func):
+        """
+        Execute Redis operation with automatic retry on connection failures.
+        
+        Args:
+            operation_name: Name of the operation for logging
+            operation_func: Callable that performs the Redis operation
+            
+        Returns:
+            Result of the operation or None on failure
+        """
+        for attempt in range(self.max_retries):
+            try:
+                return operation_func()
+            except ConnectionError as e:
+                if attempt < self.max_retries - 1:
+                    logger.warning(
+                        f"Redis {operation_name} failed (attempt {attempt + 1}/{self.max_retries}): {e}. Retrying..."
+                    )
+                    time.sleep(self.retry_delay * (attempt + 1))  # Exponential backoff
+                else:
+                    logger.error(f"Redis {operation_name} failed after {self.max_retries} attempts: {e}")
+                    return None
+            except RedisError as e:
+                logger.error(f"Redis {operation_name} error: {e}")
+                return None
+    
     def _make_key(self, query_id: int) -> str:
         """Generate Redis key for a query session."""
         return f"{self.key_prefix}{query_id}"
     
     def save_session(self, query_id: int, session: QueryRefinementSession, request_id: Optional[str] = None) -> bool:
         """
-        Save a QueryRefinementSession to Redis with comprehensive logging.
+        Save a QueryRefinementSession to Redis with comprehensive logging and retry logic.
         
         Args:
             query_id: Database query ID
@@ -86,7 +122,7 @@ class SessionManager:
         """
         log = get_logger(__name__, request_id=request_id)
         
-        try:
+        def _save():
             log.info(f"Saving session for query_id={query_id}")
             
             # Serialize session (logs internally if complex)
@@ -110,8 +146,10 @@ class SessionManager:
                 f"steps={len(session.steps)})"
             )
             return True
-            
-        except (RedisError, Exception) as e:
+        
+        try:
+            return self._retry_operation("save_session", _save)
+        except Exception as e:
             log.error(
                 f"Failed to save session for query_id={query_id}: {str(e)}", 
                 exc_info=True
@@ -287,8 +325,8 @@ class SessionManager:
                 is_complete=step_data.get("is_complete", False),
                 needs_review=step_data.get("needs_review", False),
                 was_skipped=step_data.get("was_skipped", False),
-                needs_refinement_rationale=step_data.get("analysis_reason"),
-                refinement_question=step_data.get("analysis_suggested_question"),
+                needs_refinement_rationale=step_data.get("needs_refinement_rationale"),
+                refinement_question=step_data.get("refinement_question"),
                 initial_summary=step_data.get("initial_summary")
             )
             

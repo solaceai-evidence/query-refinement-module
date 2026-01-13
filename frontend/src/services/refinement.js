@@ -41,13 +41,28 @@ export const refinementService = {
      * @param {number} sessionId - Session ID (for reference, not sent to backend)
      * @param {number} queryId - Query ID
      * @param {string} userResponse - User's answer or command (e.g., "/skip")
+     * @param {boolean} [force=false] - Force execution even if it invalidates dependent aspects
      * @returns {Promise<ContinueRefinementResponse>}
      */
-    async continueRefinement(sessionId, queryId, userResponse) {
-        const response = await apiClient.post(`/api/refinement/queries/${queryId}/answer`, {
-            answer: userResponse
-        });
-        return response.data;
+    async continueRefinement(sessionId, queryId, userResponse, force = false) {
+        const url = `/api/refinement/queries/${queryId}/answer`;
+        console.log('[API] continueRefinement called:', { sessionId, queryId, userResponse, force, url });
+        try {
+            const response = await apiClient.post(url, {
+                answer: userResponse,
+                force: force
+            });
+            console.log('[API] continueRefinement response:', response.data);
+            return response.data;
+        } catch (error) {
+            console.error('[API] continueRefinement error:', {
+                message: error.message,
+                response: error.response?.data,
+                status: error.response?.status,
+                url
+            });
+            throw error;
+        }
     },
 
     /**

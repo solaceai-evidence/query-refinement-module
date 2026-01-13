@@ -1,8 +1,11 @@
 import axios from 'axios';
 import { authUtils } from '../utils/auth';
 
+const baseURL = import.meta.env.VITE_API_BASE_URL || 'http://localhost:8000';
+console.log('[API Client] Initializing with baseURL:', baseURL);
+
 const apiClient = axios.create({
-    baseURL: import.meta.env.VITE_API_BASE_URL || 'http://localhost:8000',
+    baseURL: baseURL,
     timeout: parseInt(import.meta.env.VITE_API_TIMEOUT) || 30000,
     headers: {
         'Content-Type': 'application/json'
@@ -11,14 +14,29 @@ const apiClient = axios.create({
 
 // Request interceptor to add auth token
 apiClient.interceptors.request.use(
-    (config) => {
+    async (config) => {
         const token = authUtils.getToken();
-        if (token && !authUtils.isTokenExpired(token)) {
+        console.log('[API Client] Request interceptor:', {
+            url: config.url,
+            method: config.method,
+            hasToken: !!token,
+            tokenExpired: token ? authUtils.isTokenExpired(token) : null
+        });
+
+        // Check if token is expired
+        if (token && authUtils.isTokenExpired(token)) {
+            console.warn('[API Client] Token expired, redirecting to login');
+            authUtils.removeTokens();
+            window.location.href = '/login?expired=true';
+            return Promise.reject(new Error('Token expired'));
+        } else if (token) {
             config.headers.Authorization = `Bearer ${token}`;
         }
+
         return config;
     },
     (error) => {
+        console.error('[API Client] Request interceptor error:', error);
         return Promise.reject(error);
     }
 );
@@ -31,11 +49,12 @@ apiClient.interceptors.response.use(
 
         // Handle 401 Unauthorized
         if (error.response?.status === 401 && !originalRequest._retry) {
+            console.warn('[API Client] 401 Unauthorized - clearing tokens and redirecting');
             originalRequest._retry = true;
 
             // Clear tokens and redirect to login
             authUtils.removeTokens();
-            window.location.href = '/login';
+            window.location.href = '/login?expired=true';
             return Promise.reject(error);
         }
 

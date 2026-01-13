@@ -77,24 +77,30 @@ const Refinement = () => {
         setError(null);
 
         try {
+            console.log('[INIT] Starting refinement with:', { framework: selectedFramework, query: initialQuery });
             const response = await refinementService.startRefinement(
                 selectedFramework,
                 initialQuery
             );
+            console.log('[INIT] Start refinement response:', response);
 
             setSessionId(response.session_id);
             setQueryId(response.query_id);
+            console.log('[INIT] Set sessionId:', response.session_id, 'queryId:', response.query_id);
+
             setCurrentQuestion(response.next_prompt);
             setCurrentAspectId(response.next_prompt?.aspect_id);
             setAspects(response.summary?.aspects || []);
             setStage('refinement');
 
             // Save session
-            saveSession({
+            const sessionData = {
                 sessionId: response.session_id,
                 queryId: response.query_id,
                 framework: selectedFramework
-            });
+            };
+            console.log('[INIT] Saving session to localStorage:', sessionData);
+            saveSession(sessionData);
 
             // Add to conversation history
             setConversationHistory([{
@@ -102,6 +108,7 @@ const Refinement = () => {
                 content: initialQuery
             }]);
         } catch (err) {
+            console.error('[INIT] Error starting refinement:', err);
             setError(err.response?.data?.detail || 'Failed to start refinement');
         } finally {
             setLoading(false);
@@ -115,8 +122,16 @@ const Refinement = () => {
      */
     const handleAnswer = async (answer) => {
         console.log('[TRACE] handleAnswer called with:', answer);
+        console.log('[TRACE] Current state:', { sessionId, queryId, currentAspectId });
         const isCommand = isUserCommand(answer);
         console.log('[TRACE] Is valid command:', isCommand);
+
+        // Validate required data
+        if (!sessionId || !queryId) {
+            console.error('[ERROR] Missing session or query ID:', { sessionId, queryId });
+            setError('Session not initialized. Please start a new refinement.');
+            return;
+        }
 
         setLoading(true);
         setError(null);
@@ -124,29 +139,30 @@ const Refinement = () => {
 
         try {
             // Add answer or command to history
-            if (isCommand) {
-                createHistoryItem('answer', answer, { aspectId: currentAspectId })
-                ]);
-            }
+            setConversationHistory(prev => [...prev,
+            createHistoryItem(isCommand ? 'command' : 'answer', answer, { aspectId: currentAspectId })
+            ]);
 
-console.log('[TRACE] Calling continueRefinement API...');
-const response = await refinementService.continueRefinement(
-    sessionId,
-    queryId,
-    answer
-);
+            console.log('[TRACE] Calling continueRefinement API...');
+            console.log('[TRACE] API parameters:', { sessionId, queryId, answer });
+            const response = await refinementService.continueRefinement(
+                sessionId,
+                queryId,
+                answer
+            );
+            console.log('[TRACE] API response received:', response);
 
-console.log('[TRACE] Response received:', {
-    hasCommandType: !!response.command_type,
-    commandType: response.command_type,
-    hasNextPrompt: !!response.next_prompt,
-    nextPromptAspectName: response.next_prompt?.aspect_name,
-    hasQuestion: !!response.next_prompt?.question
-});
+            // Check if this is a command response using type guard
+            if (isCommandResponse(response)) {
+                console.log('[TRACE] Response is a CommandResponse:', {
+                    commandType: response.command_type,
+                    success: response.success,
+                    hasNextPrompt: !!response.next_prompt,
+                    nextPromptAspectName: response.next_prompt?.aspect_name,
+                    hasQuestion: !!response.next_prompt?.question
+                });
 
-// Check if this is a command response
-if (response.command_type) {
-    isCommandResponse(response) RESPONSE]Type: ${ response.command_type }, Success: ${ response.success } `);
+                console.log(`[COMMAND RESPONSE] Type: ${response.command_type}, Success: ${response.success}`);
                 console.log('[COMMAND RESPONSE] Message:', response.message);
 
                 /** @type {CommandResult} */
@@ -175,34 +191,100 @@ if (response.command_type) {
 
                 // Only update question if command provides next_prompt
                 if (response.next_prompt) {
-                    console.log('[COMMAND RESPONSE] Processing next_prompt');
+                    try {
+                        console.log('[COMMAND RESPONSE] next_prompt exists:', response.next_prompt);
+                        console.log('[COMMAND RESPONSE] next_prompt.question:', response.next_prompt.question);
+                        console.log('[COMMAND RESPONSE] next_prompt.aspect_id:', response.next_prompt.aspect_id);
+                        console.log('[COMMAND RESPONSE] Current question before update:', currentQuestion);
+                    } catch (e) {
+                        console.error('[COMMAND RESPONSE] Error logging next_prompt:', e);
+                    }
 
+                    // Only update if next_prompt has a valid question
                     if (response.next_prompt.question) {
-                        console.log('[COMMAND RESPONSE] Adding new question to history');
-                        console.log('[COMMAND RESPONSE] Question preview:', response.next_prompt.question.substring(0, 100));
+                        // Only add to history if question is different from current
+                        const isDifferentQuestion = !currentQuestion ||
+                            response.next_prompt.question !== currentQuestion.question;
 
+                        console.log('[COMMAND RESPONSE] isDifferentQuestion:', isDifferentQuestion);
+
+                        if (isDifferentQuestion) {
+                            console.log('[COMMAND RESPONSE] Adding new question to history');
+                            console.log('[COMMAND RESPONSE] Question preview:', response.next_prompt.question.substring(0, 100));
+
+                            setConversationHistory(prev => [...prev,
                             createHistoryItem('question', response.next_prompt.question, {
                                 aspectId: response.next_prompt.aspect_id,
                                 aspectName: response.next_prompt.aspect_name
                             })
-                           timestamp: new Date().toISOString()
-                        }]);
-                    } else {
-                        console.warn('[COMMAND RESPONSE] next_prompt exists but question is empty/null');
-                    }
+                            ]);
+                        } else {
+                            console.log('[COMMAND RESPONSE] Same question - not adding to history');
+                        }
 
-                    console.log('[COMMAND RESPONSE] Updating current question state');
-                    setCurrentQuestion(response.next_prompt);
-                    setCurrentAspectId(response.next_prompt.aspect_id);
+                        console.log('[COMMAND RESPONSE] Updating current question state');
+                        setCurrentQuestion(response.next_prompt);
+                        setCurrentAspectId(response.next_prompt.aspect_id);
+                    } else {
+                        // next_prompt exists but question is null - preserve current state
+                        console.log('[COMMAND RESPONSE] next_prompt.question is null - preserving current state');
+                        // Don't update currentQuestion or currentAspectId
+                    }
                 } else {
-                    console.log('[COMMAND RESPONSE] No next_prompt - may trigger synthesis');
-                    setCurrentQuestion(null);
-                    setCurrentAspectId(null);
-                    await handleSynthesis();
+                    // No next_prompt in response - check command behavior
+                    const { isInformationalCommand } = await import('../constants/commands');
+                    const isInfoCommand = isInformationalCommand(answer);
+
+                    if (isInfoCommand) {
+                        // Informational commands don't change flow state - keep current question
+                        console.log('[COMMAND RESPONSE] Informational command - preserving current question');
+                        // currentQuestion and currentAspectId remain unchanged
+                    } else {
+                        // Navigation/control commands without next_prompt trigger synthesis
+                        console.log('[COMMAND RESPONSE] No next_prompt - may trigger synthesis');
+                        setCurrentQuestion(null);
+                        setCurrentAspectId(null);
+                        await handleSynthesis();
+                    }
                 }
 
-                // Update aspects status for navigation commands
-                await updateAspectStatus();
+                // Check if confirmation is needed (force_required flag)
+                if (response.force_required && response.invalidated_aspects?.length > 0) {
+                    const confirmed = window.confirm(
+                        `${response.message}\n\nAffected aspects: ${response.invalidated_aspects.join(', ')}\n\nDo you want to proceed?`
+                    );
+
+                    if (confirmed) {
+                        // Re-submit command with force=true
+                        console.log('[COMMAND] Re-submitting with force=true');
+                        const forceResponse = await refinementService.continueRefinement(
+                            sessionId,
+                            queryId,
+                            answer,
+                            true // force flag
+                        );
+                        // Process the forced response (recursive call would be cleaner but this avoids complexity)
+                        if (forceResponse.next_prompt?.question) {
+                            setCurrentQuestion(forceResponse.next_prompt);
+                            setCurrentAspectId(forceResponse.next_prompt.aspect_id);
+                        }
+                    }
+                }
+
+                // Update aspect status from command response data or fetch if needed
+                if (response.step_summary) {
+                    // Use data from command response (avoid redundant API call)
+                    console.log('[COMMAND RESPONSE] Updating aspects from step_summary');
+                    // Extract aspects from step_summary if available
+                    // For now, only fetch if it's not an informational command
+                    const { isInformationalCommand } = await import('../constants/commands');
+                    if (!isInformationalCommand(answer)) {
+                        await updateAspectStatus();
+                    }
+                } else {
+                    // No summary in response, fetch fresh data
+                    await updateAspectStatus();
+                }
             } else {
                 console.log('[TRACE] Regular answer response (not a command)');
 
@@ -210,11 +292,11 @@ if (response.command_type) {
                 if (response.next_prompt) {
                     if (response.next_prompt.question) {
                         console.log('[TRACE] Adding next question to history');
-                        setConversationHistory(prev => [...prev, 
-                            createHistoryItem('question', response.next_prompt.question, {
-                                aspectId: response.next_prompt.aspect_id,
-                                aspectName: response.next_prompt.aspect_name
-                            })
+                        setConversationHistory(prev => [...prev,
+                        createHistoryItem('question', response.next_prompt.question, {
+                            aspectId: response.next_prompt.aspect_id,
+                            aspectName: response.next_prompt.aspect_name
+                        })
                         ]);
                     } else {
                         console.warn('[TRACE] next_prompt.question is null or empty');
@@ -241,7 +323,6 @@ if (response.command_type) {
         }
     };
 
-    const updateAspectStatus = async () => {
     /**
      * Update aspect status from API
      * @returns {Promise<void>}
@@ -260,12 +341,9 @@ if (response.command_type) {
      * Handle command button click
      * @param {string} command - Command string (e.g., "/skip")
      * @returns {Promise<void>}
-     */    const handleCommand = async (command) => {
-        console.log('[COMMAND HANDLER] User clicked command:', command);
-    /**
-     * Request synthesis of refined query
-     * @returns {Promise<void>}
      */
+    const handleCommand = async (command) => {
+        console.log('[COMMAND HANDLER] User clicked command:', command);
         console.log('[COMMAND HANDLER] Current sessionId:', sessionId);
         console.log('[COMMAND HANDLER] Current queryId:', queryId);
         console.log('[COMMAND HANDLER] Current aspectId:', currentAspectId);
@@ -273,12 +351,16 @@ if (response.command_type) {
         await handleAnswer(command);
     };
 
+    /**
+     * Request synthesis of refined query
+     * @returns {Promise<void>}
+     */
     const handleSynthesis = async () => {
         if (!queryId || !sessionId) return;
 
         setLoading(true);
         try {
-            const result = await refinementService.getSynthesis(sessionId, queryId);
+            const result = await refinementService.getSynthesis(queryId);
             setSynthesis(result);
             setStage('synthesis');
             clearSession(); // Clear saved session after completion
@@ -384,17 +466,17 @@ if (response.command_type) {
                                             if (item.type === 'command') {
                                                 return (
                                                     <CommandHistoryItem
-                                                        key={`${ item.timestamp } -${ index } `}
+                                                        key={`${item.timestamp} -${index} `}
                                                         command={item.content}
                                                         result={item.result}
                                                     />
                                                 );
                                             }
                                             return (
-                                                <div key={`${ item.timestamp } -${ index } `} className={`history - item ${ item.type } `}>
+                                                <div key={`${item.timestamp} -${index} `} className={`history - item ${item.type} `}>
                                                     <div className="history-label">
                                                         {item.type === 'query' ? '📝 Initial Query' :
-                                                            item.type === 'question' ? `❓ Question${ item.aspectName ? ` (${item.aspectName})` : '' } ` :
+                                                            item.type === 'question' ? `❓ Question${item.aspectName ? ` (${item.aspectName})` : ''} ` :
                                                                 '💬 Your Answer'}
                                                     </div>
                                                     <div className="history-content">{item.content}</div>

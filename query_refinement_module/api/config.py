@@ -38,7 +38,7 @@ class Settings(BaseSettings):
     # Security
     secret_key: str = Field(default="your-secret-key-change-this-in-production")
     algorithm: str = "HS256"
-    access_token_expire_minutes: int = 30
+    access_token_expire_minutes: int = 480  # 8 hours (increased from 30 minutes)
     
     # CORS Configuration (environment-specific)
     # Development: localhost origins
