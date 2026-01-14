@@ -1,4 +1,4 @@
-import { useState } from 'react';
+import { useState, useEffect } from 'react';
 import { useNavigate, Link } from 'react-router-dom';
 import { useAuth } from '../context/AuthContext';
 import './Auth.css';
@@ -12,7 +12,14 @@ const Register = () => {
     const [error, setError] = useState('');
     const [loading, setLoading] = useState(false);
     const navigate = useNavigate();
-    const { register } = useAuth();
+    const { register, isAuthenticated } = useAuth();
+
+    // Redirect to home if already authenticated
+    useEffect(() => {
+        if (isAuthenticated) {
+            navigate('/', { replace: true });
+        }
+    }, [isAuthenticated, navigate]);
 
     const handleSubmit = async (e) => {
         e.preventDefault();
@@ -50,12 +57,14 @@ const Register = () => {
         const result = await register(username, password, undefined);
 
         if (result.success) {
-            navigate('/');
+            // Small delay to ensure state updates propagate
+            setTimeout(() => {
+                navigate('/');
+            }, 50);
         } else {
             setError(result.error);
+            setLoading(false);
         }
-
-        setLoading(false);
     };
 
     return (

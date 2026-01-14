@@ -41,30 +41,30 @@ else
     echo -e "${BLUE}[2/6] PostgreSQL not configured (using in-memory storage)${NC}"
 fi
 
-# Check if conda environment is active
-echo -e "${BLUE}[3/6] Checking conda environment...${NC}"
-if [[ "$CONDA_DEFAULT_ENV" != "query-refinement" ]]; then
-    echo -e "${RED}Error: query-refinement conda environment is not active${NC}"
+# Check if Poetry is installed
+echo -e "${BLUE}[3/6] Checking Poetry installation...${NC}"
+if ! command -v poetry &> /dev/null; then
+    echo -e "${RED}Error: Poetry is not installed${NC}"
     echo ""
-    echo "Please activate the environment first:"
-    echo "  ${GREEN}conda activate query-refinement${NC}"
+    echo "Install Poetry with:"
+    echo "  ${GREEN}curl -sSL https://install.python-poetry.org | python3 -${NC}"
     echo ""
-    echo "If the environment doesn't exist, create it:"
-    echo "  ${GREEN}conda env create -f environment.yml${NC}"
-    echo "  ${GREEN}conda activate query-refinement${NC}"
-    echo "  ${GREEN}poetry install${NC}"
+    echo "Or visit: https://python-poetry.org/docs/#installation"
     exit 1
 fi
+echo -e "${GREEN}Poetry found: $(poetry --version)${NC}"
 
-# Check if poetry dependencies are installed
-echo -e "${BLUE}[4/6] Checking poetry dependencies...${NC}"
-if ! poetry check --quiet 2>/dev/null; then
-    echo -e "${YELLOW}Installing Python dependencies with poetry...${NC}"
+# Check if backend dependencies are installed
+echo -e "${BLUE}[4/6] Checking backend dependencies...${NC}"
+if [ ! -d ".venv" ] && [ ! -f "poetry.lock" ]; then
+    echo -e "${YELLOW}Installing backend dependencies...${NC}"
     poetry install
+else
+    echo -e "${GREEN}Backend dependencies already installed${NC}"
 fi
 
 # Check if frontend dependencies are installed
-echo -e "${BLUE}[4/6] Checking frontend dependencies...${NC}"
+echo -e "${BLUE}[5/6] Checking frontend dependencies...${NC}"
 if [ ! -d "frontend/node_modules" ]; then
     echo -e "${YELLOW}Installing frontend dependencies...${NC}"
     cd frontend
@@ -87,7 +87,7 @@ EOF
 fi
 
 # Check and clean up existing processes
-echo -e "${BLUE}[4/6] Checking for existing processes...${NC}"
+echo -e "${BLUE}[6/6] Checking for existing processes...${NC}"
 EXISTING_BACKEND=$(lsof -ti:8000 2>/dev/null || true)
 EXISTING_FRONTEND=$(lsof -ti:5173 2>/dev/null || true)
 
@@ -104,8 +104,8 @@ if [ ! -z "$EXISTING_FRONTEND" ]; then
 fi
 
 
-# Start backend in background
-echo -e "${BLUE}[5/6] Starting backend API...${NC}"
+# Start backend in background with Poetry
+echo -e "${BLUE}[7/7] Starting backend API...${NC}"
 poetry run uvicorn query_refinement_module.api.main:app --reload --host 0.0.0.0 --port 8000 > backend.log 2>&1 &
 BACKEND_PID=$!
 echo -e "${GREEN}Backend started (PID: $BACKEND_PID)${NC}"
@@ -127,7 +127,7 @@ for i in {1..30}; do
 done
 
 # Start frontend
-echo -e "${BLUE}[6/6] Starting frontend...${NC}"
+echo -e "${BLUE}[8/8] Starting frontend...${NC}"
 cd frontend
 
 # Verify Vite proxy configuration exists
