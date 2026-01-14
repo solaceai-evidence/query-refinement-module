@@ -1,7 +1,7 @@
 """
-Authentication API routes.
+Authentication API routes with comprehensive audit logging.
 """
-from fastapi import APIRouter, Depends, HTTPException, status
+from fastapi import APIRouter, Depends, HTTPException, status, Request
 from fastapi.security import OAuth2PasswordRequestForm
 from sqlalchemy.orm import Session
 from datetime import timedelta
@@ -16,15 +16,17 @@ from query_refinement_module.api.auth import (
     get_current_user,
 )
 from query_refinement_module.api.config import get_settings
+from query_refinement_module.audit import audit_service
+from query_refinement_module.db.models.audit_log import AuditEventType
 
 router = APIRouter(prefix="/auth", tags=["Authentication"])
 settings = get_settings()
 
 
 @router.post("/register", response_model=UserResponse, status_code=status.HTTP_201_CREATED)
-def register(user_data: UserCreate, db: Session = Depends(get_db)):
+def register(request: Request, user_data: UserCreate, db: Session = Depends(get_db)):
     """
-    Register a new user.
+    Register a new user with audit logging.
     
     - **username**: Unique username (3-50 characters, alphanumeric, underscore, hyphen)
     - **email**: Optional email address
@@ -34,6 +36,18 @@ def register(user_data: UserCreate, db: Session = Depends(get_db)):
     # Check if username already exists
     existing_user = get_user_by_username(db, username=user_data.username)
     if existing_user:
+        # Audit failed registration attempt
+        audit_service.log_from_request(
+            db=db,
+            request=request,
+            event_type=AuditEventType.REGISTER,
+            severity="warning",
+            resource_type="user",
+            action=f"Registration failed: username '{user_data.username}' already exists",
+            status="failure",
+            details={"reason": "username_exists"}
+        )
+        
         raise HTTPException(
             status_code=status.HTTP_400_BAD_REQUEST,
             detail="Username already registered"
@@ -43,6 +57,18 @@ def register(user_data: UserCreate, db: Session = Depends(get_db)):
     if user_data.email:
         existing_email = get_user_by_email(db, email=user_data.email)
         if existing_email:
+            # Audit failed registration attempt
+            audit_service.log_from_request(
+                db=db,
+                request=request,
+                event_type=AuditEventType.REGISTER,
+                severity="warning",
+                resource_type="user",
+                action=f"Registration failed: email '{user_data.email}' already exists",
+                status="failure",
+                details={"reason": "email_exists"}
+            )
+            
             raise HTTPException(
                 status_code=status.HTTP_400_BAD_REQUEST,
                 detail="Email already registered"
@@ -57,11 +83,29 @@ def register(user_data: UserCreate, db: Session = Depends(get_db)):
         name=user_data.name
     )
     
+    # Audit successful registration
+    audit_service.log_from_request(
+        db=db,
+        request=request,
+        event_type=AuditEventType.REGISTER,
+        severity="info",
+        resource_type="user",
+        resource_id=str(user.id),
+        action=f"New user registered: {user.username}",
+        status="success",
+        details={
+            "username": user.username,
+            "email": user.email,
+            "has_name": user.name is not None
+        }
+    )
+    
     return user
 
 
 @router.post("/login", response_model=Token)
 def login(
+    request: Request,
     form_data: OAuth2PasswordRequestForm = Depends(),
     db: Session = Depends(get_db)
 ):
@@ -78,6 +122,21 @@ def login(
     user = verify_user_password(db, identifier=form_data.username, password=form_data.password)
     
     if not user:
+        # Audit failed login attempt
+        audit_service.log_from_request(
+            db=db,
+            request=request,
+            event_type=AuditEventType.LOGIN_FAILURE,
+            severity="warning",
+            resource_type="user",
+            action=f"Failed login attempt for: {form_data.username}",
+            status="failure",
+            details={
+                "identifier": form_data.username,
+                "reason": "invalid_credentials"
+            }
+        )
+        
         raise HTTPException(
             status_code=status.HTTP_401_UNAUTHORIZED,
             detail="Incorrect username/email or password",
@@ -88,6 +147,23 @@ def login(
     access_token_expires = timedelta(minutes=settings.access_token_expire_minutes)
     access_token = create_access_token(
         data={"sub": user.username}, expires_delta=access_token_expires
+    )
+    
+    # Audit successful login
+    audit_service.log_from_request(
+        db=db,
+        request=request,
+        event_type=AuditEventType.LOGIN_SUCCESS,
+        severity="info",
+        user=user,
+        resource_type="user",
+        resource_id=str(user.id),
+        action=f"User logged in: {user.username}",
+        status="success",
+        details={
+            "login_method": "password",
+            "token_expires_minutes": settings.access_token_expire_minutes
+        }
     )
     
     return {"access_token": access_token, "token_type": "bearer"}
@@ -101,3 +177,32 @@ def get_current_user_info(current_user = Depends(get_current_user)):
     Requires valid JWT token in Authorization header.
     """
     return current_user
+
+
+@router.post("/logout", status_code=status.HTTP_200_OK)
+def logout(
+    request: Request,
+    current_user = Depends(get_current_user),
+    db: Session = Depends(get_db)
+):
+    """
+    Logout endpoint for audit logging.
+    
+    Note: JWT tokens cannot be invalidated server-side without additional infrastructure
+    (e.g., Redis blocklist). This endpoint primarily serves audit logging purposes.
+    Clients should discard the token on logout.
+    """
+    # Audit logout event
+    audit_service.log_from_request(
+        db=db,
+        request=request,
+        event_type=AuditEventType.LOGOUT,
+        severity="info",
+        user=current_user,
+        resource_type="user",
+        resource_id=str(current_user.id),
+        action=f"User logged out: {current_user.username}",
+        status="success"
+    )
+    
+    return {"message": "Logout successful. Please discard your access token."}

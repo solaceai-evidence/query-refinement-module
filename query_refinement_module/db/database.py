@@ -89,9 +89,22 @@ if is_postgresql:
             "Connection returned to pool",
             extra={"context": {"connection_id": id(dbapi_conn)}}
         )
+        
+else:
+    # SQLite without pooling (single-threaded, development only)
+    logger.info("Using SQLite database (development mode)")
+    engine = create_engine(
+        DATABASE_URL,
+        echo=DB_ECHO,
+        future=True,
+        # SQLite-specific settings
+        connect_args={"check_same_thread": False},  # Allow multi-threading
+        poolclass=NullPool  # No connection pooling for SQLite
+    )
 
 # Query execution tracing for performance monitoring and debugging
 # Tracks query start time, duration, and correlates with request_id
+# These listeners work for both PostgreSQL and SQLite
 @event.listens_for(Engine, "before_cursor_execute")
 def before_cursor_execute(conn, cursor, statement, parameters, context, executemany):
     """Log SQL query execution start with request context."""
@@ -158,18 +171,6 @@ def after_cursor_execute(conn, cursor, statement, parameters, context, executema
             "Query completed",
             extra={"context": log_context}
         )
-        
-else:
-    # SQLite without pooling (single-threaded, development only)
-    logger.info("Using SQLite database (development mode)")
-    engine = create_engine(
-        DATABASE_URL,
-        echo=DB_ECHO,
-        future=True,
-        # SQLite-specific settings
-        connect_args={"check_same_thread": False},  # Allow multi-threading
-        poolclass=NullPool  # No connection pooling for SQLite
-    )
 
 # Create session factory
 SessionLocal = sessionmaker(autocommit=False, autoflush=False, bind=engine)
@@ -182,6 +183,7 @@ from query_refinement_module.db.models.refinement_step import RefinementStep
 from query_refinement_module.db.models.refinement_step_metadata import RefinementStepMetadata
 from query_refinement_module.db.models.feedback import Feedback
 from query_refinement_module.db.models.followup_history import FollowUpHistory
+from query_refinement_module.db.models.audit_log import AuditLog
 
 # Create tables (for dev/testing; use Alembic for migrations in production)
 def init_db():
