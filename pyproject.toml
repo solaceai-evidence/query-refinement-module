@@ -25,6 +25,7 @@ httpx = "^0.28.1"  # Async HTTP client with connection pooling
 python-dotenv = "^1.2.1"
 fastapi = "^0.123.3"
 uvicorn = {extras = ["standard"], version = "^0.38.0"}
+sqlalchemy = "^2.0.0"  # Database ORM
 python-jose = {extras = ["cryptography"], version = "^3.5.0"}
 passlib = {extras = ["bcrypt"], version = "^1.7.4"}
 python-multipart = "^0.0.20"

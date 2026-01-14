@@ -20,9 +20,14 @@ if ! grep -q "^REFINEMENT_FRAMEWORK_PATH=" .env; then
     echo ""
 fi
 
-echo "📦 Using Poetry virtual environment..."
+echo "📦 Checking Poetry dependencies..."
+if [ ! -f "poetry.lock" ]; then
+    echo "   Installing dependencies..."
+    poetry install
+fi
 echo ""
 
 # Start the server with Poetry
+echo "🚀 Starting server with Poetry..."
 poetry run uvicorn query_refinement_module.api.main:app --reload --host 0.0.0.0 --port 8000
 
