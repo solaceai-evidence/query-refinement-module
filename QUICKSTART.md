@@ -4,7 +4,8 @@ Get the web application running in under 5 minutes!
 
 ## Prerequisites
 
-- Python 3.11+ with conda/venv
+- Python 3.12+ 
+- Poetry (install from https://python-poetry.org)
 - Node.js 20+ and npm
 - Redis (optional for development, required for production)
 
@@ -13,11 +14,8 @@ Get the web application running in under 5 minutes!
 ### 1. Backend Setup
 
 ```bash
-# Activate your Python environment
-conda activate query-refinement
-
-# Install dependencies (if not already done)
-pip install -r requirements.txt
+# Install dependencies
+poetry install
 
 # Create .env file (if not exists) -use available .env.example file-
 cat > .env << 'EOF'
@@ -28,10 +26,10 @@ ALLOWED_ORIGINS=http://localhost:5173
 EOF
 
 # Run database migrations
-alembic upgrade head
+poetry run alembic upgrade head
 
 # Start the backend
-python -m uvicorn query_refinement_module.api.main:app --reload
+poetry run uvicorn query_refinement_module.api.main:app --reload
 ```
 
 Backend will be available at:
@@ -72,6 +70,8 @@ Frontend will be available at:
 
 This script will:
 - Check dependencies
+- Start Redis service on port 6379
+- Start PostgreSQL if set in .env file
 - Start backend on port 8000
 - Start frontend on port 5173
 - Show logs in backend.log and frontend.log
@@ -113,7 +113,7 @@ curl -X POST http://localhost:8000/api/auth/register \
   -d '{
     "username": "testuser",
     "email": "test@example.com",
-    "password": "password123"
+    "password": "Password123!"
   }'
 ```
 
@@ -122,7 +122,7 @@ curl -X POST http://localhost:8000/api/auth/register \
 ```bash
 curl -X POST http://localhost:8000/api/auth/token \
   -H "Content-Type: application/x-www-form-urlencoded" \
-  -d "username=testuser&password=password123&grant_type=password"
+  -d "username=testuser&password=Password123!&grant_type=password"
 ```
 
 ### 3. Test Refinement (with token)

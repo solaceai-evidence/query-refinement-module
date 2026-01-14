@@ -10,6 +10,7 @@ import { refinementService } from '../services/refinement';
 import { useAuth } from '../context/AuthContext';
 import { isCommandResponse, createHistoryItem } from '../types';
 import { isUserCommand } from '../constants/commands';
+import { logger } from '../utils/logger';
 import './Refinement.css';
 
 /**
@@ -43,6 +44,7 @@ const Refinement = () => {
         if (savedSession) {
             try {
                 const session = JSON.parse(savedSession);
+                logger.info('Restoring session', { sessionId: session.sessionId, queryId: session.queryId });
                 // Restore session state
                 setSessionId(session.sessionId);
                 setQueryId(session.queryId);
@@ -50,7 +52,7 @@ const Refinement = () => {
                 setStage('refinement');
                 // Could optionally reload query state from API
             } catch (e) {
-                console.error('Failed to restore session:', e);
+                logger.error('Failed to restore session', e);
             }
         }
     }, []);
@@ -77,16 +79,24 @@ const Refinement = () => {
         setError(null);
 
         try {
-            console.log('[INIT] Starting refinement with:', { framework: selectedFramework, query: initialQuery });
+            logger.info('Starting refinement session', {
+                framework: selectedFramework,
+                queryLength: initialQuery.length
+            });
+
             const response = await refinementService.startRefinement(
                 selectedFramework,
                 initialQuery
             );
-            console.log('[INIT] Start refinement response:', response);
 
             setSessionId(response.session_id);
             setQueryId(response.query_id);
-            console.log('[INIT] Set sessionId:', response.session_id, 'queryId:', response.query_id);
+
+            logger.info('Refinement session started', {
+                sessionId: response.session_id,
+                queryId: response.query_id,
+                aspectCount: response.summary?.aspects?.length || 0
+            });
 
             setCurrentQuestion(response.next_prompt);
             setCurrentAspectId(response.next_prompt?.aspect_id);
@@ -99,7 +109,6 @@ const Refinement = () => {
                 queryId: response.query_id,
                 framework: selectedFramework
             };
-            console.log('[INIT] Saving session to localStorage:', sessionData);
             saveSession(sessionData);
 
             // Add to conversation history
@@ -108,7 +117,7 @@ const Refinement = () => {
                 content: initialQuery
             }]);
         } catch (err) {
-            console.error('[INIT] Error starting refinement:', err);
+            logger.error('Failed to start refinement', err, { framework: selectedFramework });
             setError(err.response?.data?.detail || 'Failed to start refinement');
         } finally {
             setLoading(false);
@@ -121,14 +130,13 @@ const Refinement = () => {
      * @returns {Promise<void>}
      */
     const handleAnswer = async (answer) => {
-        console.log('[TRACE] handleAnswer called with:', answer);
-        console.log('[TRACE] Current state:', { sessionId, queryId, currentAspectId });
         const isCommand = isUserCommand(answer);
-        console.log('[TRACE] Is valid command:', isCommand);
+
+        logger.debug('handleAnswer called', { answer, isCommand, sessionId, queryId });
 
         // Validate required data
         if (!sessionId || !queryId) {
-            console.error('[ERROR] Missing session or query ID:', { sessionId, queryId });
+            logger.error('Missing session or query ID', null, { sessionId, queryId });
             setError('Session not initialized. Please start a new refinement.');
             return;
         }
@@ -143,27 +151,19 @@ const Refinement = () => {
             createHistoryItem(isCommand ? 'command' : 'answer', answer, { aspectId: currentAspectId })
             ]);
 
-            console.log('[TRACE] Calling continueRefinement API...');
-            console.log('[TRACE] API parameters:', { sessionId, queryId, answer });
             const response = await refinementService.continueRefinement(
                 sessionId,
                 queryId,
                 answer
             );
-            console.log('[TRACE] API response received:', response);
 
             // Check if this is a command response using type guard
             if (isCommandResponse(response)) {
-                console.log('[TRACE] Response is a CommandResponse:', {
+                logger.info('Command executed', {
                     commandType: response.command_type,
                     success: response.success,
-                    hasNextPrompt: !!response.next_prompt,
-                    nextPromptAspectName: response.next_prompt?.aspect_name,
-                    hasQuestion: !!response.next_prompt?.question
+                    hasNextPrompt: !!response.next_prompt
                 });
-
-                console.log(`[COMMAND RESPONSE] Type: ${response.command_type}, Success: ${response.success}`);
-                console.log('[COMMAND RESPONSE] Message:', response.message);
 
                 /** @type {CommandResult} */
                 const commandResultData = {

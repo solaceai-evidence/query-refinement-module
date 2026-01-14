@@ -1,8 +1,8 @@
 import axios from 'axios';
 import { authUtils } from '../utils/auth';
+import { logger } from '../utils/logger';
 
 const baseURL = import.meta.env.VITE_API_BASE_URL || 'http://localhost:8000';
-console.log('[API Client] Initializing with baseURL:', baseURL);
 
 const apiClient = axios.create({
     baseURL: baseURL,
@@ -12,20 +12,24 @@ const apiClient = axios.create({
     }
 });
 
+logger.info('API Client initialized', { baseURL });
+
 // Request interceptor to add auth token
 apiClient.interceptors.request.use(
     async (config) => {
+        // Skip auth for login and register endpoints
+        const isAuthEndpoint = config.url?.includes('/auth/login') || config.url?.includes('/auth/register');
+
         const token = authUtils.getToken();
-        console.log('[API Client] Request interceptor:', {
-            url: config.url,
-            method: config.method,
-            hasToken: !!token,
-            tokenExpired: token ? authUtils.isTokenExpired(token) : null
-        });
+
+        // Skip token check for auth endpoints
+        if (isAuthEndpoint) {
+            return config;
+        }
 
         // Check if token is expired
         if (token && authUtils.isTokenExpired(token)) {
-            console.warn('[API Client] Token expired, redirecting to login');
+            logger.warn('Token expired, redirecting to login');
             authUtils.removeTokens();
             window.location.href = '/login?expired=true';
             return Promise.reject(new Error('Token expired'));
@@ -36,20 +40,30 @@ apiClient.interceptors.request.use(
         return config;
     },
     (error) => {
-        console.error('[API Client] Request interceptor error:', error);
+        logger.error('API request interceptor error', error);
         return Promise.reject(error);
     }
 );
 
 // Response interceptor for error handling
 apiClient.interceptors.response.use(
-    (response) => response,
+    (response) => {
+        // Log successful API calls for production tracing
+        logger.debug('API call succeeded', {
+            method: response.config.method,
+            url: response.config.url,
+            status: response.status
+        });
+        return response;
+    },
     async (error) => {
         const originalRequest = error.config;
 
         // Handle 401 Unauthorized
         if (error.response?.status === 401 && !originalRequest._retry) {
-            console.warn('[API Client] 401 Unauthorized - clearing tokens and redirecting');
+            logger.warn('401 Unauthorized - session expired', {
+                url: originalRequest.url
+            });
             originalRequest._retry = true;
 
             // Clear tokens and redirect to login
@@ -70,9 +84,19 @@ apiClient.interceptors.response.use(
 
             if (originalRequest._retryCount < 3) {
                 originalRequest._retryCount++;
+                logger.warn('Rate limited - retrying', {
+                    attempt: originalRequest._retryCount,
+                    delay,
+                    url: originalRequest.url
+                });
                 await new Promise(resolve => setTimeout(resolve, delay));
                 return apiClient(originalRequest);
             }
+
+            logger.error('Rate limit exceeded after retries', null, {
+                url: originalRequest.url,
+                retries: originalRequest._retryCount
+            });
 
             return Promise.reject({
                 message: 'Rate limit exceeded. Please try again later.',
@@ -88,9 +112,18 @@ apiClient.interceptors.response.use(
 
             if (originalRequest._retryCount < 2) {
                 originalRequest._retryCount++;
+                logger.warn('Service unavailable - retrying', {
+                    attempt: originalRequest._retryCount,
+                    url: originalRequest.url
+                });
                 await new Promise(resolve => setTimeout(resolve, 3000));
                 return apiClient(originalRequest);
             }
+
+            logger.error('Service unavailable after retries', null, {
+                url: originalRequest.url,
+                retries: originalRequest._retryCount
+            });
 
             return Promise.reject({
                 message: 'Service temporarily unavailable. Please try again.',
@@ -100,11 +133,20 @@ apiClient.interceptors.response.use(
 
         // Handle network errors
         if (!error.response) {
+            logger.error('Network error', error, { url: originalRequest.url });
             return Promise.reject({
                 message: 'Network error. Please check your connection.',
                 status: 0
             });
         }
+
+        // Log other API errors for production debugging
+        logger.error('API call failed', error, {
+            method: originalRequest.method,
+            url: originalRequest.url,
+            status: error.response?.status,
+            statusText: error.response?.statusText
+        });
 
         return Promise.reject(error);
     }

@@ -665,8 +665,30 @@ def get_refinement_status(
     
     # Fallback: Reconstruct from database if Redis miss
     if not session:
-        logger.info(f"[Status] Redis miss for query {query_id}, reconstructing from database")
-        session = _reconstruct_session_from_db(db, db_query, framework, session_manager)
+        logger.warning(f"Session not found in Redis for query_id={query_id}, reconstructing from database")
+        session = manager.initialize(db_query.original_query, framework)
+        
+        # Restore follow-up history from database
+        db_steps = get_query_refinement_steps(db, query_id)
+        for db_step in db_steps:
+            session_step = next(
+                (s for s in session.steps if s.refinement_aspect.aspect_name == db_step.aspect_name),
+                None
+            )
+            if session_step:
+                for followup in db_step.followup_history:
+                    session_step.follow_up_history.append({
+                        'question': followup.question,
+                        'response': followup.answer or ''
+                    })
+                if session_step.follow_up_history:
+                    session_step.is_complete = True
+                    # Restore the last question asked (needed for proper state)
+                    last_followup = db_step.followup_history[-1]
+                    session_step.refinement_question = last_followup.question
+        
+        # Re-cache the reconstructed session
+        session_manager.save_session(query_id, session)
     
     summary = manager.get_initialization_summary(session)
     active_step = session.get_active_step()

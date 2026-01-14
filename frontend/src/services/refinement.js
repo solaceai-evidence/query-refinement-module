@@ -1,4 +1,5 @@
 import apiClient from './api';
+import { logger } from '../utils/logger';
 
 /**
  * @typedef {import('../types/api').RefinementService} RefinementService
@@ -46,20 +47,28 @@ export const refinementService = {
      */
     async continueRefinement(sessionId, queryId, userResponse, force = false) {
         const url = `/api/refinement/queries/${queryId}/answer`;
-        console.log('[API] continueRefinement called:', { sessionId, queryId, userResponse, force, url });
+        const isCommand = userResponse.startsWith('/');
+
+        logger.info('Continue refinement', {
+            queryId,
+            isCommand,
+            force,
+            command: isCommand ? userResponse : undefined
+        });
+
         try {
             const response = await apiClient.post(url, {
                 answer: userResponse,
                 force: force
             });
-            console.log('[API] continueRefinement response:', response.data);
+
+            logger.debug('Refinement response received', response.data);
             return response.data;
         } catch (error) {
-            console.error('[API] continueRefinement error:', {
-                message: error.message,
-                response: error.response?.data,
-                status: error.response?.status,
-                url
+            logger.error('Continue refinement failed', error, {
+                queryId,
+                userResponse: isCommand ? userResponse : '[user answer]',
+                force
             });
             throw error;
         }

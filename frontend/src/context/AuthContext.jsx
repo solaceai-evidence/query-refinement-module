@@ -1,6 +1,7 @@
 import { createContext, useContext, useState, useEffect } from 'react';
 import { authUtils } from '../utils/auth';
 import apiClient from '../services/api';
+import { logger } from '../utils/logger';
 
 const AuthContext = createContext(null);
 
@@ -19,6 +20,8 @@ export const AuthProvider = ({ children }) => {
 
     const login = async (username, password) => {
         try {
+            logger.info('User login attempt', { username });
+
             const response = await apiClient.post('/api/auth/login',
                 new URLSearchParams({
                     username,
@@ -38,8 +41,17 @@ export const AuthProvider = ({ children }) => {
             const userInfo = authUtils.getUserInfo();
             setUser(userInfo);
 
+            logger.info('User login successful', { username, userId: userInfo?.sub });
+
+            // Wait for state update to complete before returning
+            await new Promise(resolve => setTimeout(resolve, 0));
+
             return { success: true };
         } catch (error) {
+            logger.warn('User login failed', {
+                username,
+                error: error.response?.data?.detail || error.message
+            });
             return {
                 success: false,
                 error: error.response?.data?.detail || 'Login failed'
@@ -49,6 +61,8 @@ export const AuthProvider = ({ children }) => {
 
     const register = async (username, password, email = undefined) => {
         try {
+            logger.info('User registration attempt', { username, hasEmail: !!email });
+
             // Only include email in request if provided (for future production use)
             const requestData = {
                 username,
@@ -58,9 +72,15 @@ export const AuthProvider = ({ children }) => {
 
             await apiClient.post('/api/auth/register', requestData);
 
+            logger.info('User registration successful', { username });
+
             // Auto-login after registration
             return await login(username, password);
         } catch (error) {
+            logger.warn('User registration failed', {
+                username,
+                error: error.response?.data?.detail || error.message
+            });
             return {
                 success: false,
                 error: error.response?.data?.detail || 'Registration failed'
@@ -69,6 +89,7 @@ export const AuthProvider = ({ children }) => {
     };
 
     const logout = () => {
+        logger.info('User logout', { username: user?.sub });
         authUtils.removeTokens();
         setUser(null);
     };
@@ -79,7 +100,8 @@ export const AuthProvider = ({ children }) => {
         login,
         register,
         logout,
-        isAuthenticated: !!user
+        // Check both user state and localStorage to handle race conditions
+        isAuthenticated: !!user || authUtils.isAuthenticated()
     };
 
     return (
