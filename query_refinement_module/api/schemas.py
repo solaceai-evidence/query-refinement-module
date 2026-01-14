@@ -206,26 +206,18 @@ class FollowUpResponse(BaseModel):
 # ==========================================
 
 class FeedbackCreate(BaseModel):
-    """Schema for creating feedback."""
+    """Schema for creating feedback - research-focused for dissertation topic refinement."""
     query_id: Optional[int] = Field(None, gt=0, description="Optional query ID this feedback is about")
-    rating: Optional[int] = Field(None, ge=1, le=5, description="Rating from 1 (poor) to 5 (excellent)")
-    comments: Optional[str] = Field(None, max_length=2000, description="Optional feedback comments")
+    rating: Optional[int] = Field(None, ge=1, le=5, description="Optional rating (not used for research feedback)")
+    comments: Optional[str] = Field(None, max_length=5000, description="Research feedback on dissertation refinement experience")
     
     @field_validator('comments')
     @classmethod
-    def comments_not_just_whitespace(cls, v: Optional[str]) -> Optional[str]:
-        """Validate that comments are not just whitespace if provided."""
-        if v is not None and v.strip() == "":
-            raise ValueError("Comments cannot be just whitespace")
-        return v.strip() if v else None
-    
-    @field_validator('rating')
-    @classmethod
-    def validate_rating_or_comments(cls, v: Optional[int], info) -> Optional[int]:
-        """Ensure at least rating or comments is provided."""
-        # Note: This validator runs after comments, so we can't access it here
-        # We'll check this in the endpoint instead
-        return v
+    def comments_required_and_not_empty(cls, v: Optional[str]) -> Optional[str]:
+        """Validate that comments are provided and not just whitespace."""
+        if v is None or v.strip() == "":
+            raise ValueError("Feedback comments are required for research purposes")
+        return v.strip()
 
 
 class FeedbackResponse(BaseModel):

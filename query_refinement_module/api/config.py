@@ -38,13 +38,13 @@ class Settings(BaseSettings):
     # Security
     secret_key: str = Field(default="your-secret-key-change-this-in-production")
     algorithm: str = "HS256"
-    access_token_expire_minutes: int = 30
+    access_token_expire_minutes: int = 480  # 8 hours (increased from 30 minutes)
     
     # CORS Configuration (environment-specific)
     # Development: localhost origins
     # Production: Add your frontend domains, e.g., ["https://yourdomain.com", "https://app.yourdomain.com"]
     allowed_origins: List[str] = Field(
-        default=["http://localhost:3000", "http://localhost:8000"],
+        default=["http://localhost:3000", "http://localhost:5173", "http://localhost:8000"],
         description="CORS allowed origins (comma-separated in env: ALLOWED_ORIGINS=https://app.com,https://www.app.com)"
     )
     cors_allow_credentials: bool = Field(default=True, description="Allow credentials in CORS requests")

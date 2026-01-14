@@ -11,10 +11,13 @@ Key Features:
 - Performance monitoring
 - Error handling with detailed context
 """
+import logging
 import time
 from fastapi import APIRouter, Depends, HTTPException, status
 from sqlalchemy.orm import Session
 from typing import Dict, Any, Optional, Union, List
+
+logger = logging.getLogger(__name__)
 
 from query_refinement_module.db.session import get_db
 from query_refinement_module.db.crud import (
@@ -169,15 +172,19 @@ class SynthesizeQueryResponse(BaseModel):
 def _build_next_prompt(session) -> Optional[Dict[str, Any]]:
     """Build the next prompt from the active step."""
     step = session.get_active_step()
+    logger.info(f"_build_next_prompt called: active_step={'exists' if step else 'None'}")
     if not step:
+        logger.info("  -> No active step, returning None")
         return None
     
-    return {
+    result = {
         "aspect_id": step.refinement_aspect.id,
         "aspect_name": step.refinement_aspect.aspect_name,
-        "question": step.refinement_question or step.refinement_aspect.aspect_description,
+        "question": step.refinement_question,
         "description": step.refinement_aspect.aspect_description,
     }
+    logger.info(f"  -> Built prompt for '{result['aspect_name']}', question: '{result['question'][:100] if result['question'] else 'None'}...'")
+    return result
 
 
 def _build_command_response(
@@ -197,8 +204,12 @@ def _build_command_response(
     Returns:
         CommandResponse with appropriate fields populated
     """
+    logger.info(f"[_build_command_response] Building response for command: {command_type}")
+    
     success = payload.get("success", False)
     message = payload.get("message", "")
+    
+    logger.info(f"[_build_command_response] Command success: {success}, message: {message[:100]}")
     
     # Build base response
     response = CommandResponse(
@@ -215,6 +226,7 @@ def _build_command_response(
     
     # If command failed or needs force confirmation, preserve current prompt
     if not success or force_confirmation_needed:
+        logger.info(f"[_build_command_response] Command failed or needs confirmation, preserving current prompt")
         response.next_prompt = _build_next_prompt(session)
         if force_confirmation_needed:
             response.force_required = True
@@ -223,10 +235,12 @@ def _build_command_response(
     
     # Command-specific response fields
     if command_type in ["status"]:
+        logger.info(f"[_build_command_response] STATUS command - adding step summary")
         response.step_summary = payload.get("summary")
         response.next_prompt = _build_next_prompt(session)
     
     elif command_type in ["steps"]:
+        logger.info(f"[_build_command_response] STEPS command - building step list")
         # Serialize steps to JSON-compatible format
         steps = payload.get("steps", [])
         active_step = session.get_active_step()
@@ -245,28 +259,46 @@ def _build_command_response(
                         "active" if step == active_step else
                         "not started"
                     ),
+                    "is_active": step == active_step
                 }
                 for step in steps
             ]
+            logger.info(f"[_build_command_response] Built step list with {len(response.step_list)} steps")
         response.next_prompt = _build_next_prompt(session)
     
     elif command_type in ["help"]:
+        logger.info(f"[_build_command_response] HELP command - showing help text")
         # Help message is in 'message' field, show current prompt
         response.next_prompt = _build_next_prompt(session)
     
     elif command_type in ["submit", "end"]:
+        logger.info(f"[_build_command_response] SUBMIT/END command - marking synthesis ready")
         response.synthesis_ready = True
         response.next_prompt = None
     
     elif command_type in ["back", "prev", "previous", "goto", "restart"]:
+        logger.info(f"[_build_command_response] NAVIGATION command ({command_type}) - building next prompt")
         # Navigation commands - show new active step
         response.invalidated_aspects = payload.get("invalidated", [])
         response.next_prompt = _build_next_prompt(session)
+        logger.info(f"[_build_command_response] Next prompt: {'exists' if response.next_prompt else 'None'}")
+        if response.next_prompt:
+            logger.info(f"[_build_command_response]   -> Aspect: {response.next_prompt.get('aspect_name')}")
     
     elif command_type in ["skip", "done"]:
+        logger.info(f"[_build_command_response] CONTROL command ({command_type}) - advancing to next step")
         # Control commands - advance to next step
         response.next_prompt = _build_next_prompt(session)
+        logger.info(f"[_build_command_response] Next prompt: {'exists' if response.next_prompt else 'None'}")
+        if response.next_prompt:
+            has_question = bool(response.next_prompt.get('question'))
+            logger.info(f"[_build_command_response]   -> Aspect: {response.next_prompt.get('aspect_name')}, has question: {has_question}")
+            if has_question:
+                logger.info(f"[_build_command_response]   -> Question preview: {response.next_prompt.get('question')[:100]}")
+        else:
+            logger.info(f"[_build_command_response]   -> No next prompt (refinement may be complete)")
     
+    logger.info(f"[_build_command_response] Response built successfully - next_prompt: {'yes' if response.next_prompt else 'no'}")
     return response
 
 
@@ -331,8 +363,7 @@ def start_refinement(
             detail=f"LLM service request timed out: {str(e)}"
         )
     except Exception as e:
-        import logging
-        logging.error(f"Error initializing refinement session: {str(e)}", exc_info=True)
+        logger.error(f"Error initializing refinement session: {str(e)}", exc_info=True)
         
         # Check for specific LLM errors
         error_str = str(e).lower()
@@ -430,8 +461,7 @@ def submit_answer(
     
     # If session not in Redis, reconstruct from database (fallback)
     if not session:
-        import logging
-        logging.warning("Session not found in Redis for query_id=%d, reconstructing from database", query_id)
+        logger.warning("Session not found in Redis for query_id=%d, reconstructing from database", query_id)
         session = manager.initialize(db_query.original_query, framework)
         
         # Restore follow-up history from database
@@ -449,18 +479,31 @@ def submit_answer(
                     })
                 if session_step.follow_up_history:
                     session_step.is_complete = True
+                    # Restore the last question asked (needed for proper state)
+                    last_followup = db_step.followup_history[-1]
+                    session_step.refinement_question = last_followup.question
+        
+        # Re-cache the reconstructed session
+        session_manager.save_session(query_id, session)
     
     # ============================================================
     # COMMAND DETECTION: Check if input is a command (starts with /)
     # ============================================================
     user_input = request.answer.strip()
     
+    logger.info(f"[Query {query_id}] Processing answer/command: {user_input[:100]}...")
+    logger.info(f"[Query {query_id}] Is command: {is_user_command(user_input)}")
+    
     if is_user_command(user_input):
+        logger.info(f"[Query {query_id}] COMMAND DETECTED: {user_input}")
+        
         # Parse the command
         cmd_result = parse_user_command(user_input)
+        logger.info(f"[Query {query_id}] Command parsed - valid: {cmd_result.is_valid}, command: {cmd_result.command}, arg: {cmd_result.argument}")
         
         # Handle invalid command
         if not cmd_result.is_valid:
+            logger.warning(f"[Query {query_id}] Invalid command: {cmd_result.error_message}")
             return _build_command_response(
                 command_type=cmd_result.command.value,
                 payload={"success": False, "message": cmd_result.error_message or "Invalid command"},
@@ -469,8 +512,11 @@ def submit_answer(
             )
         
         # Execute the command
+        logger.info(f"[Query {query_id}] Executing command: {cmd_result.command.value}")
         command_payload = session.handle_command(cmd_result)
         command_type = cmd_result.command.value
+        
+        logger.info(f"[Query {query_id}] Command result - success: {command_payload.get('success')}, message: {command_payload.get('message', '')[:100]}")
         
         # Check if force confirmation is needed for navigation commands
         force_confirmation_needed = False
@@ -479,15 +525,19 @@ def submit_answer(
             if invalidated and command_payload.get("success", False):
                 # Navigation would invalidate dependent aspects - require confirmation
                 force_confirmation_needed = True
+                logger.info(f"[Query {query_id}] Force confirmation needed - would invalidate: {invalidated}")
+                # Mark as NOT successful since confirmation is needed
+                command_payload["success"] = False
                 command_payload["message"] = (
-                    f"{command_payload.get('message', '')} "
-                    f"This will invalidate {len(invalidated)} dependent aspect(s). "
-                    f"Resend with force=true to proceed."
+                    f"⚠️ Warning: This action will invalidate {len(invalidated)} dependent aspect(s): "
+                    f"{', '.join(invalidated)}. This means you'll need to re-answer those aspects. "
+                    f"Click 'Confirm' to proceed."
                 )
         
         # Save session state for state-mutating commands
         if command_payload.get("success", False) and not force_confirmation_needed:
             if command_type in ["back", "prev", "previous", "goto", "restart", "skip", "done", "submit", "end"]:
+                logger.info(f"[Query {query_id}] Saving session state after command: {command_type}")
                 session_manager.save_session(query_id, session)
         
         # Build and return command response
@@ -530,8 +580,7 @@ def submit_answer(
             detail=f"LLM service request timed out: {str(e)}"
         )
     except Exception as e:
-        import logging
-        logging.error(f"Error in follow-up loop: {str(e)}", exc_info=True)
+        logger.error(f"Error in follow-up loop: {str(e)}", exc_info=True)
         raise HTTPException(
             status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
             detail=f"Failed to process answer: {str(e)}"
@@ -565,10 +614,11 @@ def submit_answer(
     next_prompt = None
     if not is_complete:
         # Still need follow-up on same aspect
+        # Read the question from the step object, NOT from result dict
         next_prompt = {
             "aspect_id": active_step.refinement_aspect.id,
             "aspect_name": active_step.refinement_aspect.aspect_name,
-            "question": result.get('followup_question', ''),
+            "question": active_step.refinement_question or "",
             "description": active_step.refinement_aspect.aspect_description,
         }
     else:
@@ -591,7 +641,8 @@ def get_refinement_status(
     query_id: int,
     manager: QueryRefinementManager = Depends(get_refinement_manager),
     current_user = Depends(get_current_user),
-    db: Session = Depends(get_db)
+    db: Session = Depends(get_db),
+    session_manager: SessionManager = Depends(get_session_manager)
 ):
     """
     Get the current status of a refinement workflow.
@@ -608,9 +659,36 @@ def get_refinement_status(
     if not framework_name:
         raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail="Framework name not found for session")
     
-    # Reconstruct session to get status
+    # Load session from Redis cache first (fast)
     framework = get_framework(framework_name)
-    session = manager.initialize(db_query.original_query, framework)
+    session = session_manager.load_session(query_id, framework)
+    
+    # Fallback: Reconstruct from database if Redis miss
+    if not session:
+        logger.warning(f"Session not found in Redis for query_id={query_id}, reconstructing from database")
+        session = manager.initialize(db_query.original_query, framework)
+        
+        # Restore follow-up history from database
+        db_steps = get_query_refinement_steps(db, query_id)
+        for db_step in db_steps:
+            session_step = next(
+                (s for s in session.steps if s.refinement_aspect.aspect_name == db_step.aspect_name),
+                None
+            )
+            if session_step:
+                for followup in db_step.followup_history:
+                    session_step.follow_up_history.append({
+                        'question': followup.question,
+                        'response': followup.answer or ''
+                    })
+                if session_step.follow_up_history:
+                    session_step.is_complete = True
+                    # Restore the last question asked (needed for proper state)
+                    last_followup = db_step.followup_history[-1]
+                    session_step.refinement_question = last_followup.question
+        
+        # Re-cache the reconstructed session
+        session_manager.save_session(query_id, session)
     
     summary = manager.get_initialization_summary(session)
     active_step = session.get_active_step()
@@ -658,8 +736,7 @@ def synthesize_refined_query(
     
     # If session not in Redis, reconstruct from database (fallback)
     if not session:
-        import logging
-        logging.warning("Session not found in Redis for query_id=%d, reconstructing from database", request.query_id)
+        logger.warning("Session not found in Redis for query_id=%d, reconstructing from database", request.query_id)
         session = manager.initialize(db_query.original_query, framework)
         
         # Load follow-ups from database and populate session
