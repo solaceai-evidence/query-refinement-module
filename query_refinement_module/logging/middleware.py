@@ -4,7 +4,7 @@ Request logging middleware for FastAPI.
 
 import logging
 import time
-from typing import Callable
+from typing import Callable, Optional
 
 from fastapi import Request, Response
 from starlette.middleware.base import BaseHTTPMiddleware
