@@ -7,15 +7,18 @@ contextual logging state across asynchronous operations. This enables:
 - Request tracking in distributed systems
 - Performance monitoring and debugging
 - Audit trail creation
+- Distributed tracing with trace_id and span_id
 
 Usage:
     # In an API endpoint
     request_id = generate_request_id()
-    logger = get_logger(__name__, request_id=request_id)
+    set_request_id(request_id)
+    logger = get_logger(__name__)
     logger.info("Starting refinement")
     
-    # Pass request_id to downstream functions
-    process_data(data, request_id=request_id)
+    # For distributed tracing
+    trace_id = generate_trace_id()
+    set_trace_id(trace_id)
 """
 import uuid
 import logging
@@ -23,9 +26,11 @@ from typing import Optional
 from contextvars import ContextVar
 
 
-# Context variable to store request ID across async boundaries
-# This allows automatic request ID propagation in async contexts
+# Context variables for distributed tracing
 _request_id_ctx: ContextVar[Optional[str]] = ContextVar('request_id', default=None)
+_trace_id_ctx: ContextVar[Optional[str]] = ContextVar('trace_id', default=None)
+_span_id_ctx: ContextVar[Optional[str]] = ContextVar('span_id', default=None)
+_parent_span_id_ctx: ContextVar[Optional[str]] = ContextVar('parent_span_id', default=None)
 
 
 def generate_request_id() -> str:
@@ -37,6 +42,31 @@ def generate_request_id() -> str:
     
     Returns:
         str: Unique request identifier (e.g., 'a1b2c3d4')
+    """
+    return uuid.uuid4().hex[:8]
+
+
+def generate_trace_id() -> str:
+    """
+    Generate a unique trace ID for distributed tracing.
+    
+    Trace IDs are used to track requests across multiple services
+    in a distributed system.
+    
+    Returns:
+        str: Unique trace identifier (UUID format)
+    """
+    return str(uuid.uuid4())
+
+
+def generate_span_id() -> str:
+    """
+    Generate a unique span ID for operation tracing.
+    
+    Span IDs represent individual operations within a trace.
+    
+    Returns:
+        str: Unique span identifier (8-character hex)
     """
     return uuid.uuid4().hex[:8]
 
@@ -64,6 +94,66 @@ def get_request_id() -> Optional[str]:
     return _request_id_ctx.get()
 
 
+def set_trace_id(trace_id: str) -> None:
+    """
+    Set the current trace ID in the context.
+    
+    Args:
+        trace_id: The trace identifier to set
+    """
+    _trace_id_ctx.set(trace_id)
+
+
+def get_trace_id() -> Optional[str]:
+    """
+    Get the current trace ID from the context.
+    
+    Returns:
+        The current trace ID if set, None otherwise
+    """
+    return _trace_id_ctx.get()
+
+
+def set_span_id(span_id: str) -> None:
+    """
+    Set the current span ID in the context.
+    
+    Args:
+        span_id: The span identifier to set
+    """
+    _span_id_ctx.set(span_id)
+
+
+def get_span_id() -> Optional[str]:
+    """
+    Get the current span ID from the context.
+    
+    Returns:
+        The current span ID if set, None otherwise
+    """
+    return _span_id_ctx.get()
+
+
+def set_parent_span_id(parent_span_id: Optional[str]) -> None:
+    """
+    Set the parent span ID in the context.
+    
+    Args:
+        parent_span_id: The parent span identifier to set
+    """
+    _parent_span_id_ctx.set(parent_span_id)
+
+
+def get_parent_span_id() -> Optional[str]:
+    """
+    Get the current parent span ID from the context.
+    
+    Returns:
+        The current parent span ID if set, None otherwise
+    """
+    return _parent_span_id_ctx.get()
+
+
 def clear_request_id() -> None:
     """
     Clear the request ID from the context.
@@ -71,6 +161,18 @@ def clear_request_id() -> None:
     Useful for cleanup after request processing completes.
     """
     _request_id_ctx.set(None)
+
+
+def clear_trace_context() -> None:
+    """
+    Clear all tracing context (request_id, trace_id, span_id, parent_span_id).
+    
+    Useful for cleanup after request processing completes.
+    """
+    _request_id_ctx.set(None)
+    _trace_id_ctx.set(None)
+    _span_id_ctx.set(None)
+    _parent_span_id_ctx.set(None)
 
 
 class RequestIdFilter(logging.Filter):
