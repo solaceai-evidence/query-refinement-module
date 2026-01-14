@@ -11,6 +11,7 @@ import { useAuth } from '../context/AuthContext';
 import { isCommandResponse, createHistoryItem } from '../types';
 import { isUserCommand } from '../constants/commands';
 import { logger } from '../utils/logger';
+import { setLogSessionId, logUserAction } from '../utils/logForwarder';
 import './Refinement.css';
 
 /**
@@ -92,10 +93,20 @@ const Refinement = () => {
             setSessionId(response.session_id);
             setQueryId(response.query_id);
 
+            // Set session ID for log forwarder
+            setLogSessionId(response.session_id);
+
             logger.info('Refinement session started', {
                 sessionId: response.session_id,
                 queryId: response.query_id,
                 aspectCount: response.summary?.aspects?.length || 0
+            });
+
+            // Log user action
+            logUserAction('session_started', {
+                framework: selectedFramework,
+                query_length: initialQuery.length,
+                aspect_count: response.summary?.aspects?.length || 0
             });
 
             setCurrentQuestion(response.next_prompt);

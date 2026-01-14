@@ -5,15 +5,20 @@ Supports both SQLite (development) and PostgreSQL (production) with optimized
 connection pooling for high-concurrency deployments.
 """
 import logging
+import time
 from sqlalchemy import create_engine, event
 from sqlalchemy.orm import sessionmaker
 from sqlalchemy.pool import NullPool, QueuePool
+from sqlalchemy.engine import Engine
 import os
 from dotenv import load_dotenv
 
 load_dotenv()
 
 logger = logging.getLogger(__name__)
+
+# Import tracing utilities for request correlation
+from query_refinement_module.tracing import get_request_id, get_trace_id
 
 # Set dummy value for REFINEMENT_FRAMEWORK_PATH if not set (for migrations)
 REFINEMENT_FRAMEWORK_PATH = os.getenv("REFINEMENT_FRAMEWORK_PATH", "/dev/null")
@@ -64,17 +69,26 @@ if is_postgresql:
     @event.listens_for(engine, "connect")
     def receive_connect(dbapi_conn, connection_record):
         """Log successful database connections."""
-        logger.debug("New database connection established")
+        logger.debug(
+            "Database connection established",
+            extra={"context": {"connection_id": id(dbapi_conn)}}
+        )
     
     @event.listens_for(engine, "checkout")
     def receive_checkout(dbapi_conn, connection_record, connection_proxy):
         """Log connection checkouts from pool."""
-        logger.debug("Connection checked out from pool")
+        logger.debug(
+            "Connection checked out from pool",
+            extra={"context": {"connection_id": id(dbapi_conn)}}
+        )
     
     @event.listens_for(engine, "checkin")
     def receive_checkin(dbapi_conn, connection_record):
-        """Log connection returns to pool."""
-        logger.debug("Connection returned to pool")
+        """Log connection returned to pool."""
+        logger.debug(
+            "Connection returned to pool",
+            extra={"context": {"connection_id": id(dbapi_conn)}}
+        )
         
 else:
     # SQLite without pooling (single-threaded, development only)
@@ -88,6 +102,76 @@ else:
         poolclass=NullPool  # No connection pooling for SQLite
     )
 
+# Query execution tracing for performance monitoring and debugging
+# Tracks query start time, duration, and correlates with request_id
+# These listeners work for both PostgreSQL and SQLite
+@event.listens_for(Engine, "before_cursor_execute")
+def before_cursor_execute(conn, cursor, statement, parameters, context, executemany):
+    """Log SQL query execution start with request context."""
+    context._query_start_time = time.time()
+    
+    # Get current request context for tracing
+    request_id = get_request_id()
+    trace_id = get_trace_id()
+    
+    # Truncate long SQL statements for cleaner logs
+    statement_preview = statement[:200] + "..." if len(statement) > 200 else statement
+    
+    logger.debug(
+        "Executing SQL query",
+        extra={
+            "context": {
+                "request_id": request_id,
+                "trace_id": trace_id,
+                "sql_preview": statement_preview,
+                "executemany": executemany
+            }
+        }
+    )
+
+@event.listens_for(Engine, "after_cursor_execute")
+def after_cursor_execute(conn, cursor, statement, parameters, context, executemany):
+    """Log SQL query completion with duration and performance metrics."""
+    # Calculate query duration
+    duration = time.time() - context._query_start_time
+    duration_ms = duration * 1000
+    
+    # Get current request context
+    request_id = get_request_id()
+    trace_id = get_trace_id()
+    
+    # Truncate statement for logging
+    statement_preview = statement[:200] + "..." if len(statement) > 200 else statement
+    
+    # Get row count if available
+    try:
+        row_count = cursor.rowcount if cursor.rowcount >= 0 else None
+    except Exception:
+        row_count = None
+    
+    log_context = {
+        "request_id": request_id,
+        "trace_id": trace_id,
+        "sql_preview": statement_preview,
+        "duration_ms": round(duration_ms, 2),
+        "executemany": executemany
+    }
+    
+    if row_count is not None:
+        log_context["row_count"] = row_count
+    
+    # Warn on slow queries (>1 second)
+    if duration_ms > 1000:
+        logger.warning(
+            f"Slow query detected ({round(duration_ms, 2)}ms)",
+            extra={"context": log_context}
+        )
+    else:
+        logger.debug(
+            "Query completed",
+            extra={"context": log_context}
+        )
+
 # Create session factory
 SessionLocal = sessionmaker(autocommit=False, autoflush=False, bind=engine)
 
@@ -99,6 +183,7 @@ from query_refinement_module.db.models.refinement_step import RefinementStep
 from query_refinement_module.db.models.refinement_step_metadata import RefinementStepMetadata
 from query_refinement_module.db.models.feedback import Feedback
 from query_refinement_module.db.models.followup_history import FollowUpHistory
+from query_refinement_module.db.models.audit_log import AuditLog
 
 # Create tables (for dev/testing; use Alembic for migrations in production)
 def init_db():

@@ -45,24 +45,44 @@ apiClient.interceptors.request.use(
     }
 );
 
-// Response interceptor for error handling
+// Response interceptor for error handling and request tracing
 apiClient.interceptors.response.use(
     (response) => {
+        // Extract request_id from response headers for distributed tracing
+        const requestId = response.headers['x-request-id'];
+        const traceId = response.headers['x-trace-id'];
+
+        // Store request_id in logger context for subsequent logs
+        if (requestId) {
+            logger.setRequestContext(requestId, traceId);
+        }
+
         // Log successful API calls for production tracing
         logger.debug('API call succeeded', {
             method: response.config.method,
             url: response.config.url,
-            status: response.status
+            status: response.status,
+            request_id: requestId,
+            trace_id: traceId
         });
         return response;
     },
     async (error) => {
         const originalRequest = error.config;
 
+        // Extract request_id even from error responses for tracing
+        const requestId = error.response?.headers?.['x-request-id'];
+        const traceId = error.response?.headers?.['x-trace-id'];
+
+        if (requestId) {
+            logger.setRequestContext(requestId, traceId);
+        }
+
         // Handle 401 Unauthorized
         if (error.response?.status === 401 && !originalRequest._retry) {
             logger.warn('401 Unauthorized - session expired', {
-                url: originalRequest.url
+                url: originalRequest.url,
+                request_id: requestId
             });
             originalRequest._retry = true;
 
@@ -87,7 +107,8 @@ apiClient.interceptors.response.use(
                 logger.warn('Rate limited - retrying', {
                     attempt: originalRequest._retryCount,
                     delay,
-                    url: originalRequest.url
+                    url: originalRequest.url,
+                    request_id: requestId
                 });
                 await new Promise(resolve => setTimeout(resolve, delay));
                 return apiClient(originalRequest);
@@ -95,7 +116,8 @@ apiClient.interceptors.response.use(
 
             logger.error('Rate limit exceeded after retries', null, {
                 url: originalRequest.url,
-                retries: originalRequest._retryCount
+                retries: originalRequest._retryCount,
+                request_id: requestId
             });
 
             return Promise.reject({
@@ -114,7 +136,8 @@ apiClient.interceptors.response.use(
                 originalRequest._retryCount++;
                 logger.warn('Service unavailable - retrying', {
                     attempt: originalRequest._retryCount,
-                    url: originalRequest.url
+                    url: originalRequest.url,
+                    request_id: requestId
                 });
                 await new Promise(resolve => setTimeout(resolve, 3000));
                 return apiClient(originalRequest);
@@ -122,7 +145,8 @@ apiClient.interceptors.response.use(
 
             logger.error('Service unavailable after retries', null, {
                 url: originalRequest.url,
-                retries: originalRequest._retryCount
+                retries: originalRequest._retryCount,
+                request_id: requestId
             });
 
             return Promise.reject({
@@ -133,7 +157,10 @@ apiClient.interceptors.response.use(
 
         // Handle network errors
         if (!error.response) {
-            logger.error('Network error', error, { url: originalRequest.url });
+            logger.error('Network error', error, {
+                url: originalRequest.url,
+                request_id: requestId
+            });
             return Promise.reject({
                 message: 'Network error. Please check your connection.',
                 status: 0
@@ -145,7 +172,9 @@ apiClient.interceptors.response.use(
             method: originalRequest.method,
             url: originalRequest.url,
             status: error.response?.status,
-            statusText: error.response?.statusText
+            statusText: error.response?.statusText,
+            request_id: requestId,
+            trace_id: traceId
         });
 
         return Promise.reject(error);
