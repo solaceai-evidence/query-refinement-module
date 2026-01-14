@@ -136,6 +136,7 @@ def login(
                 "reason": "invalid_credentials"
             }
         )
+        db.commit()  # Ensure audit log is committed before raising exception
         
         raise HTTPException(
             status_code=status.HTTP_401_UNAUTHORIZED,
