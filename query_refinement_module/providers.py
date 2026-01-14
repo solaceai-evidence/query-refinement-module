@@ -43,6 +43,9 @@ from .interfaces import (
     RateLimitExceeded,
 )
 
+# Import tracing utilities for request correlation
+from .tracing import get_request_id, get_trace_id
+
 # ========
 # Tracing Utilities
 # ========
@@ -469,6 +472,10 @@ class LiteLLMProvider(LLMProviderInterface):
         if max_tokens is not None and "max_tokens" not in completion_kwargs:
             completion_kwargs["max_tokens"] = max_tokens
 
+        # Get current request context for distributed tracing
+        request_id = get_request_id()
+        trace_id = get_trace_id()
+
         logger.info(
             "Dispatching async completion",
             extra={
@@ -476,6 +483,8 @@ class LiteLLMProvider(LLMProviderInterface):
                 "model": target_model,
                 "temperature": completion_kwargs.get("temperature"),
                 "max_tokens": completion_kwargs.get("max_tokens"),
+                "request_id": request_id,
+                "trace_id": trace_id,
             },
         )
 
@@ -510,6 +519,8 @@ class LiteLLMProvider(LLMProviderInterface):
                     "response_id": response.get("id"),
                     "prompt_tokens": usage.get("prompt_tokens"),
                     "completion_tokens": usage.get("completion_tokens"),
+                    "request_id": request_id,
+                    "trace_id": trace_id,
                 }
                 
                 if rate_limit_info:
@@ -522,6 +533,8 @@ class LiteLLMProvider(LLMProviderInterface):
                         "model": target_model,
                         "total_tokens": total_tokens,
                         "attempt": attempt + 1,
+                        "request_id": request_id,
+                        "trace_id": trace_id,
                     },
                 )
 
@@ -596,6 +609,10 @@ class LiteLLMProvider(LLMProviderInterface):
         if max_tokens is not None and "max_tokens" not in completion_kwargs:
             completion_kwargs["max_tokens"] = max_tokens
 
+        # Get current request context for distributed tracing
+        request_id = get_request_id()
+        trace_id = get_trace_id()
+
         logger.info(
             "Dispatching completion",
             extra={
@@ -603,6 +620,8 @@ class LiteLLMProvider(LLMProviderInterface):
                 "model": target_model,
                 "temperature": completion_kwargs.get("temperature"),
                 "max_tokens": completion_kwargs.get("max_tokens"),
+                "request_id": request_id,
+                "trace_id": trace_id,
             },
         )
 
@@ -635,6 +654,8 @@ class LiteLLMProvider(LLMProviderInterface):
                     "response_id": response.get("id"),
                     "prompt_tokens": usage.get("prompt_tokens"),
                     "completion_tokens": usage.get("completion_tokens"),
+                    "request_id": request_id,
+                    "trace_id": trace_id,
                 }
                 
                 if rate_limit_info:
@@ -647,6 +668,8 @@ class LiteLLMProvider(LLMProviderInterface):
                         "model": target_model,
                         "total_tokens": total_tokens,
                         "attempt": attempt + 1,
+                        "request_id": request_id,
+                        "trace_id": trace_id,
                     },
                 )
 
