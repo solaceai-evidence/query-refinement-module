@@ -98,3 +98,11 @@ export const logger = {
         }
     }
 };
+
+/**
+ * Export getters for log forwarder integration
+ */
+export const getRequestId = () => currentRequestId;
+export const getTraceId = () => currentTraceId;
+
+export default logger;
