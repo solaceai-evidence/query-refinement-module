@@ -1,7 +1,7 @@
 """
-Query and refinement API routes.
+Query and refinement API routes with audit logging.
 """
-from fastapi import APIRouter, Depends, HTTPException, status
+from fastapi import APIRouter, Depends, HTTPException, status, Request
 from sqlalchemy.orm import Session
 from typing import List
 
@@ -33,6 +33,8 @@ from query_refinement_module.api.schemas import (
     FollowUpResponse,
 )
 from query_refinement_module.api.auth import get_current_user
+from query_refinement_module.audit import audit_service
+from query_refinement_module.db.models.audit_log import AuditEventType
 
 router = APIRouter(prefix="/queries", tags=["Query Refinement"])
 
@@ -43,6 +45,7 @@ router = APIRouter(prefix="/queries", tags=["Query Refinement"])
 
 @router.post("/sessions", response_model=QuerySessionResponse, status_code=status.HTTP_201_CREATED)
 def create_session(
+    request: Request,
     current_user = Depends(get_current_user),
     db: Session = Depends(get_db)
 ):
@@ -50,6 +53,19 @@ def create_session(
     Create a new query refinement session for the authenticated user.
     """
     session = create_query_session(db, user_id=current_user.id)
+    
+    # Audit session creation
+    audit_service.log_from_request(
+        db=db,
+        request=request,
+        event_type=AuditEventType.SESSION_CREATE,
+        user=current_user,
+        resource_type="session",
+        resource_id=str(session.id),
+        action="Created new query session",
+        status="success"
+    )
+    
     return session
 
 
@@ -67,6 +83,7 @@ def list_user_sessions(
 
 @router.get("/sessions/{session_id}", response_model=QuerySessionResponse)
 def get_session(
+    request: Request,
     session_id: int,
     current_user = Depends(get_current_user),
     db: Session = Depends(get_db)
@@ -80,13 +97,37 @@ def get_session(
     
     # Verify session belongs to user
     if session.user_id != current_user.id:
+        # Audit unauthorized access attempt
+        audit_service.log_from_request(
+            db=db,
+            request=request,
+            event_type=AuditEventType.SESSION_ACCESS,
+            user=current_user,
+            severity="warning",
+            resource_type="session",
+            resource_id=str(session_id),
+            action="Attempted unauthorized session access",
+            status="failure",
+            details={"reason": "forbidden", "owner_id": session.user_id}
+        )
         raise HTTPException(status_code=status.HTTP_403_FORBIDDEN, detail="Access denied")
+    
+    # Audit data access (compliance)
+    audit_service.log_data_access(
+        db=db,
+        user_id=current_user.id,
+        username=current_user.username,
+        resource_type="session",
+        resource_id=str(session.id),
+        action="Viewed session details"
+    )
     
     return session
 
 
 @router.post("/sessions/{session_id}/end", response_model=QuerySessionResponse)
 def end_session(
+    request: Request,
     session_id: int,
     current_user = Depends(get_current_user),
     db: Session = Depends(get_db)
@@ -103,6 +144,20 @@ def end_session(
         raise HTTPException(status_code=status.HTTP_403_FORBIDDEN, detail="Access denied")
     
     session = end_query_session(db, session_id=session_id)
+    
+    # Audit session end
+    audit_service.log_from_request(
+        db=db,
+        request=request,
+        event_type=AuditEventType.SESSION_END,
+        user=current_user,
+        resource_type="session",
+        resource_id=str(session.id),
+        action="Ended query session",
+        status="success",
+        details={"ended_at": session.ended_at.isoformat() if session.ended_at else None}
+    )
+    
     return session
 
 
