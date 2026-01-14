@@ -18,13 +18,24 @@ from pydantic import ValidationError
 # Load environment variables from .env file
 load_dotenv()
 
+# Configure logging before importing other modules
+from query_refinement_module.logging import configure_logging
 from query_refinement_module.api.config import get_settings
+
+settings = get_settings()
+configure_logging(
+    level=settings.log_level,
+    log_format=settings.log_format,
+    log_file=settings.log_file,
+    sanitize_pii=True,
+)
+
+logger = logging.getLogger(__name__)
+
 from query_refinement_module.api.routes import auth, queries, feedback, refinement
 from query_refinement_module.api.exceptions import QueryRefinementException
 from query_refinement_module.api.rate_limit import RateLimitMiddleware
-
-logger = logging.getLogger(__name__)
-settings = get_settings()
+from query_refinement_module.logging.middleware import RequestLoggingMiddleware
 
 # Initialize FastAPI app
 app = FastAPI(
@@ -35,11 +46,19 @@ app = FastAPI(
     redoc_url="/redoc",
 )
 
+# Add request logging middleware (first, so it wraps everything)
+app.add_middleware(RequestLoggingMiddleware)
+
 # Configure CORS with environment-specific settings
 logger.info(
-    f"Configuring CORS | environment={settings.environment}, "
-    f"origins={len(settings.allowed_origins)}, "
-    f"credentials={settings.cors_allow_credentials}"
+    "Configuring CORS",
+    extra={
+        "context": {
+            "environment": settings.environment,
+            "origins_count": len(settings.allowed_origins),
+            "credentials": settings.cors_allow_credentials,
+        }
+    }
 )
 app.add_middleware(
     CORSMiddleware,
@@ -181,9 +200,24 @@ def on_startup():
     Run 'alembic upgrade head' before starting the server.
     """
     logger.info(
-        f"Application starting | environment={settings.environment}, "
-        f"version={settings.app_version}, database={settings.database_url.split('@')[-1] if '@' in settings.database_url else 'sqlite'}"
+        "Application starting",
+        extra={
+            "context": {
+                "environment": settings.environment,
+                "version": settings.app_version,
+                "database": settings.database_url.split('@')[-1] if '@' in settings.database_url else 'sqlite',
+                "pool_size": settings.db_pool_size,
+                "max_overflow": settings.db_max_overflow,
+            }
+        }
     )
-    logger.info(f"CORS origins: {settings.allowed_origins}")
-    logger.info(f"Database pooling: size={settings.db_pool_size}, max_overflow={settings.db_max_overflow}")
-    logger.info(f"Health checks available at: /health, /ready")
+    logger.info(
+        "Service configuration",
+        extra={
+            "context": {
+                "cors_origins": settings.allowed_origins,
+                "log_level": settings.log_level,
+                "log_format": settings.log_format,
+            }
+        }
+    )
