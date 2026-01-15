@@ -215,11 +215,11 @@ def test_query_aspect_refiner_follow_up_tracking():
     refiner = QueryAspectRefiner(refinement_aspect=aspect)
 
     assert refiner.follow_up_count == 0
-    assert refiner.final_response is None
+    assert refiner.refined_value_as_str is None
 
     refiner.add_follow_up(question="Q1", response="Answer")
     assert refiner.follow_up_count == 1
-    assert refiner.final_response == "Answer"
+    assert refiner.refined_value_as_str == "Answer"  # Plain text is now stored in refined_value
 
 
 def test_query_aspect_refiner_get_prompts_includes_dependency_context(caplog):
@@ -482,7 +482,7 @@ def test_manager_initialize_applies_dependency_context():
 
     assert len(session.steps) == 2
     first, second = session.steps
-    assert first.is_complete and first.initial_summary == "Clear"
+    assert first.is_complete and first.refined_value == "Clear"
     assert not second.is_complete
 
     # Dependency context for aspect B should include Aspect A value from original query (clear)
@@ -520,7 +520,7 @@ def test_ensure_step_is_ready_autocompletes_dependent_aspect():
     step_b = session.add_step(aspect_b)
 
     step_a.is_complete = True
-    step_a.initial_summary = "Population captured in original query"
+    step_a.refined_value = "Population captured in original query"
 
     step_b.is_complete = False
     step_b.refinement_question = "Need population"
@@ -529,7 +529,7 @@ def test_ensure_step_is_ready_autocompletes_dependent_aspect():
 
     assert not ready  # auto-resolved, no prompt needed
     assert step_b.is_complete
-    assert "already" in (step_b.initial_summary or "").lower()
+    assert "already" in (step_b.refined_value or "").lower()
 
 
 def test_dependency_context_uses_latest_follow_up_response():
@@ -573,8 +573,9 @@ def test_process_next_step_records_follow_up_without_schema():
     assert result["response"] == json_response
     assert step.is_complete
     assert step.follow_up_history[-1]["response"] == json_response
-    # final_response now returns the synthesized value from the dynamic field (aspect.id)
-    assert step.final_response == "Synthesized answer"
+    # refined_value_as_str returns the synthesized value from the dynamic field (aspect.id)
+    assert step.refined_value_as_str == "Synthesized answer"
+    assert step.refined_value == "Synthesized answer"
 
 
 def test_process_next_step_enforces_json_validation():
@@ -661,7 +662,7 @@ def test_gather_refinement_details_compiles_lists():
 
     step2 = session.add_step(aspect2)
     step2.is_complete = True
-    step2.initial_summary = "Already clear"
+    step2.refined_value = "Already clear"
 
     clarifications, summaries = manager._gather_refinement_details(session)
     assert clarifications == [("A", "Value")]

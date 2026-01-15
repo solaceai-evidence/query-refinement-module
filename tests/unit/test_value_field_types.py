@@ -3,7 +3,7 @@ Tests for dynamic value field system with all supported types.
 
 Tests cover:
 - Schema validation for all 6 value field types
-- current_synthesized_value extraction for complex types
+- refined_value extraction for complex types
 - Dependency context with type information
 - Incremental synthesis workflow
 - Type conversion and formatting
@@ -136,10 +136,10 @@ def test_field_descriptions_include_synthesis_instructions():
 
 
 # ============================================================================
-# current_synthesized_value Extraction Tests
+# refined_value Extraction Tests
 # ============================================================================
 
-def test_current_synthesized_value_extracts_string():
+def test_refined_value_extracts_string():
     """Should extract string value from dynamic field."""
     aspect = make_aspect(aspect_id="population", value_field_type="string")
     refiner = QueryAspectRefiner(refinement_aspect=aspect)
@@ -152,12 +152,12 @@ def test_current_synthesized_value_extracts_string():
     })
     refiner.add_follow_up("Q", response)
     
-    value = refiner.current_synthesized_value
+    value = refiner.refined_value
     assert value == "Adults aged 18-65 with Type 2 diabetes"
     assert isinstance(value, str)
 
 
-def test_current_synthesized_value_extracts_object():
+def test_refined_value_extracts_object():
     """Should extract object value from dynamic field as dict."""
     aspect = make_aspect(aspect_id="intervention", value_field_type="object")
     refiner = QueryAspectRefiner(refinement_aspect=aspect)
@@ -174,14 +174,14 @@ def test_current_synthesized_value_extracts_object():
     })
     refiner.add_follow_up("Q", response)
     
-    value = refiner.current_synthesized_value
+    value = refiner.refined_value
     assert isinstance(value, dict)
     assert value["name"] == "metformin"
     assert value["dosage"] == "500mg twice daily"
     assert value["duration"] == "12 weeks"
 
 
-def test_current_synthesized_value_extracts_array():
+def test_refined_value_extracts_array():
     """Should extract array value from dynamic field as list."""
     aspect = make_aspect(aspect_id="outcomes", value_field_type="array")
     refiner = QueryAspectRefiner(refinement_aspect=aspect)
@@ -198,13 +198,13 @@ def test_current_synthesized_value_extracts_array():
     })
     refiner.add_follow_up("Q", response)
     
-    value = refiner.current_synthesized_value
+    value = refiner.refined_value
     assert isinstance(value, list)
     assert len(value) == 3
     assert "HbA1c via blood test at baseline" in value
 
 
-def test_current_synthesized_value_extracts_boolean():
+def test_refined_value_extracts_boolean():
     """Should extract boolean value from dynamic field."""
     aspect = make_aspect(aspect_id="blinded", value_field_type="boolean")
     refiner = QueryAspectRefiner(refinement_aspect=aspect)
@@ -217,12 +217,12 @@ def test_current_synthesized_value_extracts_boolean():
     })
     refiner.add_follow_up("Q", response)
     
-    value = refiner.current_synthesized_value
+    value = refiner.refined_value
     assert value is True
     assert isinstance(value, bool)
 
 
-def test_current_synthesized_value_extracts_integer():
+def test_refined_value_extracts_integer():
     """Should extract integer value from dynamic field."""
     aspect = make_aspect(aspect_id="sample_size", value_field_type="integer")
     refiner = QueryAspectRefiner(refinement_aspect=aspect)
@@ -235,12 +235,12 @@ def test_current_synthesized_value_extracts_integer():
     })
     refiner.add_follow_up("Q", response)
     
-    value = refiner.current_synthesized_value
+    value = refiner.refined_value
     assert value == 500
     assert isinstance(value, int)
 
 
-def test_current_synthesized_value_extracts_float():
+def test_refined_value_extracts_float():
     """Should extract float value from dynamic field."""
     aspect = make_aspect(aspect_id="effect_size", value_field_type="float")
     refiner = QueryAspectRefiner(refinement_aspect=aspect)
@@ -253,12 +253,12 @@ def test_current_synthesized_value_extracts_float():
     })
     refiner.add_follow_up("Q", response)
     
-    value = refiner.current_synthesized_value
+    value = refiner.refined_value
     assert value == 0.75
     assert isinstance(value, float)
 
 
-def test_current_synthesized_value_iterates_backwards():
+def test_refined_value_iterates_backwards():
     """Should get most recent value when multiple responses exist."""
     aspect = make_aspect(aspect_id="population", value_field_type="string")
     refiner = QueryAspectRefiner(refinement_aspect=aspect)
@@ -277,30 +277,30 @@ def test_current_synthesized_value_iterates_backwards():
         "population": "Adults aged 18-65 with diabetes"
     }))
     
-    value = refiner.current_synthesized_value
+    value = refiner.refined_value
     assert value == "Adults aged 18-65 with diabetes"
 
 
-def test_current_synthesized_value_falls_back_to_initial_summary():
-    """Should fall back to initial_summary if no dynamic field found."""
+def test_refined_value_stores_directly():
+    """Should store value directly when set."""
     aspect = make_aspect(aspect_id="population")
     refiner = QueryAspectRefiner(refinement_aspect=aspect)
-    refiner.initial_summary = "Fallback value"
+    refiner.refined_value = "Direct value"
     
-    value = refiner.current_synthesized_value
-    assert value == "Fallback value"
+    value = refiner.refined_value
+    assert value == "Direct value"
 
 
-def test_current_synthesized_value_handles_plain_text_response():
-    """Should fall back gracefully if response is plain text not JSON."""
+def test_refined_value_handles_plain_text_response():
+    """Plain text responses should be stored in refined_value (overwrites previous)."""
     aspect = make_aspect(aspect_id="population")
     refiner = QueryAspectRefiner(refinement_aspect=aspect)
-    refiner.initial_summary = "Initial"
+    refiner.refined_value = "Initial"
     
     refiner.add_follow_up("Q", "Just plain text response")
     
-    value = refiner.current_synthesized_value
-    assert value == "Initial"
+    value = refiner.refined_value
+    assert value == "Just plain text response"  # Updated with latest response
 
 
 # ============================================================================
@@ -320,7 +320,7 @@ def test_final_response_returns_string_for_simple_types():
     })
     refiner.add_follow_up("Q", response)
     
-    assert refiner.final_response == "Adults aged 18-65"
+    assert refiner.refined_value_as_str == "Adults aged 18-65"
 
 
 def test_final_response_converts_object_to_json_string():
@@ -336,7 +336,7 @@ def test_final_response_converts_object_to_json_string():
     })
     refiner.add_follow_up("Q", response)
     
-    final = refiner.final_response
+    final = refiner.refined_value_as_str
     assert isinstance(final, str)
     parsed = json.loads(final)
     assert parsed["name"] == "metformin"
@@ -355,7 +355,7 @@ def test_final_response_converts_array_to_json_string():
     })
     refiner.add_follow_up("Q", response)
     
-    final = refiner.final_response
+    final = refiner.refined_value_as_str
     assert isinstance(final, str)
     parsed = json.loads(final)
     assert "HbA1c" in parsed
@@ -378,7 +378,7 @@ def test_dependency_context_includes_type_field():
     int_aspect.depends_on = ["population"]
     
     pop_step = session.add_step(pop_aspect)
-    pop_step.initial_summary = "Adults aged 18-65"
+    pop_step.refined_value = "Adults aged 18-65"
     
     session.add_step(int_aspect)
     
@@ -398,7 +398,7 @@ def test_dependency_context_formats_complex_types():
     out_aspect.depends_on = ["intervention"]
     
     int_step = session.add_step(int_aspect)
-    int_step.initial_summary = json.dumps({"name": "metformin", "dosage": "500mg"})
+    int_step.refined_value = json.dumps({"name": "metformin", "dosage": "500mg"})
     
     session.add_step(out_aspect)
     
@@ -421,7 +421,7 @@ def test_dependency_context_with_array_type():
     cmp_aspect.depends_on = ["outcomes"]
     
     out_step = session.add_step(out_aspect)
-    out_step.initial_summary = json.dumps(["HbA1c", "Weight", "QoL"])
+    out_step.refined_value = json.dumps(["HbA1c", "Weight", "QoL"])
     
     session.add_step(cmp_aspect)
     
@@ -515,7 +515,7 @@ def test_incremental_synthesis_string_builds_up():
         "clarifying_question": "What age?",
         "population": "Adults"
     }))
-    assert refiner.current_synthesized_value == "Adults"
+    assert refiner.refined_value == "Adults"
     
     # Response 2: More info
     refiner.add_follow_up("Q2", json.dumps({
@@ -524,7 +524,7 @@ def test_incremental_synthesis_string_builds_up():
         "clarifying_question": "What condition?",
         "population": "Adults aged 18-65"
     }))
-    assert refiner.current_synthesized_value == "Adults aged 18-65"
+    assert refiner.refined_value == "Adults aged 18-65"
     
     # Response 3: Complete
     refiner.add_follow_up("Q3", json.dumps({
@@ -533,7 +533,7 @@ def test_incremental_synthesis_string_builds_up():
         "clarifying_question": "",
         "population": "Adults aged 18-65 with Type 2 diabetes"
     }))
-    assert refiner.current_synthesized_value == "Adults aged 18-65 with Type 2 diabetes"
+    assert refiner.refined_value == "Adults aged 18-65 with Type 2 diabetes"
 
 
 def test_incremental_synthesis_object_adds_fields():
@@ -548,7 +548,7 @@ def test_incremental_synthesis_object_adds_fields():
         "clarifying_question": "What dosage?",
         "intervention": {"name": "metformin"}
     }))
-    value = refiner.current_synthesized_value
+    value = refiner.refined_value
     assert value["name"] == "metformin"
     assert "dosage" not in value
     
@@ -559,7 +559,7 @@ def test_incremental_synthesis_object_adds_fields():
         "clarifying_question": "How long?",
         "intervention": {"name": "metformin", "dosage": "500mg twice daily"}
     }))
-    value = refiner.current_synthesized_value
+    value = refiner.refined_value
     assert value["name"] == "metformin"
     assert value["dosage"] == "500mg twice daily"
     
@@ -574,7 +574,7 @@ def test_incremental_synthesis_object_adds_fields():
             "duration": "12 weeks"
         }
     }))
-    value = refiner.current_synthesized_value
+    value = refiner.refined_value
     assert len(value) == 3
     assert value["duration"] == "12 weeks"
 
@@ -591,7 +591,7 @@ def test_incremental_synthesis_array_adds_items():
         "clarifying_question": "Other outcomes?",
         "outcomes": ["HbA1c via blood test"]
     }))
-    value = refiner.current_synthesized_value
+    value = refiner.refined_value
     assert len(value) == 1
     
     # Response 2: More items
@@ -601,7 +601,7 @@ def test_incremental_synthesis_array_adds_items():
         "clarifying_question": "",
         "outcomes": ["HbA1c via blood test", "Weight at 12 weeks", "QoL score"]
     }))
-    value = refiner.current_synthesized_value
+    value = refiner.refined_value
     assert len(value) == 3
 
 
