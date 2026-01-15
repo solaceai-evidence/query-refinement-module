@@ -52,7 +52,7 @@ import logging
 import textwrap
 from dataclasses import dataclass, field
 from enum import Enum
-from typing import Any, Callable, Dict, List, Optional
+from typing import Any, Callable, Dict, List, Optional, Union
 
 from .interfaces import (
     LLMProviderInterface,
@@ -272,11 +272,57 @@ class QueryAspectRefiner:
         return len(self.follow_up_history)
     
     @property
+    def current_synthesized_value(self) -> Optional[Union[str, Dict, List, bool, int, float]]:
+        """
+        Get current synthesized value from dynamic field or fallback.
+        
+        Returns the value from the aspect's dynamic value field (aspect.id) if available,
+        otherwise falls back to initial_summary.
+        
+        Returns:
+            Current synthesized value (any type) or None
+        """
+        if self.follow_up_history:
+            # Iterate backwards through history to find most recent parsed response
+            for entry in reversed(self.follow_up_history):
+                response = entry.get("response", "")
+                # Try to parse as JSON
+                if response and isinstance(response, str) and response.strip().startswith("{"):
+                    try:
+                        parsed = json.loads(response)
+                        if isinstance(parsed, dict):
+                            field_name = self.refinement_aspect.id
+                            if field_name in parsed:
+                                value = parsed[field_name]
+                                # Return non-empty values (handle empty strings, lists, dicts)
+                                if value or isinstance(value, (bool, int, float)):
+                                    return value
+                    except (json.JSONDecodeError, TypeError):
+                        pass  # Continue to next entry
+        
+        # Fallback to initial_summary
+        return self.initial_summary
+    
+    @property
     def final_response(self) -> Optional[str]:
-        """Return the last response recorded for this aspect, if any."""
-        if not self.follow_up_history:
-            return None
-        return self.follow_up_history[-1]['response']
+        """
+        Return the last response recorded for this aspect, or synthesized value.
+        
+        Returns:
+            String representation of the last response
+        """
+        # Try to get from current_synthesized_value first
+        synthesized = self.current_synthesized_value
+        if synthesized is not None:
+            # Convert complex types to string representation
+            if isinstance(synthesized, (dict, list)):
+                return json.dumps(synthesized, ensure_ascii=False)
+            return str(synthesized)
+        
+        # Fallback to last response text
+        if self.follow_up_history:
+            return self.follow_up_history[-1]["response"]
+        return None
 
     def get_system_role(self) -> str:
         """
@@ -400,18 +446,32 @@ class QueryAspectRefiner:
 
         history_text = self.get_conversation_history_text()
         latest_answer = self.final_response or ""
+        
+        # Get current synthesized value for display
+        current_value = self.current_synthesized_value
+        value_display = ""
+        if current_value is not None:
+            field_name = self.refinement_aspect.id
+            if isinstance(current_value, (dict, list)):
+                value_json = json.dumps(current_value, indent=2, ensure_ascii=False)
+                value_display = f"\n\nCURRENT VALUE FOR '{field_name}':\n{value_json}"
+            else:
+                value_display = f"\n\nCURRENT VALUE FOR '{field_name}': {current_value}"
 
         follow_up_preamble = textwrap.dedent(
             f"""
             FOLLOW-UP CONTEXT:
             For aspect "{self.refinement_aspect.aspect_name}", review the conversation history below.
-            Only ask for information that is still missing or unclear.
+            Only ask for information that is still missing or unclear.{value_display}
+            
+            At each response, you MUST update the '{self.refinement_aspect.id}' field with the CUMULATIVE SYNTHESIZED value.
+            This means each response should build upon previous answers, progressively refining the value.
             
             If complete, set ``needs_refinement`` to ``false`` and provide:
             1. A brief explanation of why no further follow-up is needed (explanation field)
-            2. In the ``final_value`` field, provide a SYNTHESIZED answer that:
+            2. In the ``{self.refinement_aspect.id}`` field, provide the FINAL SYNTHESIZED value that:
                - Combines ALL user responses from the entire conversation history
-               - Forms ONE coherent, complete statement
+               - Forms ONE coherent, complete statement (or structured object/array)
                - Removes conversational language ("I think", "maybe", "probably", "I guess", "kind of")
                - Removes filler words and unnecessary elaboration ("well", "you know", "obviously", "definitely")
                - Removes meta-commentary ("I want to study", "I'm interested in", "This research focuses on")
@@ -427,13 +487,13 @@ class QueryAspectRefiner:
               Q3: Any conditions?
               A3: Yeah definitely Type 2 diabetes, but not the gestational kind obviously
             
-            GOOD final_value: "Adults aged 18-65 with Type 2 diabetes (excluding gestational diabetes)"
+            GOOD {self.refinement_aspect.id}: "Adults aged 18-65 with Type 2 diabetes (excluding gestational diabetes)"
             (Synthesizes all 3 answers, removes conversational fluff, forms coherent statement)
             
-            BAD final_value: "Yeah definitely Type 2 diabetes, but not the gestational kind obviously"
+            BAD {self.refinement_aspect.id}: "Yeah definitely Type 2 diabetes, but not the gestational kind obviously"
             (Only last answer - missing age information! Keeps conversational language!)
             
-            BAD final_value: "The user wants to study adults probably 18-65 with Type 2 diabetes"
+            BAD {self.refinement_aspect.id}: "The user wants to study adults probably 18-65 with Type 2 diabetes"
             (Keeps meta-commentary and uncertain language like "wants to study", "probably")
             """
         ).strip()
@@ -516,7 +576,11 @@ class QueryRefinementSession:
             target_refinement_aspect_id: The refinement aspect ID that needs dependency context
             
         Returns:
-            Dictionary mapping dependency IDs to metadata containing the dependency name and value
+            Dictionary mapping dependency IDs to metadata containing:
+            - name: The aspect name
+            - description: The aspect description
+            - value: The actual value (formatted for complex types)
+            - type: The value_field_type (string, object, array, etc.)
         """
         step_index = {step.refinement_aspect.id: step for step in self.steps}
         target_step = step_index.get(target_refinement_aspect_id)
@@ -544,44 +608,44 @@ class QueryRefinementSession:
                 continue
 
             aspect = dep_step.refinement_aspect
+            value_type = aspect.value_field_type
             
+            # Get the raw value
+            raw_value = None
             # Priority 1: initial_summary (contains synthesized value from follow-ups or analysis)
             if dep_step.initial_summary:
-                context[dep_id] = {
-                    "name": aspect.aspect_name,
-                    "description": aspect.aspect_description,
-                    "value": dep_step.initial_summary,
-                }
+                raw_value = dep_step.initial_summary
             # Priority 2: final_response (last answer if no synthesis available)
             elif dep_step.final_response:
-                context[dep_id] = {
-                    "name": aspect.aspect_name,
-                    "description": aspect.aspect_description,
-                    "value": dep_step.final_response,
-                }
+                raw_value = dep_step.final_response
             # Priority 3: latest response from history
             elif dep_step.follow_up_history:
-                latest_response = dep_step.follow_up_history[-1].get("response") or ""
-                context[dep_id] = {
-                    "name": aspect.aspect_name,
-                    "description": aspect.aspect_description,
-                    "value": latest_response,
-                }
+                raw_value = dep_step.follow_up_history[-1].get("response") or ""
             # Priority 4: aspect was clear in original query
             elif dep_step.is_complete and not dep_step.was_skipped:
-                context[dep_id] = {
-                    "name": aspect.aspect_name,
-                    "description": aspect.aspect_description,
-                    "value": (
-                        f"[{aspect.aspect_name} is clear in original query: \"{self.original_query}\"]"
-                    ),
-                }
+                raw_value = f"[{aspect.aspect_name} is clear in original query: \"{self.original_query}\"]"
             # Priority 5: aspect was skipped
             elif dep_step.was_skipped:
+                raw_value = "[User declined to provide additional details for this aspect]"
+            
+            # Format value based on type
+            formatted_value = raw_value
+            if raw_value and value_type in ("object", "array"):
+                # Try to parse and pretty-print JSON for complex types
+                try:
+                    if isinstance(raw_value, str) and raw_value.strip().startswith(('{', '[')):
+                        parsed = json.loads(raw_value)
+                        formatted_value = json.dumps(parsed, indent=2, ensure_ascii=False)
+                except (json.JSONDecodeError, TypeError):
+                    # If parsing fails, use raw value
+                    formatted_value = raw_value
+            
+            if raw_value:
                 context[dep_id] = {
                     "name": aspect.aspect_name,
                     "description": aspect.aspect_description,
-                    "value": "[User declined to provide additional details for this aspect]",
+                    "value": formatted_value,
+                    "type": value_type,
                 }
 
         return context
@@ -1015,7 +1079,15 @@ class QueryRefinementManager:
                 if parsed_payload and parsed_payload.get("is_complete", False):
                     step.is_complete = True
                     step.needs_refinement_rationale = reasoning
-                    if final_value is not None:
+                    # Priority: dynamic field (aspect.id) > legacy final_value > raw response
+                    dynamic_value = parsed_payload.get(step.refinement_aspect.id)
+                    if dynamic_value is not None:
+                        # Store complex types as JSON strings
+                        if isinstance(dynamic_value, (dict, list)):
+                            step.initial_summary = json.dumps(dynamic_value, ensure_ascii=False)
+                        else:
+                            step.initial_summary = str(dynamic_value)
+                    elif final_value is not None:
                         step.initial_summary = final_value
                     else:
                         step.initial_summary = response_text
@@ -1025,7 +1097,15 @@ class QueryRefinementManager:
             if parsed_payload and parsed_payload.get("is_complete", False):
                 step.is_complete = True
                 step.needs_refinement_rationale = reasoning
-                if final_value is not None:
+                # Priority: dynamic field (aspect.id) > legacy final_value > raw response
+                dynamic_value = parsed_payload.get(step.refinement_aspect.id)
+                if dynamic_value is not None:
+                    # Store complex types as JSON strings
+                    if isinstance(dynamic_value, (dict, list)):
+                        step.initial_summary = json.dumps(dynamic_value, ensure_ascii=False)
+                    else:
+                        step.initial_summary = str(dynamic_value)
+                elif final_value is not None:
                     step.initial_summary = final_value
                 else:
                     step.initial_summary = response_text
@@ -1057,7 +1137,7 @@ class QueryRefinementManager:
         return step
 
     def _extract_final_value(self, step: QueryAspectRefiner) -> Optional[str]:
-        """Extract final_value from last response if present."""
+        """Extract final value from last response, prioritizing dynamic field (aspect.id)."""
         final_value = None
         if step.follow_up_history:
             last_response = step.follow_up_history[-1]["response"]
@@ -1065,8 +1145,18 @@ class QueryRefinementManager:
             if last_response and last_response.strip().startswith(('{', '[')):
                 try:
                     payload = json.loads(last_response)
-                    if "final_value" in payload:
+                    # Priority 1: Dynamic field (aspect.id)
+                    dynamic_field_name = step.refinement_aspect.id
+                    if dynamic_field_name in payload:
+                        dynamic_value = payload[dynamic_field_name]
+                        if isinstance(dynamic_value, (dict, list)):
+                            final_value = json.dumps(dynamic_value, ensure_ascii=False)
+                        else:
+                            final_value = str(dynamic_value) if dynamic_value is not None else None
+                    # Priority 2: Legacy final_value field
+                    elif "final_value" in payload:
                         final_value = payload["final_value"]
+                    
                     if payload.get("is_complete", False):
                         step.is_complete = True
                 except Exception as exc:

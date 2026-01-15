@@ -573,7 +573,8 @@ def test_process_next_step_records_follow_up_without_schema():
     assert result["response"] == json_response
     assert step.is_complete
     assert step.follow_up_history[-1]["response"] == json_response
-    assert step.final_response == json_response
+    # final_response now returns the synthesized value from the dynamic field (aspect.id)
+    assert step.final_response == "Synthesized answer"
 
 
 def test_process_next_step_enforces_json_validation():
