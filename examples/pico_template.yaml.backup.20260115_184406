@@ -1,0 +1,979 @@
+pico_clinical_research:
+  - id: population_refinement
+    aspect_name: Population/Patient Specification
+    aspect_description:
+      "Refines the target population or patient group for the clinical research query.
+
+      Ensures demographic characteristics, conditions, and inclusion/exclusion criteria are clearly defined."
+    allow_follow_up: true
+    max_follow_ups: 2
+    refinement_instructions: |
+
+      Analyze whether the following research query adequately specifies the target population or if additional clarification is needed.
+
+      ## QUERY TO ANALYZE: {input}
+
+      ## CONTEXT: Why Population Specification Matters
+
+      Clear population definition is critical for:
+      - Study reproducibility and generalizability
+      - Appropriate patient recruitment and enrollment
+      - Accurate interpretation of research findings
+      - Comparison across different studies
+      - Ethical considerations in research conduct
+
+      ## ANALYSIS FRAMEWORK
+
+      Evaluate the query for the following population characteristics:
+
+      ### 1. DEMOGRAPHIC CHARACTERISTICS
+      - Age range or age groups (pediatric, adult, elderly, specific age ranges)
+      - Gender/sex (male, female, both, gender-specific conditions)
+      - Ethnicity or racial groups (if relevant to the condition or treatment)
+      - Geographic location (if disease prevalence or treatment access varies by region)
+
+      ### 2. CLINICAL CHARACTERISTICS
+      - Primary diagnosis or health condition
+      - Disease stage or severity (early, advanced, acute, chronic)
+      - Comorbidities or concurrent conditions
+      - Previous treatments or medical history
+      - Baseline health status or functional capacity
+
+      ### 3. INCLUSION/EXCLUSION CRITERIA
+      - Specific biomarkers, test results, or diagnostic criteria
+      - Treatment history (treatment-naive, treatment-resistant, etc.)
+      - Treatment history (treatment-naive, treatment-resistant, etc.)
+      - Contraindications or risk factors to exclude
+      - Minimum symptom duration or disease progression
+
+      ### 4. SPECIAL POPULATIONS (if applicable)
+      - Pregnant or breastfeeding women
+      - Immunocompromised patients
+      - Patients with organ dysfunction (renal, hepatic, cardiac)
+      - Vulnerable populations (prisoners, institutionalized individuals)
+
+      ### 5. SAMPLE SIZE AND SETTING
+      - Expected or required sample size characteristics or required sample size characteristics
+      - Clinical setting (primary care, hospital, ICU, outpatient, community)
+      - Recruitment source (single-center, multi-center, population-based)
+
+      ## DECISION CRITERIA
+
+      Mark as NEEDS REFINEMENT if:
+          - Age range is completely unspecified when age is clinically relevant
+          - The health condition lacks specificity (e.g., "patients with cancer" without specifying cancer type)
+          - Disease severity or stage is ambiguous when treatment effects may differ by stage
+          - Critical exclusion criteria are missing that could affect safety or results
+          - The population description is so broad it's unclear who would be enrolled
+          - Special population considerations are ignored when they're likely relevant
+
+      Mark as DOES NOT NEED REFINEMENT if:
+      - The population is sufficiently specified for the research question
+      - Demographic and clinical characteristics are clearly stated or reasonably implicit
+      - The level of detail is appropriate for the study phase or type
+      - Any ambiguity is intentional for broader applicability
+
+      ## GUIDELINES FOR SUGGESTED QUESTIONS
+
+      When refinement is needed, craft questions that:
+      1. Focus on ONE specific aspect of the population definition
+      2. Use clinical terminology appropriate to the domain
+      3. Provide examples or options to guide the user's response
+      4. Are specific enough to be actionable but not overly restrictive
+      5. Consider clinical relevance and practical feasibility
+
+      ### GOOD QUESTION EXAMPLES
+      - "What age range should we focus on? For example: pediatric (0-18 years), adult (18-65 years), elderly (>65 years), or a specific age range?"
+      - "Should we include patients at all disease stages, or focus on specific stages such as early-stage (Stage I-II) or advanced (Stage III-IV)?"
+      - "Are there important comorbidities to exclude? For example, should we exclude patients with severe renal impairment (eGFR <30 mL/min/1.73m²)?"
+      - "Should the study include both treatment-naive patients and those with prior therapy, or focus on one group?"
+
+      ### AVOID THESE QUESTION TYPES
+      - Overly broad: "Can you describe the population better?"
+      - Multiple questions at once: "What age, gender, and disease stage should we use?"
+      - Too technical without context: "What should the CD4 count threshold be?"
+      - Leading questions that assume specificity is needed: "Shouldn't we narrow the age range?"
+
+  - id: intervention_refinement
+    response_format:
+      additional_fields:
+        intervention_aspects_missing: array
+        intervention_type: string
+        safety_criticality: string
+        standard_protocols_available: boolean
+      field_descriptions:
+        intervention_aspects_missing:
+          Array of specific intervention dimensions requiring
+          clarification (e.g., dosage, duration, route_of_administration)
+        intervention_type:
+          Primary category of intervention detected in the query (e.g.,
+          pharmacological, surgical, behavioral, device)
+        safety_criticality:
+          How critical the missing information is for patient safety
+          (high, medium, low)
+        standard_protocols_available:
+          True if well-established protocols exist that
+          might be assumed
+    allow_follow_up: true
+    max_follow_ups: 3
+    metadata:
+      domain: clinical_research
+      framework: PICO
+      priority: critical
+      medical_specialty:
+        - pharmacology
+        - therapeutics
+        - surgery
+        - clinical_trials
+    refinement_instructions: '# TASK: Intervention Specification Analysis
+
+
+      You are a clinical pharmacology and therapeutics expert with deep knowledge of
+      treatment protocols
+
+      and intervention design. Your task is to evaluate whether the research query provides
+      sufficient
+
+      detail about the intervention being studied.
+
+
+      ## QUERY TO ANALYZE
+
+      {input}
+
+
+      ## CONTEXT: Why Intervention Specification Matters
+
+
+      Precise intervention definition is essential for:
+
+      - Reproducibility of treatment protocols across sites
+
+      - Accurate comparison with other studies and existing literature
+
+      - Patient safety and appropriate monitoring
+
+      - Regulatory compliance and approval processes
+
+      - Clinical implementation of research findings
+
+      - Understanding mechanisms of action and dose-response relationships
+
+
+      ## ANALYSIS FRAMEWORK
+
+
+      Systematically evaluate the intervention across these dimensions:
+
+
+      ### 1. INTERVENTION TYPE AND CATEGORY
+
+      - Pharmacological (drug, biologic, vaccine)
+
+      - Surgical or procedural (operation type, technique, approach)
+
+      - Behavioral or psychosocial (therapy type, counseling approach)
+
+      - Device or technology (medical device, diagnostic tool, digital health)
+
+      - Dietary or nutritional (supplement, diet modification)
+
+      - Exercise or physical therapy (program type, intensity)
+
+      - Preventive measure (screening program, prophylaxis)
+
+      - Combination therapy (multiple interventions)
+
+
+      ### 2. PHARMACOLOGICAL INTERVENTIONS
+
+      If applicable, check for:
+
+      - Generic and/or brand name of medication
+
+      - Drug class or mechanism of action
+
+      - Dosage and strength (mg, mcg, IU, etc.)
+
+      - Route of administration (oral, IV, subcutaneous, topical, inhalation)
+
+      - Frequency and timing (daily, BID, TID, QID, weekly, PRN)
+
+      - Duration of treatment (days, weeks, months, ongoing)
+
+      - Dose titration or adjustment protocols
+
+      - Formulation specifics (immediate-release, extended-release, combination products)
+
+
+      ### 3. NON-PHARMACOLOGICAL INTERVENTIONS
+
+      If applicable, check for:
+
+      - Detailed description of the procedure or technique
+
+      - Frequency and duration of sessions or applications
+
+      - Intensity level or progression protocol
+
+      - Provider qualifications or training requirements
+
+      - Setting where intervention is delivered
+
+      - Standardization or protocol adherence measures
+
+      - Use of manuals, guidelines, or standardized materials
+
+
+      ### 4. INTERVENTION TIMING AND CONTEXT
+
+      - When intervention is initiated (disease stage, time point in care pathway)
+
+      - Pre-treatment requirements or washout periods
+
+      - Concomitant medications or treatments allowed/prohibited
+
+      - Rescue medications or interventions permitted
+
+      - Treatment modifications allowed for adverse events
+
+      - Discontinuation criteria
+
+
+      ### 5. INTERVENTION DELIVERY AND ADHERENCE
+
+      - Who delivers the intervention (specialist, generalist, nurse, therapist)
+
+      - Monitoring requirements during treatment
+
+      - Methods to assess and ensure adherence
+
+      - Support or co-interventions provided
+
+      - Patient education or training required
+
+
+      ### 6. SAFETY AND MONITORING
+
+      - Known contraindications or warnings
+
+      - Required baseline assessments or screening
+
+      - Ongoing monitoring parameters
+
+      - Adverse event management protocols
+
+      - Dose reduction or discontinuation rules
+
+
+      ## DECISION CRITERIA
+
+
+      Mark as NEEDS REFINEMENT if:
+
+      - The intervention is named but lacks critical details (e.g., "chemotherapy" without
+      specifying agents)
+
+      - Dosing information is missing when it''s clinically significant
+
+      - Route of administration is ambiguous and multiple routes exist
+
+      - Duration or frequency is unspecified when it affects outcomes
+
+      - The intervention description is so vague multiple different treatments could
+      fit
+
+      - Safety-critical information is missing (e.g., contraindicated combinations)
+
+      - For complex interventions, key components are not described
+
+
+      Mark as DOES NOT NEED REFINEMENT if:
+
+      - The intervention is clearly and specifically described
+
+      - Standard protocols are referenced that are well-established in the field
+
+      - The level of detail is appropriate for the research question phase (e.g., exploratory
+      vs. confirmatory)
+
+      - Any generality is intentional to allow for protocol flexibility
+
+      - The intervention is a well-defined standard of care
+
+
+      ## GUIDELINES FOR SUGGESTED QUESTIONS
+
+
+      When refinement is needed, formulate questions that:
+
+      1. Target the most critical missing information first
+
+      2. Use standard medical and pharmaceutical terminology
+
+      3. Provide concrete examples or ranges relevant to the intervention
+
+      4. Consider both efficacy and safety implications
+
+      5. Acknowledge standard practices in the field
+
+
+      ### GOOD QUESTION EXAMPLES
+
+      - "What specific chemotherapy regimen should be studied? For example: FOLFOX (5-FU,
+      leucovorin, oxaliplatin), FOLFIRI, or single-agent capecitabine?"
+
+      - "What dosage of [drug] should be investigated? Should we use the standard dose
+      of [X mg] or compare multiple doses?"
+
+      - "How long should the intervention be administered? For example: acute treatment
+      (2-4 weeks), standard course (8-12 weeks), or long-term maintenance (6+ months)?"
+
+      - "Should the intervention be delivered as monotherapy or in combination with
+      [standard treatment]?"
+
+      - "What route of administration is intended: oral tablets, intravenous infusion,
+      or subcutaneous injection?"
+
+
+      ### AVOID THESE QUESTION TYPES
+
+      - Too general: "Can you specify the treatment better?"
+
+      - Assuming knowledge: "What''s the optimal dose?" (without providing context)
+
+      - Multiple complex questions: "What dose, frequency, duration, and route should
+      we use?"
+
+      - Overly technical without explanation: "Should we use PK-guided dosing?"'
+    aspect_name: Intervention Specification
+    aspect_description:
+      "Refines the intervention, treatment, or exposure being studied.
+
+      Ensures treatment protocols, dosing, duration, and administration details are adequately specified."
+  - id: comparison_refinement
+    response_format:
+      additional_fields:
+        comparison_type_detected: string
+        ethical_concerns: array
+        appropriate_comparisons: array
+        trial_design_implication: string
+      field_descriptions:
+        comparison_type_detected:
+          The category of comparison identified in the query
+          (placebo, active_control, usual_care, none_specified, multiple_possible)
+        ethical_concerns:
+          Array of ethical considerations that need addressing in comparison
+          choice
+        appropriate_comparisons:
+          Array of suitable comparison options based on clinical
+          context
+        trial_design_implication:
+          Trial design type suggested by the comparison structure
+          (superiority, non_inferiority, equivalence, unclear)
+    allow_follow_up: true
+    max_follow_ups: 2
+    metadata:
+      domain: clinical_research
+      framework: PICO
+      priority: high
+      medical_specialty:
+        - methodology
+        - bioethics
+        - clinical_trials
+    refinement_instructions: '# TASK: Comparison/Control Group Analysis
+
+
+      You are a clinical research methodologist specializing in comparative effectiveness
+      research
+
+      and study design. Your task is to assess whether the research query adequately
+      defines what
+
+      the intervention is being compared against.
+
+
+      ## QUERY TO ANALYZE
+
+      {input}
+
+
+      ## CONTEXT: Why Comparison Specification Matters
+
+
+      A well-defined comparison is crucial for:
+
+      - Establishing causality and attributing effects to the intervention
+
+      - Understanding relative effectiveness and clinical value
+
+      - Making evidence-based treatment decisions
+
+      - Ensuring ethical study design (appropriate use of placebo vs. active controls)
+
+      - Regulatory approval and reimbursement decisions
+
+      - Meta-analyses and systematic reviews
+
+
+      ## ANALYSIS FRAMEWORK
+
+
+      Evaluate the comparison group specification across these dimensions:
+
+
+      ### 1. TYPE OF COMPARISON
+
+
+      Identify if the study involves:
+
+      - **Placebo control**: Inert substance or sham procedure
+
+      - **No treatment/usual care**: Observation without intervention
+
+      - **Active control**: Standard treatment or established therapy
+
+      - **Dose comparison**: Different doses of the same intervention
+
+      - **Head-to-head comparison**: Two or more active interventions
+
+      - **Historical control**: Comparison to previous data or cohorts
+
+      - **Self-controlled/crossover**: Participants serve as their own control
+
+      - **Multiple comparisons**: More than two arms
+
+
+      ### 2. APPROPRIATENESS OF COMPARISON
+
+
+      Assess if the comparison:
+
+      - Is ethically justified (e.g., placebo appropriate when no standard treatment
+      exists)
+
+      - Represents current standard of care or clinically relevant alternative
+
+      - Is feasible and practical to implement
+
+      - Provides clinically meaningful information
+
+      - Aligns with regulatory expectations for the condition
+
+      - Addresses the key clinical question (superiority, non-inferiority, equivalence)
+
+
+      ### 3. COMPARISON GROUP SPECIFICATIONS
+
+
+      For placebo controls, check:
+
+      - Physical characteristics matching the intervention
+
+      - Administration schedule and route
+
+      - Blinding procedures
+
+      - Use of placebo + standard care vs. placebo alone
+
+
+      For active controls, check:
+
+      - Specific name and description of comparator treatment
+
+      - Dosage, route, frequency, and duration
+
+      - Whether it represents optimal or standard dosing
+
+      - Evidence base supporting choice of comparator
+
+      - Concomitant treatments allowed in comparison group
+
+
+      For usual care/standard of care, check:
+
+      - Definition of what constitutes "usual care"
+
+      - Variability expected across sites or providers
+
+      - Documentation or standardization requirements
+
+      - Whether it includes access to rescue treatments
+
+
+      ### 4. TRIAL DESIGN IMPLICATIONS
+
+
+      Consider:
+
+      - **Superiority trial**: Proving new treatment is better than control
+
+      - **Non-inferiority trial**: Proving new treatment is not worse by meaningful
+      margin
+
+      - **Equivalence trial**: Proving treatments are similarly effective
+
+      - Study objective alignment with comparison choice
+
+      - Statistical power and sample size implications
+
+
+      ### 5. BLINDING AND BIAS CONSIDERATIONS
+
+
+      Evaluate:
+
+      - Whether comparison allows for blinding (single, double, triple-blind)
+
+      - Potential for performance or detection bias
+
+      - Need for sham procedures or matching interventions
+
+      - Strategies to minimize differential treatment bias
+
+
+      ### 6. ETHICAL CONSIDERATIONS
+
+
+      Assess:
+
+      - Equipoise: Genuine uncertainty about which treatment is better
+
+      - Risk-benefit balance for participants in comparison group
+
+      - Justification for withholding standard treatment (if applicable)
+
+      - Availability of rescue medications or early stopping rules
+
+      - Informed consent implications
+
+
+      ## DECISION CRITERIA
+
+
+      Mark as NEEDS REFINEMENT if:
+
+      - No comparison is mentioned when one is implied or necessary
+
+      - "Placebo" is mentioned without clarifying if standard care is also provided
+
+      - "Standard treatment" is referenced without specifying what it is
+
+      - The comparison is ethically questionable and not justified
+
+      - Multiple potential comparisons exist and none is specified
+
+      - The comparison group intervention lacks sufficient detail
+
+      - It''s unclear if the comparison matches the research objective (superiority
+      vs. non-inferiority)
+
+
+      Mark as DOES NOT NEED REFINEMENT if:
+
+      - The comparison is clearly specified and appropriate
+
+      - For exploratory studies, lack of comparison is justified
+
+      - The comparison choice is standard and well-established for the condition
+
+      - Sufficient detail is provided for reproducibility
+
+      - Ethical considerations are adequately addressed by the description
+
+
+      ## GUIDELINES FOR SUGGESTED QUESTIONS
+
+
+      When refinement is needed, craft questions that:
+
+      1. Clarify the fundamental comparison type first
+
+      2. Address ethical considerations sensitively
+
+      3. Provide clinically relevant options based on the condition
+
+      4. Consider regulatory and practical constraints
+
+      5. Link comparison choice to study objectives
+
+
+      ### GOOD QUESTION EXAMPLES
+
+      - "What should the intervention be compared against? Options include: (a) placebo
+      plus standard care, (b) active control with [standard treatment], (c) usual care
+      without placebo, or (d) head-to-head comparison with [alternative treatment]."
+
+      - "For the placebo control, should participants also receive standard background
+      therapy, or will placebo be used alone? (Note: placebo alone may raise ethical
+      concerns if effective standard treatment exists.)"
+
+      - "What specific standard treatment should serve as the active comparator? For
+      example: [Treatment A at X mg dose] or [Treatment B at Y mg dose]?"
+
+      - "Is this a superiority trial (showing new treatment is better) or a non-inferiority
+      trial (showing new treatment is not meaningfully worse)? This affects the appropriate
+      comparison choice."
+
+      - "Should we include a three-arm design comparing [Intervention] vs. [Active control]
+      vs. [Placebo], or a simpler two-arm design?"
+
+
+      ### AVOID THESE QUESTION TYPES
+
+      - Too vague: "What''s the control group?"
+
+      - Assuming specifics: "What dose of the comparator drug?" (when drug itself not
+      specified)
+
+      - Ethically insensitive: "Should we use placebo even though standard treatment
+      exists?"
+
+      - Overly complex: Multiple questions about different aspects at once'
+    aspect_name: Comparison/Control Specification
+    aspect_description:
+      "Refines what the intervention is being compared against (comparator,
+      control group, or alternative treatment).
+
+      Ensures the comparison is appropriate, clearly defined, and clinically meaningful"
+  - id: outcome_refinement
+    response_format:
+      additional_fields:
+        outcome_aspects_missing: array
+        outcome_types_identified: array
+        measurement_feasibility: string
+        patient_centeredness_score: float
+        validated_instruments_available: boolean
+      field_descriptions:
+        outcome_aspects_missing:
+          Array of specific gaps in outcome specification (e.g.,
+          primary_outcome_definition, measurement_timing, assessment_tool)
+        outcome_types_identified:
+          Array of outcome categories present in the query (e.g.,
+          clinical, surrogate, patient_reported)
+        measurement_feasibility:
+          Assessment of how practical the outcome measurement
+          is (straightforward, requires_specialized_tools, complex, unclear)
+        patient_centeredness_score:
+          Degree to which outcomes reflect patient-important
+          endpoints (0.0-1.0)
+        validated_instruments_available:
+          True if established validated tools exist for
+          measurement
+    allow_follow_up: true
+    max_follow_ups: 3
+    metadata:
+      domain: clinical_research
+      framework: PICO
+      priority: critical
+      medical_specialty:
+        - outcomes_research
+        - epidemiology
+        - patient_reported_outcomes
+        - clinical_trials
+    refinement_instructions: '# TASK: Outcome Measures Analysis
+
+
+      You are a clinical outcomes researcher with expertise in endpoint selection, measurement,
+
+      and validation. Your task is to evaluate whether the research query adequately
+      defines
+
+      what outcomes will be measured and how effectiveness will be assessed.
+
+
+      ## QUERY TO ANALYZE
+
+      {input}
+
+
+      ## CONTEXT: Why Outcome Specification Matters
+
+
+      Well-defined outcome measures are essential for:
+
+      - Determining if the intervention achieves its intended effects
+
+      - Comparing results across studies and treatments
+
+      - Making clinical decisions and treatment recommendations
+
+      - Regulatory approval and health technology assessment
+
+      - Patient-centered care and shared decision-making
+
+      - Resource allocation and health policy
+
+      - Understanding benefit-risk profiles
+
+
+      ## ANALYSIS FRAMEWORK
+
+
+      Systematically evaluate outcome specification across these dimensions:
+
+
+      ### 1. OUTCOME HIERARCHY AND PRIORITIZATION
+
+
+      Identify if the query specifies:
+
+      - **Primary outcome**: Main endpoint for determining intervention effectiveness
+
+      - **Secondary outcomes**: Additional endpoints of interest
+
+      - **Exploratory outcomes**: Hypothesis-generating measures
+
+      - **Safety outcomes**: Adverse events and tolerability measures
+
+      - **Patient-reported outcomes**: Quality of life, symptoms, functioning
+
+
+      ### 2. OUTCOME TYPE CLASSIFICATION
+
+
+      Categorize outcomes as:
+
+
+      **Clinical outcomes**:
+
+      - Mortality (all-cause, disease-specific, cardiovascular)
+
+      - Morbidity (disease progression, complications, hospitalizations)
+
+      - Clinical events (stroke, MI, fracture, infection)
+
+      - Disease-free survival, progression-free survival
+
+      - Functional status or disability
+
+
+      **Surrogate/intermediate outcomes**:
+
+      - Laboratory values (HbA1c, LDL cholesterol, blood pressure)
+
+      - Biomarkers (tumor markers, inflammatory markers)
+
+      - Imaging findings (tumor size, bone density, ejection fraction)
+
+      - Physiological measurements (FEV1, 6-minute walk distance)
+
+
+      **Patient-reported outcomes (PROs)**:
+
+      - Health-related quality of life (generic or disease-specific)
+
+      - Symptom severity and burden
+
+      - Physical, emotional, and social functioning
+
+      - Treatment satisfaction and preference
+
+      - Activities of daily living
+
+
+      **Healthcare utilization outcomes**:
+
+      - Hospitalizations (rate, duration)
+
+      - Emergency department visits
+
+      - Healthcare costs
+
+      - Time to return to work or normal activities
+
+
+      ### 3. OUTCOME MEASUREMENT SPECIFICS
+
+
+      For each outcome, assess if specified:
+
+      - **Measurement tool or instrument**: Validated scale, test, or assessment method
+
+      - **Measurement units**: Specific units and ranges (mg/dL, mmHg, scale points)
+
+      - **Time points**: When outcomes will be measured (baseline, weeks, months)
+
+      - **Definition of success**: What constitutes a positive outcome or response
+
+      - **Clinically meaningful change**: Minimal important difference (MID)
+
+
+      ### 4. OUTCOME VALIDITY AND RELIABILITY
+
+
+      Consider:
+
+      - Is the outcome validated for the population and condition?
+
+      - Is it sensitive to change with the intervention?
+
+      - Is it objective, or does it require interpretation?
+
+      - What is the measurement error or variability?
+
+      - Are raters blinded to treatment allocation?
+
+      - Is special training required for outcome assessment?
+
+
+      ### 5. OUTCOME RELEVANCE AND IMPORTANCE
+
+
+      Evaluate:
+
+      - **Clinical relevance**: Does the outcome matter to patients and clinicians?
+
+      - **Surrogate validity**: If using surrogate, is it validated to predict clinical
+      outcomes?
+
+      - **Composite outcomes**: Are components clearly defined and appropriately combined?
+
+      - **Patient priorities**: Does the outcome align with what matters to patients?
+
+      - **Regulatory acceptability**: Is the outcome acceptable for regulatory decisions?
+
+
+      ### 6. TIMING AND FOLLOW-UP
+
+
+      Assess specification of:
+
+      - Primary time point for outcome assessment
+
+      - Follow-up duration (short-term, medium-term, long-term)
+
+      - Interim assessments and monitoring schedule
+
+      - Whether timing aligns with expected intervention effect
+
+      - Plans for long-term follow-up beyond trial period
+
+
+      ### 7. SAFETY AND TOLERABILITY OUTCOMES
+
+
+      Check for:
+
+      - Adverse event monitoring and classification
+
+      - Serious adverse event definitions
+
+      - Laboratory safety assessments
+
+      - Tolerability and discontinuation measures
+
+      - Quality of life or functional impairment from side effects
+
+
+      ### 8. COMPOSITE AND MULTIPLE OUTCOMES
+
+
+      If applicable, evaluate:
+
+      - Clear definition of composite endpoint components
+
+      - Clinical rationale for combining outcomes
+
+      - Similar importance and clinical relevance of components
+
+      - Statistical approaches to multiple outcomes
+
+      - Hierarchical testing or multiplicity adjustment plans
+
+
+      ## DECISION CRITERIA
+
+
+      Mark as NEEDS REFINEMENT if:
+
+      - No outcome is specified when effectiveness needs to be measured
+
+      - Outcome is too vague (e.g., "improvement" without defining what improves)
+
+      - Multiple possible outcomes exist and none is prioritized
+
+      - The outcome-intervention link is unclear or inappropriate
+
+      - Time frame for assessment is not specified when it matters
+
+      - Outcome measure is not validated or appropriate for the population
+
+      - Using surrogate outcome without justification or validation evidence
+
+      - Safety outcomes are not mentioned when they''re critical
+
+
+      Mark as DOES NOT NEED REFINEMENT if:
+
+      - Outcome(s) are clearly and specifically defined
+
+      - Measurement approach is standard and well-established
+
+      - Timing is specified or reasonably implied
+
+      - The outcome directly addresses the research question
+
+      - Clinically meaningful and validated measures are referenced
+
+      - Level of detail is appropriate for the study phase
+
+
+      ## GUIDELINES FOR SUGGESTED QUESTIONS
+
+
+      When refinement is needed, formulate questions that:
+
+      1. Focus on the most important outcome gap first (usually primary outcome)
+
+      2. Provide clinically relevant outcome options specific to the condition
+
+      3. Distinguish between different types of outcomes (clinical vs. surrogate, primary
+      vs. secondary)
+
+      4. Include measurement considerations when relevant
+
+      5. Consider patient-important outcomes alongside clinical endpoints
+
+
+      ### GOOD QUESTION EXAMPLES
+
+      - "What should be the primary outcome measure? Options include: (a) mortality
+      rate at 1 year, (b) disease-free survival, (c) change in [specific biomarker],
+      or (d) quality of life assessed by [validated instrument]?"
+
+      - "At what time point should the primary outcome be assessed? For example: 12
+      weeks (short-term), 6 months (medium-term), or 1 year (long-term)?"
+
+      - "How should we measure [symptom/condition improvement]? Should we use: (a) validated
+      scale such as [Scale Name], (b) clinical assessment of [specific parameter], or
+      (c) patient-reported improvement?"
+
+      - "Should we focus on a clinical outcome like cardiovascular events, or an intermediate
+      outcome like LDL cholesterol reduction? Note: clinical outcomes are preferred
+      but require larger samples and longer follow-up."
+
+      - "What safety outcomes should be monitored? For example: treatment-emergent adverse
+      events, laboratory abnormalities, treatment discontinuation rates?"
+
+      - "Should we measure quality of life or functional outcomes in addition to clinical
+      efficacy? If so, which validated instrument is most appropriate: [Option A], [Option
+      B], or [Option C]?"
+
+
+      ### AVOID THESE QUESTION TYPES
+
+      - Too general: "What outcomes should we measure?"
+
+      - Technical without context: "Should we use the FACIT scale?" (without explaining
+      what it measures)
+
+      - Assuming knowledge: "What''s the best outcome measure?" (without providing options)
+
+      - Multiple complex questions: "What outcome, when measured, using which tool,
+      at what threshold?"'
+    aspect_name: Outcome Measures Specification
+    aspect_description:
+      "Refines what outcomes will be measured to assess intervention effectiveness.
+
+      Ensures outcomes are clinically meaningful, measurable, and appropriate for the research question"
