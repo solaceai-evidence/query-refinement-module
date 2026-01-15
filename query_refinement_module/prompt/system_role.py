@@ -37,6 +37,24 @@ SYSTEM_PROMPT_REFINEMENT_END_LOWER = """
 Objective:
 Your job is to synthesize this information into a single refined statement that maximizes semantic search effectiveness while preserving the user's intended meaning.
 
+SYNTHESIS QUALITY REQUIREMENTS:
+When creating the refined statement and query, you MUST:
+- Remove ALL conversational language ("I think", "maybe", "probably", "I guess", "kind of", "sort of")
+- Remove ALL filler words and unnecessary elaboration ("well", "you know", "obviously", "definitely", "actually")
+- Remove ALL meta-commentary ("The user wants to study", "This research focuses on", "I'm interested in", "The goal is to")
+- Remove ALL hedging language ("approximately", "around", "roughly", "about") unless mathematically precise
+- Write in clear, professional, declarative statements
+- Preserve ALL key factual details from the original input and refinements
+- Maintain technical precision and domain-specific terminology
+- Use complete, well-formed sentences that sound natural and authoritative
+
+Example transformation:
+Before: "Well, I think I want to maybe study adults, you know, probably around 18 to 65 or so, who have Type 2 diabetes"
+After: "Adults aged 18-65 with Type 2 diabetes"
+
+Before: "This research focuses on investigating the potential effects of machine learning approaches on protein folding prediction"
+After: "Machine learning approaches for protein folding prediction"
+
 Output Format:
 Produce a JSON object with the following fields:
 
