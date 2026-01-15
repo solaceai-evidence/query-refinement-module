@@ -248,7 +248,8 @@ def test_query_aspect_refiner_get_prompts_includes_dependency_context(caplog):
 
     assert "You are a research advisor" in system_prompt
     assert "Previous refinements" in user_prompt
-    assert "Dep: Value" in user_prompt
+    # Updated: Now formatted as **Name**: Value
+    assert "**Dep**: Value" in user_prompt
     assert "Original query" in user_prompt
     assert any("depends on ['missing']" in record.message for record in caplog.records)
 
@@ -486,7 +487,8 @@ def test_manager_initialize_applies_dependency_context():
 
     # Dependency context for aspect B should include Aspect A value from original query (clear)
     ctx = session.get_dependency_context("b")
-    assert ctx["a"]["value"].startswith("[Aspect A is clear")
+    # Updated: Now uses initial_summary directly instead of wrapping in "is clear" message
+    assert ctx["a"]["value"] == "Clear"
 
 
 def test_ensure_step_is_ready_autocompletes_dependent_aspect():
@@ -554,17 +556,19 @@ def test_process_next_step_returns_none_when_no_pending():
 
 def test_process_next_step_records_follow_up_without_schema():
     aspect = make_aspect()
-    manager = build_manager(responses=["Answer"], analysis_results={})
+    # Updated: Provide valid JSON matching BASE_SCHEMA_FIELDS
+    json_response = json.dumps({"needs_refinement": False, "explanation": "Answer", "clarifying_question": ""})
+    manager = build_manager(responses=[json_response, json_response, json_response], analysis_results={})
     session = QueryRefinementSession(original_query="query")
     step = session.add_step(aspect)
     step.refinement_question = "Question?"
 
     result = manager.process_next_step(session)
 
-    assert result["response"] == "Answer"
+    assert result["response"] == json_response
     assert step.is_complete
-    assert step.follow_up_history[-1]["response"] == "Answer"
-    assert step.final_response == "Answer"
+    assert step.follow_up_history[-1]["response"] == json_response
+    assert step.final_response == json_response
 
 
 def test_process_next_step_enforces_json_validation():

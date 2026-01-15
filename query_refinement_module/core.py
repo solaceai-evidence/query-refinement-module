@@ -287,14 +287,14 @@ class QueryAspectRefiner:
         """
         return self.refinement_aspect.get_system_role()
     
-    def get_prompts(self, query: str, dependency_context: Optional[Dict[str, str]] = None, **kwargs) -> tuple[str, str]:
+    def get_prompts(self, query: str, dependency_context: Optional[Dict[str, Dict[str, str]]] = None, **kwargs) -> tuple[str, str]:
         """
         Get both system and user prompts for this refinement aspect with dependency context.
         
         Args:
             query: The query to analyze
             dependency_context: Mapping of dependency IDs to dictionaries containing
-                human-readable names and values used for prompt context
+                human-readable names, descriptions, and values used for prompt context
             **kwargs: Additional context for prompt formatting
             
         Returns:
@@ -310,7 +310,14 @@ class QueryAspectRefiner:
                 entry = dependency_context.get(dep_id)
                 if entry and entry.get("value"):
                     dep_name = entry.get("name") or dep_id.replace("_", " ").title()
-                    context_lines.append(f"- {dep_name}: {entry['value']}")
+                    dep_desc = entry.get("description", "")
+                    dep_value = entry["value"]
+                    
+                    # Format: **Name** (Description): Value
+                    if dep_desc:
+                        context_lines.append(f"- **{dep_name}** ({dep_desc}): {dep_value}")
+                    else:
+                        context_lines.append(f"- **{dep_name}**: {dep_value}")
                 else:
                     missing_deps.append(dep_id)
 
@@ -397,9 +404,37 @@ class QueryAspectRefiner:
         follow_up_preamble = textwrap.dedent(
             f"""
             FOLLOW-UP CONTEXT:
-            For aspect "{self.refinement_aspect.aspect_name}", review the conversation history. 
-            Only ask for info that is still missing or unclear. 
-            If complete, set ``needs_refinement`` to ``false`` and briefly explain why no further follow-up is needed.
+            For aspect "{self.refinement_aspect.aspect_name}", review the conversation history below.
+            Only ask for information that is still missing or unclear.
+            
+            If complete, set ``needs_refinement`` to ``false`` and provide:
+            1. A brief explanation of why no further follow-up is needed (explanation field)
+            2. In the ``final_value`` field, provide a SYNTHESIZED answer that:
+               - Combines ALL user responses from the entire conversation history
+               - Forms ONE coherent, complete statement
+               - Removes conversational language ("I think", "maybe", "probably", "I guess", "kind of")
+               - Removes filler words and unnecessary elaboration ("well", "you know", "obviously", "definitely")
+               - Removes meta-commentary ("I want to study", "I'm interested in", "This research focuses on")
+               - Includes all key factual details from ALL answers
+               - Is written as a clear, declarative statement (not as an answer to a question)
+               - Focuses on essential information only
+            
+            Example conversation:
+              Q1: What age group?
+              A1: Well, I'm thinking probably adults, you know, not kids
+              Q2: Specific ages?
+              A2: Maybe like 18 to 65 or so
+              Q3: Any conditions?
+              A3: Yeah definitely Type 2 diabetes, but not the gestational kind obviously
+            
+            GOOD final_value: "Adults aged 18-65 with Type 2 diabetes (excluding gestational diabetes)"
+            (Synthesizes all 3 answers, removes conversational fluff, forms coherent statement)
+            
+            BAD final_value: "Yeah definitely Type 2 diabetes, but not the gestational kind obviously"
+            (Only last answer - missing age information! Keeps conversational language!)
+            
+            BAD final_value: "The user wants to study adults probably 18-65 with Type 2 diabetes"
+            (Keeps meta-commentary and uncertain language like "wants to study", "probably")
             """
         ).strip()
 
@@ -508,27 +543,44 @@ class QueryRefinementSession:
                 )
                 continue
 
-            if dep_step.final_response:
+            aspect = dep_step.refinement_aspect
+            
+            # Priority 1: initial_summary (contains synthesized value from follow-ups or analysis)
+            if dep_step.initial_summary:
                 context[dep_id] = {
-                    "name": dep_step.refinement_aspect.aspect_name,
+                    "name": aspect.aspect_name,
+                    "description": aspect.aspect_description,
+                    "value": dep_step.initial_summary,
+                }
+            # Priority 2: final_response (last answer if no synthesis available)
+            elif dep_step.final_response:
+                context[dep_id] = {
+                    "name": aspect.aspect_name,
+                    "description": aspect.aspect_description,
                     "value": dep_step.final_response,
                 }
+            # Priority 3: latest response from history
             elif dep_step.follow_up_history:
                 latest_response = dep_step.follow_up_history[-1].get("response") or ""
                 context[dep_id] = {
-                    "name": dep_step.refinement_aspect.aspect_name,
+                    "name": aspect.aspect_name,
+                    "description": aspect.aspect_description,
                     "value": latest_response,
                 }
+            # Priority 4: aspect was clear in original query
             elif dep_step.is_complete and not dep_step.was_skipped:
                 context[dep_id] = {
-                    "name": dep_step.refinement_aspect.aspect_name,
+                    "name": aspect.aspect_name,
+                    "description": aspect.aspect_description,
                     "value": (
-                        f"[{dep_step.refinement_aspect.aspect_name} is clear in original query: \"{self.original_query}\"]"
+                        f"[{aspect.aspect_name} is clear in original query: \"{self.original_query}\"]"
                     ),
                 }
+            # Priority 5: aspect was skipped
             elif dep_step.was_skipped:
                 context[dep_id] = {
-                    "name": dep_step.refinement_aspect.aspect_name,
+                    "name": aspect.aspect_name,
+                    "description": aspect.aspect_description,
                     "value": "[User declined to provide additional details for this aspect]",
                 }
 
@@ -2178,24 +2230,42 @@ class QueryRefinementManager:
     def _gather_refinement_details(
         self, session: QueryRefinementSession
     ) -> tuple[List[tuple[str, str]], List[tuple[str, str]]]:
-        """Collect refinement clarifications and baseline summaries for synthesis."""
+        """Collect refinement clarifications and baseline summaries for synthesis.
+        
+        Prioritizes initial_summary (synthesized values) over final_response (raw last answer)
+        to ensure clean, professional values are used in synthesis.
+        """
 
         clarifications: List[tuple[str, str]] = []
         baseline_summaries: List[tuple[str, str]] = []
 
         for step in session.steps:
+            if step.was_skipped:
+                continue
+            
+            # Priority 1: initial_summary (contains synthesized value from follow-ups or analysis)
+            if step.initial_summary:
+                summary = step.initial_summary.strip()
+                if summary:
+                    if step.follow_up_history:
+                        # Had follow-ups, so this is a refined/synthesized value
+                        clarifications.append((step.refinement_aspect.aspect_name, summary))
+                    else:
+                        # No follow-ups, was clear in original query
+                        baseline_summaries.append((step.refinement_aspect.aspect_name, summary))
+                    continue
+            
+            # Priority 2: final_response (fallback to last answer if no synthesis available)
             final_value = (step.final_response or "").strip()
             if final_value:
                 clarifications.append((step.refinement_aspect.aspect_name, final_value))
                 continue
-
-            if step.was_skipped:
-                continue
-
+            
+            # Priority 3: needs_refinement_rationale (explanation why aspect was clear)
             if step.is_complete:
-                summary = (step.initial_summary or step.needs_refinement_rationale or "").strip()
-                if summary:
-                    baseline_summaries.append((step.refinement_aspect.aspect_name, summary))
+                rationale = (step.needs_refinement_rationale or "").strip()
+                if rationale:
+                    baseline_summaries.append((step.refinement_aspect.aspect_name, rationale))
 
         return clarifications, baseline_summaries
 
