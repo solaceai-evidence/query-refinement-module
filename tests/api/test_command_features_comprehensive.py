@@ -17,6 +17,7 @@ from typing import Dict, Any, Optional
 # Test configuration
 BASE_URL = "http://localhost:8000"
 TEST_USER = {
+    "username": "commandtest",
     "email": "command_test@example.com",
     "password": "TestPass123!",
     "name": "Command Test User"

@@ -76,6 +76,7 @@ def get_auth_headers() -> Dict[str, str]:
 def test_1_register_user():
     """Test user registration."""
     payload = {
+        "username": "testuser",
         "email": "test@example.com",
         "name": "Test User",
         "password": "TestPass123!"
@@ -92,7 +93,7 @@ def test_1_register_user():
 def test_2_login():
     """Test user login and get JWT token."""
     payload = {
-        "username": "test@example.com",  # OAuth2 uses 'username' field
+        "username": "testuser",  # Use username, not email
         "password": "TestPass123!"
     }
     response = requests.post(
