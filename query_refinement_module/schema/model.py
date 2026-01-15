@@ -139,7 +139,7 @@ class RefinementAspect:
     clarification, such as temporal scope, target population, methodology, etc.
 
     The aspect includes:
-    - An to determine if refinement is needed
+    - An analysis prompt to determine if refinement is needed
     - Optional system prompt to set the AI's role/persona
     - Optional example queries for few-shot learning and prompt engineering
     - A response format specification for consistent, structured responses
@@ -182,7 +182,7 @@ class RefinementAspect:
     # developer prompt - should focus on analysis logic, not response format (REQUIRED)
     refinement_instructions: str
     
-    # Optional: System prompt defining AI role/persona for this refinement aspect
+    # Optional: System prompt defining AI role/persona for this refinement aspect (if none, use system-level default)
     # Example: "You are a clinical research expert specializing in population definition."
     system_prompt: Optional[str] = None
 
@@ -194,6 +194,12 @@ class RefinementAspect:
     # Optional: Define expected response format separately from the prompt
     # This allows for consistent response structures and validation
     response_format: Optional[Dict[str, Any]] = None
+    
+    # Dynamic value field configuration
+    # The value field stores the synthesized answer for this aspect
+    # Field name always matches aspect.id (automatic, not configurable)
+    value_field_type: str = "string"  # Type: string, array, object, boolean, integer, float
+    value_field_description: Optional[str] = None  # Describes what content the field should contain
     
     # Dependencies: List of refinement aspect IDs this refinement aspect depends on
     # Only declared dependencies will be included in the analysis context
@@ -224,11 +230,19 @@ class RefinementAspect:
 
     def __post_init__(self):
         """Validate schema structure at load time."""
-        # 1. Validate response_format structure (if provided)
+        # 1. Validate value_field_type
+        valid_types = {"string", "boolean", "integer", "float", "array", "object"}
+        if self.value_field_type.lower() not in valid_types:
+            raise ValueError(
+                f"Invalid value_field_type '{self.value_field_type}' for aspect '{self.id}'. "
+                f"Valid types: {', '.join(sorted(valid_types))}"
+            )
+        
+        # 2. Validate response_format structure (if provided)
         if self.response_format:
             self._validate_response_format_structure()
         
-        # 2. Validate examples structure (if provided)
+        # 3. Validate examples structure (if provided)
         if self.examples:
             self._validate_examples_structure()
     
@@ -517,43 +531,90 @@ class RefinementAspect:
         # Add header for the entire examples section
         return "--- GUIDANCE EXAMPLES ---\n" + "\n".join(sections)
     
+    def _get_complete_schema_fields(self) -> Dict[str, str]:
+        """
+        Get complete schema fields including base fields and dynamic value field.
+        
+        Returns:
+            Dictionary mapping field names to types
+        """
+        # Start with base fields
+        schema = self.BASE_SCHEMA_FIELDS.copy()
+        
+        # Add dynamic value field using aspect.id as field name
+        schema[self.id] = self.value_field_type
+        
+        # Add any additional custom fields from response_format
+        if self.response_format:
+            additional = self.response_format.get("additional_fields", {})
+            schema.update(additional)
+        
+        return schema
+    
+    def _get_complete_field_descriptions(self) -> Dict[str, str]:
+        """
+        Get complete field descriptions including auto-generated synthesis instructions.
+        
+        Returns:
+            Dictionary mapping field names to descriptions
+        """
+        descriptions = self.BASE_FIELD_DESCRIPTIONS.copy()
+        
+        # Build description for dynamic value field
+        # System adds synthesis requirements automatically
+        user_desc = self.value_field_description or f"The {self.aspect_name}"
+        
+        synthesis_instructions = (
+            "\nSYNTHESIS REQUIRED: Update this field incrementally at EVERY response. "
+            "Combine ALL previous user responses into this single field. "
+            "Remove conversational language, filler words, and meta-commentary. "
+            "Keep only factual content in clear, declarative form."
+        )
+        
+        descriptions[self.id] = f"{user_desc}{synthesis_instructions}"
+        
+        # Add custom descriptions from response_format
+        if self.response_format:
+            custom = self.response_format.get("field_descriptions", {})
+            descriptions.update(custom)
+        
+        return descriptions
+    
     def _format_response_instructions(self) -> str:
         """
         Format response_format into clear instructions.
-        Always includes base fields, plus any additional custom fields.
+        Includes base fields, dynamic value field, and any additional custom fields.
         """
         instructions = ["Respond in the following JSON format:"]
         
-        # Build complete schema: base fields + additional fields
-        complete_schema = self.BASE_SCHEMA_FIELDS.copy()
-        complete_descriptions = self.BASE_FIELD_DESCRIPTIONS.copy()
+        # Get complete schema with dynamic field
+        complete_schema = self._get_complete_schema_fields()
+        complete_descriptions = self._get_complete_field_descriptions()
         
-        # Add additional fields if specified
-        if self.response_format:
-            additional_fields = self.response_format.get("additional_fields", {})
-            complete_schema.update(additional_fields)
-            
-            # Add custom field descriptions if provided
-            custom_descriptions = self.response_format.get("field_descriptions", {})
-            complete_descriptions.update(custom_descriptions)
-        
-        if self.response_format:
-            schema_example = {key: f"<{ftype}>" for key, ftype in complete_schema.items()}
-            instructions.append(f"\n```json\n{json.dumps(schema_example, indent=2)}\n```")
+        # Show schema example
+        schema_example = {key: f"<{ftype}>" for key, ftype in complete_schema.items()}
+        instructions.append(f"\n```json\n{json.dumps(schema_example, indent=2)}\n```")
         
         # Add field descriptions
         instructions.append("\nField descriptions:")
         for field_name, ftype in complete_schema.items():
             desc = complete_descriptions.get(field_name, f"Value of type {ftype}")
-            required = " (REQUIRED)" if field_name in self.BASE_SCHEMA_FIELDS else " (optional)"
-            instructions.append(f"- {field_name} ({ftype}){required}: {desc}")
+            
+            # Mark required fields (base fields + dynamic value field)
+            is_required = (
+                field_name in self.BASE_SCHEMA_FIELDS or 
+                field_name == self.id  # Dynamic value field is REQUIRED
+            )
+            required_tag = " (REQUIRED)" if is_required else " (optional)"
+            
+            instructions.append(f"- {field_name} ({ftype}){required_tag}: {desc}")
         
         return "\n".join(instructions)
     
     def validate_response(self, response: Dict[str, Any]) -> tuple[bool, Optional[str]]:
         """
         Validate that a response contains all required fields with correct types.
-        Validates both base fields and custom fields defined in response_format.
+        Validates base fields, dynamic value field, and custom fields.
         
         Args:
             response: The response dictionary to validate
@@ -566,9 +627,13 @@ class RefinementAspect:
         for field_name in self.BASE_SCHEMA_FIELDS.keys():
             if field_name not in response:
                 missing_fields.append(field_name)
+        
+        # Check dynamic value field is present
+        if self.id not in response:
+            missing_fields.append(self.id)
 
         if missing_fields:
-            return False, f"Missing required base fields: {', '.join(missing_fields)}"
+            return False, f"Missing required fields: {', '.join(missing_fields)}"
         
         # Validate base field types
         validation_errors = []
@@ -581,6 +646,15 @@ class RefinementAspect:
         
         if not isinstance(response.get("clarifying_question"), str):
             validation_errors.append("'clarifying_question' must be a string")
+        
+        # Validate dynamic value field type
+        if self.id in response:
+            value = response[self.id]
+            type_valid, type_error = self._validate_field_type(
+                self.id, value, self.value_field_type
+            )
+            if not type_valid:
+                validation_errors.append(type_error)
         
         # Validate custom fields if response_format is defined
         if self.response_format:
@@ -672,6 +746,9 @@ class RefinementAspect:
         # Check for unexpected fields
         warnings = []
         expected_fields = set(self.BASE_SCHEMA_FIELDS.keys())
+        
+        # Add dynamic value field to expected fields
+        expected_fields.add(self.id)
         
         if self.response_format:
             additional_fields = self.response_format.get("additional_fields", {})

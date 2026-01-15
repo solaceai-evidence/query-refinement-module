@@ -37,10 +37,10 @@ def make_aspect(id="aspect", allow_follow_up=True, max_follow_ups=2):
 
 def test_followup_loop_stops_on_is_complete():
     aspect = make_aspect()
-    # Updated: Only 1 response per round (validation succeeds with warnings)
+    # Updated: Include dynamic value field (aspect.id)
     responses = [
-        '{"needs_refinement": true, "explanation": "Needs more", "clarifying_question": "Clarify?", "is_complete": false}',
-        '{"needs_refinement": false, "explanation": "Clear", "clarifying_question": "", "final_value": "Clear", "is_complete": true}',
+        '{"needs_refinement": true, "explanation": "Needs more", "clarifying_question": "Clarify?", "aspect": "", "is_complete": false}',
+        '{"needs_refinement": false, "explanation": "Clear", "clarifying_question": "", "aspect": "Clear value", "final_value": "Clear", "is_complete": true}',
     ]
     llm = DummyLLMProvider(responses)
     analyzer = DummyAnalyzer({"aspect": AspectAnalysisResult(needs_refinement=True, explanation="", clarifying_question="Q")})
@@ -56,11 +56,11 @@ def test_followup_loop_stops_on_is_complete():
 
 def test_followup_loop_respects_max_rounds():
     aspect = make_aspect(max_follow_ups=1)
-    # Updated: Use BASE_SCHEMA_FIELDS format, provide enough responses for retries
+    # Updated: Include dynamic value field (aspect.id)
     responses = [
-        '{"needs_refinement": true, "explanation": "Needs more", "clarifying_question": "Clarify?"}',
-        '{"needs_refinement": true, "explanation": "Needs more", "clarifying_question": "Clarify?"}',  # retry
-        '{"needs_refinement": true, "explanation": "Needs more", "clarifying_question": "Clarify?"}',  # retry
+        '{"needs_refinement": true, "explanation": "Needs more", "clarifying_question": "Clarify?", "aspect": "partial value"}',
+        '{"needs_refinement": true, "explanation": "Needs more", "clarifying_question": "Clarify?", "aspect": "partial value"}',  # retry
+        '{"needs_refinement": true, "explanation": "Needs more", "clarifying_question": "Clarify?", "aspect": "partial value"}',  # retry
     ]
     llm = DummyLLMProvider(responses)
     analyzer = DummyAnalyzer({"aspect": AspectAnalysisResult(needs_refinement=True, explanation="", clarifying_question="Q")})

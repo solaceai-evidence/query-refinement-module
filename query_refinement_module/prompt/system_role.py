@@ -59,8 +59,8 @@ Output Format:
 Produce a JSON object with the following fields:
 
 1. **publication_years**: Extract any temporal constraints from the user's input or refinements.
-- Current year is 2025. Interpret "recent" as 2022-2025.
-- Convert relative terms to explicit ranges (e.g., "last decade" → 2015-2025, "since 2018" → 2018-2025).
+- Current year is 2026. Interpret "recent" as 2023-2026.
+- Convert relative terms to explicit ranges (e.g., "last decade" → 2016-2026, "since 2018" → 2018-2026).
 - If the user has not specified time constraints, return empty string.
 
 2. **venues**: Extract journals, conferences, or publishers the user has explicitly mentioned as a comma-separated string.
