@@ -1,6 +1,7 @@
 """
 Test script for database setup and CRUD operations.
 """
+import time
 from query_refinement_module.db.session import get_db_session
 from query_refinement_module.db.crud import (
     create_user,
@@ -32,17 +33,19 @@ def test_database_setup():
     with get_db_session() as db:
         # Test user creation
         print("\n1. Creating user...")
-        user = create_user(db, email="test@example.com", name="Test User", password="password123")
+        # Use unique username to avoid conflicts in repeated test runs
+        unique_username = f"testuser_{int(time.time() * 1000)}"
+        user = create_user(db, username=unique_username, password="password123", email=f"{unique_username}@example.com", name="Test User")
         print(f"✓ User created: {user}")
         
         # Test user retrieval
         print("\n2. Retrieving user by email...")
-        retrieved_user = get_user_by_email(db, "test@example.com")
+        retrieved_user = get_user_by_email(db, f"{unique_username}@example.com")
         print(f"✓ User retrieved: {retrieved_user}")
         
         # Test password verification
         print("\n3. Verifying password...")
-        verified_user = verify_user_password(db, "test@example.com", "password123")
+        verified_user = verify_user_password(db, f"{unique_username}@example.com", "password123")
         print(f"✓ Password verified: {verified_user is not None}")
         
         # Test session creation
