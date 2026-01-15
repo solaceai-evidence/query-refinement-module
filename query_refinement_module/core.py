@@ -264,7 +264,10 @@ class QueryAspectRefiner:
     # Contains: needs_refinement_rationale (why refinement needed/not), refinement_question (what to ask)
     needs_refinement_rationale: Optional[str] = None
     refinement_question: Optional[str] = None
-    initial_summary: Optional[str] = None
+    
+    # Single source of truth for the refined value (replaces initial_summary, current_synthesized_value, final_response)
+    # Stores the extracted value from the dynamic field (aspect.id) in its native type
+    refined_value: Optional[Union[str, Dict, List, bool, int, float]] = None
     
     @property
     def follow_up_count(self) -> int:
@@ -272,57 +275,52 @@ class QueryAspectRefiner:
         return len(self.follow_up_history)
     
     @property
-    def current_synthesized_value(self) -> Optional[Union[str, Dict, List, bool, int, float]]:
+    def refined_value_as_str(self) -> Optional[str]:
         """
-        Get current synthesized value from dynamic field or fallback.
-        
-        Returns the value from the aspect's dynamic value field (aspect.id) if available,
-        otherwise falls back to initial_summary.
+        Get string representation of refined value for display/storage.
         
         Returns:
-            Current synthesized value (any type) or None
+            String representation of refined_value (JSON for complex types)
         """
-        if self.follow_up_history:
-            # Iterate backwards through history to find most recent parsed response
-            for entry in reversed(self.follow_up_history):
-                response = entry.get("response", "")
-                # Try to parse as JSON
-                if response and isinstance(response, str) and response.strip().startswith("{"):
-                    try:
-                        parsed = json.loads(response)
-                        if isinstance(parsed, dict):
-                            field_name = self.refinement_aspect.id
-                            if field_name in parsed:
-                                value = parsed[field_name]
-                                # Return non-empty values (handle empty strings, lists, dicts)
-                                if value or isinstance(value, (bool, int, float)):
-                                    return value
-                    except (json.JSONDecodeError, TypeError):
-                        pass  # Continue to next entry
-        
-        # Fallback to initial_summary
-        return self.initial_summary
-    
-    @property
-    def final_response(self) -> Optional[str]:
-        """
-        Return the last response recorded for this aspect, or synthesized value.
-        
-        Returns:
-            String representation of the last response
-        """
-        # Try to get from current_synthesized_value first
-        synthesized = self.current_synthesized_value
-        if synthesized is not None:
-            # Convert complex types to string representation
-            if isinstance(synthesized, (dict, list)):
-                return json.dumps(synthesized, ensure_ascii=False)
-            return str(synthesized)
-        
-        # Fallback to last response text
-        if self.follow_up_history:
-            return self.follow_up_history[-1]["response"]
+        if self.refined_value is not None:
+            if isinstance(self.refined_value, (dict, list)):
+                return json.dumps(self.refined_value, ensure_ascii=False)
+            return str(self.refined_value)
         return None
+    
+    def extract_and_store_value(self, response: str) -> None:
+        """
+        Extract value from dynamic field in response and store in refined_value.
+        
+        Single extraction point - eliminates duplicate logic across codebase.
+        Parses JSON response, extracts aspect.id field, stores with native type.
+        If not JSON, stores the plain text response directly.
+        
+        Args:
+            response: JSON response string from LLM, or plain text
+        """
+        if not response or not isinstance(response, str):
+            return
+            
+        # Try to parse as JSON
+        if response.strip().startswith("{"):
+            try:
+                parsed = json.loads(response)
+                if isinstance(parsed, dict):
+                    field_name = self.refinement_aspect.id
+                    if field_name in parsed:
+                        value = parsed[field_name]
+                        # Store non-empty values (handle empty strings, lists, dicts)
+                        if value or isinstance(value, (bool, int, float)):
+                            self.refined_value = value
+                            return
+            except (json.JSONDecodeError, TypeError):
+                pass  # Not valid JSON, fall through to plain text handling
+        
+        # For non-JSON responses, store the plain text directly
+        # This preserves the behavior where any response contributes to the value
+        if response.strip():
+            self.refined_value = response.strip()
 
     def get_system_role(self) -> str:
         """
@@ -401,13 +399,15 @@ class QueryAspectRefiner:
         """
         Adds a follow-up question/response pair to the history.
         
-        The last response in history becomes the refined_value.
+        Automatically extracts and stores the refined value from the response.
         """
         self.was_skipped = False
         self.follow_up_history.append({
             "question": question,
             "response": response
         })
+        # Extract and store value from response
+        self.extract_and_store_value(response)
     
     def get_conversation_history_text(self) -> str:
         """
@@ -445,10 +445,10 @@ class QueryAspectRefiner:
         """
 
         history_text = self.get_conversation_history_text()
-        latest_answer = self.final_response or ""
+        latest_answer = self.refined_value_as_str or ""
         
-        # Get current synthesized value for display
-        current_value = self.current_synthesized_value
+        # Get current refined value for display
+        current_value = self.refined_value
         value_display = ""
         if current_value is not None:
             field_name = self.refinement_aspect.id
@@ -610,37 +610,35 @@ class QueryRefinementSession:
             aspect = dep_step.refinement_aspect
             value_type = aspect.value_field_type
             
-            # Get the raw value
+            # Get the refined value directly (single source of truth)
             raw_value = None
-            # Priority 1: initial_summary (contains synthesized value from follow-ups or analysis)
-            if dep_step.initial_summary:
-                raw_value = dep_step.initial_summary
-            # Priority 2: final_response (last answer if no synthesis available)
-            elif dep_step.final_response:
-                raw_value = dep_step.final_response
-            # Priority 3: latest response from history
-            elif dep_step.follow_up_history:
-                raw_value = dep_step.follow_up_history[-1].get("response") or ""
-            # Priority 4: aspect was clear in original query
+            
+            if dep_step.refined_value is not None:
+                raw_value = dep_step.refined_value
             elif dep_step.is_complete and not dep_step.was_skipped:
+                # Aspect was clear in original query
                 raw_value = f"[{aspect.aspect_name} is clear in original query: \"{self.original_query}\"]"
-            # Priority 5: aspect was skipped
             elif dep_step.was_skipped:
+                # Aspect was skipped
                 raw_value = "[User declined to provide additional details for this aspect]"
             
             # Format value based on type
             formatted_value = raw_value
             if raw_value and value_type in ("object", "array"):
-                # Try to parse and pretty-print JSON for complex types
-                try:
-                    if isinstance(raw_value, str) and raw_value.strip().startswith(('{', '[')):
+                # Pretty-print JSON for complex types
+                if isinstance(raw_value, (dict, list)):
+                    formatted_value = json.dumps(raw_value, indent=2, ensure_ascii=False)
+                elif isinstance(raw_value, str) and raw_value.strip().startswith(('{', '[')):
+                    try:
                         parsed = json.loads(raw_value)
                         formatted_value = json.dumps(parsed, indent=2, ensure_ascii=False)
-                except (json.JSONDecodeError, TypeError):
-                    # If parsing fails, use raw value
-                    formatted_value = raw_value
+                    except (json.JSONDecodeError, TypeError):
+                        formatted_value = raw_value
+            elif raw_value and not isinstance(raw_value, str):
+                # Convert non-string simple types to string
+                formatted_value = str(raw_value)
             
-            if raw_value:
+            if raw_value is not None:
                 context[dep_id] = {
                     "name": aspect.aspect_name,
                     "description": aspect.aspect_description,
@@ -682,7 +680,7 @@ class QueryRefinementSession:
                     "is_complete": step.is_complete,
                     "needs_review": step.needs_review,
                     "follow_up_count": step.follow_up_count,
-                    "has_refined_value": step.final_response is not None,
+                    "has_refined_value": step.refined_value_as_str is not None,
                 }
             )
 
@@ -724,8 +722,8 @@ class QueryRefinementSession:
                     lines.append(f"  A: {qa['response']}")
                 lines.append("")  # Blank line
             
-            if step.final_response:
-                lines.append(f"  ✓ Final value: {step.final_response}")
+            if step.refined_value_as_str:
+                lines.append(f"  ✓ Final value: {step.refined_value_as_str}")
                 lines.append("")
         
         return "\n".join(lines)
@@ -909,7 +907,7 @@ class QueryRefinementSession:
             return {"success": False, "message": "No active step to finish"}
 
         message = f"Completed refinement aspect: {active.refinement_aspect.aspect_name}"
-        if not active.final_response:
+        if not active.refined_value:
             message += " (no additional details provided)."
 
         return self._finalize_active_step(
@@ -930,7 +928,7 @@ class QueryRefinementSession:
         active.is_complete = True
         active.needs_review = False
         if mark_skipped is None:
-            mark_skipped = not bool(active.final_response)
+            mark_skipped = not bool(active.refined_value)
         active.was_skipped = mark_skipped
 
         return {
@@ -1018,7 +1016,7 @@ class QueryRefinementSession:
                     "follow_up_history": step.follow_up_history,
                     # Completion status
                     "is_complete": step.is_complete,
-                    "refined_value": step.final_response,
+                    "refined_value": step.refined_value_as_str,
                 }
                 for step in self.steps
             ],
@@ -1038,8 +1036,7 @@ class QueryRefinementManager:
         max_followups = max_rounds if max_rounds is not None else step.refinement_aspect.max_follow_ups
 
         if step.is_complete:
-            final_value = self._extract_final_value(step)
-            return self._build_followup_result(step, final_value, rounds)
+            return self._build_followup_result(step, step.refined_value_as_str, rounds)
 
         parsed_payload = None
         final_value = None
@@ -1079,43 +1076,20 @@ class QueryRefinementManager:
                 if parsed_payload and parsed_payload.get("is_complete", False):
                     step.is_complete = True
                     step.needs_refinement_rationale = reasoning
-                    # Priority: dynamic field (aspect.id) > legacy final_value > raw response
-                    dynamic_value = parsed_payload.get(step.refinement_aspect.id)
-                    if dynamic_value is not None:
-                        # Store complex types as JSON strings
-                        if isinstance(dynamic_value, (dict, list)):
-                            step.initial_summary = json.dumps(dynamic_value, ensure_ascii=False)
-                        else:
-                            step.initial_summary = str(dynamic_value)
-                    elif final_value is not None:
-                        step.initial_summary = final_value
-                    else:
-                        step.initial_summary = response_text
+                    # Value already extracted by add_follow_up() -> extract_and_store_value()
                 else:
                     step.is_complete = False
                 break
             if parsed_payload and parsed_payload.get("is_complete", False):
                 step.is_complete = True
                 step.needs_refinement_rationale = reasoning
-                # Priority: dynamic field (aspect.id) > legacy final_value > raw response
-                dynamic_value = parsed_payload.get(step.refinement_aspect.id)
-                if dynamic_value is not None:
-                    # Store complex types as JSON strings
-                    if isinstance(dynamic_value, (dict, list)):
-                        step.initial_summary = json.dumps(dynamic_value, ensure_ascii=False)
-                    else:
-                        step.initial_summary = str(dynamic_value)
-                elif final_value is not None:
-                    step.initial_summary = final_value
-                else:
-                    step.initial_summary = response_text
+                # Value already extracted by add_follow_up() -> extract_and_store_value()
                 break
             # Only update refinement_question if followup_question is not empty
             if followup_question:
                 step.refinement_question = followup_question
 
-        final_value = self._extract_final_value(step)
-        return self._build_followup_result(step, final_value, rounds)
+        return self._build_followup_result(step, step.refined_value_as_str, rounds)
 
     def _get_target_step(
         self,
@@ -1135,36 +1109,6 @@ class QueryRefinementManager:
             else:
                 raise ValueError("No refinement aspect available for follow-up loop")
         return step
-
-    def _extract_final_value(self, step: QueryAspectRefiner) -> Optional[str]:
-        """Extract final value from last response, prioritizing dynamic field (aspect.id)."""
-        final_value = None
-        if step.follow_up_history:
-            last_response = step.follow_up_history[-1]["response"]
-            # Only try to parse as JSON if it looks like JSON (starts with '{' or '[')
-            if last_response and last_response.strip().startswith(('{', '[')):
-                try:
-                    payload = json.loads(last_response)
-                    # Priority 1: Dynamic field (aspect.id)
-                    dynamic_field_name = step.refinement_aspect.id
-                    if dynamic_field_name in payload:
-                        dynamic_value = payload[dynamic_field_name]
-                        if isinstance(dynamic_value, (dict, list)):
-                            final_value = json.dumps(dynamic_value, ensure_ascii=False)
-                        else:
-                            final_value = str(dynamic_value) if dynamic_value is not None else None
-                    # Priority 2: Legacy final_value field
-                    elif "final_value" in payload:
-                        final_value = payload["final_value"]
-                    
-                    if payload.get("is_complete", False):
-                        step.is_complete = True
-                except Exception as exc:
-                    logger.warning(f"Failed to parse final_value from last response: {exc}")
-            # If it's a plain text response (user answer), just use it as-is
-            elif last_response:
-                final_value = last_response
-        return final_value
 
     def _build_followup_result(
         self,
@@ -1371,7 +1315,8 @@ class QueryRefinementManager:
             or aspect.aspect_description
             or f"Aspect '{aspect.aspect_name}' is sufficiently specified in the original query."
         )
-        step.initial_summary = summary_text.strip()
+        # Store as refined_value (single source of truth)
+        step.refined_value = summary_text.strip()
         logger.debug("Aspect %s is already clear in original query", aspect.aspect_name)
 
     def _log_session_summary(
@@ -1766,7 +1711,8 @@ class QueryRefinementManager:
             or aspect.aspect_description
             or f"Aspect '{aspect.aspect_name}' is sufficiently specified after refreshed analysis."
         )
-        step.initial_summary = summary_text.strip()
+        # Store as refined_value (single source of truth)
+        step.refined_value = summary_text.strip()
 
         logger.debug(
             "Aspect %s marked complete after refreshed analysis", aspect.id
@@ -1775,7 +1721,7 @@ class QueryRefinementManager:
             "dependent_step_autocompleted",
             metadata={
                 "aspect_id": aspect.id,
-                "summary_present": bool(step.initial_summary),
+                "summary_present": bool(step.refined_value),
             },
         )
 
@@ -2322,8 +2268,7 @@ class QueryRefinementManager:
     ) -> tuple[List[tuple[str, str]], List[tuple[str, str]]]:
         """Collect refinement clarifications and baseline summaries for synthesis.
         
-        Prioritizes initial_summary (synthesized values) over final_response (raw last answer)
-        to ensure clean, professional values are used in synthesis.
+        Uses refined_value as single source of truth for synthesized values.
         """
 
         clarifications: List[tuple[str, str]] = []
@@ -2333,9 +2278,15 @@ class QueryRefinementManager:
             if step.was_skipped:
                 continue
             
-            # Priority 1: initial_summary (contains synthesized value from follow-ups or analysis)
-            if step.initial_summary:
-                summary = step.initial_summary.strip()
+            # Use refined_value if available (single source of truth)
+            if step.refined_value is not None:
+                # Convert to string representation
+                if isinstance(step.refined_value, (dict, list)):
+                    summary = json.dumps(step.refined_value, ensure_ascii=False)
+                else:
+                    summary = str(step.refined_value)
+                
+                summary = summary.strip()
                 if summary:
                     if step.follow_up_history:
                         # Had follow-ups, so this is a refined/synthesized value
@@ -2345,13 +2296,7 @@ class QueryRefinementManager:
                         baseline_summaries.append((step.refinement_aspect.aspect_name, summary))
                     continue
             
-            # Priority 2: final_response (fallback to last answer if no synthesis available)
-            final_value = (step.final_response or "").strip()
-            if final_value:
-                clarifications.append((step.refinement_aspect.aspect_name, final_value))
-                continue
-            
-            # Priority 3: needs_refinement_rationale (explanation why aspect was clear)
+            # Fallback: needs_refinement_rationale (explanation why aspect was clear)
             if step.is_complete:
                 rationale = (step.needs_refinement_rationale or "").strip()
                 if rationale:

@@ -102,7 +102,7 @@ def test_handle_command_skip_marks_step_complete():
     assert payload["success"] is True
     assert step.is_complete is True
     assert step.was_skipped is True
-    assert step.final_response is None
+    assert step.refined_value_as_str is None
 
 
 def test_handle_command_done_without_response_fails():
