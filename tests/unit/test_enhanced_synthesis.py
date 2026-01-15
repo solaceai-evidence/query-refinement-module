@@ -121,9 +121,9 @@ def test_follow_up_prompt_includes_synthesis_instructions():
     
     prompt = refiner.format_follow_up_prompt_template("Original query")
     
-    # Check for synthesis instructions
+    # Check for synthesis instructions (updated to use aspect.id field)
     assert "FOLLOW-UP CONTEXT" in prompt
-    assert "SYNTHESIZED answer" in prompt
+    assert "FINAL SYNTHESIZED value" in prompt or "CUMULATIVE SYNTHESIZED value" in prompt
     assert "Combines ALL user responses" in prompt
     assert "entire conversation history" in prompt
     
@@ -139,9 +139,9 @@ def test_follow_up_prompt_includes_synthesis_instructions():
     assert "declarative statement" in prompt
     assert "not as an answer to a question" in prompt
     
-    # Check for examples
-    assert "GOOD final_value" in prompt
-    assert "BAD final_value" in prompt
+    # Check for examples (now using aspect.id field instead of final_value)
+    assert "GOOD population" in prompt or "GOOD" in prompt
+    assert "BAD population" in prompt or "BAD" in prompt
     assert "Adults aged 18-65 with Type 2 diabetes" in prompt  # Good example
     
     # Verify conversation history is included
