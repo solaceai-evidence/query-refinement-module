@@ -66,6 +66,7 @@ def test_response_format_validates_allowed_types():
             "needs_refinement": True,
             "explanation": "All good",
             "clarifying_question": "Clarify?",
+            "demo": "Some value",  # Dynamic value field (aspect.id)
             "score": 0.75,
         }
     )
@@ -191,7 +192,9 @@ def test_validate_response_missing_base_fields():
     is_valid, error = aspect.validate_response({})
 
     assert not is_valid
-    assert "Missing required base fields" in error
+    assert "Missing required fields" in error
+    assert "needs_refinement" in error
+    assert "demo" in error  # Dynamic value field
 
 
 def test_validate_response_type_errors():
@@ -201,6 +204,7 @@ def test_validate_response_type_errors():
             "needs_refinement": "true",
             "explanation": 123,
             "clarifying_question": None,
+            "demo": "value",  # Dynamic value field
         }
     )
 
@@ -216,6 +220,7 @@ def test_validate_response_strict_warns_on_unexpected_fields():
             "needs_refinement": False,
             "explanation": "All set",
             "clarifying_question": "",
+            "demo": "Some value",  # Dynamic value field
             "extra": "ignored",
         }
     )

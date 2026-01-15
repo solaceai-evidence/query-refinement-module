@@ -556,8 +556,13 @@ def test_process_next_step_returns_none_when_no_pending():
 
 def test_process_next_step_records_follow_up_without_schema():
     aspect = make_aspect()
-    # Updated: Provide valid JSON matching BASE_SCHEMA_FIELDS
-    json_response = json.dumps({"needs_refinement": False, "explanation": "Answer", "clarifying_question": ""})
+    # Updated: Include dynamic value field (aspect.id = "demo")
+    json_response = json.dumps({
+        "needs_refinement": False, 
+        "explanation": "Answer", 
+        "clarifying_question": "",
+        "demo": "Synthesized answer"  # Dynamic value field
+    })
     manager = build_manager(responses=[json_response, json_response, json_response], analysis_results={})
     session = QueryRefinementSession(original_query="query")
     step = session.add_step(aspect)
@@ -578,8 +583,17 @@ def test_process_next_step_enforces_json_validation():
             "field_descriptions": {"confidence": "Confidence"},
         }
     )
-    # First response invalid JSON, second valid
-    responses = ["not json", json.dumps({"needs_refinement": False, "explanation": "ok", "clarifying_question": "", "confidence": 0.9})]
+    # First response invalid JSON, second valid (including dynamic value field)
+    responses = [
+        "not json", 
+        json.dumps({
+            "needs_refinement": False, 
+            "explanation": "ok", 
+            "clarifying_question": "", 
+            "demo": "value",  # Dynamic value field
+            "confidence": 0.9
+        })
+    ]
     manager = build_manager(responses=responses, analysis_results={})
     session = QueryRefinementSession(original_query="query")
     step = session.add_step(aspect)
