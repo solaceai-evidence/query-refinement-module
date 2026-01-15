@@ -1274,10 +1274,20 @@ class QueryRefinementManager:
             step.refinement_question = analysis_result.clarifying_question
             
             if analysis_result.needs_refinement:
-                self._mark_step_needs_refinement(step, aspect, analysis_result)
+                # Mark step as needing refinement
+                step.is_complete = False
+                logger.debug("Aspect %s needs refinement: %s", aspect.aspect_name, analysis_result.explanation)
                 aspects_needing_refinement_count += 1
             else:
-                self._mark_step_complete(step, aspect, analysis_result)
+                # Mark step as complete with summary
+                step.is_complete = True
+                summary_text = (
+                    analysis_result.explanation
+                    or aspect.aspect_description
+                    or f"Aspect '{aspect.aspect_name}' is sufficiently specified in the original query."
+                )
+                step.refined_value = summary_text.strip()
+                logger.debug("Aspect %s is already clear in original query", aspect.aspect_name)
         
         return aspects_needing_refinement_count
 
@@ -1291,33 +1301,6 @@ class QueryRefinementManager:
         step.is_complete = False
         step.needs_refinement_rationale = "Analysis could not be completed"
         step.refinement_question = aspect.aspect_description or f"Please provide details about {aspect.aspect_name}"
-
-    def _mark_step_needs_refinement(
-        self,
-        step: QueryAspectRefiner,
-        aspect: RefinementAspect,
-        analysis_result: "AspectAnalysisResult",
-    ) -> None:
-        """Mark step as needing refinement."""
-        step.is_complete = False
-        logger.debug("Aspect %s needs refinement: %s", aspect.aspect_name, analysis_result.explanation)
-
-    def _mark_step_complete(
-        self,
-        step: QueryAspectRefiner,
-        aspect: RefinementAspect,
-        analysis_result: "AspectAnalysisResult",
-    ) -> None:
-        """Mark step as complete with summary."""
-        step.is_complete = True
-        summary_text = (
-            analysis_result.explanation
-            or aspect.aspect_description
-            or f"Aspect '{aspect.aspect_name}' is sufficiently specified in the original query."
-        )
-        # Store as refined_value (single source of truth)
-        step.refined_value = summary_text.strip()
-        logger.debug("Aspect %s is already clear in original query", aspect.aspect_name)
 
     def _log_session_summary(
         self,
@@ -1794,7 +1777,15 @@ class QueryRefinementManager:
         aspect = step.refinement_aspect
         dependency_context = session.get_dependency_context(aspect.id)
         
-        self._emit_step_processing_start(aspect.id, step.needs_review, len(dependency_context))
+        logger.debug("Processing aspect '%s'", aspect.id)
+        self.trace_emitter.emit(
+            "aspect_processing_start",
+            metadata={
+                "aspect_id": aspect.id,
+                "needs_review": step.needs_review,
+                "dependency_count": len(dependency_context),
+            }
+        )
         
         # Get prompts and call LLM
         system_prompt, user_prompt = step.get_prompts(
@@ -1813,26 +1804,6 @@ class QueryRefinementManager:
             return self._handle_step_error(step, aspect, error_message)
         
         return self._handle_step_success(step, aspect, response_text, parsed_payload)
-
-    def _emit_step_processing_start(
-        self,
-        aspect_id: str,
-        needs_review: bool,
-        dependency_count: int
-    ) -> None:
-        """Emit logging and trace events for step processing start."""
-        logger.debug(
-            "Processing aspect '%s'",
-            aspect_id,
-        )
-        self.trace_emitter.emit(
-            "aspect_processing_start",
-            metadata={
-                "aspect_id": aspect_id,
-                "needs_review": needs_review,
-                "dependency_count": dependency_count,
-            }
-        )
 
     def _handle_step_error(
         self,
@@ -1968,7 +1939,15 @@ class QueryRefinementManager:
             
             # Retry if attempts remain
             if attempt < self.validation_max_retries:
-                self._emit_validation_retry(aspect.id, attempt_number, validation_result.error_message)
+                self.trace_emitter.emit(
+                    "llm_validation_retry",
+                    level="warning",
+                    metadata={
+                        "aspect_id": aspect.id,
+                        "attempt": attempt_number,
+                        "error": validation_result.error_message,
+                    }
+                )
                 prompt = self._augment_prompt_for_retry(
                     base_prompt,
                     validation_result.error_message,
@@ -1978,7 +1957,15 @@ class QueryRefinementManager:
                 continue
             
             # Max retries exhausted
-            self._emit_validation_failed(aspect.id, attempt_number, validation_result.error_message)
+            self.trace_emitter.emit(
+                "llm_validation_failed",
+                level="error",
+                metadata={
+                    "aspect_id": aspect.id,
+                    "attempt": attempt_number,
+                    "error": validation_result.error_message,
+                }
+            )
             return response_text, validation_result.parsed_payload, True, validation_result.error_message
 
         return "", None, True, "Unknown validation failure"
@@ -2147,50 +2134,6 @@ class QueryRefinementManager:
             is_valid=False,
             parsed_payload=parsed_payload,
             error_message=error_message,
-        )
-
-    def _emit_validation_skipped(self, aspect_id: str, attempt_number: int) -> None:
-        """Emit trace event for skipped validation."""
-        self.trace_emitter.emit(
-            "llm_validation_skipped",
-            metadata={
-                "aspect_id": aspect_id,
-                "attempt": attempt_number,
-            }
-        )
-
-    def _emit_validation_retry(
-        self,
-        aspect_id: str,
-        attempt_number: int,
-        error_message: str,
-    ) -> None:
-        """Emit trace event for validation retry."""
-        self.trace_emitter.emit(
-            "llm_validation_retry",
-            level="warning",
-            metadata={
-                "aspect_id": aspect_id,
-                "attempt": attempt_number,
-                "error": error_message,
-            }
-        )
-
-    def _emit_validation_failed(
-        self,
-        aspect_id: str,
-        attempt_number: int,
-        error_message: str,
-    ) -> None:
-        """Emit trace event for validation failure."""
-        self.trace_emitter.emit(
-            "llm_validation_failed",
-            level="error",
-            metadata={
-                "aspect_id": aspect_id,
-                "attempt": attempt_number,
-                "error": error_message,
-            }
         )
 
     @staticmethod
