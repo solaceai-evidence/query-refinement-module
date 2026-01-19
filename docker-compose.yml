@@ -1,13 +1,7 @@
 # Docker Compose configuration for Query Refinement API
 #
-# Services:
-# - api: FastAPI application with Gunicorn
-# - postgres: PostgreSQL database
-# - redis: Redis cache for sessions and rate limiting
-#
-# Usage:
-#   Development: docker-compose up
-#   Production:  docker-compose -f docker-compose.yml -f docker-compose.prod.yml up -d
+# 
+# Production usage:  docker-compose -f docker-compose.yml -f docker-compose.prod.yml up -d
 
 version: '3.8'
 
