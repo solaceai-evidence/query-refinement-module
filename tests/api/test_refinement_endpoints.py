@@ -96,8 +96,8 @@ def test_start_refinement_workflow():
     summary = data["summary"]
     assert "is_complete" in summary
     assert "total_aspects" in summary
-    assert "aspects_needing_refinement" in summary
-    assert "aspects_clear" in summary
+    assert "incomplete_count" in summary
+    assert "complete_count" in summary
     assert "aspects" in summary
     
     # Verify next_prompt structure
@@ -107,7 +107,7 @@ def test_start_refinement_workflow():
         assert "question" in next_prompt
     
     print(f"✓ Started refinement - Query ID: {data['query_id']}, Session ID: {data['session_id']}")
-    print(f"  Summary: {summary['aspects_needing_refinement']} need refinement, {summary['aspects_clear']} clear")
+    print(f"  Summary: {summary['incomplete_count']} incomplete, {summary['complete_count']} complete")
     
     return data
 

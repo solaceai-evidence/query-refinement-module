@@ -45,7 +45,6 @@ def build_manager(
         llm_provider=provider,
         query_analyzer=analyzer,
         tracing_provider=tracer,
-        parallel_config=None,
     )
 
 
@@ -68,13 +67,13 @@ def _print_summary(manager: QueryRefinementManager, session) -> None:
     print("SESSION SUMMARY")
     print("="*80)
     print(f"Refinement aspects in this framework: {summary['total_aspects']}")
-    print(f"Needs refinement: {summary['aspects_needing_refinement']}")
-    print(f"Already clear: {summary['aspects_clear']}")
+    print(f"Needs refinement: {summary['incomplete_count']}")
+    print(f"Already clear: {summary['complete_count']}")
     print()
     for aspect in summary["aspects"]:
-        status = aspect["status"]
+        status = "complete" if aspect["is_complete"] else "needs_refinement"
         print(f"  [{status.upper()}] {aspect['name']}")
-        reason = aspect.get("reason")
+        reason = aspect.get("reasoning")
         if reason:
             print(f"  → {reason}")
         print()

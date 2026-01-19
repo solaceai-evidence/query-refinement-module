@@ -60,19 +60,17 @@ from .interfaces import (
     QueryAnalyzerInterface,
 )
 from .providers import NoOpTracingProvider, TraceEventEmitter
-from .schema import RefinementAspect, RefinementAnalysisResponse
+from .schema import (
+    RefinementAspect,
+    RefinementAnalysisResponse,
+    SynthesisPromptBuilder,
+    SynthesisResponse,
+)
 
 from .prompt.system_role import (
     DEFAULT_SYSTEM_PROMPT_REFINEMENT_START,
     SYSTEM_PROMPT_REFINEMENT_END_LOWER,
     SYSTEM_PROMPT_REFINEMENT_END_UPPER,
-)
-from .prompt.unified_analysis_prompt import (
-    UNIFIED_ANALYSIS_PROMPT,
-    build_conversation_section,
-    build_dependency_section,
-    build_refinement_instructions,
-    build_examples_section,
 )
 
 # Module logger - use get_logger() in functions for request context
@@ -1272,35 +1270,13 @@ class QueryRefinementManager:
         
         aspect = step.refinement_aspect
         
-        # Build conversation section (empty for initial, populated for followup)
-        conversation_section = build_conversation_section(
-            step.follow_up_history,
-            mode=mode
-        )
-        
-        # Build dependency section
+        # Build complete unified prompt using aspect's method
         dependency_context = session.get_dependency_context(aspect_id)
-        dependency_section = build_dependency_section(
-            current_aspect_id=aspect_id,
-            dependency_context=dependency_context,
-            aspect_dependencies=aspect.depends_on or []
-        )
-        
-        # Build refinement instructions (type-specific guidance)
-        refinement_instructions = build_refinement_instructions(aspect, session.original_query)
-        
-        # Build examples section
-        examples_section = build_examples_section(aspect)
-        
-        # Construct unified user prompt
-        user_prompt = UNIFIED_ANALYSIS_PROMPT.format(
-            aspect_name=aspect.aspect_name,
-            aspect_description=aspect.aspect_description,
+        user_prompt = aspect.build_unified_prompt(
             original_query=session.original_query,
-            conversation_section=conversation_section,
-            dependency_section=dependency_section,
-            refinement_instructions=refinement_instructions,
-            examples_section=examples_section
+            follow_up_history=step.follow_up_history,
+            dependency_context=dependency_context,
+            mode=mode
         )
         
         # Get system prompt (from aspect or default)
@@ -2374,7 +2350,7 @@ class QueryRefinementManager:
         *,
         model: Optional[str] = None,
         temperature: float = 0.2,
-        max_tokens: int = 256,
+        max_tokens: int = 512,
         additional_guidance: Optional[str] = None,
     ) -> Dict[str, Any]:
         """Generate a refined query by combining the original query with clarifications.
@@ -2383,7 +2359,7 @@ class QueryRefinementManager:
             session: Active refinement session containing user-provided clarifications.
             model: Optional model override for the synthesis call.
             temperature: Sampling temperature for the completion (default 0.2).
-            max_tokens: Maximum tokens for the synthesis response (default 256).
+            max_tokens: Maximum tokens for the synthesis response (default 512).
             additional_guidance: Optional extra instruction appended to the prompt.
 
         Returns:
@@ -2393,67 +2369,48 @@ class QueryRefinementManager:
 
         clarifications, baseline_summaries = self._gather_refinement_details(session)
 
+        # Build refinement_aspect_values map for structured consumption
+        refinement_aspect_values = {}
+        for step in session.steps:
+            aspect_id = step.refinement_aspect.id
+            if step.refinement_aspect_value is not None:
+                # Use native value (dict/list/str/etc)
+                refinement_aspect_values[aspect_id] = step.refinement_aspect_value
+            elif step.was_skipped:
+                refinement_aspect_values[aspect_id] = "[SKIPPED]"
+            elif not step.follow_up_history and step.is_complete:
+                # Was clear in original query
+                refinement_aspect_values[aspect_id] = "[CLEAR_IN_ORIGINAL]"
+
         if not clarifications and not baseline_summaries:
             logger.info(
                 "Skipping LLM synthesis: no refinement clarifications or summaries recorded."
             )
-            # Build refinement_aspect_values map even when no LLM synthesis
-            refinement_aspect_values = {}
-            for step in session.steps:
-                aspect_id = step.refinement_aspect.id
-                if step.refinement_aspect_value is not None:
-                    refinement_aspect_values[aspect_id] = step.refinement_aspect_value
-                elif step.was_skipped:
-                    refinement_aspect_values[aspect_id] = "[SKIPPED]"
-            
             return {
                 "refined_query": session.original_query,
                 "used_llm": False,
                 "clarifications": [],
                 "baseline_summaries": [],
-                "refinement_aspect_values": refinement_aspect_values,  # ← Added
+                "refinement_aspect_values": refinement_aspect_values,
                 "metadata": {
                     "reason": "no_clarifications",
                 },
             }
 
-        # TODO: extend and adapt the final refined query prompt to provide synonyms and a paragraph
-        system_prompt = SYSTEM_PROMPT_REFINEMENT_END_UPPER
-
-        user_sections = [
-            "ORIGINAL USER-SUBMITTED RESEARCH INPUT:",
-            session.original_query.strip(),
-            "",
-        ]
-
-        if baseline_summaries:
-            baseline_lines = "\n".join(
-                f"- {name}: {value}" for name, value in baseline_summaries
-            )
-            user_sections.extend([
-                "DETAILS ALREADY SPECIFIED IN THE ORIGINAL QUERY:",
-                baseline_lines,
-                "",
-            ])
-
-        if clarifications:
-            clarification_lines = "\n".join(
-                f"- {name}: {value}" for name, value in clarifications
-            )
-            user_sections.extend([
-                "CONFIRMED CLARIFICATIONS FROM FOLLOW-UP QUESTIONS:",
-                clarification_lines,
-                "",
-            ])
-
-        user_sections.append(
-            SYSTEM_PROMPT_REFINEMENT_END_LOWER
+        # Build prompts using SynthesisPromptBuilder for structured output
+        aspects = [step.refinement_aspect for step in session.steps]
+        prompt_builder = SynthesisPromptBuilder()
+        
+        user_prompt = prompt_builder.build_synthesis_prompt(
+            original_query=session.original_query,
+            refinement_aspect_values=refinement_aspect_values,
+            aspects=aspects,
         )
-
+        
         if additional_guidance:
-            user_sections.append(additional_guidance.strip())
-
-        user_prompt = "\n".join(section for section in user_sections if section).strip()
+            user_prompt = f"{user_prompt}\n\nADDITIONAL GUIDANCE:\n{additional_guidance.strip()}"
+        
+        system_prompt = prompt_builder.get_system_prompt()
 
         self.trace_emitter.emit(
             "query_synthesis_start",
@@ -2488,9 +2445,25 @@ class QueryRefinementManager:
 
         refined_query = (result.context or "").strip()
 
-        if not refined_query:
-            logger.warning("LLM synthesis returned empty response; using original query")
-            refined_query = session.original_query
+        # Try to parse as structured JSON response
+        synthesis_response = None
+        try:
+            response_data = json.loads(refined_query)
+            synthesis_response = SynthesisResponse(**response_data)
+            refined_query = synthesis_response.refined_query
+            logger.info(
+                "Successfully parsed structured synthesis response with confidence %.2f",
+                synthesis_response.confidence
+            )
+        except (json.JSONDecodeError, ValueError) as parse_error:
+            # Fallback to plain text response (backward compatibility)
+            logger.warning(
+                "Could not parse synthesis response as JSON, using plain text: %s",
+                parse_error
+            )
+            if not refined_query:
+                logger.warning("LLM synthesis returned empty response; using original query")
+                refined_query = session.original_query
 
         self.trace_emitter.emit(
             "query_synthesis_complete",
@@ -2498,30 +2471,39 @@ class QueryRefinementManager:
                 "clarification_count": len(clarifications),
                 "baseline_count": len(baseline_summaries),
                 "response_length": len(refined_query),
+                "structured_response": synthesis_response is not None,
             },
         )
 
-        # Build refinement_aspect_values map for structured consumption
-        refinement_aspect_values = {}
-        for step in session.steps:
-            aspect_id = step.refinement_aspect.id
-            if step.refinement_aspect_value is not None:
-                # Use native value (dict/list/str/etc)
-                refinement_aspect_values[aspect_id] = step.refinement_aspect_value
-            elif step.was_skipped:
-                refinement_aspect_values[aspect_id] = "[SKIPPED]"
-            elif not step.follow_up_history and step.is_complete:
-                # Was clear in original query
-                refinement_aspect_values[aspect_id] = "[CLEAR_IN_ORIGINAL]"
-
-        return {
+        result_dict = {
             "refined_query": refined_query,
             "used_llm": True,
             "clarifications": clarifications,
             "baseline_summaries": baseline_summaries,
-            "refinement_aspect_values": refinement_aspect_values,  # ← Added for structured consumption
+            "refinement_aspect_values": refinement_aspect_values,
             "metadata": result.metadata,
         }
+        
+        # Include structured response fields if available
+        if synthesis_response:
+            result_dict["confidence"] = synthesis_response.confidence
+            result_dict["key_changes"] = synthesis_response.key_changes
+            
+            # Include optional metadata if present
+            if synthesis_response.publication_years:
+                result_dict["publication_years"] = synthesis_response.publication_years
+            if synthesis_response.venues:
+                result_dict["venues"] = synthesis_response.venues
+            if synthesis_response.authors:
+                result_dict["authors"] = synthesis_response.authors
+            if synthesis_response.fields_of_study:
+                result_dict["fields_of_study"] = synthesis_response.fields_of_study
+            if synthesis_response.refined_statement:
+                result_dict["refined_statement"] = synthesis_response.refined_statement
+            if synthesis_response.refined_statement_keywords:
+                result_dict["refined_statement_keywords"] = synthesis_response.refined_statement_keywords
+
+        return result_dict
 
     def run_full_refinement(self, session: QueryRefinementSession, max_iterations: int = 100) -> QueryRefinementSession:
         """
@@ -2559,43 +2541,43 @@ class QueryRefinementManager:
             Dictionary with:
             - is_complete: bool - whether all aspects are clear (no refinement needed)
             - total_aspects: int - total number of aspects
-            - aspects_needing_refinement: int - count needing refinement
-            - aspects_clear: int - count already clear
+            - incomplete_count: int - count of incomplete aspects
+            - complete_count: int - count of complete aspects
             - aspects: list of dicts with details per aspect:
               - id: aspect identifier
               - name: aspect name
-              - status: "clear" or "needs_refinement"
+              - is_complete: bool - whether aspect is complete
               - description: aspect description
-              - reason: explanation of why refinement is needed (for needs_refinement only)
-              - clarifying_question: suggested question to ask the user (for needs_refinement only)
+              - reasoning: explanation of why refinement is needed (for incomplete aspects)
+              - next_question: suggested question to ask the user (for incomplete aspects)
         """
-        aspects_needing_refinement = []
-        aspects_clear = []
+        incomplete_aspects = []
+        complete_aspects = []
         
         for step in session.steps:
             aspect_info = {
                 "id": step.refinement_aspect.id,
                 "name": step.refinement_aspect.aspect_name,
                 "description": step.refinement_aspect.aspect_description,
-                "status": "clear" if step.is_complete else "needs_refinement"
+                "is_complete": step.is_complete
             }
             
-            # Add analysis details for aspects that need refinement
+            # Add analysis details for aspects that are incomplete
             if not step.is_complete:
                 if step.needs_refinement_rationale:
-                    aspect_info["reason"] = step.needs_refinement_rationale
+                    aspect_info["reasoning"] = step.needs_refinement_rationale
                 if step.refinement_question:
-                    aspect_info["clarifying_question"] = step.refinement_question
+                    aspect_info["next_question"] = step.refinement_question
             
             if step.is_complete:
-                aspects_clear.append(aspect_info)
+                complete_aspects.append(aspect_info)
             else:
-                aspects_needing_refinement.append(aspect_info)
+                incomplete_aspects.append(aspect_info)
         
         return {
             "is_complete": session.is_complete(),
             "total_aspects": len(session.steps),
-            "aspects_needing_refinement": len(aspects_needing_refinement),
-            "aspects_clear": len(aspects_clear),
-            "aspects": aspects_needing_refinement + aspects_clear
+            "incomplete_count": len(incomplete_aspects),
+            "complete_count": len(complete_aspects),
+            "aspects": incomplete_aspects + complete_aspects
         }

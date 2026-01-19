@@ -5,21 +5,25 @@ const AspectStatusPanel = ({ aspects }) => {
         return null;
     }
 
-    const getStatusIcon = (status) => {
-        switch (status) {
-            case 'complete':
-                return '✓';
-            case 'needs_refinement':
-                return '⟳';
-            case 'clear':
-                return '○';
-            default:
-                return '?';
+    const getStatusIcon = (isComplete) => {
+        if (isComplete === true) {
+            return '✓';
+        } else if (isComplete === false) {
+            return '⟳';
         }
+        return '?';
     };
 
-    const getStatusClass = (status) => {
-        return `status-${status.replace('_', '-')}`;
+    const getStatusClass = (isComplete) => {
+        if (isComplete === true) return 'status-complete';
+        if (isComplete === false) return 'status-incomplete';
+        return 'status-unknown';
+    };
+
+    const getStatusLabel = (isComplete) => {
+        if (isComplete === true) return 'complete';
+        if (isComplete === false) return 'incomplete';
+        return 'unknown';
     };
 
     return (
@@ -29,11 +33,11 @@ const AspectStatusPanel = ({ aspects }) => {
                 {aspects.map((aspect, index) => (
                     <div
                         key={aspect.id || aspect.aspect_id || index}
-                        className={`aspect-item ${getStatusClass(aspect.status)}`}
+                        className={`aspect-item ${getStatusClass(aspect.is_complete)}`}
                     >
-                        <span className="status-icon">{getStatusIcon(aspect.status)}</span>
+                        <span className="status-icon">{getStatusIcon(aspect.is_complete)}</span>
                         <span className="aspect-name">{aspect.name || aspect.aspect_name || aspect.id}</span>
-                        <span className="status-badge">{aspect.status.replace('_', ' ')}</span>
+                        <span className="status-badge">{getStatusLabel(aspect.is_complete)}</span>
                     </div>
                 ))}
             </div>

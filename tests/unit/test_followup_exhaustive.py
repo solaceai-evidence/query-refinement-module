@@ -53,7 +53,7 @@ def test_user_command_edge_cases():
     result = session.handle_command(CommandResult(command=UserCommand.BACK, is_valid=True))
     assert not result["success"]
     # /goto invalid step
-    result = session.handle_command(CommandResult(command=UserCommand.GOTO, argument="99", is_valid=True))
+    result = session.handle_command(CommandResult(command=UserCommand.SKIP, argument=None, is_valid=True))
     assert not result["success"]
     # /skip with no active step
     session.steps[0].is_complete = True

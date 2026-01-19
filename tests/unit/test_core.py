@@ -182,15 +182,9 @@ def test_parse_user_command_handles_alias_and_arguments():
     assert result.command is UserCommand.PREVIOUS
     assert result.is_valid
 
-    goto = parse_user_command("/goto 3")
-    assert goto.command is UserCommand.GOTO
-    assert goto.argument == "3"
-
-
-def test_parse_user_command_validates_missing_argument():
-    result = parse_user_command("/goto")
-    assert not result.is_valid
-    assert result.error_message.startswith("/goto requires")
+    skip = parse_user_command("/skip")
+    assert skip.command is UserCommand.SKIP
+    assert skip.is_valid
 
 
 def test_parse_user_command_rejects_unknown_command():
@@ -746,8 +740,8 @@ def test_get_initialization_summary_orders_results():
     summary = manager.get_initialization_summary(session)
 
     assert summary["total_aspects"] == 2
-    assert summary["aspects_needing_refinement"] == 1
-    assert summary["aspects_clear"] == 1
-    statuses = [aspect_info["status"] for aspect_info in summary["aspects"]]
-    assert statuses.count("needs_refinement") == 1
-    assert any("clarifying_question" in info for info in summary["aspects"] if info["status"] == "needs_refinement")
+    assert summary["incomplete_count"] == 1
+    assert summary["complete_count"] == 1
+    is_complete_statuses = [aspect_info["is_complete"] for aspect_info in summary["aspects"]]
+    assert is_complete_statuses.count(False) == 1
+    assert any("next_question" in info for info in summary["aspects"] if not info["is_complete"])
