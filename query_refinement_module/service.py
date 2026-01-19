@@ -188,6 +188,6 @@ class QueryRefinementService:
             aspect_id=step.refinement_aspect.id,
             aspect_name=step.refinement_aspect.aspect_name,
             question=question,
-            rationale=step.needs_refinement_rationale,
+            reasoning=step.needs_refinement_rationale,
             dependency_context=dependency_context,
         )

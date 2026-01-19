@@ -82,3 +82,84 @@ class RefinementAnalysisResponse(BaseModel):
         """Pydantic config."""
         frozen = False
         validate_assignment = True
+
+
+class SynthesisResponse(BaseModel):
+    """
+    Structured response from query synthesis.
+    
+    This model ensures synthesis output includes both the refined query
+    and traceability metadata mapping back to individual aspect refinements.
+    """
+    
+    refined_query: str = Field(
+        ...,
+        description="The final synthesized query combining all refinements"
+    )
+    
+    refinement_aspects: dict = Field(
+        ...,
+        description="Map of aspect_id → refinement_aspect_value for traceability"
+    )
+    
+    confidence: float = Field(
+        ...,
+        ge=0.0,
+        le=1.0,
+        description="LLM confidence in synthesis quality"
+    )
+    
+    key_changes: list = Field(
+        default_factory=list,
+        description="List of key changes from original query"
+    )
+    
+    # Metadata extraction fields (optional)
+    publication_years: str = Field(
+        default="",
+        description="Temporal constraints extracted from query (e.g., '2020-2025')"
+    )
+    
+    venues: str = Field(
+        default="",
+        description="Comma-separated venue names"
+    )
+    
+    authors: list = Field(
+        default_factory=list,
+        description="List of author names mentioned"
+    )
+    
+    fields_of_study: str = Field(
+        default="",
+        description="Comma-separated research fields"
+    )
+    
+    refined_statement: str = Field(
+        default="",
+        description="Alternative natural-language statement for semantic search"
+    )
+    
+    refined_statement_keywords: str = Field(
+        default="",
+        description="Keyword-optimized version"
+    )
+    
+    @validator('refinement_aspects')
+    def validate_refinement_aspects(cls, v):
+        """Ensure refinement_aspects is a dict."""
+        if not isinstance(v, dict):
+            raise ValueError("refinement_aspects must be a dictionary")
+        return v
+    
+    @validator('confidence')
+    def validate_confidence_range(cls, v):
+        """Ensure confidence is in valid range."""
+        if not 0.0 <= v <= 1.0:
+            raise ValueError("confidence must be between 0.0 and 1.0")
+        return v
+    
+    class Config:
+        """Pydantic config."""
+        frozen = False
+        validate_assignment = True

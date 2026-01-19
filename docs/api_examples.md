@@ -70,16 +70,16 @@ class InitializeResponse(BaseModel):
     # {
     #   "is_complete": false,
     #   "total_aspects": 4,
-    #   "aspects_needing_refinement": 2,
-    #   "aspects_clear": 2,
+    #   "incomplete_count": 2,
+    #   "complete_count": 2,
     #   "aspects": [
     #     {
     #       "id": "outcome",
     #       "name": "Outcome",
     #       "description": "What outcome is being measured",
-    #       "status": "needs_refinement",
-    #       "reason": "Stroke is mentioned but not specific...",
-    #       "clarifying_question": "What specific stroke outcomes are you interested in?"
+    #       "is_complete": false,
+    #       "reasoning": "Stroke is mentioned but not specific...",
+    #       "next_question": "What specific stroke outcomes are you interested in?"
     #     },
     #     ...
     #   ]
@@ -353,10 +353,10 @@ print(f"Session ID: {result['session_id']}")
 print(f"Summary: {result['summary']}")
 
 if not result['summary']['is_complete']:
-    print(f"\\n{result['summary']['aspects_needing_refinement']} aspects need refinement")
+    print(f"\\n{result['summary']['incomplete_count']} aspects need refinement")
     for aspect in result['summary']['aspects']:
-        if aspect['status'] == 'needs_refinement':
-            print(f"  - {aspect['name']}: {aspect.get('reason', 'N/A')}")
+        if not aspect['is_complete']:
+            print(f"  - {aspect['name']}: {aspect.get('reasoning', 'N/A')}")
     
     proceed = input("\\nStart refinement? (y/n): ")
     if proceed.lower() == 'y':

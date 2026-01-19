@@ -232,6 +232,29 @@ class RefinementAspect:
         "refinement_aspect_value": "Extracted or synthesized value (required if is_complete=true)",
         "next_question": "Focused clarifying question (required if is_complete=false)"
     }
+    
+    # Unified analysis prompt template (used for both initial and follow-up analysis)
+    UNIFIED_ANALYSIS_PROMPT = """
+**Aspect:** {aspect_name}
+**Description:** {aspect_description}
+
+---
+
+**Original Input:**
+"{original_query}"
+
+{conversation_section}
+
+{dependency_section}
+
+{refinement_instructions}
+
+{examples_section}
+
+---
+
+{output_format_section}
+"""
 
     def __post_init__(self):
         """Validate schema structure at load time."""
@@ -792,6 +815,240 @@ class RefinementAspect:
             )
         
         return True, None, warnings
+
+    def build_unified_prompt(
+        self,
+        original_query: str,
+        follow_up_history: List[Dict[str, str]],
+        dependency_context: Dict[str, Dict[str, Any]],
+        mode: str = 'initial'
+    ) -> str:
+        """
+        Build complete unified prompt for refinement analysis.
+        
+        This orchestrates all sections of the prompt including conversation history,
+        dependencies, instructions, and examples.
+        
+        Args:
+            original_query: The original user query
+            follow_up_history: List of Q&A exchanges for this aspect
+            dependency_context: Dict mapping aspect IDs to their completed values
+            mode: 'initial' or 'followup' (determines if conversation history is shown)
+        
+        Returns:
+            Complete formatted prompt ready for LLM
+        """
+        # Build each section
+        conversation_section = self._build_conversation_section(follow_up_history, mode)
+        dependency_section = self._build_dependency_section(dependency_context)
+        refinement_instructions = self._build_refinement_instructions_section(original_query)
+        examples_section = self._build_examples_section_for_prompt()
+        output_format_section = self._build_output_format_section()
+        
+        # Format the complete prompt
+        return self.UNIFIED_ANALYSIS_PROMPT.format(
+            aspect_name=self.aspect_name,
+            aspect_description=self.aspect_description,
+            original_query=original_query,
+            conversation_section=conversation_section,
+            dependency_section=dependency_section,
+            refinement_instructions=refinement_instructions,
+            examples_section=examples_section,
+            output_format_section=output_format_section
+        )
+    
+    def _build_output_format_section(self) -> str:
+        """
+        Build the output format section dynamically from BASE_SCHEMA_FIELDS and BASE_FIELD_DESCRIPTIONS.
+        
+        This ensures single source of truth - if field definitions change, the prompt updates automatically.
+        
+        Returns:
+            Formatted output format section with JSON schema and rules
+        """
+        lines = ["**OUTPUT (JSON):**", ""]
+        
+        # Build JSON example from BASE_SCHEMA_FIELDS
+        json_example = "{"
+        for field_name, field_type in self.BASE_SCHEMA_FIELDS.items():
+            # Show example values based on type
+            if field_type == "boolean":
+                example_value = "true/false"
+            elif field_type == "float":
+                example_value = "0.0-1.0"
+            elif field_type == "string":
+                # Use description hints for string fields
+                if field_name == "reasoning":
+                    example_value = '"why complete/incomplete (1-2 sentences)"'
+                elif field_name == "refinement_aspect_value":
+                    example_value = '"clear, specific value (if complete) OR null"'
+                elif field_name == "next_question":
+                    example_value = '"focused question with inline examples (if incomplete) OR null"'
+                else:
+                    example_value = '"<string>"'
+            else:
+                example_value = f'"<{field_type}>"'
+            
+            lines.append(f'  "{field_name}": {example_value},')
+        
+        # Remove trailing comma from last field
+        if lines[-1].endswith(','):
+            lines[-1] = lines[-1][:-1]
+        
+        lines.append("}")
+        lines.append("")
+        
+        # Add rules section
+        lines.append("**Rules:**")
+        lines.append("- `is_complete=true` → `refinement_aspect_value` must be non-null, `next_question` must be null")
+        lines.append("- `is_complete=false` → `next_question` must be non-null, `refinement_aspect_value` must be null")
+        lines.append("- `confidence`: 0.9-1.0 (very clear), 0.7-0.89 (clear), 0.5-0.69 (moderate), <0.5 (uncertain)")
+        
+        # Add field-specific guidance from descriptions
+        refinement_desc = self.BASE_FIELD_DESCRIPTIONS.get("refinement_aspect_value", "")
+        if "verbatim" in refinement_desc.lower() or "exact" in refinement_desc.lower():
+            lines.append("- `refinement_aspect_value`: Extract verbatim from original input/dependency context, or combine user's answers preserving their exact wording and intended meaning. Do NOT rephrase or reinterpret—capture what the user actually said.")
+        
+        next_q_desc = self.BASE_FIELD_DESCRIPTIONS.get("next_question", "")
+        if "example" in next_q_desc.lower():
+            lines.append("- `next_question`: Include concrete options or examples inline within the question text")
+        
+        return "\n".join(lines)
+    
+    def _build_conversation_section(
+        self,
+        follow_up_history: List[Dict[str, str]],
+        mode: str
+    ) -> str:
+        """
+        Build conversation history section.
+        
+        Args:
+            follow_up_history: List of Q&A exchanges
+            mode: 'initial' (no history) or 'followup' (with history)
+        
+        Returns:
+            Formatted conversation section (empty for initial mode)
+        """
+        if mode == 'initial' or not follow_up_history:
+            return ""
+        
+        lines = ["**Conversation History:**\n"]
+        for i, turn in enumerate(follow_up_history, 1):
+            question = turn.get('question', '')
+            response = turn.get('response', '')
+            lines.append(f"Q{i}: {question}")
+            lines.append(f"A{i}: {response}\n")
+        
+        return "\n".join(lines)
+    
+    def _build_dependency_section(
+        self,
+        dependency_context: Dict[str, Dict[str, Any]]
+    ) -> str:
+        """
+        Build dependency context showing completed aspects.
+        
+        If current aspect depends on shown aspects, adds a visual marker.
+        
+        Args:
+            dependency_context: Dict mapping aspect IDs to their context
+        
+        Returns:
+            Formatted dependency section (empty if no dependencies)
+        """
+        if not dependency_context:
+            return ""
+        
+        lines = ["**Completed Aspects (for context):**\n"]
+        
+        has_dependencies = bool(self.depends_on)
+        
+        for dep_id, context in dependency_context.items():
+            aspect_name = context.get('name', dep_id)
+            aspect_desc = context.get('description', '')
+            refined_value = context.get('value', '')
+            
+            # Mark if current aspect depends on this
+            dependency_marker = ""
+            if has_dependencies and dep_id in self.depends_on:
+                dependency_marker = " ⚠️ (this aspect depends on this)"
+            
+            lines.append(f"**{aspect_name}**{dependency_marker}")
+            if aspect_desc:
+                lines.append(f"  Description: {aspect_desc}")
+            lines.append(f"  Refined Value: {refined_value}\n")
+        
+        if has_dependencies:
+            lines.append("\n⚠️ = Consider these values when analyzing the current aspect\n")
+        
+        return "\n".join(lines)
+    
+    def _build_refinement_instructions_section(self, query: str) -> str:
+        """
+        Build refinement instructions section.
+        
+        This uses the aspect's refinement_instructions which contains
+        type-specific evaluation criteria and objectives.
+        
+        Args:
+            query: Original query to analyze
+        
+        Returns:
+            Formatted refinement instructions with header
+        """
+        # Get the refinement instructions (already formatted)
+        instructions = self.get_refinement_instructions_prompt(statement=query)
+        
+        # Add a header
+        return f"**Analysis Guidelines:**\n\n{instructions}\n"
+    
+    def _build_examples_section_for_prompt(self) -> str:
+        """
+        Build examples section from aspect schema for inclusion in unified prompt.
+        
+        Examples come AFTER refinement instructions in the prompt.
+        Categories: clear, needs_refinement, partial, vague_ambiguous, other
+        
+        Returns:
+            Formatted examples section (empty if no examples)
+        """
+        if not self.examples:
+            return ""
+        
+        lines = ["**Examples:**\n"]
+        
+        # Process each category
+        category_map = {
+            'clear': 'Clear Examples',
+            'needs_refinement': 'Needs Refinement',
+            'partial': 'Partial Examples',
+            'vague_ambiguous': 'Vague/Ambiguous Examples',
+            'other': 'Other Cases'
+        }
+        
+        for category, examples_list in self.examples.items():
+            if not examples_list:
+                continue
+            
+            category_title = category_map.get(category, category.replace('_', ' ').title())
+            lines.append(f"\n{category_title}:")
+            
+            for ex in examples_list:
+                # Get statement or query (statement preferred)
+                statement = ex.get('statement') or ex.get('query', '')
+                if statement:
+                    lines.append(f"- Statement: {statement}")
+                
+                # Add contextual fields (rationale, issue, missing, etc.)
+                for key in ['rationale', 'issue', 'missing', 'has', 'example_question', 'note', 'guidance']:
+                    if key in ex:
+                        key_title = key.replace('_', ' ').title()
+                        lines.append(f"  {key_title}: {ex[key]}")
+                
+                lines.append("")  # Blank line between examples
+        
+        return "\n".join(lines)
 
     def to_dict(self) -> Dict[str, Any]:
         """Convert refinement aspect to dictionary for serialization."""

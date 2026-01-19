@@ -502,7 +502,6 @@ async def submit_answer(
             manager.initialize,
             db_query.original_query,
             framework,
-            None,  # parallel_config - not needed for reconstruction
         )
         
         # Restore follow-up history from database
@@ -711,7 +710,6 @@ async def get_refinement_status(
             manager.initialize,
             db_query.original_query,
             framework,
-            None,  # parallel_config - not needed for reconstruction
         )
         
         # Restore follow-up history from database
@@ -787,7 +785,6 @@ async def synthesize_refined_query(
             manager.initialize,
             db_query.original_query,
             framework,
-            None,  # parallel_config - not needed for reconstruction
         )
         
         # Load follow-ups from database and populate session

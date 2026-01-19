@@ -36,7 +36,7 @@ def test_build_manager_constructs_components(monkeypatch):
     monkeypatch.setattr(cli, "LLMQueryAnalyzer", FakeAnalyzer)
     monkeypatch.setattr(cli, "ConsoleTracing", lambda: "tracer")
 
-    manager = cli.build_manager(enable_tracing=True, parallel_enabled=False)
+    manager = cli.build_manager(enable_tracing=True)
 
     assert created["provider_kwargs"] == {"default_model": "demo"}
     assert created["analyzer_kwargs"] == {"temperature": 0.1}
@@ -49,7 +49,7 @@ def test_build_manager_without_tracing(monkeypatch):
     monkeypatch.setattr(cli, "LiteLLMProvider", lambda **_: "provider")
     monkeypatch.setattr(cli, "LLMQueryAnalyzer", lambda provider, **__: (provider, {}))
 
-    manager = cli.build_manager(enable_tracing=False, parallel_enabled=False)
+    manager = cli.build_manager(enable_tracing=False)
 
     assert manager.tracing_provider.__class__ is NoOpTracingProvider
 
@@ -70,7 +70,7 @@ def test_build_manager_with_trace_dir(monkeypatch, tmp_path):
     root_logger = logging.getLogger()
     original_handlers = list(root_logger.handlers)
     try:
-        manager = cli.build_manager(enable_tracing=False, trace_dir=str(tmp_path / "trace"), parallel_enabled=False)
+        manager = cli.build_manager(enable_tracing=False, trace_dir=str(tmp_path / "trace"))
         assert isinstance(manager.tracing_provider, FileTracingProvider)
         log_file = tmp_path / "trace" / "application.log"
         assert log_file.exists()
@@ -94,7 +94,7 @@ def test_format_dependency_context_formats(monkeypatch):
 
     session = StubSession()
     formatted = cli._format_dependency_context(session, "aspect")
-    assert formatted.startswith("📎 Dependency Context:")
+    assert formatted.startswith("Dependency Context:")
     assert "• Dependency: Answer" in formatted
 
 
@@ -103,11 +103,11 @@ def test_print_summary_outputs(capsys):
         def get_initialization_summary(self, session):
             return {
                 "total_aspects": 2,
-                "aspects_needing_refinement": 1,
-                "aspects_clear": 1,
+                "incomplete_count": 1,
+                "complete_count": 1,
                 "aspects": [
-                    {"status": "needs_refinement", "name": "A", "reason": "Missing"},
-                    {"status": "clear", "name": "B"},
+                    {"is_complete": False, "name": "A", "reasoning": "Missing"},
+                    {"is_complete": True, "name": "B"},
                 ],
             }
 
@@ -148,6 +148,7 @@ class StubSession:
         self.synthesis_requested = False
         self.command_calls: List[dict] = []
         self.original_query = "query"
+        self.steps = [step] if step else []
 
     def get_active_step(self):
         if self._step and not self._step.is_complete:
@@ -174,14 +175,17 @@ class StubManager:
 
     def initialize(self, query, framework):
         return self.session
+    
+    def initialize_sequential(self, query, framework):
+        return self.session
 
     def get_initialization_summary(self, session):
         self.summary_calls += 1
         return {
             "total_aspects": 1,
-            "aspects_needing_refinement": 1,
-            "aspects_clear": 0,
-            "aspects": [{"status": "needs_refinement", "name": "Aspect"}],
+            "incomplete_count": 1,
+            "complete_count": 0,
+            "aspects": [{"is_complete": False, "name": "Aspect"}],
         }
 
     def synthesize_refined_query(self, session):

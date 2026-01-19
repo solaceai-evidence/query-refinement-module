@@ -13,7 +13,7 @@ class NextPrompt:
     aspect_id: str
     aspect_name: str
     question: str
-    rationale: Optional[str] = None
+    reasoning: Optional[str] = None
     dependency_context: Dict[str, str] = field(default_factory=dict)
 
 

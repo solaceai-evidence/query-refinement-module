@@ -179,7 +179,7 @@ def test_format_response_instructions_lists_fields():
 
     instructions = aspect._format_response_instructions()
 
-    assert "needs_refinement" in instructions
+    assert "is_complete" in instructions
     assert "priority" in instructions
     assert "Low/Medium/High" in instructions
     assert json.loads(
@@ -193,33 +193,34 @@ def test_validate_response_missing_base_fields():
 
     assert not is_valid
     assert "Missing required fields" in error
-    assert "needs_refinement" in error
-    assert "demo" in error  # Dynamic value field
+    assert "is_complete" in error
 
 
 def test_validate_response_type_errors():
     aspect = make_aspect()
     is_valid, error = aspect.validate_response(
         {
-            "needs_refinement": "true",
-            "explanation": 123,
-            "clarifying_question": None,
+            "is_complete": "true",
+            "confidence": "high",
+            "reasoning": 123,
+            "next_question": None,
             "demo": "value",  # Dynamic value field
         }
     )
 
     assert not is_valid
-    assert "must be a boolean" in error
-    assert "must be a string" in error
+    assert "must be" in error  # Type validation error
 
 
 def test_validate_response_strict_warns_on_unexpected_fields():
     aspect = make_aspect()
     is_valid, error, warnings = aspect.validate_response_strict(
         {
-            "needs_refinement": False,
-            "explanation": "All set",
-            "clarifying_question": "",
+            "is_complete": True,
+            "reasoning": "All set",
+            "next_question": "",
+            "refinement_aspect_value": "Some value",
+            "confidence": 0.95,
             "demo": "Some value",  # Dynamic value field
             "extra": "ignored",
         }

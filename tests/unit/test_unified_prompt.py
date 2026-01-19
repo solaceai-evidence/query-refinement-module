@@ -5,32 +5,39 @@ The unified prompt system uses a single template for both initial and follow-up 
 with only the conversation history section differing based on mode.
 """
 import json
+import pytest
 from query_refinement_module.schema import RefinementAspect, RefinementAnalysisResponse
-from query_refinement_module.prompt.unified_analysis_prompt import (
-    UNIFIED_ANALYSIS_PROMPT,
-    build_conversation_section,
-    build_dependency_section,
-    build_refinement_instructions,
-    build_examples_section,
-)
 
 
-def test_conversation_section_empty_for_initial():
+@pytest.fixture
+def sample_aspect():
+    """Create a sample RefinementAspect for testing."""
+    return RefinementAspect(
+        id='test_aspect',
+        aspect_name='Test Aspect',
+        aspect_description='A test aspect for validation',
+        refinement_instructions='Extract the {query} details carefully.',
+        response_format={'type': 'json'},
+        examples=[]
+    )
+
+
+def test_conversation_section_empty_for_initial(sample_aspect):
     """Initial mode should produce empty conversation section."""
-    result = build_conversation_section(
+    result = sample_aspect._build_conversation_section(
         follow_up_history=[],
         mode='initial'
     )
     assert result == ""
 
 
-def test_conversation_section_populated_for_followup():
+def test_conversation_section_populated_for_followup(sample_aspect):
     """Followup mode should format conversation history."""
     history = [
         {'question': 'What population?', 'response': 'Adults'},
         {'question': 'Age range?', 'response': '18-65'}
     ]
-    result = build_conversation_section(follow_up_history=history, mode='followup')
+    result = sample_aspect._build_conversation_section(follow_up_history=history, mode='followup')
     
     assert "**Conversation History:**" in result
     assert "Q1: What population?" in result
@@ -41,6 +48,15 @@ def test_conversation_section_populated_for_followup():
 
 def test_dependency_section_with_completed_aspects():
     """Should format completed dependency values with markers."""
+    aspect = RefinementAspect(
+        id='outcome',
+        aspect_name='Outcome',
+        aspect_description='Study outcome',
+        refinement_instructions='Test',
+        response_format={'type': 'json'},
+        depends_on=['population', 'intervention']  # This aspect depends on these
+    )
+    
     dependency_context = {
         'population': {
             'name': 'Population',
@@ -53,13 +69,8 @@ def test_dependency_section_with_completed_aspects():
             'value': 'Statins'
         }
     }
-    aspect_dependencies = ['population', 'intervention']
     
-    result = build_dependency_section(
-        current_aspect_id='outcome',
-        dependency_context=dependency_context,
-        aspect_dependencies=aspect_dependencies
-    )
+    result = aspect._build_dependency_section(dependency_context)
     
     assert "**Completed Aspects (for context):**" in result
     assert "**Population** ⚠️ (this aspect depends on this)" in result
@@ -68,13 +79,9 @@ def test_dependency_section_with_completed_aspects():
     assert "Statins" in result
 
 
-def test_dependency_section_empty_when_no_dependencies():
+def test_dependency_section_empty_when_no_dependencies(sample_aspect):
     """Should return empty string when no dependencies."""
-    result = build_dependency_section(
-        current_aspect_id='population',
-        dependency_context={},
-        aspect_dependencies=[]
-    )
+    result = sample_aspect._build_dependency_section({})
     
     assert result == ""
 
@@ -89,7 +96,7 @@ def test_refinement_instructions_uses_aspect_field():
         response_format={'type': 'json'}
     )
     
-    result = build_refinement_instructions(aspect, 'sample query')
+    result = aspect._build_refinement_instructions_section('sample query')
     
     assert "Extract the sample query details carefully" in result
 
@@ -104,14 +111,14 @@ def test_refinement_instructions_empty_when_not_provided():
         response_format={'type': 'json'}
     )
     
-    result = build_refinement_instructions(aspect, 'sample query')
+    result = aspect._build_refinement_instructions_section('sample query')
     
     # Even with empty refinement_instructions, the function returns the template
     assert "**Analysis Guidelines:**" in result
     assert "sample query" in result
 
 
-def test_examples_section_formats_all_categories():
+def test_examples_section_formats_all_categories(sample_aspect):
     """Should format examples into clear categories."""
     aspect = RefinementAspect(
         id='test',
@@ -136,7 +143,7 @@ def test_examples_section_formats_all_categories():
         }
     )
     
-    result = build_examples_section(aspect)
+    result = aspect._build_examples_section_for_prompt()
     
     assert "**Examples:**" in result
     assert "Clear query" in result
@@ -144,7 +151,7 @@ def test_examples_section_formats_all_categories():
     # Note: 'reasoning' field is not included in output (not a valid schema field)
 
 
-def test_examples_section_empty_when_no_examples():
+def test_examples_section_empty_when_no_examples(sample_aspect):
     """Should return empty string when no examples provided."""
     aspect = RefinementAspect(
         id='test',
@@ -154,7 +161,7 @@ def test_examples_section_empty_when_no_examples():
         response_format={'type': 'json'}
     )
     
-    result = build_examples_section(aspect)
+    result = aspect._build_examples_section_for_prompt()
     
     assert result == ""
 
@@ -177,19 +184,11 @@ def test_unified_prompt_formats_correctly():
         }
     )
     
-    conversation_section = build_conversation_section([], mode='initial')
-    dependency_section = build_dependency_section('population', {}, [])
-    refinement_instructions = build_refinement_instructions(aspect, 'heart disease study')
-    examples_section = build_examples_section(aspect)
-    
-    result = UNIFIED_ANALYSIS_PROMPT.format(
-        aspect_name='Population',
-        aspect_description='Target population for study',
+    result = aspect.build_unified_prompt(
         original_query='heart disease study',
-        conversation_section=conversation_section,
-        dependency_section=dependency_section,
-        refinement_instructions=refinement_instructions,
-        examples_section=examples_section
+        follow_up_history=[],
+        dependency_context={},
+        mode='initial'
     )
     
     assert "Population" in result
@@ -236,7 +235,7 @@ def test_refinement_analysis_response_invalid_complete():
     from pydantic import ValidationError
     
     with pytest.raises(ValidationError) as exc_info:
-        response = RefinementAnalysisResponse(
+        RefinementAnalysisResponse(
             is_complete=True,
             confidence=0.9,
             reasoning='Complete',
@@ -255,7 +254,7 @@ def test_refinement_analysis_response_invalid_incomplete():
     from pydantic import ValidationError
     
     with pytest.raises(ValidationError) as exc_info:
-        response = RefinementAnalysisResponse(
+        RefinementAnalysisResponse(
             is_complete=False,
             confidence=0.5,
             reasoning='Incomplete',

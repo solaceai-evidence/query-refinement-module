@@ -26,12 +26,15 @@ from .registry import (
     get_last_load_error,
     FrameworkLoadError,
 )
-from .response import RefinementAnalysisResponse
+from .response import RefinementAnalysisResponse, SynthesisResponse
+from .synthesis import SynthesisPromptBuilder
 
 __all__ = [
     # Core model
     "RefinementAspect",
     "RefinementAnalysisResponse",
+    "SynthesisResponse",
+    "SynthesisPromptBuilder",
     # Dependency utility
     "sort_aspects_by_dependencies",
     "validate_dependencies",

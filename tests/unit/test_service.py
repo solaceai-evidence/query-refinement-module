@@ -117,6 +117,10 @@ class StubManager:
         self.initialize_calls.append((query, framework))
         return self.session
 
+    def initialize_sequential(self, query, framework):
+        self.initialize_calls.append((query, framework))
+        return self.session
+
     def get_initialization_summary(self, session):
         self.summary_calls += 1
         return self.summary
@@ -344,7 +348,7 @@ def test_build_next_prompt_prefers_suggested_question():
     prompt = service.QueryRefinementService._build_next_prompt(Session())
     assert prompt.question == "Ask"
     assert prompt.dependency_context == {"dep": "V"}
-    assert prompt.rationale == "why"
+    assert prompt.reasoning == "why"
 
 
 def test_build_next_prompt_uses_prompt_and_description():
