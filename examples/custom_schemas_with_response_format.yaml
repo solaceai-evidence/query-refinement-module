@@ -7,9 +7,7 @@ my_enhanced_schema:
       field_descriptions:
         needs_refinement: Whether temporal clarity needs user clarification
         explanation: Brief explanation of why refinement is or isn't needed
-        clarifying_question:
-          Specific question to ask the user (use empty string if needs_refinement
-          is false)
+        clarifying_question: Specific question to ask the user (use empty string if needs_refinement is false)
         confidence: Confidence score 0.0-1.0 for the analysis (optional)
     allow_follow_up: true
     max_follow_ups: 2
