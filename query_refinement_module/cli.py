@@ -81,7 +81,7 @@ def _format_dependency_context(session, aspect_id: str) -> Optional[str]:
     if not context:
         return None
 
-    lines = ["📎 Dependency Context:"]
+    lines = ["Dependency Context:"]
     for dep_id, info in context.items():
         label = info.get("name", dep_id)
         value = info.get("value", "[unspecified]")
@@ -117,15 +117,15 @@ async def run_cli(manager: QueryRefinementManager, framework_name: str, query: s
 
     print("\n" + "="*80)
     if parallel_enabled and manager.parallel_config:
-        print(f"⚡ PARALLEL MODE: Up to {manager.parallel_config.max_concurrent} concurrent requests")
+        print(f"PARALLEL MODE: Up to {manager.parallel_config.max_concurrent} concurrent requests")
     else:
-        print("📝 SEQUENTIAL MODE: Processing one aspect at a time")
+        print("SEQUENTIAL MODE: Processing one aspect at a time")
     print("="*80)
     
     # Use streaming initialization if parallel mode is enabled
     session = None
     if parallel_enabled and manager.parallel_config:
-        print("\n🔄 Analyzing aspects (results will stream as they complete)...\n")
+        print("\n Analyzing aspects (results will stream as they complete)...\n")
         
         try:
             async for session_partial, level_idx, level_results, metadata, is_final in manager.initialize_streaming(
@@ -158,7 +158,7 @@ async def run_cli(manager: QueryRefinementManager, framework_name: str, query: s
                 
                 print()
         except Exception as e:
-            print(f"⚠️  Streaming initialization failed: {e}")
+            print(f"Streaming initialization failed: {e}")
             import traceback
             traceback.print_exc()
             print("Falling back to standard initialization...\n")
@@ -199,9 +199,9 @@ async def run_cli(manager: QueryRefinementManager, framework_name: str, query: s
             
             print("\n" + "─"*80)
             if step.needs_review:
-                print(f"📋 {header.upper()} (needs review)")
+                print(f" {header.upper()} (needs review)")
             else:
-                print(f"📋 {header.upper()}")
+                print(f" {header.upper()}")
             print("─"*80)
 
             context_text = _format_dependency_context(session, step.refinement_aspect.id)
@@ -215,7 +215,7 @@ async def run_cli(manager: QueryRefinementManager, framework_name: str, query: s
                 user_input = await asyncio.to_thread(input, "→ ")
                 user_input = user_input.strip()
             except (KeyboardInterrupt, asyncio.CancelledError):
-                print("\n\n🛑 Session interrupted. Exiting...")
+                print("\n\n Session interrupted. Exiting...")
                 interrupted = True
                 break
             if not user_input:
@@ -373,9 +373,9 @@ def main(argv: Optional[list[str]] = None) -> None:
     try:
         asyncio.run(run_cli(manager, framework_name, query, parallel_enabled=parallel_enabled))
     except KeyboardInterrupt:
-        print("\n\n🛑 Session interrupted. Goodbye!")
+        print("\n\n Session interrupted. Goodbye!")
     except asyncio.CancelledError:
-        print("\n\n🛑 Session cancelled. Goodbye!")
+        print("\n\n Session cancelled. Goodbye!")
 
 
 if __name__ == "__main__":  # pragma: no cover

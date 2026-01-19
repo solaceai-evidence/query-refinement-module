@@ -58,14 +58,31 @@ class QueryRefinementService:
         self._session_id_factory = session_id_factory or (lambda: str(uuid.uuid4()))
 
     async def create_session(self, request: SessionCreateRequest) -> SessionCreateResponse:
-        """Initialize a new refinement session."""
+        """Initialize a new refinement session using streaming async analysis."""
 
         session_id = request.session_id or self._session_id_factory()
-        session = await asyncio.to_thread(
-            self._manager.initialize,
-            request.original_query,
-            request.refinement_framework,
-        )
+        
+        # Use streaming initialization if parallel config is available
+        parallel_config = self._manager.parallel_config
+        if parallel_config and parallel_config.enabled:
+            # Use async streaming initialization
+            session = None
+            async for session_partial, _, _, _, is_final in self._manager.initialize_streaming(
+                request.original_query,
+                request.refinement_framework,
+                parallel_config,
+            ):
+                session = session_partial
+                if is_final:
+                    break
+        else:
+            # Fall back to synchronous initialization in thread
+            session = await asyncio.to_thread(
+                self._manager.initialize,
+                request.original_query,
+                request.refinement_framework,
+                None,  # parallel_config
+            )
 
         await asyncio.to_thread(self._storage.save_session, session_id, session)
 
