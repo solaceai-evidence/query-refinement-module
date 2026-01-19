@@ -320,72 +320,55 @@ def test_prev_alias_works():
 
 
 
-def test_goto_valid_step():
-    """Test /goto with valid step number."""
+def test_clear_command():
+    """Test /clear clears current aspect and regenerates question."""
     token = register_and_login()
     session_data = create_test_session(token)
     query_id = session_data["query_id"]
     
-    # Get total steps
-    steps_data = submit_command(token, query_id, "/steps")
-    total_steps = len(steps_data["step_list"])
+    # Answer a question
+    submit_answer(token, query_id, "Adults over 65")
     
-    if total_steps > 1:
-        # Go to step 2
-        data = submit_command(token, query_id, "/goto 2", force=True)
-        
-        assert data["success"] is True
-        assert data["command_type"] == "goto"
-        assert data["next_prompt"] is not None
-        
-        print("✓ /goto with valid step number works")
-    else:
-        print("⊘ Skipping /goto test (only one step)")
+    # Clear current aspect
+    data = submit_command(token, query_id, "/clear")
+    
+    assert data["success"] is True
+    assert data["command_type"] == "clear"
+    assert data["next_prompt"] is not None  # Should have regenerated question
+    
+    print("✓ /clear clears current aspect and regenerates question")
 
 
-def test_goto_invalid_step_numbers():
-    """Test /goto with invalid step numbers."""
+def test_back_truncates_steps():
+    """Test /back removes current and future steps."""
     token = register_and_login()
     session_data = create_test_session(token)
     query_id = session_data["query_id"]
     
-    # Get total steps
-    steps_data = submit_command(token, query_id, "/steps")
-    total_steps = len(steps_data["step_list"])
+    # Make some progress
+    submit_answer(token, query_id, "Adults over 65 years old")
+    submit_answer(token, query_id, "With cardiovascular risk factors")
     
-    # Test step 0 (invalid - steps are 1-indexed)
-    data = submit_command(token, query_id, "/goto 0")
-    assert data["success"] is False
-    assert "invalid" in data["message"].lower() or "out of range" in data["message"].lower()
+    # Get initial step count
+    status_before = submit_command(token, query_id, "/status")
+    steps_before = status_before["step_summary"]["total_steps"]
     
-    # Test step beyond range
-    data = submit_command(token, query_id, f"/goto {total_steps + 10}")
-    assert data["success"] is False
-    assert "invalid" in data["message"].lower() or "out of range" in data["message"].lower()
+    # Go back
+    data = submit_command(token, query_id, "/back", force=True)
     
-    # Test negative step
-    data = submit_command(token, query_id, "/goto -1")
-    assert data["success"] is False
+    assert data["success"] is True
+    assert data["command_type"] == "back"
     
-    print("✓ /goto with invalid step numbers properly rejected")
-
-
-def test_goto_missing_argument():
-    """Test /goto without step number."""
-    token = register_and_login()
-    session_data = create_test_session(token)
-    query_id = session_data["query_id"]
+    # Verify steps were truncated
+    status_after = submit_command(token, query_id, "/status")
+    steps_after = status_after["step_summary"]["total_steps"]
+    assert steps_after < steps_before, "Steps should be truncated after /back"
     
-    data = submit_command(token, query_id, "/goto")
-    
-    assert data["success"] is False
-    assert "requires" in data["message"].lower() or "number" in data["message"].lower()
-    
-    print("✓ /goto without argument properly rejected")
+    print("✓ /back truncates current and future steps")
 
 
 def test_restart_command():
-    """Test /restart resets session state."""
+    """Test /restart truncates all steps for regeneration."""
     token = register_and_login()
     session_data = create_test_session(token)
     query_id = session_data["query_id"]
@@ -401,15 +384,16 @@ def test_restart_command():
     assert data["success"] is True
     assert data["command_type"] == "restart"
     
-    # Should be back at first step
-    assert data["next_prompt"]["aspect_id"] == initial_aspect
+    # In sequential mode, should regenerate from first aspect
+    if data.get("next_prompt"):
+        assert data["next_prompt"]["aspect_id"] == initial_aspect
     
-    # Verify progress reset
+    # Verify all steps cleared
     status_data = submit_command(token, query_id, "/status")
     summary = status_data["step_summary"]
-    assert summary["completed"] == 0, "Restart should clear progress"
+    assert summary["total_steps"] == 0, "Restart should truncate all steps"
     
-    print("✓ /restart resets session state correctly")
+    print("✓ /restart truncates all steps correctly")
 
 
 # ============================================================================
@@ -541,25 +525,26 @@ def test_done_command_advances():
     print("✓ /done advances to next aspect")
 
 
-def test_skip_preserves_conversation():
-    """Test /skip preserves any conversation history."""
+def test_skip_clears_conversation():
+    """Test /skip clears all conversation history and data."""
     token = register_and_login()
     session_data = create_test_session(token)
     query_id = session_data["query_id"]
+    first_aspect = session_data["next_prompt"]["aspect_id"]
     
     # Answer a question
     submit_answer(token, query_id, "Adults over 65")
     
-    # Skip (should preserve the answer)
+    # Skip (should clear the answer)
     data = submit_command(token, query_id, "/skip")
     
     assert data["success"] is True
     
-    # Verify progress counted
-    status_data = submit_command(token, query_id, "/status")
-    assert status_data["step_summary"]["total_follow_ups"] >= 1
+    # Should advance to next aspect (or complete)
+    if data["next_prompt"]:
+        assert data["next_prompt"]["aspect_id"] != first_aspect
     
-    print("✓ /skip preserves conversation history")
+    print("✓ /skip clears conversation history and advances")
 
 
 # ============================================================================
@@ -952,10 +937,9 @@ if __name__ == "__main__":
         ("NAVIGATION COMMANDS", [
             ("Back - On First Step", test_back_command_on_first_step),
             ("Back - After Progress", test_back_command_after_progress),
+            ("Back Truncates Steps", test_back_truncates_steps),
             ("Prev Alias", test_prev_alias_works),
-            ("Goto - Valid Step", test_goto_valid_step),
-            ("Goto - Invalid Steps", test_goto_invalid_step_numbers),
-            ("Goto - Missing Argument", test_goto_missing_argument),
+            ("Clear Command", test_clear_command),
             ("Restart", test_restart_command),
         ]),
         ("FORCE CONFIRMATION", [
@@ -966,7 +950,7 @@ if __name__ == "__main__":
         ("CONTROL COMMANDS", [
             ("Skip Advances", test_skip_command_advances),
             ("Done Advances", test_done_command_advances),
-            ("Skip Preserves Conversation", test_skip_preserves_conversation),
+            ("Skip Clears Conversation", test_skip_clears_conversation),
         ]),
         ("SYNTHESIS COMMAND", [
             ("Submit Flags Synthesis", test_submit_command_flags_synthesis),

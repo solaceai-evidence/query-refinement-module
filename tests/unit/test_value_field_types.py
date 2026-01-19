@@ -3,7 +3,7 @@ Tests for dynamic value field system with all supported types.
 
 Tests cover:
 - Schema validation for all 6 value field types
-- refined_value extraction for complex types
+- refinement_aspect_value extraction for complex types
 - Dependency context with type information
 - Incremental synthesis workflow
 - Type conversion and formatting
@@ -113,9 +113,11 @@ def test_complete_schema_includes_all_base_fields():
     aspect = make_aspect(aspect_id="intervention")
     fields = aspect._get_complete_schema_fields()
     
-    assert "needs_refinement" in fields
-    assert "explanation" in fields
-    assert "clarifying_question" in fields
+    assert "is_complete" in fields
+    assert "confidence" in fields
+    assert "reasoning" in fields
+    assert "refinement_aspect_value" in fields
+    assert "next_question" in fields
     assert "intervention" in fields  # dynamic field
 
 
@@ -136,36 +138,36 @@ def test_field_descriptions_include_synthesis_instructions():
 
 
 # ============================================================================
-# refined_value Extraction Tests
+# refinement_aspect_value Extraction Tests
 # ============================================================================
 
-def test_refined_value_extracts_string():
+def test_refinement_aspect_value_extracts_string():
     """Should extract string value from dynamic field."""
     aspect = make_aspect(aspect_id="population", value_field_type="string")
     refiner = QueryAspectRefiner(refinement_aspect=aspect)
     
     response = json.dumps({
-        "needs_refinement": False,
-        "explanation": "Complete",
-        "clarifying_question": "",
+        "is_complete": True,
+        "reasoning": "Complete",
+        "next_question": "",
         "population": "Adults aged 18-65 with Type 2 diabetes"
     })
     refiner.add_follow_up("Q", response)
     
-    value = refiner.refined_value
+    value = refiner.refinement_aspect_value
     assert value == "Adults aged 18-65 with Type 2 diabetes"
     assert isinstance(value, str)
 
 
-def test_refined_value_extracts_object():
+def test_refinement_aspect_value_extracts_object():
     """Should extract object value from dynamic field as dict."""
     aspect = make_aspect(aspect_id="intervention", value_field_type="object")
     refiner = QueryAspectRefiner(refinement_aspect=aspect)
     
     response = json.dumps({
-        "needs_refinement": False,
-        "explanation": "Complete",
-        "clarifying_question": "",
+        "is_complete": True,
+        "reasoning": "Complete",
+        "next_question": "",
         "intervention": {
             "name": "metformin",
             "dosage": "500mg twice daily",
@@ -174,22 +176,22 @@ def test_refined_value_extracts_object():
     })
     refiner.add_follow_up("Q", response)
     
-    value = refiner.refined_value
+    value = refiner.refinement_aspect_value
     assert isinstance(value, dict)
     assert value["name"] == "metformin"
     assert value["dosage"] == "500mg twice daily"
     assert value["duration"] == "12 weeks"
 
 
-def test_refined_value_extracts_array():
+def test_refinement_aspect_value_extracts_array():
     """Should extract array value from dynamic field as list."""
     aspect = make_aspect(aspect_id="outcomes", value_field_type="array")
     refiner = QueryAspectRefiner(refinement_aspect=aspect)
     
     response = json.dumps({
-        "needs_refinement": False,
-        "explanation": "Complete",
-        "clarifying_question": "",
+        "is_complete": True,
+        "reasoning": "Complete",
+        "next_question": "",
         "outcomes": [
             "HbA1c via blood test at baseline",
             "Weight at 12 weeks",
@@ -198,108 +200,108 @@ def test_refined_value_extracts_array():
     })
     refiner.add_follow_up("Q", response)
     
-    value = refiner.refined_value
+    value = refiner.refinement_aspect_value
     assert isinstance(value, list)
     assert len(value) == 3
     assert "HbA1c via blood test at baseline" in value
 
 
-def test_refined_value_extracts_boolean():
+def test_refinement_aspect_value_extracts_boolean():
     """Should extract boolean value from dynamic field."""
     aspect = make_aspect(aspect_id="blinded", value_field_type="boolean")
     refiner = QueryAspectRefiner(refinement_aspect=aspect)
     
     response = json.dumps({
-        "needs_refinement": False,
-        "explanation": "Complete",
-        "clarifying_question": "",
+        "is_complete": True,
+        "reasoning": "Complete",
+        "next_question": "",
         "blinded": True
     })
     refiner.add_follow_up("Q", response)
     
-    value = refiner.refined_value
+    value = refiner.refinement_aspect_value
     assert value is True
     assert isinstance(value, bool)
 
 
-def test_refined_value_extracts_integer():
+def test_refinement_aspect_value_extracts_integer():
     """Should extract integer value from dynamic field."""
     aspect = make_aspect(aspect_id="sample_size", value_field_type="integer")
     refiner = QueryAspectRefiner(refinement_aspect=aspect)
     
     response = json.dumps({
-        "needs_refinement": False,
-        "explanation": "Complete",
-        "clarifying_question": "",
+        "is_complete": True,
+        "reasoning": "Complete",
+        "next_question": "",
         "sample_size": 500
     })
     refiner.add_follow_up("Q", response)
     
-    value = refiner.refined_value
+    value = refiner.refinement_aspect_value
     assert value == 500
     assert isinstance(value, int)
 
 
-def test_refined_value_extracts_float():
+def test_refinement_aspect_value_extracts_float():
     """Should extract float value from dynamic field."""
     aspect = make_aspect(aspect_id="effect_size", value_field_type="float")
     refiner = QueryAspectRefiner(refinement_aspect=aspect)
     
     response = json.dumps({
-        "needs_refinement": False,
-        "explanation": "Complete",
-        "clarifying_question": "",
+        "is_complete": True,
+        "reasoning": "Complete",
+        "next_question": "",
         "effect_size": 0.75
     })
     refiner.add_follow_up("Q", response)
     
-    value = refiner.refined_value
+    value = refiner.refinement_aspect_value
     assert value == 0.75
     assert isinstance(value, float)
 
 
-def test_refined_value_iterates_backwards():
+def test_refinement_aspect_value_iterates_backwards():
     """Should get most recent value when multiple responses exist."""
     aspect = make_aspect(aspect_id="population", value_field_type="string")
     refiner = QueryAspectRefiner(refinement_aspect=aspect)
     
     # Add multiple responses
     refiner.add_follow_up("Q1", json.dumps({
-        "needs_refinement": True,
-        "explanation": "Need more",
-        "clarifying_question": "Age?",
+        "is_complete": False,
+        "reasoning": "Need more",
+        "next_question": "Age?",
         "population": "Adults"
     }))
     refiner.add_follow_up("Q2", json.dumps({
-        "needs_refinement": False,
-        "explanation": "Complete",
-        "clarifying_question": "",
+        "is_complete": True,
+        "reasoning": "Complete",
+        "next_question": "",
         "population": "Adults aged 18-65 with diabetes"
     }))
     
-    value = refiner.refined_value
+    value = refiner.refinement_aspect_value
     assert value == "Adults aged 18-65 with diabetes"
 
 
-def test_refined_value_stores_directly():
+def test_refinement_aspect_value_stores_directly():
     """Should store value directly when set."""
     aspect = make_aspect(aspect_id="population")
     refiner = QueryAspectRefiner(refinement_aspect=aspect)
-    refiner.refined_value = "Direct value"
+    refiner.refinement_aspect_value = "Direct value"
     
-    value = refiner.refined_value
+    value = refiner.refinement_aspect_value
     assert value == "Direct value"
 
 
-def test_refined_value_handles_plain_text_response():
-    """Plain text responses should be stored in refined_value (overwrites previous)."""
+def test_refinement_aspect_value_handles_plain_text_response():
+    """Plain text responses should be stored in refinement_aspect_value (overwrites previous)."""
     aspect = make_aspect(aspect_id="population")
     refiner = QueryAspectRefiner(refinement_aspect=aspect)
-    refiner.refined_value = "Initial"
+    refiner.refinement_aspect_value = "Initial"
     
     refiner.add_follow_up("Q", "Just plain text response")
     
-    value = refiner.refined_value
+    value = refiner.refinement_aspect_value
     assert value == "Just plain text response"  # Updated with latest response
 
 
@@ -313,14 +315,14 @@ def test_final_response_returns_string_for_simple_types():
     refiner = QueryAspectRefiner(refinement_aspect=aspect)
     
     response = json.dumps({
-        "needs_refinement": False,
-        "explanation": "Complete",
-        "clarifying_question": "",
+        "is_complete": True,
+        "reasoning": "Complete",
+        "next_question": "",
         "population": "Adults aged 18-65"
     })
     refiner.add_follow_up("Q", response)
     
-    assert refiner.refined_value_as_str == "Adults aged 18-65"
+    assert refiner.refinement_aspect_value_as_str == "Adults aged 18-65"
 
 
 def test_final_response_converts_object_to_json_string():
@@ -329,14 +331,14 @@ def test_final_response_converts_object_to_json_string():
     refiner = QueryAspectRefiner(refinement_aspect=aspect)
     
     response = json.dumps({
-        "needs_refinement": False,
-        "explanation": "Complete",
-        "clarifying_question": "",
+        "is_complete": True,
+        "reasoning": "Complete",
+        "next_question": "",
         "intervention": {"name": "metformin", "dosage": "500mg"}
     })
     refiner.add_follow_up("Q", response)
     
-    final = refiner.refined_value_as_str
+    final = refiner.refinement_aspect_value_as_str
     assert isinstance(final, str)
     parsed = json.loads(final)
     assert parsed["name"] == "metformin"
@@ -348,14 +350,14 @@ def test_final_response_converts_array_to_json_string():
     refiner = QueryAspectRefiner(refinement_aspect=aspect)
     
     response = json.dumps({
-        "needs_refinement": False,
-        "explanation": "Complete",
-        "clarifying_question": "",
+        "is_complete": True,
+        "reasoning": "Complete",
+        "next_question": "",
         "outcomes": ["HbA1c", "Weight"]
     })
     refiner.add_follow_up("Q", response)
     
-    final = refiner.refined_value_as_str
+    final = refiner.refinement_aspect_value_as_str
     assert isinstance(final, str)
     parsed = json.loads(final)
     assert "HbA1c" in parsed
@@ -378,7 +380,7 @@ def test_dependency_context_includes_type_field():
     int_aspect.depends_on = ["population"]
     
     pop_step = session.add_step(pop_aspect)
-    pop_step.refined_value = "Adults aged 18-65"
+    pop_step.refinement_aspect_value = "Adults aged 18-65"
     
     session.add_step(int_aspect)
     
@@ -398,7 +400,7 @@ def test_dependency_context_formats_complex_types():
     out_aspect.depends_on = ["intervention"]
     
     int_step = session.add_step(int_aspect)
-    int_step.refined_value = json.dumps({"name": "metformin", "dosage": "500mg"})
+    int_step.refinement_aspect_value = json.dumps({"name": "metformin", "dosage": "500mg"})
     
     session.add_step(out_aspect)
     
@@ -421,7 +423,7 @@ def test_dependency_context_with_array_type():
     cmp_aspect.depends_on = ["outcomes"]
     
     out_step = session.add_step(out_aspect)
-    out_step.refined_value = json.dumps(["HbA1c", "Weight", "QoL"])
+    out_step.refinement_aspect_value = json.dumps(["HbA1c", "Weight", "QoL"])
     
     session.add_step(cmp_aspect)
     
@@ -438,30 +440,32 @@ def test_dependency_context_with_array_type():
 # ============================================================================
 
 def test_validate_response_requires_dynamic_field():
-    """validate_response should require dynamic field to be present."""
+    """validate_response should require refinement_aspect_value when is_complete=True."""
     aspect = make_aspect(aspect_id="population", value_field_type="string")
     
-    # Missing dynamic field
+    # Missing refinement_aspect_value when is_complete=True
     response = {
-        "needs_refinement": False,
-        "explanation": "Complete",
-        "clarifying_question": ""
+        "is_complete": True,
+        "confidence": 0.9,
+        "reasoning": "Complete",
+        "next_question": None
     }
     
     is_valid, error_msg = aspect.validate_response(response)
     assert not is_valid
-    assert "population" in error_msg
+    assert "refinement_aspect_value" in error_msg
 
 
 def test_validate_response_accepts_dynamic_field():
-    """validate_response should accept response with dynamic field."""
+    """validate_response should accept response with refinement_aspect_value."""
     aspect = make_aspect(aspect_id="population", value_field_type="string")
     
     response = {
-        "needs_refinement": False,
-        "explanation": "Complete",
-        "clarifying_question": "",
-        "population": "Adults aged 18-65"
+        "is_complete": True,
+        "confidence": 0.9,
+        "reasoning": "Complete",
+        "next_question": None,
+        "refinement_aspect_value": "Adults aged 18-65"
     }
     
     is_valid, error_msg = aspect.validate_response(response)
@@ -470,14 +474,15 @@ def test_validate_response_accepts_dynamic_field():
 
 
 def test_validate_response_with_object_type():
-    """validate_response should accept object values."""
+    """validate_response should accept object values in refinement_aspect_value."""
     aspect = make_aspect(aspect_id="intervention", value_field_type="object")
     
     response = {
-        "needs_refinement": False,
-        "explanation": "Complete",
-        "clarifying_question": "",
-        "intervention": {"name": "metformin"}
+        "is_complete": True,
+        "confidence": 0.9,
+        "reasoning": "Complete",
+        "next_question": None,
+        "refinement_aspect_value": "{\"name\": \"metformin\"}"
     }
     
     is_valid, error_msg = aspect.validate_response(response)
@@ -485,14 +490,15 @@ def test_validate_response_with_object_type():
 
 
 def test_validate_response_with_array_type():
-    """validate_response should accept array values."""
+    """validate_response should accept array values in refinement_aspect_value."""
     aspect = make_aspect(aspect_id="outcomes", value_field_type="array")
     
     response = {
-        "needs_refinement": False,
-        "explanation": "Complete",
-        "clarifying_question": "",
-        "outcomes": ["HbA1c", "Weight"]
+        "is_complete": True,
+        "confidence": 0.9,
+        "reasoning": "Complete",
+        "next_question": None,
+        "refinement_aspect_value": "[\"HbA1c\", \"Weight\"]"
     }
     
     is_valid, error_msg = aspect.validate_response(response)
@@ -510,30 +516,30 @@ def test_incremental_synthesis_string_builds_up():
     
     # Response 1: Partial info
     refiner.add_follow_up("Q1", json.dumps({
-        "needs_refinement": True,
-        "explanation": "Need age",
-        "clarifying_question": "What age?",
+        "is_complete": False,
+        "reasoning": "Need age",
+        "next_question": "What age?",
         "population": "Adults"
     }))
-    assert refiner.refined_value == "Adults"
+    assert refiner.refinement_aspect_value == "Adults"
     
     # Response 2: More info
     refiner.add_follow_up("Q2", json.dumps({
-        "needs_refinement": True,
-        "explanation": "Need condition",
-        "clarifying_question": "What condition?",
+        "is_complete": False,
+        "reasoning": "Need condition",
+        "next_question": "What condition?",
         "population": "Adults aged 18-65"
     }))
-    assert refiner.refined_value == "Adults aged 18-65"
+    assert refiner.refinement_aspect_value == "Adults aged 18-65"
     
     # Response 3: Complete
     refiner.add_follow_up("Q3", json.dumps({
-        "needs_refinement": False,
-        "explanation": "Complete",
-        "clarifying_question": "",
+        "is_complete": True,
+        "reasoning": "Complete",
+        "next_question": "",
         "population": "Adults aged 18-65 with Type 2 diabetes"
     }))
-    assert refiner.refined_value == "Adults aged 18-65 with Type 2 diabetes"
+    assert refiner.refinement_aspect_value == "Adults aged 18-65 with Type 2 diabetes"
 
 
 def test_incremental_synthesis_object_adds_fields():
@@ -543,38 +549,38 @@ def test_incremental_synthesis_object_adds_fields():
     
     # Response 1: Just name
     refiner.add_follow_up("Q1", json.dumps({
-        "needs_refinement": True,
-        "explanation": "Need dosage",
-        "clarifying_question": "What dosage?",
+        "is_complete": False,
+        "reasoning": "Need dosage",
+        "next_question": "What dosage?",
         "intervention": {"name": "metformin"}
     }))
-    value = refiner.refined_value
+    value = refiner.refinement_aspect_value
     assert value["name"] == "metformin"
     assert "dosage" not in value
     
     # Response 2: Add dosage
     refiner.add_follow_up("Q2", json.dumps({
-        "needs_refinement": True,
-        "explanation": "Need duration",
-        "clarifying_question": "How long?",
+        "is_complete": False,
+        "reasoning": "Need duration",
+        "next_question": "How long?",
         "intervention": {"name": "metformin", "dosage": "500mg twice daily"}
     }))
-    value = refiner.refined_value
+    value = refiner.refinement_aspect_value
     assert value["name"] == "metformin"
     assert value["dosage"] == "500mg twice daily"
     
     # Response 3: Complete
     refiner.add_follow_up("Q3", json.dumps({
-        "needs_refinement": False,
-        "explanation": "Complete",
-        "clarifying_question": "",
+        "is_complete": True,
+        "reasoning": "Complete",
+        "next_question": "",
         "intervention": {
             "name": "metformin",
             "dosage": "500mg twice daily",
             "duration": "12 weeks"
         }
     }))
-    value = refiner.refined_value
+    value = refiner.refinement_aspect_value
     assert len(value) == 3
     assert value["duration"] == "12 weeks"
 
@@ -586,22 +592,22 @@ def test_incremental_synthesis_array_adds_items():
     
     # Response 1: One item
     refiner.add_follow_up("Q1", json.dumps({
-        "needs_refinement": True,
-        "explanation": "Need more",
-        "clarifying_question": "Other outcomes?",
+        "is_complete": False,
+        "reasoning": "Need more",
+        "next_question": "Other outcomes?",
         "outcomes": ["HbA1c via blood test"]
     }))
-    value = refiner.refined_value
+    value = refiner.refinement_aspect_value
     assert len(value) == 1
     
     # Response 2: More items
     refiner.add_follow_up("Q2", json.dumps({
-        "needs_refinement": False,
-        "explanation": "Complete",
-        "clarifying_question": "",
+        "is_complete": True,
+        "reasoning": "Complete",
+        "next_question": "",
         "outcomes": ["HbA1c via blood test", "Weight at 12 weeks", "QoL score"]
     }))
-    value = refiner.refined_value
+    value = refiner.refinement_aspect_value
     assert len(value) == 3
 
 
@@ -615,9 +621,9 @@ def test_follow_up_prompt_shows_current_value_string():
     refiner = QueryAspectRefiner(refinement_aspect=aspect)
     
     refiner.add_follow_up("Q", json.dumps({
-        "needs_refinement": True,
-        "explanation": "Need more",
-        "clarifying_question": "Age?",
+        "is_complete": False,
+        "reasoning": "Need more",
+        "next_question": "Age?",
         "population": "Adults"
     }))
     
@@ -632,9 +638,9 @@ def test_follow_up_prompt_shows_current_value_object():
     refiner = QueryAspectRefiner(refinement_aspect=aspect)
     
     refiner.add_follow_up("Q", json.dumps({
-        "needs_refinement": True,
-        "explanation": "Need more",
-        "clarifying_question": "Dosage?",
+        "is_complete": False,
+        "reasoning": "Need more",
+        "next_question": "Dosage?",
         "intervention": {"name": "metformin"}
     }))
     

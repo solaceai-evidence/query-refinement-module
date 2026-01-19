@@ -215,11 +215,11 @@ def test_query_aspect_refiner_follow_up_tracking():
     refiner = QueryAspectRefiner(refinement_aspect=aspect)
 
     assert refiner.follow_up_count == 0
-    assert refiner.refined_value_as_str is None
+    assert refiner.refinement_aspect_value_as_str is None
 
     refiner.add_follow_up(question="Q1", response="Answer")
     assert refiner.follow_up_count == 1
-    assert refiner.refined_value_as_str == "Answer"  # Plain text is now stored in refined_value
+    assert refiner.refinement_aspect_value_as_str == "Answer"  # Plain text is now stored in refinement_aspect_value
 
 
 def test_query_aspect_refiner_get_prompts_includes_dependency_context(caplog):
@@ -385,16 +385,18 @@ def test_session_handle_command_flow():
     invalid = session.handle_command(CommandResult(command=UserCommand.NONE, is_valid=False, error_message="bad"))
     assert not invalid["success"] and invalid["message"] == "bad"
 
-    goto_fail = session.handle_command(CommandResult(command=UserCommand.GOTO, argument=None))
-    assert not goto_fail["success"]
+    # Test /back truncates steps
+    back_result = session.handle_command(CommandResult(command=UserCommand.BACK))
+    assert back_result["success"]
+    assert len(session.steps) == 1  # Only first step remains
 
-    goto_invalid = session.handle_command(CommandResult(command=UserCommand.GOTO, argument="99"))
-    assert not goto_invalid["success"]
-
-    goto_success = session.handle_command(CommandResult(command=UserCommand.GOTO, argument="1"))
-    assert goto_success["success"]
-    assert goto_success["step_index"] == 0
-    assert session.steps[0].follow_up_history == []  # Cleared when revisiting
+    # Test /clear clears current aspect
+    session, step_a, step_b = build_session_with_steps()
+    step_b.add_follow_up("Q", "A")
+    clear_result = session.handle_command(CommandResult(command=UserCommand.CLEAR))
+    assert clear_result["success"]
+    assert clear_result["regenerate_question"] is True
+    assert len(step_b.follow_up_history) == 0
 
 
 def test_session_skip_and_finish_behaviour():
@@ -482,13 +484,35 @@ def test_manager_initialize_applies_dependency_context():
 
     assert len(session.steps) == 2
     first, second = session.steps
-    assert first.is_complete and first.refined_value == "Clear"
+    assert first.is_complete and first.refinement_aspect_value == "Clear"
     assert not second.is_complete
 
     # Dependency context for aspect B should include Aspect A value from original query (clear)
     ctx = session.get_dependency_context("b")
     # Updated: Now uses initial_summary directly instead of wrapping in "is clear" message
     assert ctx["a"]["value"] == "Clear"
+
+
+def test_skipped_aspects_excluded_from_dependency_context():
+    """Test that skipped aspects provide NO context to dependents."""
+    aspect_a = make_aspect(aspect_id="a", aspect_name="Population")
+    aspect_b = make_aspect(aspect_id="b", aspect_name="Intervention", depends_on=["a"])
+    
+    session = QueryRefinementSession(original_query="Test query")
+    step_a = session.add_step(aspect_a)
+    step_b = session.add_step(aspect_b)
+    
+    # Skip aspect A (which B depends on)
+    step_a.was_skipped = True
+    step_a.is_complete = True
+    step_a.refinement_aspect_value = None  # Skipped aspects have no value
+    
+    # Get dependency context for B
+    ctx = session.get_dependency_context("b")
+    
+    # Skipped aspect A should be completely excluded
+    assert "a" not in ctx
+    assert len(ctx) == 0
 
 
 def test_ensure_step_is_ready_autocompletes_dependent_aspect():
@@ -520,7 +544,7 @@ def test_ensure_step_is_ready_autocompletes_dependent_aspect():
     step_b = session.add_step(aspect_b)
 
     step_a.is_complete = True
-    step_a.refined_value = "Population captured in original query"
+    step_a.refinement_aspect_value = "Population captured in original query"
 
     step_b.is_complete = False
     step_b.refinement_question = "Need population"
@@ -529,7 +553,7 @@ def test_ensure_step_is_ready_autocompletes_dependent_aspect():
 
     assert not ready  # auto-resolved, no prompt needed
     assert step_b.is_complete
-    assert "already" in (step_b.refined_value or "").lower()
+    assert "already" in (step_b.refinement_aspect_value or "").lower()
 
 
 def test_dependency_context_uses_latest_follow_up_response():
@@ -575,7 +599,7 @@ def test_process_next_step_records_follow_up_without_schema():
     assert step.follow_up_history[-1]["response"] == json_response
     # refined_value_as_str returns the synthesized value from the dynamic field (aspect.id)
     assert step.refined_value_as_str == "Synthesized answer"
-    assert step.refined_value == "Synthesized answer"
+    assert step.refinement_aspect_value == "Synthesized answer"
 
 
 def test_process_next_step_enforces_json_validation():
@@ -662,7 +686,7 @@ def test_gather_refinement_details_compiles_lists():
 
     step2 = session.add_step(aspect2)
     step2.is_complete = True
-    step2.refined_value = "Already clear"
+    step2.refinement_aspect_value = "Already clear"
 
     clarifications, summaries = manager._gather_refinement_details(session)
     assert clarifications == [("A", "Value")]

@@ -147,8 +147,8 @@ class RefinementAspect:
     - Extensible metadata
 
     Response Format Structure:
-    - Base fields (always included): needs_refinement, explanation, example_question
-    - Custom fields: Add domain-specific fields via 'additional_fields'
+    - Base fields (always included): is_complete, confidence, reasoning, refined_value, next_question
+    - Custom fields: Add domain-specific fields via 'additional_fields' (future use)
     
     Example response_format:
         {
@@ -196,8 +196,9 @@ class RefinementAspect:
     response_format: Optional[Dict[str, Any]] = None
     
     # Dynamic value field configuration
-    # The value field stores the synthesized answer for this aspect
-    # Field name always matches aspect.id (automatic, not configurable)
+    # DEPRECATED: Not currently used in unified prompt system (reserved for future type-specific handling)
+    # The unified response uses simple string refined_value for all aspects
+    # Keep these fields for potential future extensibility
     value_field_type: str = "string"  # Type: string, array, object, boolean, integer, float
     value_field_description: Optional[str] = None  # Describes what content the field should contain
     
@@ -214,18 +215,22 @@ class RefinementAspect:
     # e.g., domain, priority, examples, options, etc.
     metadata: Dict[str, Any] = field(default_factory=dict)
 
-    # Base schema fields that are always required in the response format
+    # Base schema fields for unified response format (used by unified_analysis_prompt.py)
     BASE_SCHEMA_FIELDS = {
-        "needs_refinement": "boolean",
-        "explanation": "string",
-        "clarifying_question": "string"
+        "is_complete": "boolean",
+        "confidence": "float",
+        "reasoning": "string",
+        "refinement_aspect_value": "string",
+        "next_question": "string"
     }
 
     # Field descriptions for the base schema fields
     BASE_FIELD_DESCRIPTIONS = {
-        "needs_refinement": "Whether this query specification needs clarification (true/false)",
-        "explanation": "Brief explanation of why the query does or does not need refinement",
-        "clarifying_question": "The clarifying question to ask the user if refinement is needed; otherwise empty"
+        "is_complete": "Whether this aspect is sufficiently refined and clear (true/false)",
+        "confidence": "LLM's confidence in this assessment (0.0-1.0)",
+        "reasoning": "Brief explanation of why the aspect is/isn't complete",
+        "refinement_aspect_value": "Extracted or synthesized value (required if is_complete=true)",
+        "next_question": "Focused clarifying question (required if is_complete=false)"
     }
 
     def __post_init__(self):
@@ -622,15 +627,22 @@ class RefinementAspect:
         Returns:
             Tuple of (is_valid, error_message)
         """
-        # Check all base fields are present
+        # Check base fields for unified response format
         missing_fields = []
-        for field_name in self.BASE_SCHEMA_FIELDS.keys():
-            if field_name not in response:
-                missing_fields.append(field_name)
         
-        # Check dynamic value field is present
-        if self.id not in response:
-            missing_fields.append(self.id)
+        # Required fields: is_complete, confidence, reasoning
+        if "is_complete" not in response:
+            missing_fields.append("is_complete")
+        if "confidence" not in response:
+            missing_fields.append("confidence")
+        if "reasoning" not in response:
+            missing_fields.append("reasoning")
+        
+        # Either refinement_aspect_value OR next_question must be present (mutually exclusive)
+        has_refined = "refinement_aspect_value" in response
+        has_next_q = "next_question" in response
+        if not has_refined and not has_next_q:
+            missing_fields.append("refinement_aspect_value OR next_question")
 
         if missing_fields:
             return False, f"Missing required fields: {', '.join(missing_fields)}"
@@ -638,16 +650,33 @@ class RefinementAspect:
         # Validate base field types
         validation_errors = []
         
-        if not isinstance(response.get("needs_refinement"), bool):
-            validation_errors.append("'needs_refinement' must be a boolean")
+        # Validate is_complete (boolean)
+        if not isinstance(response.get("is_complete"), bool):
+            validation_errors.append("'is_complete' must be a boolean")
         
-        if not isinstance(response.get("explanation"), str):
-            validation_errors.append("'explanation' must be a string")
+        # Validate confidence (float 0.0-1.0)
+        confidence = response.get("confidence")
+        if not isinstance(confidence, (int, float)):
+            validation_errors.append("'confidence' must be a number")
+        elif not (0.0 <= confidence <= 1.0):
+            validation_errors.append("'confidence' must be between 0.0 and 1.0")
         
-        if not isinstance(response.get("clarifying_question"), str):
-            validation_errors.append("'clarifying_question' must be a string")
+        # Validate reasoning (string)
+        if not isinstance(response.get("reasoning"), str):
+            validation_errors.append("'reasoning' must be a string")
         
-        # Validate dynamic value field type
+        # Validate conditional fields based on is_complete
+        is_complete = response.get("is_complete", False)
+        if is_complete:
+            refinement_aspect_value = response.get("refinement_aspect_value")
+            if not refinement_aspect_value or not isinstance(refinement_aspect_value, str):
+                validation_errors.append("'refinement_aspect_value' required as non-empty string when is_complete=true")
+        else:
+            next_question = response.get("next_question")
+            if not next_question or not isinstance(next_question, str):
+                validation_errors.append("'next_question' required as non-empty string when is_complete=false")
+        
+        # Legacy: Validate dynamic value field type if present (deprecated)
         if self.id in response:
             value = response[self.id]
             type_valid, type_error = self._validate_field_type(

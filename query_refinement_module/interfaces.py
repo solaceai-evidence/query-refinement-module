@@ -18,14 +18,17 @@ class AspectAnalysisResult:
     """
     Result of analyzing a single aspect.
     
-    This matches the structured output from LLM analysis (BASE_SCHEMA_FIELDS in RefinementAspect):
-    - needs_refinement: boolean
-    - explanation: string (why refinement is/isn't needed)
-    - clarifying_question: string (the question to ask if refinement needed)
+    DEPRECATED: This class maintains backward compatibility for the analyzer interface.
+    The system now uses unified response format internally (RefinementAnalysisResponse).
+    
+    Legacy fields mapped to unified format:
+    - needs_refinement → is_complete (inverted logic)
+    - explanation → reasoning
+    - clarifying_question → next_question
     
     Attributes:
         needs_refinement: Whether the aspect needs refinement.
-        reason: Explanation of why refinement is or isn't needed.
+        explanation: Explanation of why refinement is or isn't needed.
         clarifying_question: The question to ask the user (if needs_refinement=True).
     """
     needs_refinement: bool
