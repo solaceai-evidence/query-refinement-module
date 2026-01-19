@@ -12,7 +12,7 @@ def test_followup_null_and_empty_history():
     aspect = make_aspect(allow_follow_up=True)
     refiner = QueryAspectRefiner(refinement_aspect=aspect)
     assert refiner.follow_up_count == 0
-    assert refiner.refined_value_as_str is None
+    assert refiner.refinement_aspect_value_as_str is None
     assert refiner.get_conversation_history_text() == "no previous follow-up questions."
     prompt = refiner.format_follow_up_prompt_template("query")
     assert "FOLLOW-UP CONTEXT" in prompt
@@ -31,7 +31,7 @@ def test_followup_with_null_response():
     aspect = make_aspect(allow_follow_up=True)
     refiner = QueryAspectRefiner(refinement_aspect=aspect)
     refiner.add_follow_up("Q1", None)
-    assert refiner.refined_value_as_str is None
+    assert refiner.refinement_aspect_value_as_str is None
 
 
 def test_followup_manager_edge_cases():

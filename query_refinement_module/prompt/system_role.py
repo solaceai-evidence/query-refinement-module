@@ -42,7 +42,6 @@ When creating the refined statement and query, you MUST:
 - Remove ALL conversational language ("I think", "maybe", "probably", "I guess", "kind of", "sort of")
 - Remove ALL filler words and unnecessary elaboration ("well", "you know", "obviously", "definitely", "actually")
 - Remove ALL meta-commentary ("The user wants to study", "This research focuses on", "I'm interested in", "The goal is to")
-- Remove ALL hedging language ("approximately", "around", "roughly", "about") unless mathematically precise
 - Write in clear, professional, declarative statements
 - Preserve ALL key factual details from the original input and refinements
 - Maintain technical precision and domain-specific terminology

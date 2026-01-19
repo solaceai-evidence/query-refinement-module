@@ -24,7 +24,6 @@ def build_manager(
     enable_tracing: bool,
     trace_dir: Optional[str] = None,
     log_dir: Optional[str] = None,
-    parallel_enabled: bool = True,
 ) -> QueryRefinementManager:
     logs_directory = log_dir or trace_dir
     if logs_directory:
@@ -42,37 +41,11 @@ def build_manager(
     provider = LiteLLMProvider(**settings.as_provider_kwargs())
     analyzer = LLMQueryAnalyzer(provider, **settings.as_analyzer_kwargs())
 
-    # Build parallel config if enabled
-    parallel_config = None
-    if parallel_enabled:
-        from .interfaces import RateLimitConfig
-        from .parallel import ParallelConfig
-        from .rate_limiter import TokenBucketRateLimiter, BackoffStrategy
-        
-        # Get rate limits from environment or provider defaults
-        rate_limit_config = RateLimitConfig.from_env()
-        if not rate_limit_config or not rate_limit_config.requests_per_minute:
-            # Use provider defaults
-            rate_limit_config = provider.get_rate_limits()
-        
-        rate_limiter = TokenBucketRateLimiter(
-            config=rate_limit_config,
-            scope="global",
-        )
-        
-        parallel_config = ParallelConfig(
-            enabled=True,
-            max_concurrent=rate_limit_config.max_concurrent_requests or 5,
-            rate_limiter=rate_limiter,
-            backoff_strategy=BackoffStrategy(),
-            max_retries=3,
-        )
-
     return QueryRefinementManager(
         llm_provider=provider,
         query_analyzer=analyzer,
         tracing_provider=tracer,
-        parallel_config=parallel_config,
+        parallel_config=None,
     )
 
 
@@ -108,7 +81,7 @@ def _print_summary(manager: QueryRefinementManager, session) -> None:
     print("="*80)
 
 
-async def run_cli(manager: QueryRefinementManager, framework_name: str, query: str, parallel_enabled: bool = True) -> None:
+async def run_cli(manager: QueryRefinementManager, framework_name: str, query: str) -> None:
     try:
         framework = registry.get_framework(framework_name)
     except ValueError as exc:
@@ -163,47 +136,31 @@ async def run_cli(manager: QueryRefinementManager, framework_name: str, query: s
             if context_text:
                 print(f"\n{context_text}\n")
 
-            # Generate initial question for this aspect
-            dependency_context = session.get_dependency_context(step.refinement_aspect.id)
-            system_prompt, user_prompt = step.get_prompts(
-                query=session.original_query,
-                dependency_context=dependency_context
-            )
-            
-            # Get first question from LLM
+            # Generate initial question for this aspect using unified approach
             print("🔄 Generating question...\n")
             try:
-                response_text, parsed_payload, is_error, error_message = manager._get_llm_response_with_validation(
-                    aspect=step.refinement_aspect,
-                    system_prompt=system_prompt,
-                    user_prompt=user_prompt
+                result = manager.get_analysis_prompts(
+                    session=session,
+                    aspect_id=step.refinement_aspect.id,
+                    mode='initial'
                 )
                 
-                if is_error:
-                    print(f"❌ Error generating question: {error_message}")
-                    print(f"Skipping aspect {header}...")
-                    step.was_skipped = True
-                    step.is_complete = True
+                # Process result
+                status = manager.process_analysis_result(
+                    session=session,
+                    aspect_id=step.refinement_aspect.id,
+                    result=result
+                )
+                
+                if status['complete']:
+                    # Aspect is already clear from the query
+                    print(f"✓ {header} is already clear from your query")
+                    if result.reasoning:
+                        print(f"  {result.reasoning}")
                     continue
                 
-                # Extract question and initial analysis
-                if parsed_payload:
-                    step.refinement_question = parsed_payload.get('clarifying_question', '')
-                    step.needs_refinement_rationale = parsed_payload.get('explanation', '')
-                    
-                    # Check if aspect is already clear
-                    needs_refinement = parsed_payload.get('needs_refinement', True)
-                    if not needs_refinement:
-                        print(f"✓ {header} is already clear from your query")
-                        explanation = parsed_payload.get('explanation', '')
-                        if explanation:
-                            print(f"  {explanation}")
-                        step.is_complete = True
-                        # Extract and store value
-                        step.extract_and_store_value(response_text)
-                        continue
-                
-                question = step.refinement_question or f"Please provide details about {header}"
+                # Not complete - show question to user
+                question = result.next_question
                 
             except Exception as e:
                 print(f"❌ Error: {e}")
@@ -241,9 +198,36 @@ async def run_cli(manager: QueryRefinementManager, framework_name: str, query: s
                     # If skip/done was executed, the step is now complete
                     if step.is_complete:
                         break
+                    # If /clear was used, regenerate the question
+                    if payload.get("regenerate_question"):
+                        try:
+                            print("\n🔄 Regenerating question...")
+                            # Use unified approach to regenerate
+                            mode = 'followup' if step.follow_up_history else 'initial'
+                            result = manager.get_analysis_prompts(
+                                session=session,
+                                aspect_id=step.refinement_aspect.id,
+                                mode=mode
+                            )
+                            
+                            status = manager.process_analysis_result(
+                                session=session,
+                                aspect_id=step.refinement_aspect.id,
+                                result=result
+                            )
+                            
+                            if status['complete']:
+                                print(f"✓ {header} is now complete")
+                            else:
+                                question = result.next_question
+                                print(f"\n{question}\n")
+                        except Exception as e:
+                            print(f"❌ Error regenerating question: {e}")
                     continue
 
                 # Record answer
+                if not question:
+                    question = step.refinement_question or f"Please provide details about {header}"
                 step.add_follow_up(question=question, response=user_input)
                 
                 # Run follow-up analysis
@@ -334,20 +318,6 @@ def parse_args(argv: Optional[list[str]] = None) -> argparse.Namespace:
     parser.add_argument("--trace-dir", help="Write tracing operations and events to this directory")
     parser.add_argument("--log-dir", help="Directory for application logs (defaults to trace-dir when set)")
     
-    # Parallel execution options
-    parallel_group = parser.add_mutually_exclusive_group()
-    parallel_group.add_argument(
-        "--parallel",
-        action="store_true",
-        default=None,
-        help="Enable parallel aspect analysis (default: enabled via QUERY_REFINEMENT_PARALLEL_MODE)"
-    )
-    parallel_group.add_argument(
-        "--no-parallel",
-        action="store_true",
-        help="Disable parallel execution, process aspects sequentially"
-    )
-    
     return parser.parse_args(argv)
 
 
@@ -399,23 +369,12 @@ def main(argv: Optional[list[str]] = None) -> None:
         return
 
     trace_enabled = bool(args.trace or args.trace_dir)
-    
-    # Determine parallel mode: CLI flags override environment variable
-    if args.no_parallel:
-        parallel_enabled = False
-    elif args.parallel:
-        parallel_enabled = True
-    else:
-        # Check environment variable (default: true)
-        env_parallel = os.getenv("QUERY_REFINEMENT_PARALLEL_MODE", "true").lower()
-        parallel_enabled = env_parallel in ("true", "1", "yes", "on")
 
     try:
         manager = build_manager(
             enable_tracing=trace_enabled,
             trace_dir=args.trace_dir,
             log_dir=args.log_dir,
-            parallel_enabled=parallel_enabled,
         )
     except RuntimeError as exc:
         print(f"Failed to initialise LLM provider: {exc}")
@@ -425,7 +384,7 @@ def main(argv: Optional[list[str]] = None) -> None:
         return
 
     try:
-        asyncio.run(run_cli(manager, framework_name, query, parallel_enabled=parallel_enabled))
+        asyncio.run(run_cli(manager, framework_name, query))
     except KeyboardInterrupt:
         print("\n\n Session interrupted. Goodbye!")
     except asyncio.CancelledError:

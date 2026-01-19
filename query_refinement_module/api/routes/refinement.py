@@ -35,7 +35,7 @@ from query_refinement_module.db.crud import (
     get_query_metadata_summary,
 )
 from query_refinement_module.api.auth import get_current_user
-from query_refinement_module.api.dependencies import get_refinement_manager, get_parallel_config, get_session_manager
+from query_refinement_module.api.dependencies import get_refinement_manager, get_session_manager
 from query_refinement_module.schema.registry import get_framework, list_frameworks
 from query_refinement_module.api.session_manager import SessionManager
 from query_refinement_module.core import (
@@ -329,7 +329,6 @@ async def start_refinement(
     manager: QueryRefinementManager = Depends(get_refinement_manager),
     current_user = Depends(get_current_user),
     db: Session = Depends(get_db),
-    parallel_config = Depends(get_parallel_config),
     session_manager: SessionManager = Depends(get_session_manager)
 ):
     """
@@ -410,31 +409,24 @@ async def start_refinement(
     # Generate first question on-demand using get_next_unrefined_aspect
     first_step = session.get_next_unrefined_aspect()
     if first_step:
-        # Generate question for first aspect
-        dependency_context = session.get_dependency_context(first_step.refinement_aspect.id)
-        system_prompt, user_prompt = first_step.get_prompts(
-            query=session.original_query,
-            dependency_context=dependency_context
-        )
-        
+        # Use unified approach to generate initial question
         try:
-            response_text, parsed_payload, is_error, error_message = manager._get_llm_response_with_validation(
-                aspect=first_step.refinement_aspect,
-                system_prompt=system_prompt,
-                user_prompt=user_prompt
+            result = manager.get_analysis_prompts(
+                session=session,
+                aspect_id=first_step.refinement_aspect.id,
+                mode='initial'
             )
             
-            if not is_error and parsed_payload:
-                first_step.refinement_question = parsed_payload.get('clarifying_question', '')
-                first_step.needs_refinement_rationale = parsed_payload.get('explanation', '')
-                
-                # Check if aspect is already clear
-                needs_refinement = parsed_payload.get('needs_refinement', True)
-                if not needs_refinement:
-                    first_step.is_complete = True
-                    first_step.extract_and_store_value(response_text)
-                    # Move to next aspect
-                    first_step = session.get_next_unrefined_aspect()
+            # Process the result
+            status = manager.process_analysis_result(
+                session=session,
+                aspect_id=first_step.refinement_aspect.id,
+                result=result
+            )
+            
+            # If complete, move to next aspect
+            if status['complete']:
+                first_step = session.get_next_unrefined_aspect()
         except Exception as e:
             logger.error(f"Error generating first question: {e}", exc_info=True)
     

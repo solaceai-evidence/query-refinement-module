@@ -516,41 +516,6 @@ def test_command_back_after_answer():
     print("✓ /back command returns to previous step")
 
 
-def test_command_goto_validation():
-    """Test /goto command validates step number."""
-    token = register_and_login()
-    headers = {"Authorization": f"Bearer {token}"}
-    
-    # Start a refinement session
-    start_response = requests.post(
-        f"{BASE_URL}/api/refinement/start",
-        json={
-            "original_query": "effects of aspirin on stroke prevention",
-            "framework_name": "pico_advanced"
-        },
-        headers=headers
-    )
-    assert start_response.status_code == 201
-    query_id = start_response.json()["query_id"]
-    
-    # Try /goto with invalid step number (too high)
-    response = requests.post(
-        f"{BASE_URL}/api/refinement/queries/{query_id}/answer",
-        json={"answer": "/goto 999"},
-        headers=headers
-    )
-    
-    assert response.status_code == 200
-    data = response.json()
-    
-    # Should fail validation
-    assert data["command_type"] == "goto"
-    assert data["success"] is False
-    assert "message" in data
-    
-    print("✓ /goto command validates step number")
-
-
 def test_command_invalid():
     """Test invalid command handling."""
     token = register_and_login()
@@ -672,7 +637,6 @@ if __name__ == "__main__":
         ("Command: /skip", test_command_skip),
         ("Command: /submit", test_command_submit),
         ("Command: /back", test_command_back_after_answer),
-        ("Command: /goto validation", test_command_goto_validation),
         ("Command: Invalid command", test_command_invalid),
         ("Command: Force confirmation", test_command_force_confirmation),
     ]

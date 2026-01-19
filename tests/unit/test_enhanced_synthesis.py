@@ -4,7 +4,7 @@ Unit tests for enhanced context synthesis and dependency management.
 Tests verify:
 1. Follow-up prompts include synthesis instructions
 2. Dependency context includes name + description + value
-3. refined_value is prioritized over final_response in dependencies
+3. refinement_aspect_value is prioritized over final_response in dependencies
 4. Synthesis produces clean, professional output
 """
 
@@ -218,17 +218,17 @@ def test_dependency_context_includes_description():
     assert context["population"]["value"] == "Adults aged 18-65"
 
 
-def test_dependency_context_prioritizes_refined_value():
-    """Verify dependency context prioritizes refined_value over final_response."""
+def test_dependency_context_prioritizes_refinement_aspect_value():
+    """Verify dependency context prioritizes refinement_aspect_value over final_response."""
     dep_aspect = make_aspect(aspect_id="time_period", name="Time Period", description="Time constraints")
     
     session = QueryRefinementSession(original_query="test")
     dep_step = session.add_step(dep_aspect)
     
-    # Simulate follow-up completion with synthesis in refined_value
+    # Simulate follow-up completion with synthesis in refinement_aspect_value
     dep_step.add_follow_up("What timeframe?", "Well, maybe recent studies")
     dep_step.add_follow_up("How recent?", "I guess like 2020 onwards")
-    dep_step.refined_value = "Studies published 2020-2025"  # Synthesized value
+    dep_step.refinement_aspect_value = "Studies published 2020-2025"  # Synthesized value
     dep_step.is_complete = True
     
     target_aspect = make_aspect(aspect_id="target", depends_on=["time_period"])
@@ -236,22 +236,22 @@ def test_dependency_context_prioritizes_refined_value():
     
     context = session.get_dependency_context("target")
     
-    # Should use refined_value (synthesized), not final_response (raw last answer)
+    # Should use refinement_aspect_value (synthesized), not final_response (raw last answer)
     assert context["time_period"]["value"] == "Studies published 2020-2025"
     # NOT "I guess like 2020 onwards" (the raw last answer)
 
 
 def test_dependency_context_fallback_chain():
-    """Verify dependency context fallback priority: refined_value > final_response > history > clear > skipped."""
+    """Verify dependency context fallback priority: refinement_aspect_value > final_response > history > clear > skipped."""
     session = QueryRefinementSession(original_query="original")
     
-    # Test Priority 1: refined_value
+    # Test Priority 1: refinement_aspect_value
     aspect1 = make_aspect(aspect_id="a1", name="A1", description="D1")
     step1 = session.add_step(aspect1)
-    step1.refined_value = "Synthesized value"
+    step1.refinement_aspect_value = "Synthesized value"
     step1.is_complete = True
     
-    # Test Priority 2: final_response (when no refined_value)
+    # Test Priority 2: final_response (when no refinement_aspect_value)
     aspect2 = make_aspect(aspect_id="a2", name="A2", description="D2")
     step2 = session.add_step(aspect2)
     step2.add_follow_up("Q", "Raw answer")
@@ -369,8 +369,8 @@ def test_synthesis_prompt_includes_quality_requirements():
            "probably" in user_prompt
 
 
-def test_synthesis_uses_refined_value_when_available():
-    """Verify synthesis uses refined_value (synthesized value) over raw responses."""
+def test_synthesis_uses_refinement_aspect_value_when_available():
+    """Verify synthesis uses refinement_aspect_value (synthesized value) over raw responses."""
     aspect1 = make_aspect(aspect_id="a1", name="Aspect 1")
     aspect2 = make_aspect(aspect_id="a2", name="Aspect 2")
     
@@ -380,16 +380,16 @@ def test_synthesis_uses_refined_value_when_available():
     
     session = QueryRefinementSession(original_query="test")
     
-    # Step with refined_value (synthesized)
+    # Step with refinement_aspect_value (synthesized)
     step1 = session.add_step(aspect1)
     step1.add_follow_up("Q1", "Well, I think adults")
     step1.add_follow_up("Q2", "Maybe 18-65")
-    step1.refined_value = "Adults aged 18-65"  # Clean synthesized value
+    step1.refinement_aspect_value = "Adults aged 18-65"  # Clean synthesized value
     step1.is_complete = True
     
-    # Step without follow-ups but with refined_value (aspect was clear)
+    # Step without follow-ups but with refinement_aspect_value (aspect was clear)
     step2 = session.add_step(aspect2)
-    step2.refined_value = "Already clear in query"
+    step2.refinement_aspect_value = "Already clear in query"
     step2.is_complete = True
     
     result = manager.synthesize_refined_query(session)
@@ -397,9 +397,9 @@ def test_synthesis_uses_refined_value_when_available():
     # Gather what was sent to LLM
     clarifications, summaries = manager._gather_refinement_details(session)
     
-    # Should use refined_value for step1
+    # Should use refinement_aspect_value for step1
     assert ("Aspect 1", "Adults aged 18-65") in clarifications
-    # Should use refined_value for step2
+    # Should use refinement_aspect_value for step2
     assert ("Aspect 2", "Already clear in query") in summaries
 
 
@@ -434,7 +434,7 @@ def test_end_to_end_dependency_with_synthesis():
     pop_step.add_follow_up("Age group?", "I think adults")
     pop_step.add_follow_up("Specific ages?", "Maybe 18 to 65")
     pop_step.add_follow_up("Conditions?", "Type 2 diabetes obviously")
-    pop_step.refined_value = "Adults aged 18-65 with Type 2 diabetes (excluding gestational diabetes)"
+    pop_step.refinement_aspect_value = "Adults aged 18-65 with Type 2 diabetes (excluding gestational diabetes)"
     pop_step.is_complete = True
     
     # Add intervention step
@@ -478,11 +478,11 @@ def test_multiple_dependencies_with_descriptions():
     session = QueryRefinementSession(original_query="test")
     
     pop_step = session.add_step(pop)
-    pop_step.refined_value = "Adults"
+    pop_step.refinement_aspect_value = "Adults"
     pop_step.is_complete = True
     
     time_step = session.add_step(time)
-    time_step.refined_value = "2020-2025"
+    time_step.refinement_aspect_value = "2020-2025"
     time_step.is_complete = True
     
     outcome_step = session.add_step(outcome)

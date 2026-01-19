@@ -26,10 +26,12 @@ from .registry import (
     get_last_load_error,
     FrameworkLoadError,
 )
+from .response import RefinementAnalysisResponse
 
 __all__ = [
     # Core model
     "RefinementAspect",
+    "RefinementAnalysisResponse",
     # Dependency utility
     "sort_aspects_by_dependencies",
     "validate_dependencies",
