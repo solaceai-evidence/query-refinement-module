@@ -171,11 +171,15 @@ class SynthesizeQueryResponse(BaseModel):
 # ==========================================
 
 def _build_next_prompt(session) -> Optional[Dict[str, Any]]:
-    """Build the next prompt from the active step."""
-    step = session.get_active_step()
-    logger.info(f"_build_next_prompt called: active_step={'exists' if step else 'None'}")
+    """
+    Build the next prompt from the next unrefined aspect in dependency order.
+    
+    Uses get_next_unrefined_aspect() for sequential on-demand refinement.
+    """
+    step = session.get_next_unrefined_aspect()
+    logger.info(f"_build_next_prompt called: next_unrefined_aspect={'exists' if step else 'None'}")
     if not step:
-        logger.info("  -> No active step, returning None")
+        logger.info("  -> No unrefined aspects remaining, returning None")
         return None
     
     result = {
@@ -329,13 +333,15 @@ async def start_refinement(
     session_manager: SessionManager = Depends(get_session_manager)
 ):
     """
-    Start a new query refinement workflow.
+    Start a new query refinement workflow using sequential on-demand mode.
     
     This initializes a refinement session by:
     1. Loading the specified framework
-    2. Analyzing the query to determine what needs refinement (using async streaming if parallel mode enabled)
+    2. Creating session WITHOUT upfront LLM analysis
     3. Creating database records for session, query, and steps
-    4. Returning the initialization summary and first question(s)
+    4. Generating first question on-demand and returning it
+    
+    Aspects are refined sequentially in dependency order, one at a time.
     """
     # Get the refinement framework
     try:
@@ -346,27 +352,13 @@ async def start_refinement(
             detail=f"Framework '{request.framework_name}' not found: {str(e)}"
         )
     
-    # Initialize the refinement session (core logic) using async streaming when available
+    # Initialize the refinement session using sequential mode (no upfront analysis)
     try:
-        if parallel_config and parallel_config.enabled:
-            # Use async streaming initialization for parallel execution
-            session = None
-            async for session_partial, _, _, _, is_final in manager.initialize_streaming(
-                original_query=request.original_query,
-                refinement_framework=framework,
-                parallel_config=parallel_config,
-            ):
-                session = session_partial
-                if is_final:
-                    break
-        else:
-            # Fall back to synchronous initialization for sequential mode
-            session = await asyncio.to_thread(
-                manager.initialize,
-                request.original_query,
-                framework,
-                None,  # parallel_config
-            )
+        session = await asyncio.to_thread(
+            manager.initialize_sequential,
+            request.original_query,
+            framework,
+        )
     except ConnectionError as e:
         raise HTTPException(
             status_code=status.HTTP_503_SERVICE_UNAVAILABLE,
@@ -415,8 +407,45 @@ async def start_refinement(
             aspect_name=step.refinement_aspect.aspect_name
         )
     
-    # Get initialization summary
-    summary = manager.get_initialization_summary(session)
+    # Generate first question on-demand using get_next_unrefined_aspect
+    first_step = session.get_next_unrefined_aspect()
+    if first_step:
+        # Generate question for first aspect
+        dependency_context = session.get_dependency_context(first_step.refinement_aspect.id)
+        system_prompt, user_prompt = first_step.get_prompts(
+            query=session.original_query,
+            dependency_context=dependency_context
+        )
+        
+        try:
+            response_text, parsed_payload, is_error, error_message = manager._get_llm_response_with_validation(
+                aspect=first_step.refinement_aspect,
+                system_prompt=system_prompt,
+                user_prompt=user_prompt
+            )
+            
+            if not is_error and parsed_payload:
+                first_step.refinement_question = parsed_payload.get('clarifying_question', '')
+                first_step.needs_refinement_rationale = parsed_payload.get('explanation', '')
+                
+                # Check if aspect is already clear
+                needs_refinement = parsed_payload.get('needs_refinement', True)
+                if not needs_refinement:
+                    first_step.is_complete = True
+                    first_step.extract_and_store_value(response_text)
+                    # Move to next aspect
+                    first_step = session.get_next_unrefined_aspect()
+        except Exception as e:
+            logger.error(f"Error generating first question: {e}", exc_info=True)
+    
+    # Get summary (will show all aspects as not yet analyzed)
+    summary = {
+        "total_aspects": len(session.steps),
+        "aspects_needing_refinement": len([s for s in session.steps if not s.is_complete]),
+        "aspects_clear": len([s for s in session.steps if s.is_complete]),
+        "is_complete": session.is_complete(),
+    }
+    
     next_prompt = _build_next_prompt(session)
     
     # Save session to Redis for subsequent requests

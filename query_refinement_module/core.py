@@ -385,6 +385,26 @@ class QueryAspectRefiner:
                     *context_lines,
                 ]
             )
+        
+        # Include conversation history for multi-turn refinement
+        if self.follow_up_history:
+            conversation_lines = [
+                "",
+                "### Conversation history for this aspect\n"
+                "The following is the conversation history so far for this specific refinement aspect. "
+                "Use it as context when determining if further follow-up is needed:",
+                ""
+            ]
+            
+            for idx, exchange in enumerate(self.follow_up_history, 1):
+                question = exchange.get('question', '')
+                response = exchange.get('response', '')
+                conversation_lines.append(f"**Turn {idx}:**")
+                conversation_lines.append(f"Question: {question}")
+                conversation_lines.append(f"Answer: {response}")
+                conversation_lines.append("")
+            
+            refinement_instructions_prompt_sections.extend(conversation_lines)
 
         return system_prompt, "\n".join(refinement_instructions_prompt_sections)
     
@@ -560,6 +580,43 @@ class QueryRefinementSession:
             if not step.is_complete or step.needs_review:
                 return step
 
+        return None
+    
+    def get_next_unrefined_aspect(self) -> Optional[QueryAspectRefiner]:
+        """
+        Get the next aspect that needs refinement in dependency order.
+        
+        Returns the first aspect where:
+        - Not yet complete
+        - All dependencies are complete
+        
+        This enables sequential on-demand refinement without upfront analysis.
+        
+        Returns:
+            QueryAspectRefiner if there's a ready aspect, None if all done or blocked
+        """
+        for step in self.steps:
+            # Skip completed or skipped steps
+            if step.is_complete:
+                continue
+            
+            # Check if all dependencies are satisfied
+            dependencies = step.refinement_aspect.depends_on or []
+            if not dependencies:
+                # No dependencies, ready to refine
+                return step
+            
+            # Check all dependencies are complete
+            all_deps_complete = True
+            for dep_id in dependencies:
+                dep_step = next((s for s in self.steps if s.refinement_aspect.id == dep_id), None)
+                if not dep_step or not dep_step.is_complete:
+                    all_deps_complete = False
+                    break
+            
+            if all_deps_complete:
+                return step
+        
         return None
     
     def get_dependency_context(self, target_refinement_aspect_id: str) -> Dict[str, Dict[str, str]]:
@@ -1207,6 +1264,71 @@ class QueryRefinementManager:
             
             # Log summary
             self._log_session_summary(session, aspects_needing_refinement_count)
+            
+        return session
+
+    def initialize_sequential(
+        self,
+        original_query: str,
+        refinement_framework: List[RefinementAspect],
+    ) -> QueryRefinementSession:
+        """
+        Initialize a refinement session without upfront LLM analysis.
+        
+        This creates a session with all aspects but does NOT run any initial
+        analysis to determine which aspects need refinement. Instead, aspects
+        are refined on-demand as the user progresses through them sequentially.
+        
+        This approach:
+        - Eliminates upfront LLM costs and wait time
+        - Enables a simpler question-by-question workflow
+        - Refines aspects in dependency order automatically
+        - Each aspect refined to completion before moving to next
+        
+        Args:
+            original_query: The user's initial query text
+            refinement_framework: List of aspects to refine
+            
+        Returns:
+            QueryRefinementSession ready for sequential refinement
+        """
+        with self.tracing_provider.trace_operation("initialize_sequential_refinement_session") as trace:
+            if hasattr(trace, 'add_attribute'):
+                trace.add_attribute("original_query", original_query)
+                trace.add_attribute("num_refinement_aspects", len(refinement_framework))
+
+            logger.info("Initializing sequential refinement session for query: %s", original_query)
+            logger.debug("Refinement framework aspects: %s",
+                         [aspect.aspect_name for aspect in refinement_framework])
+            
+            # Create session
+            session = self._create_session(original_query)
+            
+            # Add all aspects as steps WITHOUT running analysis
+            for aspect in refinement_framework:
+                step = session.add_step(aspect)
+                # Mark as incomplete and ready for refinement
+                step.is_complete = False
+                step.needs_refinement_rationale = None
+                step.refinement_question = None
+                
+                logger.debug(
+                    "Added aspect '%s' to session (will refine on-demand)",
+                    aspect.id
+                )
+            
+            logger.info(
+                "Sequential session initialized with %d aspects (no upfront analysis)",
+                len(session.steps)
+            )
+            
+            self.trace_emitter.emit(
+                "sequential_session_initialized",
+                metadata={
+                    "total_steps": len(session.steps),
+                    "mode": "on-demand"
+                }
+            )
             
         return session
 
@@ -2275,11 +2397,21 @@ class QueryRefinementManager:
             logger.info(
                 "Skipping LLM synthesis: no refinement clarifications or summaries recorded."
             )
+            # Build refined_values map even when no LLM synthesis
+            refined_values = {}
+            for step in session.steps:
+                aspect_id = step.refinement_aspect.id
+                if step.refined_value is not None:
+                    refined_values[aspect_id] = step.refined_value
+                elif step.was_skipped:
+                    refined_values[aspect_id] = "[SKIPPED]"
+            
             return {
                 "refined_query": session.original_query,
                 "used_llm": False,
                 "clarifications": [],
                 "baseline_summaries": [],
+                "refined_values": refined_values,  # ← Added
                 "metadata": {
                     "reason": "no_clarifications",
                 },
@@ -2369,11 +2501,25 @@ class QueryRefinementManager:
             },
         )
 
+        # Build refined_values map for structured consumption
+        refined_values = {}
+        for step in session.steps:
+            aspect_id = step.refinement_aspect.id
+            if step.refined_value is not None:
+                # Use native value (dict/list/str/etc)
+                refined_values[aspect_id] = step.refined_value
+            elif step.was_skipped:
+                refined_values[aspect_id] = "[SKIPPED]"
+            elif not step.follow_up_history and step.is_complete:
+                # Was clear in original query
+                refined_values[aspect_id] = "[CLEAR_IN_ORIGINAL]"
+
         return {
             "refined_query": refined_query,
             "used_llm": True,
             "clarifications": clarifications,
             "baseline_summaries": baseline_summaries,
+            "refined_values": refined_values,  # ← Added for structured consumption
             "metadata": result.metadata,
         }
 
