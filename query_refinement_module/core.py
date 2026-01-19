@@ -265,8 +265,7 @@ class QueryAspectRefiner:
     needs_refinement_rationale: Optional[str] = None
     refinement_question: Optional[str] = None
     
-    # Single source of truth for the refined value (replaces initial_summary, current_synthesized_value, final_response)
-    # Stores the extracted value from the dynamic field (aspect.id) in its native type
+    # Stores the extracted value from the dynamic field (labelled as aspect.id) in its native type
     refined_value: Optional[Union[str, Dict, List, bool, int, float]] = None
     
     @property
@@ -315,7 +314,7 @@ class QueryAspectRefiner:
                             self.refined_value = value
                             return
             except (json.JSONDecodeError, TypeError):
-                pass  # Not valid JSON, fall through to plain text handling
+                pass  # Not valid JSON, fall to plain text handling
         
         # For non-JSON responses, store the plain text directly
         # This preserves the behavior where any response contributes to the value

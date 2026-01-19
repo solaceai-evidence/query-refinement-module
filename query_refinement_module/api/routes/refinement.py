@@ -11,6 +11,7 @@ Key Features:
 - Performance monitoring
 - Error handling with detailed context
 """
+import asyncio
 import logging
 import time
 from fastapi import APIRouter, Depends, HTTPException, status
@@ -319,7 +320,7 @@ def get_available_frameworks():
 
 
 @router.post("/start", response_model=StartRefinementResponse, status_code=status.HTTP_201_CREATED)
-def start_refinement(
+async def start_refinement(
     request: StartRefinementRequest,
     manager: QueryRefinementManager = Depends(get_refinement_manager),
     current_user = Depends(get_current_user),
@@ -332,7 +333,7 @@ def start_refinement(
     
     This initializes a refinement session by:
     1. Loading the specified framework
-    2. Analyzing the query to determine what needs refinement
+    2. Analyzing the query to determine what needs refinement (using async streaming if parallel mode enabled)
     3. Creating database records for session, query, and steps
     4. Returning the initialization summary and first question(s)
     """
@@ -345,13 +346,27 @@ def start_refinement(
             detail=f"Framework '{request.framework_name}' not found: {str(e)}"
         )
     
-    # Initialize the refinement session (core logic)
+    # Initialize the refinement session (core logic) using async streaming when available
     try:
-        session = manager.initialize(
-            original_query=request.original_query,
-            refinement_framework=framework,
-            parallel_config=parallel_config
-        )
+        if parallel_config and parallel_config.enabled:
+            # Use async streaming initialization for parallel execution
+            session = None
+            async for session_partial, _, _, _, is_final in manager.initialize_streaming(
+                original_query=request.original_query,
+                refinement_framework=framework,
+                parallel_config=parallel_config,
+            ):
+                session = session_partial
+                if is_final:
+                    break
+        else:
+            # Fall back to synchronous initialization for sequential mode
+            session = await asyncio.to_thread(
+                manager.initialize,
+                request.original_query,
+                framework,
+                None,  # parallel_config
+            )
     except ConnectionError as e:
         raise HTTPException(
             status_code=status.HTTP_503_SERVICE_UNAVAILABLE,
@@ -416,7 +431,7 @@ def start_refinement(
 
 
 @router.post("/queries/{query_id}/answer", response_model=Union[SubmitAnswerResponse, CommandResponse])
-def submit_answer(
+async def submit_answer(
     query_id: int,
     request: SubmitAnswerRequest,
     manager: QueryRefinementManager = Depends(get_refinement_manager),
@@ -462,7 +477,12 @@ def submit_answer(
     # If session not in Redis, reconstruct from database (fallback)
     if not session:
         logger.warning("Session not found in Redis for query_id=%d, reconstructing from database", query_id)
-        session = manager.initialize(db_query.original_query, framework)
+        session = await asyncio.to_thread(
+            manager.initialize,
+            db_query.original_query,
+            framework,
+            None,  # parallel_config - not needed for reconstruction
+        )
         
         # Restore follow-up history from database
         db_steps = get_query_refinement_steps(db, query_id)
@@ -637,7 +657,7 @@ def submit_answer(
 
 
 @router.get("/queries/{query_id}/status", response_model=GetRefinementStatusResponse)
-def get_refinement_status(
+async def get_refinement_status(
     query_id: int,
     manager: QueryRefinementManager = Depends(get_refinement_manager),
     current_user = Depends(get_current_user),
@@ -666,7 +686,12 @@ def get_refinement_status(
     # Fallback: Reconstruct from database if Redis miss
     if not session:
         logger.warning(f"Session not found in Redis for query_id={query_id}, reconstructing from database")
-        session = manager.initialize(db_query.original_query, framework)
+        session = await asyncio.to_thread(
+            manager.initialize,
+            db_query.original_query,
+            framework,
+            None,  # parallel_config - not needed for reconstruction
+        )
         
         # Restore follow-up history from database
         db_steps = get_query_refinement_steps(db, query_id)
@@ -704,7 +729,7 @@ def get_refinement_status(
 
 
 @router.post("/synthesize", response_model=SynthesizeQueryResponse)
-def synthesize_refined_query(
+async def synthesize_refined_query(
     request: SynthesizeQueryRequest,
     manager: QueryRefinementManager = Depends(get_refinement_manager),
     current_user = Depends(get_current_user),
@@ -737,7 +762,12 @@ def synthesize_refined_query(
     # If session not in Redis, reconstruct from database (fallback)
     if not session:
         logger.warning("Session not found in Redis for query_id=%d, reconstructing from database", request.query_id)
-        session = manager.initialize(db_query.original_query, framework)
+        session = await asyncio.to_thread(
+            manager.initialize,
+            db_query.original_query,
+            framework,
+            None,  # parallel_config - not needed for reconstruction
+        )
         
         # Load follow-ups from database and populate session
         db_steps = get_query_refinement_steps(db, request.query_id)
