@@ -16,20 +16,14 @@ def load_framework(yaml_path: Path, framework_name: str) -> list[RefinementAspec
 
 def print_full_unified_prompt(aspect: RefinementAspect, query: str, show_followup: bool = False):
     """Print the complete unified prompt as it would appear in production."""
-    print(f"╔{'═' * 78}╗")
-    print(f"║ {aspect.aspect_name:<76} ║")
-    print(f"║ ID: {aspect.id:<73} ║")
-    print(f"╚{'═' * 78}╝\n")
+    print(f"\n{'=' * 80}")
+    print(f"ASPECT: {aspect.aspect_name} (ID: {aspect.id})")
+    print('=' * 80)
     
-    # Show system prompt
-    print("📋 SYSTEM PROMPT:")
-    print("─" * 80)
+    print("\n[SYSTEM PROMPT]\n")
     print(aspect.get_system_role())
-    print("\n")
     
-    # Show unified prompt (initial mode)
-    print("📝 UNIFIED PROMPT (Initial Analysis):")
-    print("─" * 80)
+    print("\n[USER PROMPT - INITIAL]\n")
     initial_prompt = aspect.build_unified_prompt(
         original_query=query,
         follow_up_history=[],
@@ -37,12 +31,9 @@ def print_full_unified_prompt(aspect: RefinementAspect, query: str, show_followu
         mode='initial'
     )
     print(initial_prompt)
-    print("\n")
     
-    # Optionally show follow-up mode
     if show_followup:
-        print("📝 UNIFIED PROMPT (Follow-up Mode - Example):")
-        print("─" * 80)
+        print("\n[USER PROMPT - FOLLOWUP]\n")
         followup_prompt = aspect.build_unified_prompt(
             original_query=query,
             follow_up_history=[
@@ -59,7 +50,6 @@ def print_full_unified_prompt(aspect: RefinementAspect, query: str, show_followu
             mode='followup'
         )
         print(followup_prompt)
-        print("\n")
 
 
 def print_summary(aspect: RefinementAspect):
@@ -77,21 +67,17 @@ def print_summary(aspect: RefinementAspect):
 
 def print_synthesis_prompt(aspects: list[RefinementAspect], query: str):
     """Print the synthesis prompt with mock completed refinements."""
-    print(f"╔{'═' * 78}╗")
-    print(f"║ {'SYNTHESIS STEP - Final Query Generation':<76} ║")
-    print(f"╚{'═' * 78}╝\n")
+    print(f"\n{'=' * 80}")
+    print("SYNTHESIS STEP")
+    print('=' * 80)
     
-    # Create mock refinement values for demonstration
     refinement_aspect_values = {}
     for i, aspect in enumerate(aspects):
         if i % 3 == 0:
-            # Some aspects were skipped
             refinement_aspect_values[aspect.id] = "[SKIPPED]"
         elif i % 3 == 1:
-            # Some were clear in original
             refinement_aspect_values[aspect.id] = "[CLEAR_IN_ORIGINAL]"
         else:
-            # Most have actual refined values (mock examples)
             if "population" in aspect.id.lower():
                 refinement_aspect_values[aspect.id] = "adults aged 18-65 with Type 2 diabetes"
             elif "intervention" in aspect.id.lower():
@@ -103,31 +89,23 @@ def print_synthesis_prompt(aspects: list[RefinementAspect], query: str):
             else:
                 refinement_aspect_values[aspect.id] = f"refined value for {aspect.aspect_name}"
     
-    # Build synthesis prompt
     builder = SynthesisPromptBuilder()
     
-    print("📋 SYSTEM PROMPT:")
-    print("─" * 80)
+    print("\n[SYSTEM PROMPT]\n")
     print(builder.get_system_prompt())
-    print("\n")
     
-    print("📝 SYNTHESIS PROMPT (User Prompt):")
-    print("─" * 80)
+    print("\n[USER PROMPT]\n")
     synthesis_prompt = builder.build_synthesis_prompt(
         original_query=query,
         refinement_aspect_values=refinement_aspect_values,
         aspects=aspects
     )
     print(synthesis_prompt)
-    print("\n")
     
-    print("📊 MOCK REFINEMENT VALUES (for this example):")
-    print("─" * 80)
+    print("\n[MOCK REFINEMENT VALUES]\n")
     for aspect in aspects:
         value = refinement_aspect_values.get(aspect.id, "[NOT SET]")
-        status = "⏭️ " if value == "[SKIPPED]" else "✓ " if value == "[CLEAR_IN_ORIGINAL]" else "📝 "
-        print(f"{status}{aspect.aspect_name} ({aspect.id}): {value}")
-    print()
+        print(f"{aspect.id}: {value}")
 
 
 def main():
@@ -192,22 +170,23 @@ def main():
     print(f"Source: {yaml_path}")
     print(f"Query: {query}")
     print(f"Total Aspects: {len(aspects)}")
-    print(f"{'=' * 80}\n")
+    if aspect_filter:
+        aspects = [a for a in aspects if a.id == aspect_filter]
+        if not aspects:
+            print(f"Error: Aspect '{aspect_filter}' not found in framework '{framework_name}'")
+            raise SystemExit(1)
+
+    print(f"{'=' * 80}")
+    print(f"FRAMEWORK: {framework_name}")
+    print(f"SOURCE: {yaml_path}")
+    print(f"QUERY: {query}")
+    print(f"ASPECTS: {len(aspects)}")
+    print('=' * 80)
 
     if show_synthesis:
-        # Show synthesis prompt with mock completed refinements
         print_synthesis_prompt(aspects, query)
     elif show_summary:
-        # Show compact summary
         for aspect in aspects:
             print_summary(aspect)
     else:
-        # Show full prompts
-        for i, aspect in enumerate(aspects, 1):
-            if i > 1:
-                print("\n" + "=" * 80 + "\n")
-            print_full_unified_prompt(aspect, query, show_followup)
-
-
-if __name__ == "__main__":
-    main()
+        for aspect in aspects:

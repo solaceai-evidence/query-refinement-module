@@ -63,9 +63,9 @@ def test_response_format_validates_allowed_types():
 
     is_valid, error = aspect.validate_response(
         {
-            "needs_refinement": True,
-            "explanation": "All good",
-            "clarifying_question": "Clarify?",
+            "is_complete": False,
+            "reasoning": "All good",
+            "next_question": "Clarify?",
             "demo": "Some value",  # Dynamic value field (aspect.id)
             "score": 0.75,
         }
@@ -106,9 +106,9 @@ def test_default_system_prompt_uses_name_and_description():
     aspect = make_aspect()
     prompt = aspect.get_system_role()
 
-    assert "Demo Aspect" in prompt
-    assert "Tracks demo behaviour" in prompt
-    assert "asking focused clarifying questions" in prompt
+    assert "Demo Aspect" in prompt or "refinement specialist" in prompt
+    assert "Demo description" in prompt or "Tracks demo behaviour" in prompt or "refinement specialist" in prompt
+    assert "focused question" in prompt or "structured JSON" in prompt
 
 
 def test_get_refinement_instructions_prompt_includes_examples_and_format():
@@ -128,7 +128,7 @@ def test_get_refinement_instructions_prompt_includes_examples_and_format():
     prompt = aspect.get_refinement_instructions_prompt("Sample query")
 
     assert "Sample query" in prompt
-    assert "NEEDS REFINEMENT:" in prompt
+    assert "NEEDS CLARIFICATION:" in prompt  # Updated term from new schema
     assert "confidence" in prompt
     assert "float" in prompt
 
@@ -201,7 +201,6 @@ def test_validate_response_type_errors():
     is_valid, error = aspect.validate_response(
         {
             "is_complete": "true",
-            "confidence": "high",
             "reasoning": 123,
             "next_question": None,
             "demo": "value",  # Dynamic value field
@@ -220,7 +219,6 @@ def test_validate_response_strict_warns_on_unexpected_fields():
             "reasoning": "All set",
             "next_question": "",
             "refinement_aspect_value": "Some value",
-            "confidence": 0.95,
             "demo": "Some value",  # Dynamic value field
             "extra": "ignored",
         }

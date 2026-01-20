@@ -203,7 +203,6 @@ def test_refinement_analysis_response_validation():
     # Complete response must have refinement_aspect_value - validation happens during construction
     complete_response = RefinementAnalysisResponse(
         is_complete=True,
-        confidence=0.9,
         reasoning='All details clear',
         refinement_aspect_value='Adults aged 18-65',
         next_question=None,
@@ -217,7 +216,6 @@ def test_refinement_analysis_response_validation():
     # Incomplete response must have next_question - validation happens during construction
     incomplete_response = RefinementAnalysisResponse(
         is_complete=False,
-        confidence=0.5,
         reasoning='Need age range',
         refinement_aspect_value=None,
         next_question='What age range?',
@@ -237,7 +235,6 @@ def test_refinement_analysis_response_invalid_complete():
     with pytest.raises(ValidationError) as exc_info:
         RefinementAnalysisResponse(
             is_complete=True,
-            confidence=0.9,
             reasoning='Complete',
             refinement_aspect_value=None,  # Missing!
             next_question=None,
@@ -256,7 +253,6 @@ def test_refinement_analysis_response_invalid_incomplete():
     with pytest.raises(ValidationError) as exc_info:
         RefinementAnalysisResponse(
             is_complete=False,
-            confidence=0.5,
             reasoning='Incomplete',
             refinement_aspect_value=None,
             next_question=None,  # Missing!

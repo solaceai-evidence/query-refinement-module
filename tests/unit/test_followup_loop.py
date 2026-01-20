@@ -39,8 +39,8 @@ def test_followup_loop_stops_on_is_complete():
     aspect = make_aspect()
     # Updated: Include dynamic value field (aspect.id)
     responses = [
-        '{"is_complete": false, "confidence": 0.5, "reasoning": "Needs more", "refinement_aspect_value": "", "next_question": "Clarify?"}',
-        '{"is_complete": true, "confidence": 0.9, "reasoning": "Clear", "refinement_aspect_value": "Clear value", "next_question": null}',
+        '{"is_complete": false, "reasoning": "Needs more", "refinement_aspect_value": "", "next_question": "Clarify?"}',
+        '{"is_complete": true, "reasoning": "Clear", "refinement_aspect_value": "Clear value", "next_question": null}',
     ]
     llm = DummyLLMProvider(responses)
     analyzer = DummyAnalyzer({"aspect": AspectAnalysisResult(needs_refinement=True, explanation="", clarifying_question="Q")})
@@ -58,9 +58,9 @@ def test_followup_loop_respects_max_rounds():
     aspect = make_aspect(max_follow_ups=1)
     # Updated: Include dynamic value field (aspect.id)
     responses = [
-        '{"is_complete": false, "confidence": 0.5, "reasoning": "Needs more", "refinement_aspect_value": "partial value", "next_question": "Clarify?"}',
-        '{"is_complete": false, "confidence": 0.5, "reasoning": "Needs more", "refinement_aspect_value": "partial value", "next_question": "Clarify?"}',  # retry
-        '{"is_complete": false, "confidence": 0.5, "reasoning": "Needs more", "refinement_aspect_value": "partial value", "next_question": "Clarify?"}',  # retry
+        '{"is_complete": false, "reasoning": "Needs more", "refinement_aspect_value": "partial value", "next_question": "Clarify?"}',
+        '{"is_complete": false, "reasoning": "Needs more", "refinement_aspect_value": "partial value", "next_question": "Clarify?"}',  # retry
+        '{"is_complete": false, "reasoning": "Needs more", "refinement_aspect_value": "partial value", "next_question": "Clarify?"}',  # retry
     ]
     llm = DummyLLMProvider(responses)
     analyzer = DummyAnalyzer({"aspect": AspectAnalysisResult(needs_refinement=True, explanation="", clarifying_question="Q")})
