@@ -36,63 +36,8 @@ def make_aspect(
     )
 
 
-# ============================================================================
-# Schema Validation Tests
-# ============================================================================
-
-def test_value_field_type_defaults_to_string():
-    """Default value_field_type should be 'string'."""
-    aspect = make_aspect()
-    assert aspect.value_field_type == "string"
-    assert aspect.value_field_description is None
 
 
-def test_value_field_type_string_valid():
-    """String type should be accepted."""
-    aspect = make_aspect(value_field_type="string")
-    assert aspect.value_field_type == "string"
-
-
-def test_value_field_type_object_valid():
-    """Object type should be accepted."""
-    aspect = make_aspect(value_field_type="object")
-    assert aspect.value_field_type == "object"
-
-
-def test_value_field_type_array_valid():
-    """Array type should be accepted."""
-    aspect = make_aspect(value_field_type="array")
-    assert aspect.value_field_type == "array"
-
-
-def test_value_field_type_boolean_valid():
-    """Boolean type should be accepted."""
-    aspect = make_aspect(value_field_type="boolean")
-    assert aspect.value_field_type == "boolean"
-
-
-def test_value_field_type_integer_valid():
-    """Integer type should be accepted."""
-    aspect = make_aspect(value_field_type="integer")
-    assert aspect.value_field_type == "integer"
-
-
-def test_value_field_type_float_valid():
-    """Float type should be accepted."""
-    aspect = make_aspect(value_field_type="float")
-    assert aspect.value_field_type == "float"
-
-
-def test_value_field_type_invalid_raises_error():
-    """Invalid value_field_type should raise ValueError."""
-    with pytest.raises(ValueError, match="Invalid value_field_type"):
-        make_aspect(value_field_type="invalid_type")
-
-
-def test_value_field_type_case_insensitive():
-    """Value field types should be case insensitive."""
-    aspect = make_aspect(value_field_type="STRING")
-    assert aspect.value_field_type == "STRING"
 
 
 # ============================================================================
@@ -114,7 +59,6 @@ def test_complete_schema_includes_all_base_fields():
     fields = aspect._get_complete_schema_fields()
     
     assert "is_complete" in fields
-    assert "confidence" in fields
     assert "reasoning" in fields
     assert "refinement_aspect_value" in fields
     assert "next_question" in fields
@@ -446,7 +390,6 @@ def test_validate_response_requires_dynamic_field():
     # Missing refinement_aspect_value when is_complete=True
     response = {
         "is_complete": True,
-        "confidence": 0.9,
         "reasoning": "Complete",
         "next_question": None
     }
@@ -462,7 +405,6 @@ def test_validate_response_accepts_dynamic_field():
     
     response = {
         "is_complete": True,
-        "confidence": 0.9,
         "reasoning": "Complete",
         "next_question": None,
         "refinement_aspect_value": "Adults aged 18-65"
@@ -479,7 +421,6 @@ def test_validate_response_with_object_type():
     
     response = {
         "is_complete": True,
-        "confidence": 0.9,
         "reasoning": "Complete",
         "next_question": None,
         "refinement_aspect_value": "{\"name\": \"metformin\"}"
@@ -495,7 +436,6 @@ def test_validate_response_with_array_type():
     
     response = {
         "is_complete": True,
-        "confidence": 0.9,
         "reasoning": "Complete",
         "next_question": None,
         "refinement_aspect_value": "[\"HbA1c\", \"Weight\"]"

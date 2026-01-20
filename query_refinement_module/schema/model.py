@@ -147,21 +147,7 @@ class RefinementAspect:
     - Extensible metadata
 
     Response Format Structure:
-    - Base fields (always included): is_complete, confidence, reasoning, refined_value, next_question
-    - Custom fields: Add domain-specific fields via 'additional_fields' (future use)
-    
-    Example response_format:
-        {
-            "type": "json",
-            "additional_fields": {
-                "priority": "string",
-                "confidence": "float"
-            },
-            "field_descriptions": {
-                "priority": "Urgency level: high, medium, low",
-                "confidence": "Confidence score 0.0-1.0"
-            }
-        }
+    - Base fields (always included): is_complete, reasoning, refined_value, next_question
 
     Attributes:
         id: Unique identifier for the refinement aspect
@@ -195,12 +181,9 @@ class RefinementAspect:
     # This allows for consistent response structures and validation
     response_format: Optional[Dict[str, Any]] = None
     
-    # Dynamic value field configuration
-    # DEPRECATED: Not currently used in unified prompt system (reserved for future type-specific handling)
-    # The unified response uses simple string refined_value for all aspects
-    # Keep these fields for potential future extensibility
-    value_field_type: str = "string"  # Type: string, array, object, boolean, integer, float
-    value_field_description: Optional[str] = None  # Describes what content the field should contain
+    # DEPRECATED fields - kept for backward compatibility
+    value_field_type: str = "string"
+    value_field_description: Optional[str] = None
     
     # Dependencies: List of refinement aspect IDs this refinement aspect depends on
     # Only declared dependencies will be included in the analysis context
@@ -218,7 +201,6 @@ class RefinementAspect:
     # Base schema fields for unified response format (used by unified_analysis_prompt.py)
     BASE_SCHEMA_FIELDS = {
         "is_complete": "boolean",
-        "confidence": "float",
         "reasoning": "string",
         "refinement_aspect_value": "string",
         "next_question": "string"
@@ -227,7 +209,6 @@ class RefinementAspect:
     # Field descriptions for the base schema fields
     BASE_FIELD_DESCRIPTIONS = {
         "is_complete": "Whether this aspect is sufficiently refined and clear (true/false)",
-        "confidence": "LLM's confidence in this assessment (0.0-1.0)",
         "reasoning": "Brief explanation of why the aspect is/isn't complete",
         "refinement_aspect_value": "Extracted or synthesized value (required if is_complete=true)",
         "next_question": "Focused clarifying question (required if is_complete=false)"
@@ -235,17 +216,16 @@ class RefinementAspect:
     
     # Unified analysis prompt template (used for both initial and follow-up analysis)
     UNIFIED_ANALYSIS_PROMPT = """
-**Aspect:** {aspect_name}
-**Description:** {aspect_description}
+**Dimension to evaluate:** {aspect_name}
+**Definition:** {aspect_description}
 
----
-
-**Original Input:**
-"{original_query}"
+**Original Research Input:** "{original_query}"
 
 {conversation_section}
 
 {dependency_section}
+
+---
 
 {refinement_instructions}
 
@@ -288,7 +268,7 @@ class RefinementAspect:
         valid_types = {"string", "boolean", "integer", "float", "array", "object"}
         
         # Check additional_fields uses valid types
-        additional_fields = self.response_format.get("additional_fields", {})
+        additional_fields = self.response_format.get("additional_fields", {}) if self.response_format else {}
         if additional_fields:
             if not isinstance(additional_fields, dict):
                 raise ValueError(
@@ -308,7 +288,7 @@ class RefinementAspect:
                     )
         
         # Check field_descriptions keys match additional_fields (warning, not error)
-        field_descriptions = self.response_format.get("field_descriptions", {})
+        field_descriptions = self.response_format.get("field_descriptions", {}) if self.response_format else {}
         if field_descriptions:
             if not isinstance(field_descriptions, dict):
                 logger.warning(
@@ -502,7 +482,7 @@ class RefinementAspect:
         # Category display config: (key, header, prefix)
         category_config = [
             ("clear", "CLEAR SPECIFICATIONS:"),
-            ("needs_refinement", "NEEDS REFINEMENT:"),
+            ("needs_refinement", "NEEDS CLARIFICATION:"),
             ("partial", "PARTIAL INFORMATION:"),
             ("vague_ambiguous", "VAGUE OR AMBIGUOUS:"),
             ("other", "ADDITIONAL GUIDANCE:"),
@@ -588,8 +568,7 @@ class RefinementAspect:
         """
         descriptions = self.BASE_FIELD_DESCRIPTIONS.copy()
         
-        # Build description for dynamic value field
-        # System adds synthesis requirements automatically
+        
         user_desc = self.value_field_description or f"The {self.aspect_name}"
         
         synthesis_instructions = (
@@ -653,11 +632,9 @@ class RefinementAspect:
         # Check base fields for unified response format
         missing_fields = []
         
-        # Required fields: is_complete, confidence, reasoning
+        # Required fields: is_complete, reasoning
         if "is_complete" not in response:
             missing_fields.append("is_complete")
-        if "confidence" not in response:
-            missing_fields.append("confidence")
         if "reasoning" not in response:
             missing_fields.append("reasoning")
         
@@ -676,13 +653,6 @@ class RefinementAspect:
         # Validate is_complete (boolean)
         if not isinstance(response.get("is_complete"), bool):
             validation_errors.append("'is_complete' must be a boolean")
-        
-        # Validate confidence (float 0.0-1.0)
-        confidence = response.get("confidence")
-        if not isinstance(confidence, (int, float)):
-            validation_errors.append("'confidence' must be a number")
-        elif not (0.0 <= confidence <= 1.0):
-            validation_errors.append("'confidence' must be between 0.0 and 1.0")
         
         # Validate reasoning (string)
         if not isinstance(response.get("reasoning"), str):
@@ -902,7 +872,6 @@ class RefinementAspect:
         lines.append("**Rules:**")
         lines.append("- `is_complete=true` → `refinement_aspect_value` must be non-null, `next_question` must be null")
         lines.append("- `is_complete=false` → `next_question` must be non-null, `refinement_aspect_value` must be null")
-        lines.append("- `confidence`: 0.9-1.0 (very clear), 0.7-0.89 (clear), 0.5-0.69 (moderate), <0.5 (uncertain)")
         
         # Add field-specific guidance from descriptions
         refinement_desc = self.BASE_FIELD_DESCRIPTIONS.get("refinement_aspect_value", "")
@@ -1033,6 +1002,11 @@ class RefinementAspect:
             
             category_title = category_map.get(category, category.replace('_', ' ').title())
             lines.append(f"\n{category_title}:")
+            
+            # Ensure examples_list is actually a list
+            if not isinstance(examples_list, list):
+                logger.warning(f"Examples category '{category}' is not a list, skipping")
+                continue
             
             for ex in examples_list:
                 # Get statement or query (statement preferred)

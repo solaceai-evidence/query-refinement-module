@@ -25,11 +25,6 @@ class RefinementAnalysisResponse(BaseModel):
         description="Whether this aspect is sufficiently refined and clear"
     )
     
-    confidence: float = Field(
-        ge=0.0, le=1.0,
-        description="LLM's confidence in this assessment (0.0 to 1.0)"
-    )
-    
     reasoning: str = Field(
         description="Brief explanation of why the aspect is/isn't complete"
     )
@@ -102,13 +97,6 @@ class SynthesisResponse(BaseModel):
         description="Map of aspect_id → refinement_aspect_value for traceability"
     )
     
-    confidence: float = Field(
-        ...,
-        ge=0.0,
-        le=1.0,
-        description="LLM confidence in synthesis quality"
-    )
-    
     key_changes: list = Field(
         default_factory=list,
         description="List of key changes from original query"
@@ -150,13 +138,6 @@ class SynthesisResponse(BaseModel):
         """Ensure refinement_aspects is a dict."""
         if not isinstance(v, dict):
             raise ValueError("refinement_aspects must be a dictionary")
-        return v
-    
-    @validator('confidence')
-    def validate_confidence_range(cls, v):
-        """Ensure confidence is in valid range."""
-        if not 0.0 <= v <= 1.0:
-            raise ValueError("confidence must be between 0.0 and 1.0")
         return v
     
     class Config:

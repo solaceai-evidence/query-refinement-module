@@ -69,8 +69,6 @@ from .schema import (
 
 from .prompt.system_role import (
     DEFAULT_SYSTEM_PROMPT_REFINEMENT_START,
-    SYSTEM_PROMPT_REFINEMENT_END_LOWER,
-    SYSTEM_PROMPT_REFINEMENT_END_UPPER,
 )
 
 # Module logger - use get_logger() in functions for request context
@@ -1341,28 +1339,24 @@ class QueryRefinementManager:
             # Refinement complete - store final value
             step.refinement_aspect_value = result.refinement_aspect_value
             step.is_complete = True
-            step.confidence = result.confidence
             
             return {
                 'complete': True,
                 'aspect_id': aspect_id,
                 'aspect_name': step.refinement_aspect.aspect_name,
                 'refinement_aspect_value': result.refinement_aspect_value,
-                'confidence': result.confidence,
                 'reasoning': result.reasoning
             }
         else:
             # Needs follow-up - store question
             step.refinement_question = result.next_question
             step.is_complete = False
-            step.confidence = result.confidence
             
             return {
                 'complete': False,
                 'aspect_id': aspect_id,
                 'aspect_name': step.refinement_aspect.aspect_name,
                 'next_question': result.next_question,
-                'confidence': result.confidence,
                 'reasoning': result.reasoning,
                 'round': result.round
             }
@@ -2452,8 +2446,7 @@ class QueryRefinementManager:
             synthesis_response = SynthesisResponse(**response_data)
             refined_query = synthesis_response.refined_query
             logger.info(
-                "Successfully parsed structured synthesis response with confidence %.2f",
-                synthesis_response.confidence
+                "Successfully parsed structured synthesis response"
             )
         except (json.JSONDecodeError, ValueError) as parse_error:
             # Fallback to plain text response (backward compatibility)
@@ -2486,7 +2479,6 @@ class QueryRefinementManager:
         
         # Include structured response fields if available
         if synthesis_response:
-            result_dict["confidence"] = synthesis_response.confidence
             result_dict["key_changes"] = synthesis_response.key_changes
             
             # Include optional metadata if present

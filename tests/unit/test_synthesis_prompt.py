@@ -116,12 +116,10 @@ class TestSynthesisPromptBuilder:
         # Check all required fields are present
         assert '"refined_query"' in prompt
         assert '"refinement_aspects"' in prompt
-        assert '"confidence"' in prompt
         assert '"key_changes"' in prompt
 
         # Check field descriptions are present
         assert "final synthesized query" in prompt.lower()
-        assert "confidence" in prompt.lower()
 
     def test_empty_refinements(self, sample_aspects):
         """Test with no refinement values."""

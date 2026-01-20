@@ -17,12 +17,10 @@ class TestSynthesisResponse:
         response = SynthesisResponse(
             refined_query="diabetes in adults",
             refinement_aspects={"population": "adults", "condition": "diabetes"},
-            confidence=0.9,
         )
 
         assert response.refined_query == "diabetes in adults"
         assert response.refinement_aspects == {"population": "adults", "condition": "diabetes"}
-        assert response.confidence == 0.9
         assert response.key_changes == []  # Default empty list
 
     def test_valid_response_with_all_fields(self):
@@ -34,7 +32,6 @@ class TestSynthesisResponse:
                 "intervention": "metformin",
                 "outcome": "glycemic control"
             },
-            confidence=0.95,
             key_changes=[
                 "Added population specificity",
                 "Clarified intervention type",
@@ -62,7 +59,6 @@ class TestSynthesisResponse:
         with pytest.raises(ValidationError) as exc_info:
             SynthesisResponse(
                 refinement_aspects={"population": "adults"},
-                confidence=0.9,
             )
         
         errors = exc_info.value.errors()
@@ -73,64 +69,10 @@ class TestSynthesisResponse:
         with pytest.raises(ValidationError) as exc_info:
             SynthesisResponse(
                 refined_query="test query",
-                confidence=0.9,
             )
         
         errors = exc_info.value.errors()
         assert any(e["loc"] == ("refinement_aspects",) for e in errors)
-
-    def test_missing_required_field_confidence(self):
-        """Test validation fails without confidence."""
-        with pytest.raises(ValidationError) as exc_info:
-            SynthesisResponse(
-                refined_query="test query",
-                refinement_aspects={"population": "adults"},
-            )
-        
-        errors = exc_info.value.errors()
-        assert any(e["loc"] == ("confidence",) for e in errors)
-
-    def test_confidence_validation_too_low(self):
-        """Test confidence must be >= 0.0."""
-        with pytest.raises(ValidationError) as exc_info:
-            SynthesisResponse(
-                refined_query="test query",
-                refinement_aspects={"population": "adults"},
-                confidence=-0.1,
-            )
-        
-        errors = exc_info.value.errors()
-        assert any("confidence" in str(e["loc"]) for e in errors)
-
-    def test_confidence_validation_too_high(self):
-        """Test confidence must be <= 1.0."""
-        with pytest.raises(ValidationError) as exc_info:
-            SynthesisResponse(
-                refined_query="test query",
-                refinement_aspects={"population": "adults"},
-                confidence=1.1,
-            )
-        
-        errors = exc_info.value.errors()
-        assert any("confidence" in str(e["loc"]) for e in errors)
-
-    def test_confidence_boundary_values(self):
-        """Test confidence boundary values 0.0 and 1.0."""
-        # Test 0.0
-        response_min = SynthesisResponse(
-            refined_query="test",
-            refinement_aspects={},
-            confidence=0.0,
-        )
-        assert response_min.confidence == 0.0
-
-        # Test 1.0
-        response_max = SynthesisResponse(
-            refined_query="test",
-            refinement_aspects={},
-            confidence=1.0,
-        )
-        assert response_max.confidence == 1.0
 
     def test_refinement_aspects_must_be_dict(self):
         """Test refinement_aspects must be a dictionary."""
@@ -138,7 +80,6 @@ class TestSynthesisResponse:
             SynthesisResponse(
                 refined_query="test query",
                 refinement_aspects="not a dict",
-                confidence=0.9,
             )
         
         errors = exc_info.value.errors()
@@ -149,7 +90,6 @@ class TestSynthesisResponse:
         response = SynthesisResponse(
             refined_query="test query",
             refinement_aspects={"test": "value"},
-            confidence=0.8,
         )
 
         assert response.key_changes == []
@@ -169,7 +109,6 @@ class TestSynthesisResponse:
                 "outcome": "[SKIPPED]",
                 "intervention": "[CLEAR_IN_ORIGINAL]",
             },
-            confidence=0.85,
         )
 
         assert response.refinement_aspects["outcome"] == "[SKIPPED]"
@@ -180,12 +119,11 @@ class TestSynthesisResponse:
         response = SynthesisResponse(
             refined_query="original",
             refinement_aspects={"test": "value"},
-            confidence=0.5,
         )
 
         # Should allow updates (frozen=False in Config)
-        response.confidence = 0.9
-        assert response.confidence == 0.9
+        response.key_changes = ["updated change"]
+        assert response.key_changes == ["updated change"]
 
 
 if __name__ == "__main__":

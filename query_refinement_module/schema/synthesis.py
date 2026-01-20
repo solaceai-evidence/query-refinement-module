@@ -7,68 +7,29 @@ where all aspect refinements are combined into a coherent refined query.
 
 from typing import Dict, Any, List
 from .model import RefinementAspect
+from ..prompt.system_role import SYNTHESIS_SYSTEM_PROMPT
+from ..prompt.user import SYNTHESIS_PROMPT_TEMPLATE
 
 
 class SynthesisPromptBuilder:
     """
     Builds structured prompts for query synthesis.
     
-    Similar architecture to RefinementAspect.build_unified_prompt() but focused
-    on the final synthesis step that combines all aspect refinements.
     """
     
-    # Template for synthesis prompt (similar to UNIFIED_ANALYSIS_PROMPT)
-    SYNTHESIS_PROMPT_TEMPLATE = """
-# Task: Synthesize Refined Query
-
-Transform the refined aspects below into an enhanced, coherent research statement optimized for semantic search retrieval.
-
-## Original Research Input
-"{original_query}"
-
----
-
-{aspects_section}
-
----
-
-## Synthesis Instructions
-
-**Synthesis Quality Requirements:**
-- Remove ALL conversational language ("I think", "maybe", "probably", "I guess", "kind of", "sort of")
-- Remove ALL filler words and unnecessary elaboration ("well", "you know", "obviously", "definitely", "actually")
-- Remove ALL meta-commentary ("The user wants to study", "This research focuses on", "I'm interested in", "The goal is to")
-- Write in clear, professional, declarative statements
-- Preserve ALL key factual details from the original input and refinements
-- Maintain technical precision and domain-specific terminology
-- Use complete, well-formed sentences that sound natural and authoritative
-
-## Example Transformations
-Before: "Well, I think I want to maybe study adults, you know, probably around 18 to 65 or so, who have Type 2 diabetes"
-After: "Adults aged 18-65 with Type 2 diabetes"
-
-Before: "This research focuses on investigating the potential effects of machine learning approaches on protein folding prediction"
-After: "Machine learning approaches for protein folding prediction"
-
----
-
-{output_format_section}
-"""
+    # Template for synthesis prompt 
+    
     
     # Base schema for synthesis output
     BASE_SYNTHESIS_FIELDS = {
         "refined_query": "string",
-        "refinement_aspects": "object",
-        "confidence": "float",
-        "key_changes": "array"
+        "refinement_aspects": "object"
     }
     
     # Field descriptions for synthesis output
     SYNTHESIS_FIELD_DESCRIPTIONS = {
         "refined_query": "The final synthesized query combining all refinements",
-        "refinement_aspects": "Map of aspect_id → refinement_aspect_value for traceability",
-        "confidence": "LLM confidence in synthesis quality (0.0-1.0)",
-        "key_changes": "List of key changes from original query"
+        "refinement_aspects": "Map of aspect_id → refinement_aspect_value for traceability"
     }
     
     @staticmethod
@@ -81,9 +42,9 @@ After: "Machine learning approaches for protein folding prediction"
         Build complete synthesis prompt with all refined aspect values.
         
         Args:
-            original_query: The user's original query
+            original_input: The user's original research input
             refinement_aspect_values: Dict mapping aspect_id → refined value
-            aspects: List of RefinementAspect objects for context
+            aspects: List of RefinementAspect objects for context (names, descriptions)
             
         Returns:
             Complete formatted synthesis prompt
@@ -94,10 +55,11 @@ After: "Machine learning approaches for protein folding prediction"
         )
         output_format_section = SynthesisPromptBuilder._build_output_format_section()
         
-        return SynthesisPromptBuilder.SYNTHESIS_PROMPT_TEMPLATE.format(
-            original_query=original_query,
-            aspects_section=aspects_section,
-            output_format_section=output_format_section
+        # Use replace() instead of format() to avoid issues with JSON examples in template
+        return (SYNTHESIS_PROMPT_TEMPLATE
+                .replace("{original_input}", original_query)
+                .replace("{aspects_section}", aspects_section)
+                .replace("{output_format_section}", output_format_section)
         )
     
     @staticmethod
@@ -109,7 +71,6 @@ After: "Machine learning approaches for protein folding prediction"
         Build section showing all refined aspect values.
         
         Format:
-        **Refined Aspects:**
         
         1. **Aspect Name** (Description)
            Refined Value: <value>
@@ -122,29 +83,18 @@ After: "Machine learning approaches for protein folding prediction"
             Formatted aspects section
         """
         if not refinement_aspect_values:
-            return "**Refined Aspects:** None (using original query as-is)"
+            return "None (using original query as-is)"
         
         # Create lookup map
         aspect_map = {a.id: a for a in aspects}
         
-        lines = ["**Refined Aspects:**", ""]
+        lines = [""]
         
         item_number = 0
         for aspect_id, value in refinement_aspect_values.items():
             aspect = aspect_map.get(aspect_id)
             
-            # Handle skipped/clear aspects
-            if value == "[SKIPPED]":
-                continue  # Don't include skipped aspects
-            elif value == "[CLEAR_IN_ORIGINAL]":
-                if aspect:
-                    item_number += 1
-                    lines.append(f"{item_number}. **{aspect.aspect_name}** ({aspect.aspect_description})")
-                    lines.append(f"   Status: ✓ Already clear in original query")
-                    lines.append("")
-                continue
-            
-            # Regular refined value
+            # Show actual refined value (including values extracted from original input)
             item_number += 1
             if aspect:
                 lines.append(f"{item_number}. **{aspect.aspect_name}** ({aspect.aspect_description})")
@@ -170,49 +120,43 @@ After: "Machine learning approaches for protein folding prediction"
         Returns:
             Formatted output format section with JSON schema
         """
-        lines = ["**OUTPUT FORMAT (JSON):**", ""]
-        
-        # Build JSON example structure
-        lines.append("{")
-        lines.append('  "refined_query": "The synthesized, search-optimized query combining all refinements",')
-        lines.append('  "refinement_aspects": {')
-        lines.append('    "aspect_id_1": "value from refinement (for traceability)",')
-        lines.append('    "aspect_id_2": "value from refinement"')
-        lines.append('  },')
-        lines.append('  "confidence": 0.0-1.0,')
-        lines.append('  "key_changes": [')
-        lines.append('    "Description of major change 1",')
-        lines.append('    "Description of major change 2"')
-        lines.append('  ],')
-        lines.append('  "publication_years": "Temporal constraints (e.g., \'2020-2025\') or empty string",')
-        lines.append('  "venues": "Comma-separated venue names or empty string",')
-        lines.append('  "authors": ["Author 1", "Author 2"] or [],')
-        lines.append('  "fields_of_study": "Comma-separated fields or empty string",')
-        lines.append('  "refined_statement": "Natural-language statement optimized for semantic search",')
-        lines.append('  "refined_statement_keywords": "Keyword-optimized version"')
-        lines.append("}")
-        lines.append("")
-        
-        # Add field requirements
-        lines.append("**Field Requirements:**")
+        # Build dynamic field requirements from BASE_SYNTHESIS_FIELDS
+        field_requirements = []
         for field_name, field_type in SynthesisPromptBuilder.BASE_SYNTHESIS_FIELDS.items():
             desc = SynthesisPromptBuilder.SYNTHESIS_FIELD_DESCRIPTIONS.get(field_name, f"Value of type {field_type}")
-            lines.append(f"- `{field_name}` ({field_type}): REQUIRED - {desc}")
+            field_requirements.append(f"- `{field_name}` ({field_type}): REQUIRED - {desc}")
         
-        lines.append("- All metadata fields (publication_years, venues, authors, fields_of_study): Extract if mentioned, otherwise empty")
-        lines.append("- `refined_statement`: Alternative phrasing for semantic search")
-        lines.append("- `refined_statement_keywords`: Keyword version")
-        lines.append("")
+        field_requirements_text = "\n".join(field_requirements)
         
-        # Add processing rules
-        lines.append("**Processing Rules:**")
-        lines.append("- Current year is 2026 for temporal interpretation")
-        lines.append("- Preserve user's intended meaning exactly")
-        lines.append("- Extract metadata into separate fields (don't duplicate in refined_query)")
-        lines.append("- All topical content should appear in refined_query or refined_statement")
-        lines.append("- `refinement_aspects` must contain the same aspect_id keys from the input with their refined values")
-        
-        return "\n".join(lines)
+        return f"""**OUTPUT FORMAT (JSON):**
+
+{{
+  "refined_query": "The synthesized, search-optimized query combining all refinements",
+  "refinement_aspects": {{
+    "population": "refined value for population aspect",
+    "intervention": "refined value for intervention aspect",
+    "outcome": "refined value for outcome aspect"
+  }},
+  "publication_years": "Temporal constraints (e.g., '2020-2025') or empty string",
+  "venues": "Comma-separated venue names or empty string",
+  "authors": ["Author 1", "Author 2"] or [],
+  "fields_of_study": "Comma-separated fields or empty string",
+  "refined_statement": "Natural-language statement optimized for semantic search",
+  "refined_statement_keywords": "Keyword-optimized version"
+}}
+
+**Field Requirements:**
+{field_requirements_text}
+- All metadata fields (publication_years, venues, authors, fields_of_study): Extract if mentioned, otherwise empty
+- `refined_statement`: Alternative phrasing for semantic search
+- `refined_statement_keywords`: Keyword version
+
+**Processing Rules:**
+- Current year is 2026 for temporal interpretation
+- Preserve user's intended meaning exactly
+- Extract metadata into separate fields (don't duplicate in refined_query)
+- All topical content should appear in refined_query or refined_statement
+- **IMPORTANT**: `refinement_aspects` must be a JSON object where each key is an aspect ID from the "Refined Aspects" section above, and each value is the corresponding "Refined Value" shown for that aspect"""
     
     @staticmethod
     def get_system_prompt() -> str:
@@ -222,23 +166,4 @@ After: "Machine learning approaches for protein folding prediction"
         Returns:
             System prompt defining the synthesis role
         """
-        return """You are a research query synthesis expert. Your role is to integrate and enhance a user's original input (query, statement, topic, idea, etc.) with refined aspect details.
-
-You will receive:
-1. The user's original research input
-2. Refined aspect values (specific parameters elicited through conversation)
-
-Your task:
-- INTEGRATE the original input intent with refined aspect details into a coherent whole
-- The original input establishes the research question or idea or goal; aspects provide specificity and clarity
-- Apply controlled normalization while preserving user intent
-- Ensure cross-aspect consistency and alignment with original query goal
-- Produce structured output suitable for literature search (e.g., semantic search)
-
-Core principles:
-- Combine both original input and refined aspects - don't omit either
-- Maintain technical precision and domain-specific terminology
-- Write in clear, professional, declarative statements
-- Avoid conversational language, filler words, and meta-commentary
-- Preserve semantic meaning from both original input and refined aspects
-- Standardize terminology to research/domain conventions"""
+        return SYNTHESIS_SYSTEM_PROMPT
