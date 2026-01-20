@@ -181,10 +181,6 @@ class RefinementAspect:
     # This allows for consistent response structures and validation
     response_format: Optional[Dict[str, Any]] = None
     
-    # DEPRECATED fields - kept for backward compatibility
-    value_field_type: str = "string"
-    value_field_description: Optional[str] = None
-    
     # Dependencies: List of refinement aspect IDs this refinement aspect depends on
     # Only declared dependencies will be included in the analysis context
     depends_on: List[str] = field(default_factory=list)
@@ -239,13 +235,6 @@ class RefinementAspect:
     def __post_init__(self):
         """Validate schema structure at load time."""
         # 1. Validate value_field_type
-        valid_types = {"string", "boolean", "integer", "float", "array", "object"}
-        if self.value_field_type.lower() not in valid_types:
-            raise ValueError(
-                f"Invalid value_field_type '{self.value_field_type}' for aspect '{self.id}'. "
-                f"Valid types: {', '.join(sorted(valid_types))}"
-            )
-        
         # 2. Validate response_format structure (if provided)
         if self.response_format:
             self._validate_response_format_structure()
@@ -549,9 +538,6 @@ class RefinementAspect:
         # Start with base fields
         schema = self.BASE_SCHEMA_FIELDS.copy()
         
-        # Add dynamic value field using aspect.id as field name
-        schema[self.id] = self.value_field_type
-        
         # Add any additional custom fields from response_format
         if self.response_format:
             additional = self.response_format.get("additional_fields", {})
@@ -567,18 +553,6 @@ class RefinementAspect:
             Dictionary mapping field names to descriptions
         """
         descriptions = self.BASE_FIELD_DESCRIPTIONS.copy()
-        
-        
-        user_desc = self.value_field_description or f"The {self.aspect_name}"
-        
-        synthesis_instructions = (
-            "\nSYNTHESIS REQUIRED: Update this field incrementally at EVERY response. "
-            "Combine ALL previous user responses into this single field. "
-            "Remove conversational language, filler words, and meta-commentary. "
-            "Keep only factual content in clear, declarative form."
-        )
-        
-        descriptions[self.id] = f"{user_desc}{synthesis_instructions}"
         
         # Add custom descriptions from response_format
         if self.response_format:
@@ -672,11 +646,6 @@ class RefinementAspect:
         # Legacy: Validate dynamic value field type if present (deprecated)
         if self.id in response:
             value = response[self.id]
-            type_valid, type_error = self._validate_field_type(
-                self.id, value, self.value_field_type
-            )
-            if not type_valid:
-                validation_errors.append(type_error)
         
         # Validate custom fields if response_format is defined
         if self.response_format:

@@ -2,129 +2,159 @@ mph_dissertation:
 - id: research_domain
   aspect_name: research domain
   aspect_description: the public health topic or health issue under investigation
-  system_prompt: 'You are a supportive research advisor helping Master of Public Health (MPH) students refine their dissertation
-    research topics by asking clarifying questions.
+  system_prompt: 'You are a supportive research advisor helping Master of Public Health
+    (MPH) students refine their dissertation research topics by asking clarifying
+    questions.
 
-    Your Job: Students provide a description of their dissertation research interest (as a question, statement, aim, or paragraph).
-    Clarify the public health topic or health issue under investigation. Focus ONLY on this aspect—ignore other research elements.
+    Your Job: Students provide a description of their dissertation research interest
+    (as a question, statement, aim, or paragraph). Clarify the public health topic
+    or health issue under investigation. Focus ONLY on this aspect—ignore other research
+    elements.
 
 
-    Conversation Approach: 1. **Acknowledge first**: Recognize what''s already clear before requesting clarification 2. **Natural
-    dialogue**: Engage conversationally, not like a form or checklist 3. **Their language**: Build on their terminology; don''t
-    impose jargon 4. **Concrete examples**: Offer 2-4 specific MPH-relevant examples they can adapt 5. **Progressive refinement**:
-    Address 1-2 unclear points per turn 6. **Explain value**: Briefly note how clarification will help their research
+    Conversation Approach: 1. **Acknowledge first**: Recognize what''s already clear
+    before requesting clarification 2. **Natural dialogue**: Engage conversationally,
+    not like a form or checklist 3. **Their language**: Build on their terminology;
+    don''t impose jargon 4. **Concrete examples**: Offer 2-4 specific MPH-relevant
+    examples they can adapt 5. **Progressive refinement**: Address 1-2 unclear points
+    per turn 6. **Explain value**: Briefly note how clarification will help their
+    research
 
-    Boundaries: - You refine research descriptions, not search literature or write proposals - Keep focus on developing clear,
-    researchable dissertations suitable for MPH programs - If asked about ethics, analysis methods, or supervision, acknowledge
+    Boundaries: - You refine research descriptions, not search literature or write
+    proposals - Keep focus on developing clear, researchable dissertations suitable
+    for MPH programs - If asked about ethics, analysis methods, or supervision, acknowledge
     importance but note these are outside this tool''s scope
 
-    Tone: Supportive and collaborative. Frame refinement as "developing clarity" not "fixing problems." Students should feel
-    helped, not corrected.'
-  refinement_instructions: "### What you are evaluating: \n  Is the public health topic/health issue clear and appropriately\
-    \ scoped?\n\n### STRONG domains: \n- Identify a specific health issue or public health topic\n- Bounded enough for dissertation\
-    \ research (not entire fields)\n- Recognized public health relevance\n\n### WEAK domains: \n- Too broad (\"public health\"\
-    , \"health promotion\")\n- Too narrow (hyper-specific sub-issues with minimal literature)\n- Vague (undefined health area)\n\
-    - Multiple unrelated topics bundled together\n- No domain identified\n- Multiple unrelated topics bundled together\n-\
-    \ No domain identified (just methods or general terms)\n\n### Your response strategy if refinement needed:\n\n**If too\
-    \ broad:** \"[Domain] covers a lot of ground. Which specific health issue interests you? For example: [list 3-4 specific\
-    \ topics within that domain]\"\n\n**If vague:** \"Can you specify which health issue or topic you want to focus on? Such\
-    \ as: [list 3-4 concrete health topics]\"\n\n**If too narrow:** \"This is quite specialized. Would you consider: [list\
-    \ 2-3 broader alternatives that maintain their interest]? This gives you more literature while staying focused.\"\n"
+    Tone: Supportive and collaborative. Frame refinement as "developing clarity" not
+    "fixing problems." Students should feel helped, not corrected.'
+  refinement_instructions: "### What you are evaluating: \n  Is the public health\
+    \ topic/health issue clear and appropriately scoped?\n\n### STRONG domains: \n\
+    - Identify a specific health issue or public health topic\n- Bounded enough for\
+    \ dissertation research (not entire fields)\n- Recognized public health relevance\n\
+    \n### WEAK domains: \n- Too broad (\"public health\", \"health promotion\")\n\
+    - Too narrow (hyper-specific sub-issues with minimal literature)\n- Vague (undefined\
+    \ health area)\n- Multiple unrelated topics bundled together\n- No domain identified\n\
+    - Multiple unrelated topics bundled together\n- No domain identified (just methods\
+    \ or general terms)\n\n### Your response strategy if refinement needed:\n\n**If\
+    \ too broad:** \"[Domain] covers a lot of ground. Which specific health issue\
+    \ interests you? For example: [list 3-4 specific topics within that domain]\"\n\
+    \n**If vague:** \"Can you specify which health issue or topic you want to focus\
+    \ on? Such as: [list 3-4 concrete health topics]\"\n\n**If too narrow:** \"This\
+    \ is quite specialized. Would you consider: [list 2-3 broader alternatives that\
+    \ maintain their interest]? This gives you more literature while staying focused.\"\
+    \n"
   examples:
     clear:
     - statement: childhood obesity
-      rationale: Specific health condition in defined life stage; recognized public health issue with clear boundaries
+      rationale: Specific health condition in defined life stage; recognized public
+        health issue with clear boundaries
     - statement: vaccine hesitancy
-      rationale: Distinct health behavior/phenomenon with established public health significance
+      rationale: Distinct health behavior/phenomenon with established public health
+        significance
     - statement: air pollution and respiratory health
-      rationale: Clear environmental exposure and health domain affected; well-defined topic
+      rationale: Clear environmental exposure and health domain affected; well-defined
+        topic
     - statement: antimicrobial resistance
       rationale: Specific infectious disease threat; recognized public health priority
     - statement: maternal mortality
-      rationale: Specific health statement in defined population; established public health indicator
+      rationale: Specific health statement in defined population; established public
+        health indicator
     - statement: mental health stigma
-      rationale: Health domain (mental health) with specific issue (stigma); clear focus
+      rationale: Health domain (mental health) with specific issue (stigma); clear
+        focus
     - statement: workplace health and safety
-      rationale: Recognized public health domain with clear boundaries - occupational health
+      rationale: Recognized public health domain with clear boundaries - occupational
+        health
     needs_refinement:
     - statement: public health
       issue: Entire field; no specific topic identified
-      example_question: 'Public health covers many areas. Which specific health issue interests you? For example: infectious
-        disease prevention, chronic disease management, environmental health, health inequalities, or health systems?'
+      example_question: 'Public health covers many areas. Which specific health issue
+        interests you? For example: infectious disease prevention, chronic disease
+        management, environmental health, health inequalities, or health systems?'
     - statement: communicable diseases
       issue: Entire disease category; hundreds of possible diseases
-      example_question: 'Communicable diseases is very broad. Which disease or disease group are you interested in? Such as:
-        respiratory infections (flu, TB, COVID), vector-borne diseases (malaria, dengue), sexually transmitted infections,
+      example_question: 'Communicable diseases is very broad. Which disease or disease
+        group are you interested in? Such as: respiratory infections (flu, TB, COVID),
+        vector-borne diseases (malaria, dengue), sexually transmitted infections,
         or vaccine-preventable diseases?'
     - statement: children's health
       issue: All pediatric health issues; too expansive
-      example_question: 'Children''s health encompasses many topics. Which specific health issue are you interested in? For
-        example: childhood obesity, vaccine-preventable diseases, child development and nutrition, childhood injuries, or
-        pediatric mental health?'
+      example_question: 'Children''s health encompasses many topics. Which specific
+        health issue are you interested in? For example: childhood obesity, vaccine-preventable
+        diseases, child development and nutrition, childhood injuries, or pediatric
+        mental health?'
     - statement: health
       issue: Too general; could be any health topic
-      example_question: 'Can you identify which health area you want to focus on? Such as: a specific disease or condition,
-        a health behavior (smoking, physical activity, diet), a health system issue (access, quality), or an environmental
+      example_question: 'Can you identify which health area you want to focus on?
+        Such as: a specific disease or condition, a health behavior (smoking, physical
+        activity, diet), a health system issue (access, quality), or an environmental
         health hazard?'
     - statement: rotavirus vaccine-associated intussusception
       issue: Extremely specific adverse event; very limited scope
-      example_question: 'This is quite specialized for an MPH dissertation. Would you consider: vaccine safety monitoring,
-        rotavirus vaccination programs, or vaccine adverse events generally? These give you more material while keeping your
-        safety focus.'
+      example_question: 'This is quite specialized for an MPH dissertation. Would
+        you consider: vaccine safety monitoring, rotavirus vaccination programs, or
+        vaccine adverse events generally? These give you more material while keeping
+        your safety focus.'
     - statement: medication errors involving high-alert medications in geriatric wards
       issue: Three layers of specificity (error type + medication type + ward type)
-      example_question: 'This might be too narrow. Consider broadening to: medication errors in elderly care, patient safety
-        in geriatric care, or high-alert medication safety? Any of these maintains your focus while expanding scope.'
+      example_question: 'This might be too narrow. Consider broadening to: medication
+        errors in elderly care, patient safety in geriatric care, or high-alert medication
+        safety? Any of these maintains your focus while expanding scope.'
     partial:
     - statement: diabetes
       has: Disease identified
       missing: Type of diabetes or specific aspect
-      example_question: Diabetes is a good starting point. Are you interested in Type 2 diabetes specifically (most common
-        in public health), diabetes prevention and risk factors, diabetes complications, or diabetes management and care?
+      example_question: Diabetes is a good starting point. Are you interested in Type
+        2 diabetes specifically (most common in public health), diabetes prevention
+        and risk factors, diabetes complications, or diabetes management and care?
     - statement: mental health
       has: Health domain identified
       missing: Specific mental health issue
-      example_question: 'Mental health is broad. Which aspect are you focusing on? Such as: depression and anxiety, mental
-        health stigma, suicide prevention, mental health service provision, or workplace mental health?'
+      example_question: 'Mental health is broad. Which aspect are you focusing on?
+        Such as: depression and anxiety, mental health stigma, suicide prevention,
+        mental health service provision, or workplace mental health?'
     - statement: nutrition
       has: General health topic
       missing: Specific nutrition issue
-      example_question: 'Which specific nutrition issue interests you? For example: malnutrition (under- or over-nutrition),
-        micronutrient deficiencies, dietary patterns and chronic disease, food security and access, or maternal and infant
+      example_question: 'Which specific nutrition issue interests you? For example:
+        malnutrition (under- or over-nutrition), micronutrient deficiencies, dietary
+        patterns and chronic disease, food security and access, or maternal and infant
         nutrition?'
     vague_ambiguous:
     - statement: health improvement
       issue: No specific health topic identified
-      example_question: 'Health improvement is quite general. Which health issue or topic do you want to address? For example:
-        a specific disease you want to prevent/manage, a health behavior you want to change, or a health system problem you
-        want to examine?'
+      example_question: 'Health improvement is quite general. Which health issue or
+        topic do you want to address? For example: a specific disease you want to
+        prevent/manage, a health behavior you want to change, or a health system problem
+        you want to examine?'
     - statement: wellness
       issue: Vague term with multiple meanings
-      example_question: 'Wellness can mean different things. What specific health topic does this refer to? Such as: mental
-        health and wellbeing, physical fitness and activity, preventive health behaviors, or workplace wellness programs?'
+      example_question: 'Wellness can mean different things. What specific health
+        topic does this refer to? Such as: mental health and wellbeing, physical fitness
+        and activity, preventive health behaviors, or workplace wellness programs?'
     other:
     - statement: obesity, diabetes, and cardiovascular disease
       issue: Multiple distinct health conditions
-      example_question: 'You''ve identified three related conditions. For an MPH dissertation, focus on one primary issue.
-        Which interests you most: obesity, Type 2 diabetes, or cardiovascular disease? Or are you interested in chronic disease
-        prevention broadly (which encompasses all three)?'
+      example_question: 'You''ve identified three related conditions. For an MPH dissertation,
+        focus on one primary issue. Which interests you most: obesity, Type 2 diabetes,
+        or cardiovascular disease? Or are you interested in chronic disease prevention
+        broadly (which encompasses all three)?'
     - statement: health education
       issue: Method rather than health topic
-      example_question: 'Health education is a method. What health issue are you wanting to address through education? For
-        example: sexual health education for adolescents, diabetes self-management education, or nutrition education for obesity
-        prevention?'
-  value_field_type: string
-  value_field_description: 'The the public health topic or health issue under investigation. Examples: "childhood obesity",
-    "vaccine hesitancy", "air pollution and respiratory health".'
+      example_question: 'Health education is a method. What health issue are you wanting
+        to address through education? For example: sexual health education for adolescents,
+        diabetes self-management education, or nutrition education for obesity prevention?'
 - id: research_focus
   aspect_name: research focus
-  aspect_description: what the student specifically wants to investigate, examine, or understand about their topic
+  aspect_description: what the student specifically wants to investigate, examine,
+    or understand about their topic
   refinement_instructions: '### What you''re evaluating:
 
     Is there a clear investigative direction - what specifically will be studied/examined/understood?
 
 
-    Note: This can be expressed as a question, aim, objective, or descriptive statement. Don''t require interrogative structure.
+    Note: This can be expressed as a question, aim, objective, or descriptive statement.
+    Don''t require interrogative structure.
 
 
     ### Strong research focus:
@@ -153,102 +183,128 @@ mph_dissertation:
 
     ### Your response strategy if refinement needed:
 
-    **If no focus present:** "You''ve identified [topic]. What specifically do you want to investigate or understand about
-    it? For example: what factors influence it, how effective are interventions, what barriers exist, or how it affects specific
+    **If no focus present:** "You''ve identified [topic]. What specifically do you
+    want to investigate or understand about it? For example: what factors influence
+    it, how effective are interventions, what barriers exist, or how it affects specific
     statements?"
 
 
-    **If too vague:** "What specifically about [vague element] do you want to examine? For instance: [list 3-4 specific investigative
-    angles]"
+    **If too vague:** "What specifically about [vague element] do you want to examine?
+    For instance: [list 3-4 specific investigative angles]"
 
 
-    **If solution-focused:** "That''s an important goal. For research, let''s reframe as: what do we need to understand about
-    [topic]? Such as: what factors contribute to it, what barriers exist, or what evidence exists about different approaches?" '
+    **If solution-focused:** "That''s an important goal. For research, let''s reframe
+    as: what do we need to understand about [topic]? Such as: what factors contribute
+    to it, what barriers exist, or what evidence exists about different approaches?" '
   examples:
     clear:
-    - rationale: Clear relationship being examined (exposure and statement), specific variables identified, investigative
-        rather than descriptive
-      statement: examining the relationship between air pollution exposure and asthma hospitalization rates in urban areas
-    - rationale: Specific phenomenon (vaccine hesitancy), clear investigative aim (factors/determinants), defined population
-      statement: investigating factors that influence vaccine hesitancy among parents of young children
-    - rationale: Clear intervention, specific statement, evaluative focus appropriate for MPH
-      statement: assessing the effectiveness of school-based nutrition education programs in improving dietary knowledge
-    - rationale: Specific behavior, clear investigative direction (barriers), appropriate exploratory approach
-      statement: exploring barriers to physical activity among adolescents in low-income urban communities
-    - rationale: Statement form (not question) is acceptable; clear relationship, specific variables
-      statement: This study examines how socioeconomic status affects access to mental health services
+    - rationale: Clear relationship being examined (exposure and statement), specific
+        variables identified, investigative rather than descriptive
+      statement: examining the relationship between air pollution exposure and asthma
+        hospitalization rates in urban areas
+    - rationale: Specific phenomenon (vaccine hesitancy), clear investigative aim
+        (factors/determinants), defined population
+      statement: investigating factors that influence vaccine hesitancy among parents
+        of young children
+    - rationale: Clear intervention, specific statement, evaluative focus appropriate
+        for MPH
+      statement: assessing the effectiveness of school-based nutrition education programs
+        in improving dietary knowledge
+    - rationale: Specific behavior, clear investigative direction (barriers), appropriate
+        exploratory approach
+      statement: exploring barriers to physical activity among adolescents in low-income
+        urban communities
+    - rationale: Statement form (not question) is acceptable; clear relationship,
+        specific variables
+      statement: This study examines how socioeconomic status affects access to mental
+        health services
     needs_refinement:
     - issue: Topic only; no investigative direction specified
-      example_question: 'You''ve identified childhood obesity as your topic. What specifically do you want to investigate
-        about it? For example: what factors contribute to childhood obesity, how effective are prevention programs, what barriers
-        exist to implementing interventions, or how obesity affects long-term health statements?'
+      example_question: 'You''ve identified childhood obesity as your topic. What
+        specifically do you want to investigate about it? For example: what factors
+        contribute to childhood obesity, how effective are prevention programs, what
+        barriers exist to implementing interventions, or how obesity affects long-term
+        health statements?'
       statement: childhood obesity
     - issue: Purely definitional; not a research inquiry
-      example_question: 'That''s more of a definitional question. For MPH research, what do you want to investigate about
-        diabetes? Such as: what factors increase diabetes risk in specific populations, how effective are different prevention
-        approaches, what barriers affect diabetes management, or how social determinants influence diabetes statements?'
+      example_question: 'That''s more of a definitional question. For MPH research,
+        what do you want to investigate about diabetes? Such as: what factors increase
+        diabetes risk in specific populations, how effective are different prevention
+        approaches, what barriers affect diabetes management, or how social determinants
+        influence diabetes statements?'
       statement: What is diabetes?
     - issue: Solution-focused and too broad; research examines not solves
-      example_question: 'That''s an important goal, but too broad for research. Let''s reframe as an investigative focus:
-        what factors contribute most to obesity in specific populations, how effective are different prevention strategies,
-        what barriers prevent successful interventions, or what evidence exists about different approaches?'
+      example_question: 'That''s an important goal, but too broad for research. Let''s
+        reframe as an investigative focus: what factors contribute most to obesity
+        in specific populations, how effective are different prevention strategies,
+        what barriers prevent successful interventions, or what evidence exists about
+        different approaches?'
       statement: How can we solve the obesity crisis?
     - issue: No investigative direction; just a general phrase
-      example_question: 'What specifically do you want to investigate about health interventions? For example: how effective
-        are specific intervention types for particular statements, what factors influence intervention implementation, what
-        barriers exist to intervention adoption, or how do different interventions compare?'
+      example_question: 'What specifically do you want to investigate about health
+        interventions? For example: how effective are specific intervention types
+        for particular statements, what factors influence intervention implementation,
+        what barriers exist to intervention adoption, or how do different interventions
+        compare?'
       statement: health interventions
     - issue: Multiple distinct inquiries bundled together
-      example_question: 'You''ve raised three separate questions. For an MPH dissertation, focus on one main inquiry. Which
-        interests you most: what factors contribute to health inequalities in specific contexts, how effective are specific
-        policies in reducing inequalities, or what barriers prevent achieving health equity?'
-      statement: Why is there health inequality and how can we achieve health equity and what policies work best?
+      example_question: 'You''ve raised three separate questions. For an MPH dissertation,
+        focus on one main inquiry. Which interests you most: what factors contribute
+        to health inequalities in specific contexts, how effective are specific policies
+        in reducing inequalities, or what barriers prevent achieving health equity?'
+      statement: Why is there health inequality and how can we achieve health equity
+        and what policies work best?
     partial:
     - has: Basic investigative direction (what affects), identifies statement
       missing: Which factors specifically? What relationships?
-      example_question: 'Good start - you''re examining factors affecting obesity. To be more specific: are you interested
-        in behavioral factors (diet, activity), environmental factors (built environment, food access), social factors (family,
+      example_question: 'Good start - you''re examining factors affecting obesity.
+        To be more specific: are you interested in behavioral factors (diet, activity),
+        environmental factors (built environment, food access), social factors (family,
         socioeconomic status), or the relationship between specific factors and obesity?'
       statement: looking at what affects childhood obesity
     - has: General investigative direction
       missing: Which interventions? For what? What aspect of 'work'?
-      example_question: 'Which interventions for which health issue? And what aspect of ''work'' - effectiveness for statements,
-        implementation factors, or mechanisms of action? For example: effectiveness of school-based programs in preventing
+      example_question: 'Which interventions for which health issue? And what aspect
+        of ''work'' - effectiveness for statements, implementation factors, or mechanisms
+        of action? For example: effectiveness of school-based programs in preventing
         obesity, or factors influencing implementation of nutrition interventions?'
       statement: studying how interventions work
     - has: Clear exposure identified
       missing: Effects on what health statement? Which effects?
-      example_question: 'Effects on which health statement - respiratory disease, cardiovascular disease, mortality, or hospitalizations?
-        And are you interested in short-term or long-term effects? For example: the relationship between air pollution exposure
-        and asthma exacerbations in children?'
+      example_question: 'Effects on which health statement - respiratory disease,
+        cardiovascular disease, mortality, or hospitalizations? And are you interested
+        in short-term or long-term effects? For example: the relationship between
+        air pollution exposure and asthma exacerbations in children?'
       statement: the effects of air pollution
     vague_ambiguous:
     - issue: Extremely vague; no clear inquiry
-      example_question: 'What specifically about health do you want to investigate? Are you interested in: a specific health
-        condition or issue, health behaviors or determinants, health services or systems, or health statements in specific
+      example_question: 'What specifically about health do you want to investigate?
+        Are you interested in: a specific health condition or issue, health behaviors
+        or determinants, health services or systems, or health statements in specific
         populations?'
       statement: looking at health
     - issue: '''Environment'' and ''impacts'' are undefined'
-      example_question: 'When you say ''environment'' do you mean physical environment (air quality, pollution), built environment
-        (housing, urban design, green spaces), or social environment (neighborhood, community)? And impact on what health
-        aspect specifically? For example: the relationship between air pollution and respiratory health?'
+      example_question: 'When you say ''environment'' do you mean physical environment
+        (air quality, pollution), built environment (housing, urban design, green
+        spaces), or social environment (neighborhood, community)? And impact on what
+        health aspect specifically? For example: the relationship between air pollution
+        and respiratory health?'
       statement: how environment impacts people
     - issue: '''What happens'' is too vague'
-      example_question: 'What aspect of interventions do you want to examine? Their effectiveness for specific statements,
-        factors influencing their success or failure, barriers to implementation, or how they work? For example: effectiveness
-        of community-based interventions in improving physical activity, or barriers to implementing tobacco control policies?'
+      example_question: 'What aspect of interventions do you want to examine? Their
+        effectiveness for specific statements, factors influencing their success or
+        failure, barriers to implementation, or how they work? For example: effectiveness
+        of community-based interventions in improving physical activity, or barriers
+        to implementing tobacco control policies?'
       statement: what happens with interventions
     other:
     - issue: Opinion statement, not research focus
-      example_question: 'That''s an important perspective. What would you like to investigate about school nutrition? For
-        example: effectiveness of school-based nutrition programs in improving dietary behaviors, barriers to implementing
-        nutrition education in schools, or how school food environment affects children''s dietary choices?'
+      example_question: 'That''s an important perspective. What would you like to
+        investigate about school nutrition? For example: effectiveness of school-based
+        nutrition programs in improving dietary behaviors, barriers to implementing
+        nutrition education in schools, or how school food environment affects children''s
+        dietary choices?'
       statement: I think schools should do more about nutrition
-  value_field_type: string
-  value_field_description: 'The what the student specifically wants to investigate, examine, or understand about their topic.
-    Examples: "examining the relationship between air pollution exposure and asthma hospitalization rates in urban areas",
-    "investigating factors that influence vaccine hesitancy among parents of young children", "assessing the effectiveness
-    of school-based nutrition education programs in improving dietary knowledge".'
 - id: statement
   aspect_name: population and setting
   aspect_description: who is being studied and in what context or location
@@ -278,84 +334,96 @@ mph_dissertation:
 
     ### Your response strategy if refinement needed:
 
-    **If needs geographic/setting detail:** "You''ve specified [characteristic], but where are you focusing? For example:
-    specific country/region, urban vs rural settings, or particular type of setting (schools, clinics, communities)?"
+    **If needs geographic/setting detail:** "You''ve specified [characteristic], but
+    where are you focusing? For example: specific country/region, urban vs rural settings,
+    or particular type of setting (schools, clinics, communities)?"
 
 
-    **If needs demographic detail:** "Can you be more specific about the population? Consider: age range (e.g., children 5-12,
-    adults 18-65), risk factors or health status, or social/economic characteristics?"
+    **If needs demographic detail:** "Can you be more specific about the population?
+    Consider: age range (e.g., children 5-12, adults 18-65), risk factors or health
+    status, or social/economic characteristics?"
 
 
-    **If too narrow:** "This is very specific - you might struggle to find sufficient research. Would [broader alternative]
-    give you more flexibility while staying focused?" '
+    **If too narrow:** "This is very specific - you might struggle to find sufficient
+    research. Would [broader alternative] give you more flexibility while staying
+    focused?" '
   examples:
     clear:
     - statement: primary school children aged 6-12 in urban UK schools
-      rationale: Age specified, setting type clear (schools), geographic location (UK, urban) defined
+      rationale: Age specified, setting type clear (schools), geographic location
+        (UK, urban) defined
     - statement: pregnant women attending antenatal clinics in rural Sub-Saharan Africa
-      rationale: Life stage (pregnant), setting (antenatal clinics), geographic region (rural SSA) all specified
+      rationale: Life stage (pregnant), setting (antenatal clinics), geographic region
+        (rural SSA) all specified
     - statement: adults over 65 living in residential care facilities
-      rationale: Age range clear, setting type specified (residential care), population characteristic (institutionalized
-        elderly)
+      rationale: Age range clear, setting type specified (residential care), population
+        characteristic (institutionalized elderly)
     - statement: healthcare workers in hospital settings in London
       rationale: Occupational group, work setting, and specific location all identified
     - statement: adolescents aged 13-18 in low-income urban communities
-      rationale: Age range, socioeconomic characteristic, and geographic setting all specified
+      rationale: Age range, socioeconomic characteristic, and geographic setting all
+        specified
     needs_refinement:
     - statement: children
       issue: No age range, location, or setting specified
-      example_question: 'Which children specifically? Consider: age range (preschool 0-5, primary school 6-12, adolescents
-        13-18), geographic location (UK, specific region, urban/rural), and setting (schools, communities, clinical)?'
+      example_question: 'Which children specifically? Consider: age range (preschool
+        0-5, primary school 6-12, adolescents 13-18), geographic location (UK, specific
+        region, urban/rural), and setting (schools, communities, clinical)?'
     - statement: elderly people
       issue: No age threshold, location, or living situation specified
-      example_question: 'Can you specify: what age defines ''elderly'' for your research (65+, 75+, 80+), where they''re located
-        (country, region), and setting (community-dwelling, care homes, hospitals)?'
+      example_question: 'Can you specify: what age defines ''elderly'' for your research
+        (65+, 75+, 80+), where they''re located (country, region), and setting (community-dwelling,
+        care homes, hospitals)?'
     - statement: people in cities
       issue: Too broad; which cities, which populations
-      example_question: 'Which urban population specifically? For example: which country or city, what age group, any specific
-        characteristics (low-income, specific ethnic groups, high-risk populations)?'
+      example_question: 'Which urban population specifically? For example: which country
+        or city, what age group, any specific characteristics (low-income, specific
+        ethnic groups, high-risk populations)?'
     - statement: children aged exactly 8 in Manchester primary schools
       issue: Overly specific age; may limit evidence
-      example_question: The single-age specification is quite narrow. Would primary school children aged 6-10 or 7-11 in Manchester
-        schools work? This gives you more flexibility while maintaining your focus.
+      example_question: The single-age specification is quite narrow. Would primary
+        school children aged 6-10 or 7-11 in Manchester schools work? This gives you
+        more flexibility while maintaining your focus.
     partial:
     - statement: children in London
       has: Age group (children) and city identified
       missing: Specific age range, setting type
-      example_question: Which age group within childhood (preschool 0-5, primary 6-12, adolescents 13-18), and in what setting
-        (schools, communities, clinical services)?
+      example_question: Which age group within childhood (preschool 0-5, primary 6-12,
+        adolescents 13-18), and in what setting (schools, communities, clinical services)?
     - statement: adults in South Asia
       has: Age category and broad region
       missing: Specific age range, country, urban/rural, setting
-      example_question: 'Can you specify: which country in South Asia, what age range within adulthood, urban or rural settings,
-        and what type of setting (community, workplace, healthcare)?'
+      example_question: 'Can you specify: which country in South Asia, what age range
+        within adulthood, urban or rural settings, and what type of setting (community,
+        workplace, healthcare)?'
     - statement: pregnant women
       has: Life stage clearly identified
       missing: Location, setting, any risk characteristics
-      example_question: 'Where are you focusing: which country or region, urban or rural, and in what setting (community,
-        antenatal clinics, hospitals)? Any specific risk groups (first-time mothers, high-risk pregnancies)?'
+      example_question: 'Where are you focusing: which country or region, urban or
+        rural, and in what setting (community, antenatal clinics, hospitals)? Any
+        specific risk groups (first-time mothers, high-risk pregnancies)?'
     vague_ambiguous:
     - statement: young people in communities
       issue: Both 'young people' and 'communities' are ambiguous
-      example_question: What age range for 'young people' (adolescents 13-18, young adults 18-25, both), and which communities
-        specifically (urban neighborhoods, rural villages, school communities, specific geographic areas)?
+      example_question: What age range for 'young people' (adolescents 13-18, young
+        adults 18-25, both), and which communities specifically (urban neighborhoods,
+        rural villages, school communities, specific geographic areas)?
     - statement: vulnerable populations
       issue: Undefined which vulnerable group
-      example_question: 'Which vulnerable population specifically: elderly, low-income communities, refugees, homeless populations,
-        immunocompromised individuals, or another group? And where are they located?'
+      example_question: 'Which vulnerable population specifically: elderly, low-income
+        communities, refugees, homeless populations, immunocompromised individuals,
+        or another group? And where are they located?'
     - statement: people at risk
       issue: At risk of what? Which people? Where?
-      example_question: 'At risk of what specifically? And which population - age group, location, setting? For example: children
-        at risk of obesity in urban schools, elderly at risk of falls in care homes?'
+      example_question: 'At risk of what specifically? And which population - age
+        group, location, setting? For example: children at risk of obesity in urban
+        schools, elderly at risk of falls in care homes?'
     other:
     - statement: children and adults and elderly
       issue: Multiple distinct age groups; too broad
-      example_question: 'It''s better to focus on one age group for an MPH dissertation. Which is your primary interest: children,
-        working-age adults, or elderly populations? Or are you specifically interested in comparing across age groups?'
-  value_field_type: object
-  value_field_description: 'The who is being studied and in what context or location. Expected format: object with relevant
-    fields. Examples: "primary school children aged 6-12 in urban UK schools", "pregnant women attending antenatal clinics
-    in rural Sub-Saharan Africa", "adults over 65 living in residential care facilities".'
+      example_question: 'It''s better to focus on one age group for an MPH dissertation.
+        Which is your primary interest: children, working-age adults, or elderly populations?
+        Or are you specifically interested in comparing across age groups?'
 - id: study_design_timeframe
   aspect_name: study design and timeframe
   aspect_description: the methodological approach and temporal scope of the research
@@ -366,11 +434,13 @@ mph_dissertation:
 
     ### Clear design & timeframe:
 
-    - Named study type (cross-sectional, cohort, RCT, case-control, systematic review, qualitative)
+    - Named study type (cross-sectional, cohort, RCT, case-control, systematic review,
+    qualitative)
 
     - Design matches research focus
 
-    - Timeframe indicated (cross-sectional snapshot, longitudinal duration, historical period)
+    - Timeframe indicated (cross-sectional snapshot, longitudinal duration, historical
+    period)
 
     - Feasible for MPH dissertation scope
 
@@ -379,7 +449,8 @@ mph_dissertation:
 
     - Just "survey" or "study" without detail
 
-    - Design doesn''t match research focus (e.g., causation claim with cross-sectional design)
+    - Design doesn''t match research focus (e.g., causation claim with cross-sectional
+    design)
 
     - No temporal scope indicated
 
@@ -389,99 +460,115 @@ mph_dissertation:
     ### Your response strategy if refinement needed:
 
 
-    **If unspecified:** "What methodological approach are you planning? For your research focus, you might consider: [list
-    3-4 appropriate designs with brief descriptions]"
+    **If unspecified:** "What methodological approach are you planning? For your research
+    focus, you might consider: [list 3-4 appropriate designs with brief descriptions]"
 
 
-    **If design-focus mismatch:** "I notice you want to understand [causal/temporal element], but [proposed design] typically
-    shows association/snapshot. Would [alternative design] be more appropriate, or should we adjust your research focus?"
+    **If design-focus mismatch:** "I notice you want to understand [causal/temporal
+    element], but [proposed design] typically shows association/snapshot. Would [alternative
+    design] be more appropriate, or should we adjust your research focus?"
 
 
-    **If overly ambitious:** "[Design] is gold standard but quite resource-intensive for an MPH dissertation. Would [more
-    feasible alternative] work? It would still address your research focus while being more manageable." '
+    **If overly ambitious:** "[Design] is gold standard but quite resource-intensive
+    for an MPH dissertation. Would [more feasible alternative] work? It would still
+    address your research focus while being more manageable." '
   examples:
     clear:
-    - statement: cross-sectional survey of vaccination attitudes among parents, conducted during 2025
-      rationale: Specific design (cross-sectional survey), population clear, timeframe indicated (2025), appropriate for attitude
-        assessment
+    - statement: cross-sectional survey of vaccination attitudes among parents, conducted
+        during 2025
+      rationale: Specific design (cross-sectional survey), population clear, timeframe
+        indicated (2025), appropriate for attitude assessment
     - statement: cohort study following children over two years to examine BMI changes
-      rationale: Design type (cohort), temporal element (longitudinal over 2 years), statement specified
-    - statement: systematic review of literature published 2015-2025 on school nutrition interventions
+      rationale: Design type (cohort), temporal element (longitudinal over 2 years),
+        statement specified
+    - statement: systematic review of literature published 2015-2025 on school nutrition
+        interventions
       rationale: Design (systematic review), temporal scope (10 years), topic focused
     - statement: qualitative study using semi-structured interviews to explore experiences
-      rationale: Design (qualitative), method (interviews), investigative approach (exploratory)
-    - statement: case-control study comparing adults with and without diabetes to identify risk factors
-      rationale: Design (case-control), comparison groups specified, appropriate for risk factor investigation
+      rationale: Design (qualitative), method (interviews), investigative approach
+        (exploratory)
+    - statement: case-control study comparing adults with and without diabetes to
+        identify risk factors
+      rationale: Design (case-control), comparison groups specified, appropriate for
+        risk factor investigation
     needs_refinement:
     - statement: a survey
       issue: Type of survey not specified; no timeframe
-      example_question: What type of survey - cross-sectional (one time point) or longitudinal (multiple time points)? Who
-        will you survey and over what timeframe? For your research focus, a cross-sectional survey of [population] during
-        [timeframe] might work.
+      example_question: What type of survey - cross-sectional (one time point) or
+        longitudinal (multiple time points)? Who will you survey and over what timeframe?
+        For your research focus, a cross-sectional survey of [population] during [timeframe]
+        might work.
     - statement: observational study
       issue: Type of observational study unclear
-      example_question: 'Which type of observational study: cohort (following people over time), case-control (comparing groups
-        with/without condition), or cross-sectional (snapshot at one point)? Your research focus about [topic] would suit
-        [specific design suggestion].'
+      example_question: 'Which type of observational study: cohort (following people
+        over time), case-control (comparing groups with/without condition), or cross-sectional
+        (snapshot at one point)? Your research focus about [topic] would suit [specific
+        design suggestion].'
     - statement: I'll collect data
       issue: No design specified
-      example_question: 'What methodological approach? For investigating [their research focus], you might consider: cross-sectional
-        survey for current patterns, cohort study if examining changes over time, or qualitative interviews if exploring experiences.
-        What fits your interest?'
-    - statement: randomized controlled trial comparing three intervention arms over 5 years
+      example_question: 'What methodological approach? For investigating [their research
+        focus], you might consider: cross-sectional survey for current patterns, cohort
+        study if examining changes over time, or qualitative interviews if exploring
+        experiences. What fits your interest?'
+    - statement: randomized controlled trial comparing three intervention arms over
+        5 years
       issue: Overly ambitious for MPH dissertation
-      example_question: RCTs are gold standard but very resource-intensive for an MPH dissertation. Would a quasi-experimental
-        design or comparing existing intervention data be more feasible? This would still let you examine intervention effectiveness
-        while being more manageable.
+      example_question: RCTs are gold standard but very resource-intensive for an
+        MPH dissertation. Would a quasi-experimental design or comparing existing
+        intervention data be more feasible? This would still let you examine intervention
+        effectiveness while being more manageable.
     partial:
     - statement: survey of school children
       has: Basic method (survey), population indicated
       missing: Type of survey, timeframe, sampling approach
-      example_question: Will this be a cross-sectional survey (one time point) or longitudinal (multiple time points)? And
-        over what timeframe - during one school term, academic year? Also, how will you sample - all schools in an area, random
-        selection?
+      example_question: Will this be a cross-sectional survey (one time point) or
+        longitudinal (multiple time points)? And over what timeframe - during one
+        school term, academic year? Also, how will you sample - all schools in an
+        area, random selection?
     - statement: longitudinal study
       has: Temporal element (longitudinal)
       missing: Specific design type, duration, what's being followed
-      example_question: What type of longitudinal design - cohort study (following a group over time) or repeated cross-sections?
-        Over what duration (months, years)? And measuring what statements at what intervals?
+      example_question: What type of longitudinal design - cohort study (following
+        a group over time) or repeated cross-sections? Over what duration (months,
+        years)? And measuring what statements at what intervals?
     - statement: qualitative research
       has: General approach (qualitative)
       missing: Specific method, sample characteristics
-      example_question: Which qualitative method - interviews, focus groups, observations, or document analysis? With how
-        many participants, and over what timeframe? For your research focus on [topic], [specific method] with [number] participants
+      example_question: Which qualitative method - interviews, focus groups, observations,
+        or document analysis? With how many participants, and over what timeframe?
+        For your research focus on [topic], [specific method] with [number] participants
         might work well.
     vague_ambiguous:
     - statement: I'll do research on this
       issue: No methodological detail at all
-      example_question: 'What research approach are you considering? For your focus on [topic], you might: conduct a cross-sectional
-        survey to understand current patterns, do qualitative interviews to explore experiences, or undertake a systematic
-        review of existing evidence. What appeals to you?'
+      example_question: 'What research approach are you considering? For your focus
+        on [topic], you might: conduct a cross-sectional survey to understand current
+        patterns, do qualitative interviews to explore experiences, or undertake a
+        systematic review of existing evidence. What appeals to you?'
     - statement: looking at data over time
       issue: Ambiguous what 'over time' means and what data
-      example_question: Are you planning to collect new data at multiple time points (prospective cohort), or analyze existing
-        historical data (retrospective)? Over what duration - months, years, decades? And what type of data - surveys, health
-        records, routine statistics?
+      example_question: Are you planning to collect new data at multiple time points
+        (prospective cohort), or analyze existing historical data (retrospective)?
+        Over what duration - months, years, decades? And what type of data - surveys,
+        health records, routine statistics?
     other:
     - statement: mixed methods with surveys, interviews, focus groups, and observations
       issue: Overly complex for MPH dissertation
-      example_question: Multiple methods can be very time-consuming for a dissertation. Could you focus on one primary method
-        (quantitative survey OR qualitative interviews/focus groups)? This would let you do deeper, higher-quality work within
-        your timeline.
+      example_question: Multiple methods can be very time-consuming for a dissertation.
+        Could you focus on one primary method (quantitative survey OR qualitative
+        interviews/focus groups)? This would let you do deeper, higher-quality work
+        within your timeline.
     - statement: wanting to prove that intervention X causes statement Y
       issue: Language of causation without appropriate design
-      example_question: 'Proving causation requires experimental design like RCTs, which are resource-intensive. For your
-        dissertation, would you consider: examining association between X and Y (using observational design), or comparing
-        statements in areas with/without intervention X (quasi-experimental)? These are more feasible while still addressing
-        your interest.'
-  value_field_type: object
-  value_field_description: 'The the methodological approach and temporal scope of the research. Expected format: object with
-    relevant fields. Examples: "cross-sectional survey of vaccination attitudes among parents, conducted during 2025", "cohort
-    study following children over two years to examine BMI changes", "systematic review of literature published 2015-2025
-    on school nutrition interventions".'
+      example_question: 'Proving causation requires experimental design like RCTs,
+        which are resource-intensive. For your dissertation, would you consider: examining
+        association between X and Y (using observational design), or comparing statements
+        in areas with/without intervention X (quasi-experimental)? These are more
+        feasible while still addressing your interest.'
 - id: statements_interest
   aspect_name: statements of interest
-  aspect_description: what will be measured, observed, or understood as results of the research
+  aspect_description: what will be measured, observed, or understood as results of
+    the research
   refinement_instructions: '### What you''re evaluating:
 
     Are the statements/results of interest clearly specified and measurable?
@@ -514,99 +601,113 @@ mph_dissertation:
     ### Your response strategy for unclear statements:
 
 
-    **If vague:** "When you say [vague term], what specifically will you measure or observe? For example: health metrics (disease
-    incidence, biomarkers), behaviors (activity levels, dietary intake), knowledge/attitudes, or service use?"
+    **If vague:** "When you say [vague term], what specifically will you measure or
+    observe? For example: health metrics (disease incidence, biomarkers), behaviors
+    (activity levels, dietary intake), knowledge/attitudes, or service use?"
 
 
-    **If disconnected:** "I notice your statements [X] don''t directly connect to your research focus on [Y]. Should we align
-    these, or adjust your research focus?"
+    **If disconnected:** "I notice your statements [X] don''t directly connect to
+    your research focus on [Y]. Should we align these, or adjust your research focus?"
 
 
-    **If unrealistic:** "That''s quite an ambitious change for [timeframe]. Based on existing evidence, what''s a realistic
-    statement to expect? Even [more modest statement] would be significant."
+    **If unrealistic:** "That''s quite an ambitious change for [timeframe]. Based
+    on existing evidence, what''s a realistic statement to expect? Even [more modest
+    statement] would be significant."
 
     '
   examples:
     clear:
     - statement: BMI reduction and improved nutrition knowledge scores
-      rationale: Specific anthropometric measure (BMI) and clear knowledge assessment, both measurable
+      rationale: Specific anthropometric measure (BMI) and clear knowledge assessment,
+        both measurable
     - statement: asthma hospitalization rates
-      rationale: Specific health service statement with clear measurement through hospital data
+      rationale: Specific health service statement with clear measurement through
+        hospital data
     - statement: self-reported physical activity levels measured by validated questionnaire
       rationale: Behavioral statement with specified measurement method
     - statement: vaccination coverage rates in the target population
       rationale: Clear public health indicator with standard measurement approach
     - statement: reported barriers to accessing mental health services
-      rationale: Qualitative statement appropriate for exploratory research on access barriers
+      rationale: Qualitative statement appropriate for exploratory research on access
+        barriers
     - statement: prevalence of Type 2 diabetes diagnosed through HbA1c testing
       rationale: Specific disease statement with clear diagnostic criterion
     needs_refinement:
     - statement: better health
       issue: Too vague; 'better' undefined and 'health' too broad
-      example_question: 'What specific health changes would you measure? For example: reduced disease incidence, improved
-        biomarkers (blood pressure, cholesterol, HbA1c), changed behaviors (physical activity, diet), or increased knowledge/awareness?'
+      example_question: 'What specific health changes would you measure? For example:
+        reduced disease incidence, improved biomarkers (blood pressure, cholesterol,
+        HbA1c), changed behaviors (physical activity, diet), or increased knowledge/awareness?'
     - statement: positive statements
       issue: Completely unspecified
-      example_question: 'Which specific statements would indicate success? Such as: health indicators (mortality, morbidity,
-        disease rates), behavioral changes (smoking cessation, increased activity), service utilization, or policy adoption?'
+      example_question: 'Which specific statements would indicate success? Such as:
+        health indicators (mortality, morbidity, disease rates), behavioral changes
+        (smoking cessation, increased activity), service utilization, or policy adoption?'
     - statement: improved quality of life
       issue: Not measurable without specifying how
-      example_question: 'How would you measure quality of life? Would you use: a validated QoL scale (like EQ-5D), specific
-        functional statements, mental health measures, or self-reported wellbeing scores? Each requires different data collection.'
+      example_question: 'How would you measure quality of life? Would you use: a validated
+        QoL scale (like EQ-5D), specific functional statements, mental health measures,
+        or self-reported wellbeing scores? Each requires different data collection.'
     - statement: health improvement
       issue: Vague; no specific health aspect identified
-      example_question: 'Which health statements specifically? For example: disease prevention (reduced incidence), management
-        (controlled symptoms, reduced complications), or behavioral (changed risk behaviors)?'
+      example_question: 'Which health statements specifically? For example: disease
+        prevention (reduced incidence), management (controlled symptoms, reduced complications),
+        or behavioral (changed risk behaviors)?'
     partial:
     - statement: obesity rates in children
       has: Health statement (obesity) and population
       missing: How measured, what change expected
-      example_question: How will you measure obesity - BMI percentiles, BMI z-scores, or obesity prevalence rates? And are
-        you looking at changes over time, differences between groups, or current levels?
+      example_question: How will you measure obesity - BMI percentiles, BMI z-scores,
+        or obesity prevalence rates? And are you looking at changes over time, differences
+        between groups, or current levels?
     - statement: smoking behavior
       has: Behavior category identified
       missing: Which aspect of smoking behavior
-      example_question: 'Which aspect of smoking behavior: cessation rates, smoking prevalence, cigarettes per day, quit attempts,
-        or intention to quit? Each requires different measurement approaches.'
+      example_question: 'Which aspect of smoking behavior: cessation rates, smoking
+        prevalence, cigarettes per day, quit attempts, or intention to quit? Each
+        requires different measurement approaches.'
     - statement: health service use
       has: General statement category
       missing: Which services, which utilization measures
-      example_question: 'Which health service use specifically: number of visits, types of services accessed, timing of service
-        use, or barriers to utilization? For example: GP consultations per year, A&E attendances, or mental health service
-        uptake.'
+      example_question: 'Which health service use specifically: number of visits,
+        types of services accessed, timing of service use, or barriers to utilization?
+        For example: GP consultations per year, A&E attendances, or mental health
+        service uptake.'
     vague_ambiguous:
     - statement: wellness
       issue: Undefined concept that could mean many things
-      example_question: 'What aspect of wellness would you measure: physical health (fitness, absence of disease), mental
-        health (mood, stress levels), health behaviors (diet, activity), or subjective wellbeing (life satisfaction)? Each
+      example_question: 'What aspect of wellness would you measure: physical health
+        (fitness, absence of disease), mental health (mood, stress levels), health
+        behaviors (diet, activity), or subjective wellbeing (life satisfaction)? Each
         needs specific measurement approaches.'
     - statement: community health
       issue: Ambiguous - community-level or individual health in communities?
-      example_question: 'Are you measuring: aggregated health indicators for communities (e.g., area-level disease rates),
-        individual health of people living in communities, or community factors affecting health (social cohesion, resources)?
-        These require different approaches.'
+      example_question: 'Are you measuring: aggregated health indicators for communities
+        (e.g., area-level disease rates), individual health of people living in communities,
+        or community factors affecting health (social cohesion, resources)? These
+        require different approaches.'
     - statement: impact on population
       issue: '''Impact'' undefined, ''population'' too general'
-      example_question: Impact measured how - health statements (mortality, morbidity), health behaviors (risk factor prevalence),
-        or service statements (coverage, access)? And which population specifically?
+      example_question: Impact measured how - health statements (mortality, morbidity),
+        health behaviors (risk factor prevalence), or service statements (coverage,
+        access)? And which population specifically?
     other:
     - statement: reduction in obesity rates from 40% to 5% within 6 months
       issue: Unrealistically large change in short timeframe
-      example_question: A drop from 40% to 5% in 6 months would be unprecedented. Based on intervention evidence, what's realistic
-        - perhaps 2-5% reduction over 12-18 months? Even modest changes can be significant for public health.
-    - statement: multiple statements including BMI, blood pressure, cholesterol, physical activity, diet quality, mental health,
-        and service use
+      example_question: A drop from 40% to 5% in 6 months would be unprecedented.
+        Based on intervention evidence, what's realistic - perhaps 2-5% reduction
+        over 12-18 months? Even modest changes can be significant for public health.
+    - statement: multiple statements including BMI, blood pressure, cholesterol, physical
+        activity, diet quality, mental health, and service use
       issue: Too many statements for dissertation scope
-      example_question: 'Measuring all these statements would be very demanding. Could you focus on 2-3 primary statements
-        most relevant to your research focus? For example, if examining a nutrition intervention: BMI, dietary intake, and
+      example_question: 'Measuring all these statements would be very demanding. Could
+        you focus on 2-3 primary statements most relevant to your research focus?
+        For example, if examining a nutrition intervention: BMI, dietary intake, and
         nutrition knowledge?'
-  value_field_type: string
-  value_field_description: 'The what will be measured, observed, or understood as results of the research. Examples: "BMI
-    reduction and improved nutrition knowledge scores", "asthma hospitalization rates", "self-reported physical activity levels
-    measured by validated questionnaire".'
 - id: intervention_exposure
   aspect_name: intervention or exposure
-  aspect_description: the intervention being evaluated or exposure being examined (only applicable for certain research types)
+  aspect_description: the intervention being evaluated or exposure being examined
+    (only applicable for certain research types)
   refinement_instructions: '### When this aspect applies:
 
     - Research focus involves evaluating an intervention''s effectiveness
@@ -652,74 +753,84 @@ mph_dissertation:
 
     ### Your response strategy:
 
-    **If not applicable:** Note that this aspect isn''t needed for their research focus
+    **If not applicable:** Note that this aspect isn''t needed for their research
+    focus
 
 
-    **If applicable but vague:** "Which [intervention/exposure] specifically? For example: [list 3-4 concrete examples relevant
-    to their topic]"
+    **If applicable but vague:** "Which [intervention/exposure] specifically? For
+    example: [list 3-4 concrete examples relevant to their topic]"
 
 
-    **If needs comparison:** "Are you comparing this intervention to: usual care/no intervention, a different intervention
-    approach, or pre-post implementation? This affects your study design." '
+    **If needs comparison:** "Are you comparing this intervention to: usual care/no
+    intervention, a different intervention approach, or pre-post implementation? This
+    affects your study design." '
   examples:
     clear:
-    - statement: school-based nutrition education program including classroom lessons and cafeteria modifications
-      rationale: Intervention type (education) and setting (school) specified, key components described
+    - statement: school-based nutrition education program including classroom lessons
+        and cafeteria modifications
+      rationale: Intervention type (education) and setting (school) specified, key
+        components described
     - statement: tobacco taxation policy increasing cigarette prices by at least 10%
       rationale: Policy intervention clearly specified with concrete threshold
-    - statement: air pollution exposure measured as PM2.5 levels from local monitoring stations
+    - statement: air pollution exposure measured as PM2.5 levels from local monitoring
+        stations
       rationale: Exposure clearly defined with specific measurement approach
     - statement: HPV vaccination (2-dose schedule) compared to no vaccination
       rationale: Specific vaccine, dosing specified, comparison group identified
     needs_refinement:
     - statement: health programs
       issue: No intervention type specified
-      example_question: 'Which type of health program: educational programs, screening programs, behavior change interventions,
-        or policy-based programs? For your research focus on [topic], [specific program type] would be most relevant.'
+      example_question: 'Which type of health program: educational programs, screening
+        programs, behavior change interventions, or policy-based programs? For your
+        research focus on [topic], [specific program type] would be most relevant.'
     - statement: interventions
       issue: Completely unspecified
-      example_question: 'Which interventions for your research focus on [topic]? For example: behavioral interventions (counseling,
-        education), environmental interventions (policy changes, built environment), or clinical interventions (screening,
+      example_question: 'Which interventions for your research focus on [topic]? For
+        example: behavioral interventions (counseling, education), environmental interventions
+        (policy changes, built environment), or clinical interventions (screening,
         treatment)?'
     - statement: exposure
       issue: Type of exposure not defined
-      example_question: 'Exposure to what? For research on [their topic], this might be: environmental exposure (pollution,
-        chemicals), behavioral exposure (diet, physical activity patterns), or social exposure (advertising, peer influence)?'
+      example_question: 'Exposure to what? For research on [their topic], this might
+        be: environmental exposure (pollution, chemicals), behavioral exposure (diet,
+        physical activity patterns), or social exposure (advertising, peer influence)?'
     partial:
     - statement: school-based program
       has: Setting (school) and general approach (program)
       missing: Type of program, key components
-      example_question: 'What type of school-based program: nutrition education, physical activity promotion, mental health
-        support, or something else? And what are its key components - curriculum, environmental changes, family involvement?'
+      example_question: 'What type of school-based program: nutrition education, physical
+        activity promotion, mental health support, or something else? And what are
+        its key components - curriculum, environmental changes, family involvement?'
     - statement: vaccination
       has: Intervention category (vaccination)
       missing: Which vaccine, for which disease
-      example_question: 'Which vaccine specifically: HPV, MMR, seasonal flu, COVID-19, or routine childhood vaccinations generally?
-        This affects which literature is relevant and what statements to examine.'
+      example_question: 'Which vaccine specifically: HPV, MMR, seasonal flu, COVID-19,
+        or routine childhood vaccinations generally? This affects which literature
+        is relevant and what statements to examine.'
     other:
     - statement: 'Research focus: What factors influence physical activity among adolescents?'
       issue: Not applicable
-      rationale: This is exploratory research on determinants, not evaluating an intervention or examining specific exposures
+      rationale: This is exploratory research on determinants, not evaluating an intervention
+        or examining specific exposures
     - statement: 'Research focus: What are the barriers to mental health service access?'
       issue: Not applicable
-      rationale: This is exploratory research on barriers, not evaluating interventions or exposures
-  value_field_type: object
-  value_field_description: 'The the intervention being evaluated or exposure being examined (only applicable for certain research
-    types). Expected format: object with relevant fields. Examples: "school-based nutrition education program including classroom
-    lessons and cafeteria modifications", "tobacco taxation policy increasing cigarette prices by at least 10%", "air pollution
-    exposure measured as PM2.5 levels from local monitoring stations".'
+      rationale: This is exploratory research on barriers, not evaluating interventions
+        or exposures
 pico_advanced:
 - id: population_demographic
   aspect_name: Population Demographic
-  aspect_description: Defines the target population's basic demographic characteristics including age range, gender, ethnicity,
-    but excluding geographic scope and clinical setting
-  system_prompt: 'You are a research advisor helping users refine their research topics by asking focused clarifying questions.
+  aspect_description: Defines the target population's basic demographic characteristics
+    including age range, gender, ethnicity, but excluding geographic scope and clinical
+    setting
+  system_prompt: 'You are a research advisor helping users refine their research topics
+    by asking focused clarifying questions.
 
 
     Your Job:
 
-    Users provide research interests (questions, statements, aims, or paragraphs). Clarify aspect: **{self.aspect_name}**,
-    with definition: **{self.aspect_description}**. Focus ONLY on this aspect—ignore other research elements.
+    Users provide research interests (questions, statements, aims, or paragraphs).
+    Clarify aspect: **{self.aspect_name}**, with definition: **{self.aspect_description}**.
+    Focus ONLY on this aspect—ignore other research elements.
 
 
     How to Engage:
@@ -728,16 +839,19 @@ pico_advanced:
 
     2. **One element at a time**: Address 1-2 unclear points per turn.
 
-    3. **Mirror their language**: Use their terminology; avoid jargon unless it adds needed precision.
+    3. **Mirror their language**: Use their terminology; avoid jargon unless it adds
+    needed precision.
 
     4. **Give examples**: Offer 2-4 concrete, aspect-specific examples they can adapt.
 
-    5. **Explain why**: Briefly note how this clarification strengthens their research input and improves their search.
+    5. **Explain why**: Briefly note how this clarification strengthens their research
+    input and improves their search.
 
 
     When to Stop:
 
-    This aspect is sufficiently refined when the user''s statement is specific, unambiguous, and actionable for evidence synthesis.
+    This aspect is sufficiently refined when the user''s statement is specific, unambiguous,
+    and actionable for evidence synthesis.
 
 
     Boundaries:
@@ -752,76 +866,86 @@ pico_advanced:
     Tone: Supportive and collaborative. Be efficient—don''t over-explain.
 
     '
-  refinement_instructions: "### Objective:\nEvaluate whether the population demographic specification is clearly and specifically\
-    \ defined for:\n1. Study replication\n2. Results generalization\n3. Ethical review requirements\n\n### Evaluation Criteria:\n\
-    \     Assess clarity and completeness across: \n     - Age (explicit range or threshold)\n     - Sex / gender (specified\
-    \ or all-inclusive)\n     - Ethnicity (when relevant)\n"
+  refinement_instructions: "### Objective:\nEvaluate whether the population demographic\
+    \ specification is clearly and specifically defined for:\n1. Study replication\n\
+    2. Results generalization\n3. Ethical review requirements\n\n### Evaluation Criteria:\n\
+    \     Assess clarity and completeness across: \n     - Age (explicit range or\
+    \ threshold)\n     - Sex / gender (specified or all-inclusive)\n     - Ethnicity\
+    \ (when relevant)\n"
   examples:
     clear:
     - statement: Efficacy of metformin in adults aged 40-65 with BMI > 30
-      rationale: Age range precisely defined (40-65), specific population characteristic (BMI > 30)
+      rationale: Age range precisely defined (40-65), specific population characteristic
+        (BMI > 30)
     - statement: Postmenopausal women aged 50-70 in urban clinical settings
       rationale: Age (50-70), gender (women), life stage (postmenopausal)
-    - statement: African American males aged 18-45 with hypertension in community health centers
-      rationale: 'Complete population demographic profile: ethnicity, gender, age range'
+    - statement: African American males aged 18-45 with hypertension in community
+        health centers
+      rationale: 'Complete population demographic profile: ethnicity, gender, age
+        range'
     needs_refinement:
     - statement: Does exercise reduce depression in adults?
       issue: '''Adults'' is too broad - could range from 18 to 100+ years'
       missing: Specific age range, gender considerations, geographic scope
-      example_question: 'What age range are you targeting? For example: young adults (18-35), middle-aged (36-64), or older
-        adults (65+)?'
+      example_question: 'What age range are you targeting? For example: young adults
+        (18-35), middle-aged (36-64), or older adults (65+)?'
     - statement: Study on diabetes management in elderly patients
       issue: '''Elderly'' is ambiguous - definitions vary from 60+ to 80+'
       missing: Precise age threshold, gender, setting
-      example_question: What specific age threshold defines 'elderly' for your study? (e.g., 65+, 70+, 75+)
+      example_question: What specific age threshold defines 'elderly' for your study?
+        (e.g., 65+, 70+, 75+)
     - statement: Treatment outcomes in minority populations
       issue: '''Minority populations'' is vague and could mean multiple groups'
       missing: Specific ethnic/racial groups, age, gender
-      example_question: Which specific population groups are you focusing on? (e.g., Hispanic/Latino, African American, Asian,
-        Native American)
+      example_question: Which specific population groups are you focusing on? (e.g.,
+        Hispanic/Latino, African American, Asian, Native American)
     partial:
     - statement: Women over 40 with cardiovascular disease
       has: Gender (women) and minimum age (40)
-      missing: Upper age limit, ethnicity (if CVD disparities relevant), geographic setting
-      example_question: Is there an upper age limit? Are you focusing on specific ethnic groups given CVD disparities?
+      missing: Upper age limit, ethnicity (if CVD disparities relevant), geographic
+        setting
+      example_question: Is there an upper age limit? Are you focusing on specific
+        ethnic groups given CVD disparities?
     - statement: Pediatric patients in tertiary care hospitals
       has: Age category (pediatric) and setting (tertiary care)
-      missing: Specific age range within pediatrics (neonates, infants, children, adolescents?)
-      example_question: What age range within pediatrics? (0-1 year, 1-12 years, 12-18 years, or all pediatric ages)
+      missing: Specific age range within pediatrics (neonates, infants, children,
+        adolescents?)
+      example_question: What age range within pediatrics? (0-1 year, 1-12 years, 12-18
+        years, or all pediatric ages)
     other:
-    - statement: Mindfulness program outcomes for exactly 40-year-old women diagnosed with postpartum depression within the
-        last month
-      note: Extremely narrow demographic qualifiers can cause the literature search to miss closely related evidence (e.g.,
-        35-45).
-      guidance: Confirm whether the researcher is open to a broader age band or postpartum window before locking the filters.
-      example_question: Should we expand the age or postpartum interval to capture more applicable studies?
+    - statement: Mindfulness program outcomes for exactly 40-year-old women diagnosed
+        with postpartum depression within the last month
+      note: Extremely narrow demographic qualifiers can cause the literature search
+        to miss closely related evidence (e.g., 35-45).
+      guidance: Confirm whether the researcher is open to a broader age band or postpartum
+        window before locking the filters.
+      example_question: Should we expand the age or postpartum interval to capture
+        more applicable studies?
     vague_ambiguous:
     - statement: Middle-aged adults in diverse communities
       issue: Both 'middle-aged' (typically 40-65 but varies) and 'diverse' are ambiguous
-      example_question: 'Can you specify: 1) Exact age range for ''middle-aged'', and 2) What dimensions of diversity matter
-        (ethnic, socioeconomic, geographic)?'
+      example_question: 'Can you specify: 1) Exact age range for ''middle-aged'',
+        and 2) What dimensions of diversity matter (ethnic, socioeconomic, geographic)?'
     - statement: Study in representative population sample
       issue: '''Representative'' is context-dependent - representative of what population?'
-      example_question: What population should this sample represent? Please specify demographic characteristics that define
-        representativeness.
-  value_field_type: object
-  value_field_description: 'The Defines the target population''s basic demographic characteristics including age range, gender,
-    ethnicity, but excluding geographic scope and clinical setting. Expected format: object with relevant fields. Examples:
-    "Efficacy of metformin in adults aged 40-65 with BMI > 30", "Postmenopausal women aged 50-70 in urban clinical settings",
-    "African American males aged 18-45 with hypertension in community health centers".'
+      example_question: What population should this sample represent? Please specify
+        demographic characteristics that define representativeness.
 - id: geographic_location
   aspect_name: Geographic Location & Setting
-  aspect_description: 'Captures the geographic context referenced in a clinical research query country, region, city, healthcare
-    setting, and recruitment environment. Precise location details clarify generalizability and feasibility
+  aspect_description: 'Captures the geographic context referenced in a clinical research
+    query country, region, city, healthcare setting, and recruitment environment.
+    Precise location details clarify generalizability and feasibility
 
     '
-  system_prompt: 'You are a research advisor helping users refine their research topics by asking focused clarifying questions.
+  system_prompt: 'You are a research advisor helping users refine their research topics
+    by asking focused clarifying questions.
 
 
     Your Job:
 
-    Users provide research interests (questions, statements, aims, or paragraphs). Clarify aspect: **{self.aspect_name}**,
-    with definition: **{self.aspect_description}**. Focus ONLY on this aspect—ignore other research elements.
+    Users provide research interests (questions, statements, aims, or paragraphs).
+    Clarify aspect: **{self.aspect_name}**, with definition: **{self.aspect_description}**.
+    Focus ONLY on this aspect—ignore other research elements.
 
 
     How to Engage:
@@ -830,16 +954,19 @@ pico_advanced:
 
     2. **One element at a time**: Address 1-2 unclear points per turn.
 
-    3. **Mirror their language**: Use their terminology; avoid jargon unless it adds needed precision.
+    3. **Mirror their language**: Use their terminology; avoid jargon unless it adds
+    needed precision.
 
     4. **Give examples**: Offer 2-4 concrete, aspect-specific examples they can adapt.
 
-    5. **Explain why**: Briefly note how this clarification strengthens their research input and improves their search.
+    5. **Explain why**: Briefly note how this clarification strengthens their research
+    input and improves their search.
 
 
     When to Stop:
 
-    This aspect is sufficiently refined when the user''s statement is specific, unambiguous, and actionable for evidence synthesis.
+    This aspect is sufficiently refined when the user''s statement is specific, unambiguous,
+    and actionable for evidence synthesis.
 
 
     Boundaries:
@@ -854,24 +981,30 @@ pico_advanced:
     Tone: Supportive and collaborative. Be efficient—don''t over-explain.
 
     '
-  refinement_instructions: "### Objective:\n  Determine whether the geographic location and setting are sufficiently specified\
-    \ to support:\n    - replication\n    - generalization\n    - feasibility\n\n### Considerations\n  1. Country/Region/City:\
-    \ Is a specific place named (e.g., \"Spain\", \"New York City\", \"West Africa\")?\n  2. Healthcare Setting: Is the care\
-    \ context defined (e.g., \"tertiary hospital\", \"community clinic\", \"home-based care\")?\n  3. Recruitment Context:\
-    \ Is the population tied to a clear study context (e.g., \"urban academic centers\", \"rural outreach programs\")?\n"
+  refinement_instructions: "### Objective:\n  Determine whether the geographic location\
+    \ and setting are sufficiently specified to support:\n    - replication\n    -\
+    \ generalization\n    - feasibility\n\n### Considerations\n  1. Country/Region/City:\
+    \ Is a specific place named (e.g., \"Spain\", \"New York City\", \"West Africa\"\
+    )?\n  2. Healthcare Setting: Is the care context defined (e.g., \"tertiary hospital\"\
+    , \"community clinic\", \"home-based care\")?\n  3. Recruitment Context: Is the\
+    \ population tied to a clear study context (e.g., \"urban academic centers\",\
+    \ \"rural outreach programs\")?\n"
   examples:
     clear:
     - statement: Hypertension management in rural community health districts in India
-      rationale: Country (India), setting (district health services), and scope are explicit.
+      rationale: Country (India), setting (district health services), and scope are
+        explicit.
     - statement: Diabetes outcomes monitored at tertiary care centers across São Paulo
-      rationale: City (São Paulo) and facility type (tertiary centers) are clearly defined.
+      rationale: City (São Paulo) and facility type (tertiary centers) are clearly
+        defined.
     - statement: Asthma prevalence studies conducted in city hospitals in Nairobi
       rationale: City (Nairobi) and care setting (city hospitals) anchor the location.
     needs_refinement:
     - statement: Cancer treatment in local hospitals
       issue: '''Local hospitals'' lacks any location reference'
       missing: City, region, or country identifiers.
-      example_question: Which city, region, or country do the 'local hospitals' refer to?
+      example_question: Which city, region, or country do the 'local hospitals' refer
+        to?
     - statement: Global trial enrolling patients from multiple continents
       issue: Continents alone are too broad for planning.
       missing: Specific countries, regions, or sites.
@@ -881,7 +1014,8 @@ pico_advanced:
       has: Region (Europe) and setting (hospitals).
       missing: hospital typology
       note: Europe is broad; confirm whether that level of granularity is acceptable.
-      example_question: Is Europe specific enough for your study, or can you point to a country/city and hospital type?
+      example_question: Is Europe specific enough for your study, or can you point
+        to a country/city and hospital type?
     - statement: Diabetes care delivered through clinics
       has: Care setting (clinics).
       missing: Geographic location of those clinics.
@@ -889,31 +1023,28 @@ pico_advanced:
     vague_ambiguous:
     - statement: Treatment studies in representative settings
       issue: '''Representative'' has no geographic anchor.'
-      example_question: Which specific settings (cities, regions, or countries) are considered representative?
+      example_question: Which specific settings (cities, regions, or countries) are
+        considered representative?
     - statement: Research in diverse communities
       issue: '''Diverse communities'' lacks locational detail.'
       example_question: Which communities and locations define 'diverse' in this context?
-  value_field_type: string
-  value_field_description: 'The Captures the geographic context referenced in a clinical research query country, region, city,
-    healthcare setting, and recruitment environment. Precise location details clarify generalizability and feasibility
-
-    . Expected format: numeric value. Examples: "Hypertension management in rural community health districts in India", "Diabetes
-    outcomes monitored at tertiary care centers across São Paulo", "Asthma prevalence studies conducted in city hospitals
-    in Nairobi".'
 - id: population_clinical_profile
   aspect_name: Clinical Profile & Health Status
-  aspect_description: Specifies the primary health condition, disease stage, severity, comorbidities, and relevant medical
-    history. Critical for defining study eligibility and expected treatment responses.
+  aspect_description: Specifies the primary health condition, disease stage, severity,
+    comorbidities, and relevant medical history. Critical for defining study eligibility
+    and expected treatment responses.
   depends_on:
   - population_demographic
   - geographic_location
-  system_prompt: 'You are a research advisor helping users refine their research topics by asking focused clarifying questions.
+  system_prompt: 'You are a research advisor helping users refine their research topics
+    by asking focused clarifying questions.
 
 
     Your Job:
 
-    Users provide research interests (questions, statements, aims, or paragraphs). Clarify aspect: **{self.aspect_name}**,
-    with definition: **{self.aspect_description}**. Focus ONLY on this aspect—ignore other research elements.
+    Users provide research interests (questions, statements, aims, or paragraphs).
+    Clarify aspect: **{self.aspect_name}**, with definition: **{self.aspect_description}**.
+    Focus ONLY on this aspect—ignore other research elements.
 
 
     How to Engage:
@@ -922,16 +1053,19 @@ pico_advanced:
 
     2. **One element at a time**: Address 1-2 unclear points per turn.
 
-    3. **Mirror their language**: Use their terminology; avoid jargon unless it adds needed precision.
+    3. **Mirror their language**: Use their terminology; avoid jargon unless it adds
+    needed precision.
 
     4. **Give examples**: Offer 2-4 concrete, aspect-specific examples they can adapt.
 
-    5. **Explain why**: Briefly note how this clarification strengthens their research input and improves their search.
+    5. **Explain why**: Briefly note how this clarification strengthens their research
+    input and improves their search.
 
 
     When to Stop:
 
-    This aspect is sufficiently refined when the user''s statement is specific, unambiguous, and actionable for evidence synthesis.
+    This aspect is sufficiently refined when the user''s statement is specific, unambiguous,
+    and actionable for evidence synthesis.
 
 
     Boundaries:
@@ -946,77 +1080,90 @@ pico_advanced:
     Tone: Supportive and collaborative. Be efficient—don''t over-explain.
 
     '
-  refinement_instructions: "### Objective\n  Evaluate whether the clinical profile and health status specification enables:\n\
-    \    - Accurate patient identification and recruitment\n    - Appropriate treatment selection\n    - Valid outcome interpretation\n\
-    \n### Clinical Profile Dimensions\n  1. Primary Condition/Diagnosis\n    - Is the main health condition clearly identified?\n\
-    \    - Is it specific enough? (e.g., \"Type 2 diabetes\" vs \"diabetes\")\n  2. Disease Stage/Phase\n    - Is staging\
-    \ mentioned when relevant?\n    - Examples: early-stage, advanced, acute, chronic, remission\n  3. Severity Level\n  \
-    \  - Is severity specified?\n    - Examples: mild, moderate, severe,\n  4. Comorbidities\n    - Are concurrent conditions\
-    \ mentioned?\n    - Are exclusions for contraindicated comorbidities specified?\n  5. Treatment History\n    - Is prior\
-    \ treatment status mentioned?\n    - Examples: treatment-naive, refractory, previously treated\n  6. Diagnostic Criteria\n\
-    \    - Are diagnostic standards mentioned?\n    - Examples: ICD codes, clinical guidelines, biomarker thresholds\n"
+  refinement_instructions: "### Objective\n  Evaluate whether the clinical profile\
+    \ and health status specification enables:\n    - Accurate patient identification\
+    \ and recruitment\n    - Appropriate treatment selection\n    - Valid outcome\
+    \ interpretation\n\n### Clinical Profile Dimensions\n  1. Primary Condition/Diagnosis\n\
+    \    - Is the main health condition clearly identified?\n    - Is it specific\
+    \ enough? (e.g., \"Type 2 diabetes\" vs \"diabetes\")\n  2. Disease Stage/Phase\n\
+    \    - Is staging mentioned when relevant?\n    - Examples: early-stage, advanced,\
+    \ acute, chronic, remission\n  3. Severity Level\n    - Is severity specified?\n\
+    \    - Examples: mild, moderate, severe,\n  4. Comorbidities\n    - Are concurrent\
+    \ conditions mentioned?\n    - Are exclusions for contraindicated comorbidities\
+    \ specified?\n  5. Treatment History\n    - Is prior treatment status mentioned?\n\
+    \    - Examples: treatment-naive, refractory, previously treated\n  6. Diagnostic\
+    \ Criteria\n    - Are diagnostic standards mentioned?\n    - Examples: ICD codes,\
+    \ clinical guidelines, biomarker thresholds\n"
   examples:
     clear:
-    - statement: Efficacy of SGLT2 inhibitors in Type 2 diabetes patients with HbA1c 7.5-10%, treatment-naive
-      rationale: Specific condition (Type 2 diabetes), severity marker (HbA1c 7.5-10%), treatment history (naive)
-    - statement: Outcomes of immunotherapy in stage IIIB non-small cell lung cancer, ECOG performance status 0-1
-      rationale: Precise diagnosis, stage (IIIB), cancer type (NSCLC), functional status (ECOG 0-1)
-    - statement: Management of acute severe asthma exacerbations requiring emergency department care
-      rationale: Condition (asthma), phase (acute), severity (severe), setting context (ED care required)
+    - statement: Efficacy of SGLT2 inhibitors in Type 2 diabetes patients with HbA1c
+        7.5-10%, treatment-naive
+      rationale: Specific condition (Type 2 diabetes), severity marker (HbA1c 7.5-10%),
+        treatment history (naive)
+    - statement: Outcomes of immunotherapy in stage IIIB non-small cell lung cancer,
+        ECOG performance status 0-1
+      rationale: Precise diagnosis, stage (IIIB), cancer type (NSCLC), functional
+        status (ECOG 0-1)
+    - statement: Management of acute severe asthma exacerbations requiring emergency
+        department care
+      rationale: Condition (asthma), phase (acute), severity (severe), setting context
+        (ED care required)
     needs_refinement:
     - statement: Treatment for diabetic patients
-      issue: Diabetes type not specified - Type 1, Type 2, gestational, MODY, etc. have different treatments
+      issue: Diabetes type not specified - Type 1, Type 2, gestational, MODY, etc.
+        have different treatments
       missing: Disease type, severity, duration, complications
-      example_question: What type of diabetes? (Type 1, Type 2, gestational) And what level of glycemic control? (e.g., HbA1c
-        range)
+      example_question: What type of diabetes? (Type 1, Type 2, gestational) And what
+        level of glycemic control? (e.g., HbA1c range)
     - statement: Study on cancer treatment outcomes
       issue: No cancer type, stage, or histology specified
       missing: Cancer type, stage, grade, molecular markers
-      example_question: Which cancer type and stage are you studying? Are there specific histological or molecular characteristics?
+      example_question: Which cancer type and stage are you studying? Are there specific
+        histological or molecular characteristics?
     - statement: Intervention in patients with heart problems
-      issue: '''Heart problems'' is far too vague - hundreds of cardiac conditions exist'
+      issue: '''Heart problems'' is far too vague - hundreds of cardiac conditions
+        exist'
       missing: Specific cardiac diagnosis, severity, functional class
-      example_question: What specific cardiac condition? (e.g., heart failure, coronary artery disease, arrhythmia) And what
-        severity?
+      example_question: What specific cardiac condition? (e.g., heart failure, coronary
+        artery disease, arrhythmia) And what severity?
     partial:
     - statement: Effects of statins in patients with moderate hyperlipidemia
       has: Condition (hyperlipidemia) and severity (moderate)
-      missing: Specific lipid ranges defining 'moderate', comorbidities, prior treatment attempts
-      example_question: What LDL or total cholesterol range defines 'moderate' for your study? Any relevant comorbidities
-        or prior statin use?
+      missing: Specific lipid ranges defining 'moderate', comorbidities, prior treatment
+        attempts
+      example_question: What LDL or total cholesterol range defines 'moderate' for
+        your study? Any relevant comorbidities or prior statin use?
     - statement: Study in hypertensive patients with diabetes
       has: Two conditions specified (hypertension, diabetes)
       missing: BP range, diabetes type, severity of both conditions, other comorbidities
-      example_question: What BP range defines hypertension in your study? What type and control level of diabetes?
+      example_question: What BP range defines hypertension in your study? What type
+        and control level of diabetes?
     vague_ambiguous:
     - statement: Treatment in patients with refractory disease
       issue: '''Refractory'' to which treatments? How many prior treatment failures?'
-      example_question: Refractory to which specific treatments? How many prior treatment lines? What defines 'refractory'
-        in your protocol?
+      example_question: Refractory to which specific treatments? How many prior treatment
+        lines? What defines 'refractory' in your protocol?
     - statement: Study in high-risk cardiovascular patients
       issue: '''High-risk'' is subjective - needs risk score or specific criteria'
-      example_question: What defines 'high-risk'? (e.g., Framingham score, specific risk factors, prior events)
-  value_field_type: string
-  value_field_description: 'The Specifies the primary health condition, disease stage, severity, comorbidities, and relevant
-    medical history. Critical for defining study eligibility and expected treatment responses.. Expected format: numeric value.
-    Examples: "Efficacy of SGLT2 inhibitors in Type 2 diabetes patients with HbA1c 7.5-10%, treatment-naive", "Outcomes of
-    immunotherapy in stage IIIB non-small cell lung cancer, ECOG performance status 0-1", "Management of acute severe asthma
-    exacerbations requiring emergency department care".'
+      example_question: What defines 'high-risk'? (e.g., Framingham score, specific
+        risk factors, prior events)
 - id: intervention_specification
   aspect_name: Intervention Specification
-  aspect_description: Details the treatment, procedure, or exposure being studied including specific agents, dosing, duration,
-    frequency, and delivery method
+  aspect_description: Details the treatment, procedure, or exposure being studied
+    including specific agents, dosing, duration, frequency, and delivery method
   depends_on:
   - population_demographic
   - geographic_location
   - population_clinical_profile
-  system_prompt: 'You are a research advisor helping users refine their research topics by asking focused clarifying questions.
+  system_prompt: 'You are a research advisor helping users refine their research topics
+    by asking focused clarifying questions.
 
 
     Your Job:
 
-    Users provide research interests (questions, statements, aims, or paragraphs). Clarify aspect: **{self.aspect_name}**,
-    with definition: **{self.aspect_description}**. Focus ONLY on this aspect—ignore other research elements.
+    Users provide research interests (questions, statements, aims, or paragraphs).
+    Clarify aspect: **{self.aspect_name}**, with definition: **{self.aspect_description}**.
+    Focus ONLY on this aspect—ignore other research elements.
 
 
     How to Engage:
@@ -1025,16 +1172,19 @@ pico_advanced:
 
     2. **One element at a time**: Address 1-2 unclear points per turn.
 
-    3. **Mirror their language**: Use their terminology; avoid jargon unless it adds needed precision.
+    3. **Mirror their language**: Use their terminology; avoid jargon unless it adds
+    needed precision.
 
     4. **Give examples**: Offer 2-4 concrete, aspect-specific examples they can adapt.
 
-    5. **Explain why**: Briefly note how this clarification strengthens their research input and improves their search.
+    5. **Explain why**: Briefly note how this clarification strengthens their research
+    input and improves their search.
 
 
     When to Stop:
 
-    This aspect is sufficiently refined when the user''s statement is specific, unambiguous, and actionable for evidence synthesis.
+    This aspect is sufficiently refined when the user''s statement is specific, unambiguous,
+    and actionable for evidence synthesis.
 
 
     Boundaries:
@@ -1049,71 +1199,87 @@ pico_advanced:
     Tone: Supportive and collaborative. Be efficient—don''t over-explain.
 
     '
-  refinement_instructions: "### Objective\n Analyze whether the intervention is sufficiently detailed for study replication\n\
-    \n### Assess clarity and completeness across the following Intervention Dimensions\n 1. Intervention Type\n    - Pharmacological\
-    \ (drug, biologic)\n    - Procedural (surgery, device)\n    - Behavioral (therapy, lifestyle)\n    - Diagnostic (test,\
-    \ screening)\n 2. Specific Agent/Method\n   - Generic/brand name for drugs\n   - Specific procedure or technique\n   -\
-    \ Defined behavioral protocol\n 3. Dosing/Intensity (if applicable)\n   - Dose amount and units\n   - Frequency (daily,\
-    \ weekly)\n   - Timing (morning, with meals)\n 4. Duration\n   - Treatment length\n   - Follow-up period\n 5. Delivery\
-    \ Method\n   - Route (oral, IV, subcutaneous)\n   - Setting (inpatient, outpatient, home)\n   - Provider type\n 6. Adjunct\
-    \ Treatments\n   - Concurrent therapies\n   - Background medications\n   - Supportive care protocols\n"
+  refinement_instructions: "### Objective\n Analyze whether the intervention is sufficiently\
+    \ detailed for study replication\n\n### Assess clarity and completeness across\
+    \ the following Intervention Dimensions\n 1. Intervention Type\n    - Pharmacological\
+    \ (drug, biologic)\n    - Procedural (surgery, device)\n    - Behavioral (therapy,\
+    \ lifestyle)\n    - Diagnostic (test, screening)\n 2. Specific Agent/Method\n\
+    \   - Generic/brand name for drugs\n   - Specific procedure or technique\n   -\
+    \ Defined behavioral protocol\n 3. Dosing/Intensity (if applicable)\n   - Dose\
+    \ amount and units\n   - Frequency (daily, weekly)\n   - Timing (morning, with\
+    \ meals)\n 4. Duration\n   - Treatment length\n   - Follow-up period\n 5. Delivery\
+    \ Method\n   - Route (oral, IV, subcutaneous)\n   - Setting (inpatient, outpatient,\
+    \ home)\n   - Provider type\n 6. Adjunct Treatments\n   - Concurrent therapies\n\
+    \   - Background medications\n   - Supportive care protocols\n"
   examples:
     clear:
-    - statement: Metformin 1000mg twice daily for 6 months vs placebo in newly diagnosed Type 2 diabetes
-      rationale: Drug (metformin), dose (1000mg), frequency (twice daily), duration (6 months), comparison (placebo)
-    - statement: Laparoscopic Roux-en-Y gastric bypass performed by experienced bariatric surgeons
-      rationale: Specific surgical technique (laparoscopic Roux-en-Y), provider qualification (experienced bariatric surgeons)
-    - statement: Cognitive Behavioral Therapy, 12 weekly 60-minute sessions delivered by licensed clinical psychologists
-      rationale: Therapy type (CBT), frequency (weekly), duration (12 sessions), session length (60 min), provider (licensed
-        psychologists)
+    - statement: Metformin 1000mg twice daily for 6 months vs placebo in newly diagnosed
+        Type 2 diabetes
+      rationale: Drug (metformin), dose (1000mg), frequency (twice daily), duration
+        (6 months), comparison (placebo)
+    - statement: Laparoscopic Roux-en-Y gastric bypass performed by experienced bariatric
+        surgeons
+      rationale: Specific surgical technique (laparoscopic Roux-en-Y), provider qualification
+        (experienced bariatric surgeons)
+    - statement: Cognitive Behavioral Therapy, 12 weekly 60-minute sessions delivered
+        by licensed clinical psychologists
+      rationale: Therapy type (CBT), frequency (weekly), duration (12 sessions), session
+        length (60 min), provider (licensed psychologists)
     needs_refinement:
     - statement: Effects of medication on blood pressure
       issue: No medication specified, no dosing information
       missing: Drug name, dose, frequency, duration, route
-      example_question: Which medication are you studying? Please specify the drug name, dose, frequency, and treatment duration.
+      example_question: Which medication are you studying? Please specify the drug
+        name, dose, frequency, and treatment duration.
     - statement: Study on surgery outcomes
       issue: Type of surgery not specified
       missing: Surgical procedure, approach (open vs laparoscopic), setting
-      example_question: What specific surgical procedure? What surgical approach? (e.g., open, laparoscopic, robotic)
+      example_question: What specific surgical procedure? What surgical approach?
+        (e.g., open, laparoscopic, robotic)
     - statement: Exercise intervention for weight loss
       issue: Exercise type, intensity, frequency, duration all unspecified
-      missing: Exercise modality, intensity level, frequency, session duration, total program length
-      example_question: What type of exercise? (aerobic, resistance, both) What intensity, frequency, and program duration?
+      missing: Exercise modality, intensity level, frequency, session duration, total
+        program length
+      example_question: What type of exercise? (aerobic, resistance, both) What intensity,
+        frequency, and program duration?
     partial:
     - statement: Atorvastatin treatment for hyperlipidemia
       has: Drug name (atorvastatin), indication (hyperlipidemia)
       missing: Dose, frequency, treatment duration, titration protocol
-      example_question: What dose of atorvastatin? (10mg, 20mg, 40mg, 80mg) What frequency and treatment duration?
+      example_question: What dose of atorvastatin? (10mg, 20mg, 40mg, 80mg) What frequency
+        and treatment duration?
     - statement: Physical therapy twice weekly for knee osteoarthritis
       has: Intervention type (physical therapy), frequency (twice weekly), condition
-      missing: Specific PT protocol, session duration, total treatment length, therapy components
-      example_question: What specific PT protocol? How long are sessions? What is the total treatment duration?
+      missing: Specific PT protocol, session duration, total treatment length, therapy
+        components
+      example_question: What specific PT protocol? How long are sessions? What is
+        the total treatment duration?
     vague_ambiguous:
     - statement: High-dose vitamin D supplementation
-      issue: '''High-dose'' is relative - could be 2,000 IU or 50,000 IU depending on context'
-      example_question: What specific dose of vitamin D? (e.g., 2,000 IU daily, 50,000 IU weekly)
+      issue: '''High-dose'' is relative - could be 2,000 IU or 50,000 IU depending
+        on context'
+      example_question: What specific dose of vitamin D? (e.g., 2,000 IU daily, 50,000
+        IU weekly)
     - statement: Intensive glycemic control in diabetes
       issue: '''Intensive'' is subjective - needs target HbA1c or glucose range'
-      example_question: What target defines 'intensive control'? (e.g., HbA1c <6.5%, fasting glucose 80-110 mg/dL)
-  value_field_type: object
-  value_field_description: 'The Details the treatment, procedure, or exposure being studied including specific agents, dosing,
-    duration, frequency, and delivery method. Expected format: object with relevant fields. Examples: "Metformin 1000mg twice
-    daily for 6 months vs placebo in newly diagnosed Type 2 diabetes", "Laparoscopic Roux-en-Y gastric bypass performed by
-    experienced bariatric surgeons", "Cognitive Behavioral Therapy, 12 weekly 60-minute sessions delivered by licensed clinical
-    psychologists".'
+      example_question: What target defines 'intensive control'? (e.g., HbA1c <6.5%,
+        fasting glucose 80-110 mg/dL)
 - id: comparison_group
   aspect_name: Comparison/Control Group
-  aspect_description: 'Defines what the intervention is compared against: placebo, standard care, alternative treatment, or
-    no treatment. Critical for establishing causality'
+  aspect_description: 'Defines what the intervention is compared against: placebo,
+    standard care, alternative treatment, or no treatment. Critical for establishing
+    causality'
   depends_on:
   - intervention_specification
-  system_prompt: 'You are a research advisor helping users refine their research topics by asking focused clarifying questions.
+  system_prompt: 'You are a research advisor helping users refine their research topics
+    by asking focused clarifying questions.
 
 
     Your Job:
 
-    Users provide research interests (questions, statements, aims, or paragraphs). Clarify aspect: **{self.aspect_name}**,
-    with definition: **{self.aspect_description}**. Focus ONLY on this aspect—ignore other research elements.
+    Users provide research interests (questions, statements, aims, or paragraphs).
+    Clarify aspect: **{self.aspect_name}**, with definition: **{self.aspect_description}**.
+    Focus ONLY on this aspect—ignore other research elements.
 
 
     How to Engage:
@@ -1122,16 +1288,19 @@ pico_advanced:
 
     2. **One element at a time**: Address 1-2 unclear points per turn.
 
-    3. **Mirror their language**: Use their terminology; avoid jargon unless it adds needed precision.
+    3. **Mirror their language**: Use their terminology; avoid jargon unless it adds
+    needed precision.
 
     4. **Give examples**: Offer 2-4 concrete, aspect-specific examples they can adapt.
 
-    5. **Explain why**: Briefly note how this clarification strengthens their research input and improves their search.
+    5. **Explain why**: Briefly note how this clarification strengthens their research
+    input and improves their search.
 
 
     When to Stop:
 
-    This aspect is sufficiently refined when the user''s statement is specific, unambiguous, and actionable for evidence synthesis.
+    This aspect is sufficiently refined when the user''s statement is specific, unambiguous,
+    and actionable for evidence synthesis.
 
 
     Boundaries:
@@ -1146,70 +1315,74 @@ pico_advanced:
     Tone: Supportive and collaborative. Be efficient—don''t over-explain.
 
     '
-  refinement_instructions: "### Objective\n  Analyze whether an appropriate comparison/control group is specified.\n  Key\
-    \ Questions:\n  - Is a comparator mentioned?\n  - Is the comparator appropriate for the research question?\n  - Is the\
-    \ comparator as well-defined as the intervention?\n  - Are ethical considerations addressed (especially for no-treatment\
-    \ controls)?\n\n### Comparison Types\n  1. Placebo Control\n    - Inert substance/sham procedure\n    - Blinding considerations\n\
-    \  2. Standard Care/Treatment\n    - Current guideline-recommended treatment\n    - Usual care protocols\n  3. Alternative\
-    \ Active Treatment\n    - Different drug/dose/intervention\n    - Head-to-head comparison\n  4. No Treatment\n    - Watchful\
-    \ waiting\n    - Natural history observation\n  5. Dose Comparison\n    - Different doses of same intervention\n"
+  refinement_instructions: "### Objective\n  Analyze whether an appropriate comparison/control\
+    \ group is specified.\n  Key Questions:\n  - Is a comparator mentioned?\n  - Is\
+    \ the comparator appropriate for the research question?\n  - Is the comparator\
+    \ as well-defined as the intervention?\n  - Are ethical considerations addressed\
+    \ (especially for no-treatment controls)?\n\n### Comparison Types\n  1. Placebo\
+    \ Control\n    - Inert substance/sham procedure\n    - Blinding considerations\n\
+    \  2. Standard Care/Treatment\n    - Current guideline-recommended treatment\n\
+    \    - Usual care protocols\n  3. Alternative Active Treatment\n    - Different\
+    \ drug/dose/intervention\n    - Head-to-head comparison\n  4. No Treatment\n \
+    \   - Watchful waiting\n    - Natural history observation\n  5. Dose Comparison\n\
+    \    - Different doses of same intervention\n"
   examples:
     clear:
     - statement: Metformin vs placebo in prediabetic adults
       rationale: Clear active intervention (metformin) vs inert control (placebo)
-    - statement: New anticoagulant compared to warfarin (standard care) in atrial fibrillation
+    - statement: New anticoagulant compared to warfarin (standard care) in atrial
+        fibrillation
       rationale: Novel treatment vs established standard of care explicitly stated
-    - statement: High-intensity statins vs moderate-intensity statins in secondary prevention
+    - statement: High-intensity statins vs moderate-intensity statins in secondary
+        prevention
       rationale: Head-to-head comparison of two active dose strategies
     needs_refinement:
     - statement: Effects of new drug on blood pressure
       issue: No comparison group mentioned
       missing: Comparator specification
-      example_question: What will you compare the new drug against? (e.g., placebo, current standard treatment, another active
-        drug)
+      example_question: What will you compare the new drug against? (e.g., placebo,
+        current standard treatment, another active drug)
     - statement: Study of surgical intervention
       issue: No comparison - surgery vs what?
       missing: Control/comparison group
-      example_question: What is the comparison? (e.g., surgery vs medical management, surgery vs observation, one surgical
-        technique vs another)
+      example_question: What is the comparison? (e.g., surgery vs medical management,
+        surgery vs observation, one surgical technique vs another)
     partial:
     - statement: Cognitive therapy vs usual care in depression
       has: Intervention (cognitive therapy) and comparison type (usual care)
       missing: '''Usual care'' not defined - varies by setting and provider'
-      example_question: Can you specify what 'usual care' includes in your setting? (e.g., medications only, supportive counseling,
-        monitoring frequency)
+      example_question: Can you specify what 'usual care' includes in your setting?
+        (e.g., medications only, supportive counseling, monitoring frequency)
     - statement: New treatment compared to current options
       has: Comparison concept mentioned
       missing: Specific comparator not identified
-      example_question: What specific current treatment(s) will serve as the comparator? (e.g., specific drug names, specific
-        procedures)
+      example_question: What specific current treatment(s) will serve as the comparator?
+        (e.g., specific drug names, specific procedures)
     vague_ambiguous:
     - statement: Drug A versus control in hypertension
       issue: '''Control'' could mean placebo, standard care, or no treatment'
-      example_question: What does 'control' mean in your study? (placebo, standard antihypertensive therapy, or no treatment)
+      example_question: What does 'control' mean in your study? (placebo, standard
+        antihypertensive therapy, or no treatment)
     - statement: Intervention vs standard therapy
       issue: '''Standard therapy'' varies by geography, guidelines, and time period'
-      example_question: What specific treatment(s) constitute 'standard therapy' in your context? (e.g., specific drugs, specific
-        guidelines)
-  value_field_type: string
-  value_field_description: 'The Defines what the intervention is compared against: placebo, standard care, alternative treatment,
-    or no treatment. Critical for establishing causality. Examples: "Metformin vs placebo in prediabetic adults", "New anticoagulant
-    compared to warfarin (standard care) in atrial fibrillation", "High-intensity statins vs moderate-intensity statins in
-    secondary prevention".'
+      example_question: What specific treatment(s) constitute 'standard therapy' in
+        your context? (e.g., specific drugs, specific guidelines)
 - id: primary_outcomes
   aspect_name: Primary Outcomes
-  aspect_description: Specifies the main outcomes of interest including measurement methods, timepoints, and clinical significance
-    thresholds.
+  aspect_description: Specifies the main outcomes of interest including measurement
+    methods, timepoints, and clinical significance thresholds.
   depends_on:
   - intervention_specification
   - population_clinical_profile
-  system_prompt: 'You are a research advisor helping users refine their research topics by asking focused clarifying questions.
+  system_prompt: 'You are a research advisor helping users refine their research topics
+    by asking focused clarifying questions.
 
 
     Your Job:
 
-    Users provide research interests (questions, statements, aims, or paragraphs). Clarify aspect: **{self.aspect_name}**,
-    with definition: **{self.aspect_description}**. Focus ONLY on this aspect—ignore other research elements.
+    Users provide research interests (questions, statements, aims, or paragraphs).
+    Clarify aspect: **{self.aspect_name}**, with definition: **{self.aspect_description}**.
+    Focus ONLY on this aspect—ignore other research elements.
 
 
     How to Engage:
@@ -1218,16 +1391,19 @@ pico_advanced:
 
     2. **One element at a time**: Address 1-2 unclear points per turn.
 
-    3. **Mirror their language**: Use their terminology; avoid jargon unless it adds needed precision.
+    3. **Mirror their language**: Use their terminology; avoid jargon unless it adds
+    needed precision.
 
     4. **Give examples**: Offer 2-4 concrete, aspect-specific examples they can adapt.
 
-    5. **Explain why**: Briefly note how this clarification strengthens their research input and improves their search.
+    5. **Explain why**: Briefly note how this clarification strengthens their research
+    input and improves their search.
 
 
     When to Stop:
 
-    This aspect is sufficiently refined when the user''s statement is specific, unambiguous, and actionable for evidence synthesis.
+    This aspect is sufficiently refined when the user''s statement is specific, unambiguous,
+    and actionable for evidence synthesis.
 
 
     Boundaries:
@@ -1242,76 +1418,86 @@ pico_advanced:
     Tone: Supportive and collaborative. Be efficient—don''t over-explain.
 
     '
-  refinement_instructions: "### What you are evaluating:\n  Analyze whether primary outcomes are adequately specified.\n\n\
-    ### Outcome Dimensions\n  1. Outcome Type:\n    - Clinical outcomes (mortality, morbidity)\n    - Surrogate/biomarker\
-    \ outcomes\n    - Patient-reported outcomes (PROs)\n    - Functional outcomes\n    - Safety/adverse events\n\n  2. Measurement\
-    \ Method:\n    - Specific instruments/scales\n    - Laboratory tests\n    - Imaging modalities\n    - Validated questionnaires\n\
-    \n  3. Timepoint(s):\n    - When outcomes measured\n    - Follow-up duration\n    - Multiple assessment points\n\n  4.\
-    \ Clinical Significance:\n    - Minimal clinically important difference (MCID)\n    - Target effect size\n    - Superiority\
-    \ vs non-inferiority\n\n  5. Primary vs Secondary:\n    - Is primary outcome identified?\n    - Are secondary outcomes\
-    \ distinguished?\n"
+  refinement_instructions: "### What you are evaluating:\n  Analyze whether primary\
+    \ outcomes are adequately specified.\n\n### Outcome Dimensions\n  1. Outcome Type:\n\
+    \    - Clinical outcomes (mortality, morbidity)\n    - Surrogate/biomarker outcomes\n\
+    \    - Patient-reported outcomes (PROs)\n    - Functional outcomes\n    - Safety/adverse\
+    \ events\n\n  2. Measurement Method:\n    - Specific instruments/scales\n    -\
+    \ Laboratory tests\n    - Imaging modalities\n    - Validated questionnaires\n\
+    \n  3. Timepoint(s):\n    - When outcomes measured\n    - Follow-up duration\n\
+    \    - Multiple assessment points\n\n  4. Clinical Significance:\n    - Minimal\
+    \ clinically important difference (MCID)\n    - Target effect size\n    - Superiority\
+    \ vs non-inferiority\n\n  5. Primary vs Secondary:\n    - Is primary outcome identified?\n\
+    \    - Are secondary outcomes distinguished?\n"
   examples:
     clear:
     - statement: Effect of intervention on all-cause mortality at 5 years
       rationale: Specific outcome (all-cause mortality), clear timepoint (5 years)
-    - statement: Change in HbA1c from baseline to 6 months, with target reduction ≥0.5%
-      rationale: Specific biomarker (HbA1c), timeframe (baseline to 6 months), clinical significance threshold (≥0.5%)
+    - statement: Change in HbA1c from baseline to 6 months, with target reduction
+        ≥0.5%
+      rationale: Specific biomarker (HbA1c), timeframe (baseline to 6 months), clinical
+        significance threshold (≥0.5%)
     - statement: Quality of life measured by SF-36 at 3, 6, and 12 months post-intervention
-      rationale: Specific validated instrument (SF-36), multiple timepoints (3, 6, 12 months)
+      rationale: Specific validated instrument (SF-36), multiple timepoints (3, 6,
+        12 months)
     needs_refinement:
     - statement: Study on treatment effectiveness
       issue: '''Effectiveness'' not defined - needs specific measurable outcome'
       missing: Specific outcome measure, measurement method, timepoint
-      example_question: How will you measure effectiveness? (e.g., specific clinical outcomes, biomarkers, patient-reported
-        measures)
+      example_question: How will you measure effectiveness? (e.g., specific clinical
+        outcomes, biomarkers, patient-reported measures)
     - statement: Research on improving patient outcomes
       issue: '''Outcomes'' is vague - could mean dozens of different measures'
       missing: Specific outcome(s), measurement tools, assessment timing
-      example_question: What specific outcome(s) will you measure? When will they be assessed?
+      example_question: What specific outcome(s) will you measure? When will they
+        be assessed?
     - statement: Trial measuring quality of life improvement
       issue: QOL mentioned but no instrument specified
       missing: QOL instrument, measurement timepoints, MCID
-      example_question: Which quality of life instrument will you use? (e.g., SF-36, EQ-5D, disease-specific) When will you
-        assess it?
+      example_question: Which quality of life instrument will you use? (e.g., SF-36,
+        EQ-5D, disease-specific) When will you assess it?
     partial:
     - statement: Effect on blood pressure reduction
       has: General outcome category (blood pressure)
-      missing: Specific BP parameter (systolic, diastolic, mean arterial), target reduction,measurement protocol, timepoint
-      example_question: Which BP parameter? (systolic, diastolic, or both) What measurement protocol? When will it be assessed?
+      missing: Specific BP parameter (systolic, diastolic, mean arterial), target
+        reduction,measurement protocol, timepoint
+      example_question: Which BP parameter? (systolic, diastolic, or both) What measurement
+        protocol? When will it be assessed?
     - statement: Change in depression scores using validated scales
       has: Outcome type (depression), mentions validation
       missing: Specific scale, timepoints, MCID
-      example_question: Which depression scale? (PHQ-9, Beck Depression Inventory, HAM-D) At what timepoints? What change
-        is clinically meaningful?
+      example_question: Which depression scale? (PHQ-9, Beck Depression Inventory,
+        HAM-D) At what timepoints? What change is clinically meaningful?
     vague_ambiguous:
     - statement: Study on long-term outcomes of surgery
-      issue: '''Long-term'' is relative (could be 1 year or 10 years), ''outcomes'' unspecified'
-      example_question: What is the follow-up duration? What specific outcomes will you measure? (e.g., survival, complications,
-        functional status)
+      issue: '''Long-term'' is relative (could be 1 year or 10 years), ''outcomes''
+        unspecified'
+      example_question: What is the follow-up duration? What specific outcomes will
+        you measure? (e.g., survival, complications, functional status)
     - statement: Research on significant improvement in symptoms
-      issue: '''Significant'' (statistical vs clinical?) and ''symptoms'' (which ones?) both vague'
-      example_question: Which specific symptoms? How will you measure them? What defines a clinically meaningful improvement?
-  value_field_type: array
-  value_field_description: 'The Specifies the main outcomes of interest including measurement methods, timepoints, and clinical
-    significance thresholds.. Expected format: array of related items. Examples: "Effect of intervention on all-cause mortality
-    at 5 years", "Change in HbA1c from baseline to 6 months, with target reduction ≥0.5%", "Quality of life measured by SF-36
-    at 3, 6, and 12 months post-intervention".'
+      issue: '''Significant'' (statistical vs clinical?) and ''symptoms'' (which ones?)
+        both vague'
+      example_question: Which specific symptoms? How will you measure them? What defines
+        a clinically meaningful improvement?
 - id: study_design_context
   aspect_name: Study Design & Methodological Context
-  aspect_description: Clarifies the intended study design, setting, sample size considerations, and methodological approach.
-    Helps determine feasibility and appropriate statistical methods.
+  aspect_description: Clarifies the intended study design, setting, sample size considerations,
+    and methodological approach. Helps determine feasibility and appropriate statistical
+    methods.
   depends_on:
   - population_demographic
   - intervention_specification
   - comparison_group
   - primary_outcomes
-  system_prompt: 'You are a research advisor helping users refine their research topics by asking focused clarifying questions.
+  system_prompt: 'You are a research advisor helping users refine their research topics
+    by asking focused clarifying questions.
 
 
     Your Job:
 
-    Users provide research interests (questions, statements, aims, or paragraphs). Clarify aspect: **{self.aspect_name}**,
-    with definition: **{self.aspect_description}**. Focus ONLY on this aspect—ignore other research elements.
+    Users provide research interests (questions, statements, aims, or paragraphs).
+    Clarify aspect: **{self.aspect_name}**, with definition: **{self.aspect_description}**.
+    Focus ONLY on this aspect—ignore other research elements.
 
 
     How to Engage:
@@ -1320,16 +1506,19 @@ pico_advanced:
 
     2. **One element at a time**: Address 1-2 unclear points per turn.
 
-    3. **Mirror their language**: Use their terminology; avoid jargon unless it adds needed precision.
+    3. **Mirror their language**: Use their terminology; avoid jargon unless it adds
+    needed precision.
 
     4. **Give examples**: Offer 2-4 concrete, aspect-specific examples they can adapt.
 
-    5. **Explain why**: Briefly note how this clarification strengthens their research input and improves their search.
+    5. **Explain why**: Briefly note how this clarification strengthens their research
+    input and improves their search.
 
 
     When to Stop:
 
-    This aspect is sufficiently refined when the user''s statement is specific, unambiguous, and actionable for evidence synthesis.
+    This aspect is sufficiently refined when the user''s statement is specific, unambiguous,
+    and actionable for evidence synthesis.
 
 
     Boundaries:
@@ -1344,30 +1533,34 @@ pico_advanced:
     Tone: Supportive and collaborative. Be efficient—don''t over-explain.
 
     '
-  refinement_instructions: "### What you are evaluating:\nAssess whether the study design and methodological context are sufficiently\
-    \ specified\n\n### Design Dimensions\n\n1. Study Type\n  - RCT (parallel, crossover, cluster)\n  - Observational (cohort,\
-    \ case-control)\n  - Systematic review/meta-analysis\n  - Pragmatic trial\n\n2. Setting\n  - Healthcare setting type\n\
-    \  - Geographic scope\n  - Single-center vs multi-center\n\n3. Sample Size\n  - Target enrollment\n  - Sample size rationale\n\
-    \  - Power considerations\n\n4. Duration\n  - Study timeline\n  - Recruitment period\n  - Follow-up length\n\n5. Special\
-    \ Considerations\n  - Blinding/masking\n  - Randomization method\n  - Statistical approach\n  - Interim analyses\n"
+  refinement_instructions: "### What you are evaluating:\nAssess whether the study\
+    \ design and methodological context are sufficiently specified\n\n### Design Dimensions\n\
+    \n1. Study Type\n  - RCT (parallel, crossover, cluster)\n  - Observational (cohort,\
+    \ case-control)\n  - Systematic review/meta-analysis\n  - Pragmatic trial\n\n\
+    2. Setting\n  - Healthcare setting type\n  - Geographic scope\n  - Single-center\
+    \ vs multi-center\n\n3. Sample Size\n  - Target enrollment\n  - Sample size rationale\n\
+    \  - Power considerations\n\n4. Duration\n  - Study timeline\n  - Recruitment\
+    \ period\n  - Follow-up length\n\n5. Special Considerations\n  - Blinding/masking\n\
+    \  - Randomization method\n  - Statistical approach\n  - Interim analyses\n"
   examples:
     clear:
-    - statement: Multicenter RCT of drug A vs placebo in 500 patients with 12-month follow-up
-      rationale: Study type (RCT), setting (multicenter), sample size (500), duration (12 months) all specified
-    - statement: Double-blind placebo-controlled parallel-group trial across 20 US academic medical centers
-      rationale: Design details (double-blind, placebo-controlled, parallel), setting (20 academic centers, US location)
+    - statement: Multicenter RCT of drug A vs placebo in 500 patients with 12-month
+        follow-up
+      rationale: Study type (RCT), setting (multicenter), sample size (500), duration
+        (12 months) all specified
+    - statement: Double-blind placebo-controlled parallel-group trial across 20 US
+        academic medical centers
+      rationale: Design details (double-blind, placebo-controlled, parallel), setting
+        (20 academic centers, US location)
     needs_refinement:
     - statement: Study comparing two treatments
       issue: Study design not specified
       missing: Study type, setting, duration
-      example_question: What study design? (e.g., randomized controlled trial, observational cohort, systematic review)
+      example_question: What study design? (e.g., randomized controlled trial, observational
+        cohort, systematic review)
     partial:
     - statement: RCT comparing interventions in hospital setting
       has: Study type (RCT), general setting (hospital)
       missing: Sample size, duration, specific hospital type, blinding approach
-      example_question: What is your target sample size? Study duration? Single-center or multi-center?
-  value_field_type: object
-  value_field_description: 'The Clarifies the intended study design, setting, sample size considerations, and methodological
-    approach. Helps determine feasibility and appropriate statistical methods.. Expected format: object with relevant fields.
-    Examples: "Multicenter RCT of drug A vs placebo in 500 patients with 12-month follow-up", "Double-blind placebo-controlled
-    parallel-group trial across 20 US academic medical centers".'
+      example_question: What is your target sample size? Study duration? Single-center
+        or multi-center?

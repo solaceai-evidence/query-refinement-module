@@ -683,7 +683,7 @@ class QueryRefinementSession:
                 continue
 
             aspect = dep_step.refinement_aspect
-            value_type = aspect.value_field_type
+            value_type = "string"
             
             # Get the refinement aspect value directly (single source of truth)
             raw_value = None
