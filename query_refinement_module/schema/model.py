@@ -13,6 +13,9 @@ import json
 from ..prompt.system_role import (
     DEFAULT_SYSTEM_PROMPT_REFINEMENT_START,
 )
+from ..prompt.user import (
+    UNIFIED_ANALYSIS_PROMPT
+)
 
 logger = logging.getLogger(__name__)
 
@@ -37,12 +40,12 @@ class ClearExample(BaseExample, total=False):
 
 class NeedsRefinementExample(BaseExample, total=False):
     """
-    Example demonstrating missing or incomplete information.
+    Example demonstrating statements that need clarification.
     
     Suggested fields:
         statement: The statement/context for the example (REQUIRED)
         query: Legacy alternative (DEPRECATED)
-        issue: What information is missing or incomplete
+        issue: What makes this example unclear or incomplete
         missing: Specifically what details are absent
         example_question: Example question to clarify the gap
     """
@@ -110,7 +113,7 @@ class ExamplesDict(TypedDict, total=False):
         needs_refinement: NeedsRefinementExample - Examples missing critical information
         partial: PartialExample - Examples with some but not all information
         ambiguous: AmbiguousExample - Examples with vague specifications
-        other: OtherExample - Edge cases or guidance that does not fit other buckets
+        other: OtherExample - Edge cases or guidance that does not fit other buckets (too specific or too broad, for instance)
     """
     clear: NotRequired[List[ClearExample]]
     needs_refinement: NotRequired[List[NeedsRefinementExample]]
@@ -140,8 +143,8 @@ class RefinementAspect:
 
     The aspect includes:
     - An analysis prompt to determine if refinement is needed
-    - Optional system prompt to set the AI's role/persona
-    - Optional example queries for few-shot learning and prompt engineering
+    - User optional system prompt to set the AI's role/persona
+    - User optional example queries for few-shot learning and prompt engineering
     - A response format specification for consistent, structured responses
     - Optional follow-up configuration
     - Extensible metadata
@@ -153,20 +156,20 @@ class RefinementAspect:
         id: Unique identifier for the refinement aspect
         aspect_name: Human-readable refinement aspect name
         aspect_description: Brief description of what this refinement aspect refines
-        system_prompt: Optional system-level prompt defining the AI's role/persona for this refinement aspect
-        refinement_instructions: Developer-based Prompt template for analyzing the query (must include {query})
+        system_prompt: User optional system-level prompt defining the AI's role/persona for this refinement aspect
+        evaluation_instructions: Developer-based Prompt template for analyzing the query (must include {query})
         examples: Optional example queries for few-shot learning and prompt engineering
         response_format: Expected response structure (optional, for structured responses)
         depends_on: List of refinement aspect IDs this refinement aspect depends on (for context)
         allow_follow_up: Whether follow-up questions are allowed (default: True)
-        max_follow_ups: Maximum number of follow-up rounds allowed (default: 3)
+        max_follow_ups: Maximum number of follow-up rounds allowed (default: 5)
         metadata: Additional metadata for extensibility
     """
     id: str
     aspect_name: str
     aspect_description: str
     # developer prompt - should focus on analysis logic, not response format (REQUIRED)
-    refinement_instructions: str
+    evaluation_instructions: str
     
     # Optional: System prompt defining AI role/persona for this refinement aspect (if none, use system-level default)
     # Example: "You are a clinical research expert specializing in population definition."
@@ -185,16 +188,17 @@ class RefinementAspect:
     # Only declared dependencies will be included in the analysis context
     depends_on: List[str] = field(default_factory=list)
     
+    #TODO deprecate in favour of user commands to navigate and control follow-ups
     # Should this refinement aspect support follow-up question to the initial suggested question?
     allow_follow_up: bool = True
     # Maximum number of follow-ups allowed (if follow-ups are allowed)
-    max_follow_ups: int = 3
+    max_follow_ups: int = 6
 
     # Optional metadata for extensibility
-    # e.g., domain, priority, examples, options, etc.
+    # e.g., domain, priority, confidence score, etc.
     metadata: Dict[str, Any] = field(default_factory=dict)
 
-    # Base schema fields for unified response format (used by unified_analysis_prompt.py)
+    # Base schema fields for unified response format (used by user prompt)
     BASE_SCHEMA_FIELDS = {
         "is_complete": "boolean",
         "reasoning": "string",
@@ -209,28 +213,8 @@ class RefinementAspect:
         "refinement_aspect_value": "Extracted or synthesized value (required if is_complete=true)",
         "next_question": "Focused clarifying question (required if is_complete=false)"
     }
-    
-    # Unified analysis prompt template (used for both initial and follow-up analysis)
-    UNIFIED_ANALYSIS_PROMPT = """
-**Dimension to evaluate:** {aspect_name}
-**Definition:** {aspect_description}
 
-**Original Research Input:** "{original_query}"
-
-{conversation_section}
-
-{dependency_section}
-
----
-
-{refinement_instructions}
-
-{examples_section}
-
----
-
-{output_format_section}
-"""
+    UNIFIED_ANALYSIS_PROMPT = UNIFIED_ANALYSIS_PROMPT
 
     def __post_init__(self):
         """Validate schema structure at load time."""
@@ -383,7 +367,7 @@ class RefinementAspect:
                             f"Schema '{self.aspect_name}': examples['{category}'][{idx}]['{field_name}'] must be a string"
                         )
 
-    def get_refinement_instructions_prompt(self, statement: str) -> str:
+    def get_evaluation_instructions_prompt(self, statement: str) -> str:
         """
         Generate the developer prompt including examples and response format instructions.
         
@@ -397,15 +381,15 @@ class RefinementAspect:
         # Always start with the user's research input explicitly stated
         
         # Check if refinement_instructions contains {query}/{input}/{statement} placeholder
-        if "{input}" in self.refinement_instructions or "{statement}" in self.refinement_instructions or "{query}" in self.refinement_instructions:
+        if "{input}" in self.evaluation_instructions or "{statement}" in self.evaluation_instructions or "{query}" in self.evaluation_instructions:
             # Format the developer prompt with the statement submitted by the user
             prompt_parts.append(
-                self.refinement_instructions.format(query=statement, statement=statement,input=statement)
+                self.evaluation_instructions.format(query=statement, statement=statement,input=statement)
             )
         else:
             # Prepend the user's input explicitly, then add the analysis prompt as-is
-            prompt_parts.append(f"## Analyze this research input: {statement}.\n")
-            prompt_parts.append(self.refinement_instructions)
+            prompt_parts.append(f"** Research input:** {statement}.\n")
+            prompt_parts.append(self.evaluation_instructions)
         
         # Inject examples if available
         if self.examples:
@@ -447,7 +431,7 @@ class RefinementAspect:
         Returns:
             Tuple of (system_prompt, developer_prompt)
         """
-        return self.get_system_role(), self.get_refinement_instructions_prompt(query)
+        return self.get_system_role(), self.get_evaluation_instructions_prompt(query)
 
     def _format_examples(self) -> str:
         """
@@ -643,10 +627,6 @@ class RefinementAspect:
             if not next_question or not isinstance(next_question, str):
                 validation_errors.append("'next_question' required as non-empty string when is_complete=false")
         
-        # Legacy: Validate dynamic value field type if present (deprecated)
-        if self.id in response:
-            value = response[self.id]
-        
         # Validate custom fields if response_format is defined
         if self.response_format:
             additional_fields = self.response_format.get("additional_fields", {})
@@ -757,19 +737,19 @@ class RefinementAspect:
 
     def build_unified_prompt(
         self,
-        original_query: str,
+        original_input: str,
         follow_up_history: List[Dict[str, str]],
         dependency_context: Dict[str, Dict[str, Any]],
         mode: str = 'initial'
     ) -> str:
         """
-        Build complete unified prompt for refinement analysis.
+        Build complete unified prompt for dimension evaluation.
         
         This orchestrates all sections of the prompt including conversation history,
         dependencies, instructions, and examples.
         
         Args:
-            original_query: The original user query
+            original_input: The original user input
             follow_up_history: List of Q&A exchanges for this aspect
             dependency_context: Dict mapping aspect IDs to their completed values
             mode: 'initial' or 'followup' (determines if conversation history is shown)
@@ -780,7 +760,7 @@ class RefinementAspect:
         # Build each section
         conversation_section = self._build_conversation_section(follow_up_history, mode)
         dependency_section = self._build_dependency_section(dependency_context)
-        refinement_instructions = self._build_refinement_instructions_section(original_query)
+        evaluation_instructions = self._build_evaluation_instructions_section(original_input)
         examples_section = self._build_examples_section_for_prompt()
         output_format_section = self._build_output_format_section()
         
@@ -788,10 +768,10 @@ class RefinementAspect:
         return self.UNIFIED_ANALYSIS_PROMPT.format(
             aspect_name=self.aspect_name,
             aspect_description=self.aspect_description,
-            original_query=original_query,
+            original_input=original_input,
             conversation_section=conversation_section,
             dependency_section=dependency_section,
-            refinement_instructions=refinement_instructions,
+            evaluation_instructions=evaluation_instructions,
             examples_section=examples_section,
             output_format_section=output_format_section
         )
@@ -871,7 +851,7 @@ class RefinementAspect:
         if mode == 'initial' or not follow_up_history:
             return ""
         
-        lines = ["**Conversation History:**\n"]
+        lines = []
         for i, turn in enumerate(follow_up_history, 1):
             question = turn.get('question', '')
             response = turn.get('response', '')
@@ -885,7 +865,7 @@ class RefinementAspect:
         dependency_context: Dict[str, Dict[str, Any]]
     ) -> str:
         """
-        Build dependency context showing completed aspects.
+        Build dependency context showing completed/clarified dimensions.
         
         If current aspect depends on shown aspects, adds a visual marker.
         
@@ -898,7 +878,7 @@ class RefinementAspect:
         if not dependency_context:
             return ""
         
-        lines = ["**Completed Aspects (for context):**\n"]
+        lines = ["**Completed Dimensions (for context):**\n"]
         
         has_dependencies = bool(self.depends_on)
         
@@ -910,42 +890,42 @@ class RefinementAspect:
             # Mark if current aspect depends on this
             dependency_marker = ""
             if has_dependencies and dep_id in self.depends_on:
-                dependency_marker = " ⚠️ (this aspect depends on this)"
+                dependency_marker = " ⚠️ (the current dimension depends on this)"
             
             lines.append(f"**{aspect_name}**{dependency_marker}")
             if aspect_desc:
                 lines.append(f"  Description: {aspect_desc}")
-            lines.append(f"  Refined Value: {refined_value}\n")
+            lines.append(f"  Value: {refined_value}\n")
         
         if has_dependencies:
             lines.append("\n⚠️ = Consider these values when analyzing the current aspect\n")
         
         return "\n".join(lines)
     
-    def _build_refinement_instructions_section(self, query: str) -> str:
+    def _build_evaluation_instructions_section(self, original_input: str) -> str:
         """
-        Build refinement instructions section.
+        Build evaluation instructions section.
         
-        This uses the aspect's refinement_instructions which contains
+        This uses the aspect's evaluation_instructions which contains
         type-specific evaluation criteria and objectives.
         
         Args:
-            query: Original query to analyze
+            original_input: research input to analyze
         
         Returns:
-            Formatted refinement instructions with header
+            Formatted evaluation instructions with header
         """
-        # Get the refinement instructions (already formatted)
-        instructions = self.get_refinement_instructions_prompt(statement=query)
+        # Get the evaluation instructions (already formatted)
+        instructions = self.get_evaluation_instructions_prompt(statement=original_input)
         
         # Add a header
-        return f"**Analysis Guidelines:**\n\n{instructions}\n"
+        return f"# Evaluation Strategy:\n\n{instructions}\n"
     
     def _build_examples_section_for_prompt(self) -> str:
         """
         Build examples section from aspect schema for inclusion in unified prompt.
         
-        Examples come AFTER refinement instructions in the prompt.
+        Examples come AFTER evaluation instructions in the prompt.
         Categories: clear, needs_refinement, partial, vague_ambiguous, other
         
         Returns:
@@ -981,7 +961,7 @@ class RefinementAspect:
                 # Get statement or query (statement preferred)
                 statement = ex.get('statement') or ex.get('query', '')
                 if statement:
-                    lines.append(f"- Statement: {statement}")
+                    lines.append(f"- Example: {statement}.")
                 
                 # Add contextual fields (rationale, issue, missing, etc.)
                 for key in ['rationale', 'issue', 'missing', 'has', 'example_question', 'note', 'guidance']:

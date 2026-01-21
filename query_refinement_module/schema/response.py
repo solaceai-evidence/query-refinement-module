@@ -5,11 +5,11 @@ This module defines the unified response structure used for both initial
 and follow-up analysis of refinement aspects.
 """
 
-from pydantic import BaseModel, Field, validator
-from typing import Optional, Literal
+from pydantic import BaseModel, ConfigDict, Field, validator
+from typing import List, Optional, Literal, Dict, Any
 
 
-class RefinementAnalysisResponse(BaseModel):
+class DimensionEvaluationResponse(BaseModel):
     """
     Unified response structure for both initial and follow-up analysis.
     
@@ -79,68 +79,63 @@ class RefinementAnalysisResponse(BaseModel):
         validate_assignment = True
 
 
-class SynthesisResponse(BaseModel):
-    """
-    Structured response from query synthesis.
-    
-    This model ensures synthesis output includes both the refined query
-    and traceability metadata mapping back to individual aspect refinements.
-    """
-    
-    refined_query: str = Field(
-        ...,
-        description="The final synthesized query combining all refinements"
+class SearchTerms(BaseModel):
+    required: List[str] = Field(default_factory=list)
+    optional: List[str] = Field(default_factory=list)
+    excluded: List[str] = Field(default_factory=list)
+
+class KeywordSearch(BaseModel):
+    structured: str
+    phrases: List[str] = Field(default_factory=list)
+    terms: SearchTerms
+
+class GreyLiteratureSearch(BaseModel):
+    broad_concepts: List[str] = Field(default_factory=list)
+    organizational_terms: List[str] = Field(default_factory=list)
+    geographic_variants: List[str] = Field(default_factory=list)
+
+class SearchOptimized(BaseModel):
+    semantic: str
+    keyword: KeywordSearch
+    grey_literature: GreyLiteratureSearch
+
+class SearchFilters(BaseModel):
+    publication_years: str = ""
+    venues: str = ""
+    authors: List[str] = Field(default_factory=list)
+    publication_types: List[str] = Field(default_factory=list)
+    fields_of_study: str = ""
+
+class Terminology(BaseModel):
+    primary_terms: List[str] = Field(default_factory=list)
+    synonyms: Dict[str, List[str]] = Field(default_factory=dict)
+    domain_specific: List[str] = Field(default_factory=list)
+    colloquial: List[str] = Field(default_factory=list)
+
+
+class Metadata(BaseModel):
+    temporal: Optional[str] = None     
+    geographic: Optional[str] = None    
+    source_types: List[str] = Field(default_factory=list)
+    other: Dict[str, Any] = Field(default_factory=dict)
+
+
+class ProcessingLog(BaseModel):
+    preserved: List[str] = Field(default_factory=list)
+    normalized: List[str] = Field(default_factory=list)
+    integrated: List[str] = Field(default_factory=list)
+    expanded: List[str] = Field(default_factory=list)
+
+
+class QueryRefinementResponse(BaseModel):
+    model_config = ConfigDict(
+        frozen=False,
+        validate_assignment=True
     )
-    
-    refinement_aspects: dict = Field(
-        ...,
-        description="Map of aspect_id → refinement_aspect_value for traceability"
-    )
-    
-    key_changes: list = Field(
-        default_factory=list,
-        description="List of key changes from original query"
-    )
-    
-    # Metadata extraction fields (optional)
-    publication_years: str = Field(
-        default="",
-        description="Temporal constraints extracted from query (e.g., '2020-2025')"
-    )
-    
-    venues: str = Field(
-        default="",
-        description="Comma-separated venue names"
-    )
-    
-    authors: list = Field(
-        default_factory=list,
-        description="List of author names mentioned"
-    )
-    
-    fields_of_study: str = Field(
-        default="",
-        description="Comma-separated research fields"
-    )
-    
-    refined_statement: str = Field(
-        default="",
-        description="Alternative natural-language statement for semantic search"
-    )
-    
-    refined_statement_keywords: str = Field(
-        default="",
-        description="Keyword-optimized version"
-    )
-    
-    @validator('refinement_aspects')
-    def validate_refinement_aspects(cls, v):
-        """Ensure refinement_aspects is a dict."""
-        if not isinstance(v, dict):
-            raise ValueError("refinement_aspects must be a dictionary")
-        return v
-    
-    class Config:
-        """Pydantic config."""
-        frozen = False
-        validate_assignment = True
+    synthesized_statement: str
+    detail_values: Dict[str, str] = Field(default_factory=dict)
+    search_optimized: SearchOptimized
+    search_filters: SearchFilters
+    terminology: Terminology
+    metadata: Metadata
+    processing_log: ProcessingLog

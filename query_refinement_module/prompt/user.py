@@ -1,10 +1,10 @@
 UNIFIED_ANALYSIS_PROMPT = """
-**Original Input:** "{original_query}"
+**Original Research Input:** "{original_input}"
 
-**Domain:** {aspect_name} ({aspect_description})
+**Research Dimension:** {aspect_name} ({aspect_description})
 
 ---
-
+**Conversation History for {aspect_name}:**
 {conversation_section}
 
 ---
@@ -13,7 +13,7 @@ UNIFIED_ANALYSIS_PROMPT = """
 
 ---
 
-{refinement_instructions}
+{evaluation_instructions}
 
 ---
 
@@ -256,12 +256,33 @@ Extract specific author names mentioned.
 "studies on diabetes" (no authors) → []
 ```
 
+### PUBLICATION TYPES
+
+Extract specific publication study types mentioned
+
+**standard publication type fields:**
+Before and after study, Case control study, Case report, Case series, Clinical study, Clinical trial, Cohort study, Comparative study, Cross-sectional study, Diagnostic test accuracy study, Evaluation study, Observational study, Pilot study, Quality improvement study, Randomized controlled trial, Validation study, Consensus conference, Guideline, Living review, Meta-analysis, Rapid review, Scoping review, Systematic review, Narrative review, Review, Government document, Policy document
+
+**Rules:**
+- Each publication study type as separate array item
+- If user explicitly specifies publication types that are not in the standard publication type fields, add them to the list
+- If not mentioned → empty array
+
+**Output:** `["Study type 1", "Study type 2"]` or `[]`
+
+**Examples:** 
+```
+"research about effective diabetes treatment in older adults in before and after study and available systematic reviews" → ["before and after study", "systematic reviews"]
+"studies on diabetes" (too vague, leave empty to include all types of studies) → []
+```
+
+
 ### FIELDS OF STUDY
 
-Map query topic to standardized fields.
+Map research topic to standardized fields.
 
 **Allowed fields:**
-Computer Science, Medicine, Chemistry, Biology, Materials Science, Physics, Geology, Psychology, Art, History, Geography, Sociology, Business, Political Science, Economics, Philosophy, Mathematics, Engineering, Environmental Science, Agricultural and Food Sciences, Education, Law, Linguistics
+Computer Science, Medicine, Public Health, Chemistry, Biology, Materials Science, Physics, Geology, Psychology, Art, History, Geography, Sociology, Business, Political Science, Economics, Philosophy, Mathematics, Engineering, Environmental Science, Agricultural and Food Sciences, Education, Law, Linguistics
 
 **Rules:**
 - Map subfields/ambiguous terms to closest match
@@ -291,98 +312,7 @@ Farming, crops → Agricultural and Food Sciences
 
 ---
 
-## OUTPUT FORMAT (JSON)
-```json
-{
-  "synthesized_statement": "<string>",
-  
-  "detail_values": {
-    "<detail_id>": "<string>"
-  },
-  
-  "search_optimized": {
-    "semantic": "<string>",
-    "keyword": {
-      "structured": "<string>",
-      "phrases": ["<string>"],
-      "terms": {
-        "required": ["<string>"],
-        "optional": ["<string>"],
-        "excluded": ["<string>"]
-      }
-    },
-    "grey_literature": {
-      "broad_concepts": ["<string>"],
-      "organizational_terms": ["<string>"],
-      "geographic_variants": ["<string>"]
-    }
-  },
-  
-  "search_filters": {
-    "publication_years": "<string>",
-    "venues": "<string>",
-    "authors": ["<string>"],
-    "fields_of_study": "<string>"
-  },
-  
-  "terminology": {
-    "primary_terms": ["<string>"],
-    "synonyms": {
-      "<term>": ["<string>"]
-    },
-    "domain_specific": ["<string>"],
-    "colloquial": ["<string>"]
-  },
-  
-  "metadata": {
-    "temporal": "<string or null>",
-    "geographic": "<string or null>",
-    "source_types": ["<string>"],
-    "other": {}
-  },
-  
-  "processing_log": {
-    "preserved": ["<string>"],
-    "normalized": ["<string>"],
-    "integrated": ["<string>"],
-    "expanded": ["<string>"]
-  }
-}
-```
-
----
-
-## FIELD REQUIREMENTS
-
-**Required (must be present, cannot be empty/null):**
-- `synthesized_statement` (string, 15-100 words)
-- `detail_values` (object, keys = detail_ids with values)
-- `search_optimized.semantic` (string, 40-80 words)
-- `search_optimized.keyword.structured` (string, Boolean format)
-- `search_optimized.keyword.phrases` (array, 5-10 items)
-- `search_optimized.keyword.terms.required` (array, min 1)
-- `search_optimized.grey_literature.broad_concepts` (array, min 1)
-- `search_filters.publication_years` (string, format "YYYY-YYYY" or "")
-- `search_filters.venues` (string, comma-separated or "")
-- `search_filters.authors` (array, can be [])
-- `search_filters.fields_of_study` (string, comma-separated or "")
-- `terminology.primary_terms` (array, 3-5 items)
-- `terminology.synonyms` (object, key per primary term)
-- `processing_log.preserved` (array, min 1)
-- `processing_log.integrated` (array, min 1)
-
-**Optional (can be empty [] or null):**
-- `search_optimized.keyword.terms.optional` (default [])
-- `search_optimized.keyword.terms.excluded` (default [])
-- `search_optimized.grey_literature.organizational_terms` (default [])
-- `search_optimized.grey_literature.geographic_variants` (default [])
-- `terminology.domain_specific` (default [])
-- `terminology.colloquial` (default [])
-- `metadata.temporal` (null if not specified)
-- `metadata.geographic` (null if not specified)
-- `metadata.source_types` (default [])
-- `processing_log.normalized` (default [])
-- `processing_log.expanded` (default [])
+{output_format_section}
 
 ---
 
@@ -447,6 +377,7 @@ Farming, crops → Agricultural and Food Sciences
     "publication_years": "2020-2026",
     "venues": "NeurIPS, Neural Information Processing Systems",
     "authors": [],
+    "publication_types": ["Case control study", "Case report"],
     "fields_of_study": "Computer Science,Biology"
   },
   
