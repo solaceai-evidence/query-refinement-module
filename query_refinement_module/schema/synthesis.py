@@ -1,8 +1,5 @@
 """
-Synthesis prompt builder for combining refined aspects into final query.
-
-This module handles prompt construction for the final synthesis step,
-where all aspect refinements are combined into a coherent refined query.
+Synthesis prompt builder for integrating clarified details with input to synthesize final output.
 """
 
 from typing import Dict, Any, List
@@ -10,153 +7,190 @@ from .model import RefinementAspect
 from ..prompt.system_role import SYNTHESIS_SYSTEM_PROMPT
 from ..prompt.user import SYNTHESIS_PROMPT_TEMPLATE
 
-
 class SynthesisPromptBuilder:
     """
     Builds structured prompts for query synthesis.
     
     """
     
-    # Template for synthesis prompt 
+    @staticmethod
+    def _build_output_format_section() -> str:
+        """
+        Generate JSON structure specification from RefinedQuery Pydantic model.
+        
+        Returns:
+            Formatted output format section for the prompt
+        """
+        return """## OUTPUT FORMAT
+
+Return a single JSON object with this exact structure:
+```json
+{
+  "synthesized_statement": "string - Faithful integration of original input with all clarified details",
+  
+  "detail_values": {
+    "aspect_id_1": "string - normalized value for this aspect",
+    "aspect_id_2": "string - normalized value for this aspect"
+  },
+  
+  "search_optimized": {
+    "semantic": "string - Natural language query optimized for vector/embedding search (40-80 words)",
     
+    "keyword": {
+      "structured": "string - Boolean query with AND/OR/NOT operators and parentheses",
+      
+      "phrases": [
+        "string - exact phrase 1 (2-4 words)",
+        "string - exact phrase 2"
+      ],
+      
+      "terms": {
+        "required": ["string - must appear", "string - must appear"],
+        "optional": ["string - improves relevance", "string - improves relevance"],
+        "excluded": ["string - filter out", "string - filter out"]
+      }
+    },
     
-    # Base schema for synthesis output
-    BASE_SYNTHESIS_FIELDS = {
-        "refined_query": "string",
-        "refinement_aspects": "object"
+    "grey_literature": {
+      "broad_concepts": [
+        "string - accessible terminology",
+        "string - policy/practice language"
+      ],
+      "organizational_terms": [
+        "string - NGO/government terminology",
+        "string - program/initiative language"
+      ],
+      "geographic_variants": [
+        "string - regional terminology",
+        "string - local health system terms"
+      ]
     }
+  },
+  
+  "search_filters": {
+    "publication_years": "string - YYYY-YYYY format or empty string",
+    "venues": "string - comma-separated venue names or empty string",
+    "authors": ["string - author name", "string - author name"],
+    "publication_types": ["string - study type", "string - study type"],
+    "fields_of_study": "string - comma-separated fields or empty string"
+  },
+  
+  "terminology": {
+    "primary_terms": [
+      "string - core concept 1",
+      "string - core concept 2"
+    ],
     
-    # Field descriptions for synthesis output
-    SYNTHESIS_FIELD_DESCRIPTIONS = {
-        "refined_query": "The final synthesized query combining all refinements",
-        "refinement_aspects": "Map of aspect_id → refinement_aspect_value for traceability"
+    "synonyms": {
+      "primary_term_1": ["string - variant 1", "string - variant 2"],
+      "primary_term_2": ["string - variant 1", "string - variant 2"]
+    },
+    
+    "domain_specific": [
+      "string - technical term",
+      "string - scientific nomenclature"
+    ],
+    
+    "colloquial": [
+      "string - plain language equivalent",
+      "string - accessible terminology"
+    ]
+  },
+  
+  "metadata": {
+    "temporal": "string or null - temporal context",
+    "geographic": "string or null - geographic context",
+    "source_types": ["string - source type", "string - source type"],
+    "other": {
+      "key": "value - additional metadata"
     }
+  },
+  
+  "processing_log": {
+    "preserved": [
+      "string - what was kept from original input"
+    ],
+    
+    "normalized": [
+      "string - what was standardized/cleaned"
+    ],
+    
+    "integrated": [
+      "string - how details were combined"
+    ],
+    
+    "expanded": [
+      "string - what was added/enriched"
+    ]
+  }
+}
+```
+
+**Important:**
+- Return ONLY valid JSON, no markdown formatting, no preamble
+- All string fields must be strings (use empty string "" not null for optional strings)
+- All array fields must be arrays (use [] for empty, never null)
+- metadata.temporal and metadata.geographic can be null
+- Ensure proper JSON syntax (commas, quotes, brackets)
+"""
     
     @staticmethod
     def build_synthesis_prompt(
-        original_query: str,
-        refinement_aspect_values: Dict[str, Any],
-        aspects: List[RefinementAspect]
+        original_input: str,
+        aspectID_value_mapping: Dict[str, Any],
+        aspect_list: List[RefinementAspect]
     ) -> str:
         """
         Build complete synthesis prompt with all refined aspect values.
         
         Args:
             original_input: The user's original research input
-            refinement_aspect_values: Dict mapping aspect_id → refined value
-            aspects: List of RefinementAspect objects for context (names, descriptions)
+            aspectID_value_mapping: Dict mapping aspect_id → normalized value
+            aspect_list: List of RefinementAspect objects for context (names, descriptions)
             
         Returns:
             Complete formatted synthesis prompt
         """
         aspects_section = SynthesisPromptBuilder._build_aspects_section(
-            refinement_aspect_values,
-            aspects
+            aspectID_value_mapping,
+            aspect_list
         )
         output_format_section = SynthesisPromptBuilder._build_output_format_section()
         
         # Use replace() instead of format() to avoid issues with JSON examples in template
         return (SYNTHESIS_PROMPT_TEMPLATE
-                .replace("{original_input}", original_query)
+                .replace("{original_input}", original_input)
                 .replace("{aspects_section}", aspects_section)
                 .replace("{output_format_section}", output_format_section)
         )
     
     @staticmethod
     def _build_aspects_section(
-        refinement_aspect_values: Dict[str, Any],
-        aspects: List[RefinementAspect]
+        aspectId2Spec_dict: Dict[str, Any],
+        aspect_list: List[RefinementAspect]
     ) -> str:
-        """
-        Build section showing all refined aspect values.
-        
-        Format:
-        
-        1. **Aspect Name** (Description)
-           Refined Value: <value>
-        
-        Args:
-            refinement_aspect_values: Map of aspect_id → value
-            aspects: List of aspects for metadata (names, descriptions)
-            
-        Returns:
-            Formatted aspects section
-        """
-        if not refinement_aspect_values:
-            return "None (using original query as-is)"
-        
-        # Create lookup map
-        aspect_map = {a.id: a for a in aspects}
-        
-        lines = [""]
-        
-        item_number = 0
-        for aspect_id, value in refinement_aspect_values.items():
-            aspect = aspect_map.get(aspect_id)
-            
-            # Show actual refined value (including values extracted from original input)
-            item_number += 1
-            if aspect:
-                lines.append(f"{item_number}. **{aspect.aspect_name}** ({aspect.aspect_description})")
-                # Convert value to string if it's complex type
-                value_str = str(value) if not isinstance(value, str) else value
-                lines.append(f"   Refined Value: {value_str}")
-            else:
-                lines.append(f"{item_number}. **{aspect_id}**")
-                value_str = str(value) if not isinstance(value, str) else value
-                lines.append(f"   Refined Value: {value_str}")
-            lines.append("")
-        
-        return "\n".join(lines)
-    
-    @staticmethod
-    def _build_output_format_section() -> str:
-        """
-        Build output format specification for synthesis response.
-        
-        Dynamically generates the format from BASE_SYNTHESIS_FIELDS to ensure
-        single source of truth (similar to RefinementAspect._build_output_format_section).
-        
-        Returns:
-            Formatted output format section with JSON schema
-        """
-        # Build dynamic field requirements from BASE_SYNTHESIS_FIELDS
-        field_requirements = []
-        for field_name, field_type in SynthesisPromptBuilder.BASE_SYNTHESIS_FIELDS.items():
-            desc = SynthesisPromptBuilder.SYNTHESIS_FIELD_DESCRIPTIONS.get(field_name, f"Value of type {field_type}")
-            field_requirements.append(f"- `{field_name}` ({field_type}): REQUIRED - {desc}")
-        
-        field_requirements_text = "\n".join(field_requirements)
-        
-        return f"""**OUTPUT FORMAT (JSON):**
+        """Build the clarified details section for the prompt."""
 
-{{
-  "refined_query": "The synthesized, search-optimized query combining all refinements",
-  "refinement_aspects": {{
-    "population": "refined value for population aspect",
-    "intervention": "refined value for intervention aspect",
-    "outcome": "refined value for outcome aspect"
-  }},
-  "publication_years": "Temporal constraints (e.g., '2020-2025') or empty string",
-  "venues": "Comma-separated venue names or empty string",
-  "authors": ["Author 1", "Author 2"] or [],
-  "fields_of_study": "Comma-separated fields or empty string",
-  "refined_statement": "Natural-language statement optimized for semantic search",
-  "refined_statement_keywords": "Keyword-optimized version"
-}}
+        if not aspectId2Spec_dict:
+            return "None (using original input as-is)"
+        
+        # Create lookup dict for aspect names/descriptions
+        aspect_info = {
+            aspect.id: (aspect.aspect_name, aspect.aspect_description)
+            for aspect in aspect_list
+        }
+        
+        sections = []
+        for aspect_id, value in aspectId2Spec_dict.items():
+            name, description = aspect_info.get(aspect_id, (aspect_id, ""))
+          # Handle skipped aspects
+          display_value = "[SKIPPED]" if value is None or value == "" else value
 
-**Field Requirements:**
-{field_requirements_text}
-- All metadata fields (publication_years, venues, authors, fields_of_study): Extract if mentioned, otherwise empty
-- `refined_statement`: Alternative phrasing for semantic search
-- `refined_statement_keywords`: Keyword version
-
-**Processing Rules:**
-- Current year is 2026 for temporal interpretation
-- Preserve user's intended meaning exactly
-- Extract metadata into separate fields (don't duplicate in refined_query)
-- All topical content should appear in refined_query or refined_statement
-- **IMPORTANT**: `refinement_aspects` must be a JSON object where each key is an aspect ID from the "Refined Aspects" section above, and each value is the corresponding "Refined Value" shown for that aspect"""
+          sections.append(
+            f"- **{name}** ({description})\n"
+            f"  Specification: {display_value}"
+          )
+        return "\n".join(sections)
     
     @staticmethod
     def get_system_prompt() -> str:
