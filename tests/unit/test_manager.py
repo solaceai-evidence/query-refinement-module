@@ -66,7 +66,7 @@ def _write_framework(tmp_path):
           - id: aspect_a
             aspect_name: Aspect A
             aspect_description: First aspect
-            refinement_instructions: |
+                        evaluation_instructions: |
               Analyze {query}
             response_format:
               type: json

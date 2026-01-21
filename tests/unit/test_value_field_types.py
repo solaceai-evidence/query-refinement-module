@@ -30,7 +30,7 @@ def make_aspect(
         id=aspect_id,
         aspect_name=name,
         aspect_description="Test description",
-        refinement_instructions="Review this query: {query}",
+        evaluation_instructions="Review this query: {query}",
         value_field_type=value_field_type,
         value_field_description=value_field_description
     )

@@ -16,19 +16,19 @@ def sample_aspects():
             id="population",
             aspect_name="Target Population",
             aspect_description="Who are the subjects?",
-            refinement_instructions="Identify the population in the query: {query}",
+            evaluation_instructions="Identify the population in the query: {query}",
         ),
         RefinementAspect(
             id="intervention",
             aspect_name="Intervention",
             aspect_description="What is being tested?",
-            refinement_instructions="Identify the intervention in the query: {query}",
+            evaluation_instructions="Identify the intervention in the query: {query}",
         ),
         RefinementAspect(
             id="outcome",
             aspect_name="Outcome",
             aspect_description="What is being measured?",
-            refinement_instructions="Identify the outcome in the query: {query}",
+            evaluation_instructions="Identify the outcome in the query: {query}",
         ),
     ]
 
@@ -50,28 +50,29 @@ class TestSynthesisPromptBuilder:
         """Test basic synthesis prompt building."""
         builder = SynthesisPromptBuilder()
         prompt = builder.build_synthesis_prompt(
-            original_query="diabetes treatment outcomes",
-            refinement_aspect_values=refinement_values,
-            aspects=sample_aspects,
+            original_input="diabetes treatment outcomes",
+            aspectID_value_mapping=refinement_values,
+            aspect_list=sample_aspects,
         )
 
         # Check prompt includes key sections
-        assert "Original Research Input" in prompt
+        assert "ORIGINAL INPUT" in prompt
         assert "diabetes treatment outcomes" in prompt
-        assert "Refined Aspects" in prompt
+        assert "CLARIFIED DETAILS" in prompt
         assert "Target Population" in prompt
         assert "adults with diabetes" in prompt
+        assert "OUTPUT STRUCTURE" in prompt
         assert "OUTPUT FORMAT" in prompt
-        assert "refined_query" in prompt
-        assert "refinement_aspects" in prompt
+        assert "synthesized_statement" in prompt
+        assert "detail_values" in prompt
 
     def test_aspects_section_excludes_skipped(self, sample_aspects, refinement_values):
-        """Test that [SKIPPED] aspects are excluded from aspects section."""
+        """Test that [SKIPPED] aspects are included with a marker."""
         builder = SynthesisPromptBuilder()
         prompt = builder.build_synthesis_prompt(
-            original_query="test query",
-            refinement_aspect_values=refinement_values,
-            aspects=sample_aspects,
+            original_input="test query",
+            aspectID_value_mapping=refinement_values,
+            aspect_list=sample_aspects,
         )
 
         # Population and intervention should be present
@@ -80,14 +81,13 @@ class TestSynthesisPromptBuilder:
         assert "Intervention" in prompt
         assert "metformin therapy" in prompt
 
-        # Outcome should NOT be in aspects section (it was skipped)
+        # Outcome should be marked as skipped in aspects section
         aspects_section = prompt.split("OUTPUT FORMAT")[0]
-        outcome_mentions = aspects_section.count("Outcome")
-        # Should not appear in aspects section (only in field list)
-        assert outcome_mentions == 0 or "[SKIPPED]" not in aspects_section
+        assert "Outcome" in aspects_section
+        assert "[SKIPPED]" in aspects_section
 
     def test_aspects_section_handles_clear_in_original(self, sample_aspects):
-        """Test that [CLEAR_IN_ORIGINAL] aspects are marked with checkmark."""
+        """Test that [CLEAR_IN_ORIGINAL] aspects are included with a marker."""
         refinement_values = {
             "population": "[CLEAR_IN_ORIGINAL]",
             "intervention": "drug therapy",
@@ -96,38 +96,39 @@ class TestSynthesisPromptBuilder:
 
         builder = SynthesisPromptBuilder()
         prompt = builder.build_synthesis_prompt(
-            original_query="test query",
-            refinement_aspect_values=refinement_values,
-            aspects=sample_aspects,
+            original_input="test query",
+            aspectID_value_mapping=refinement_values,
+            aspect_list=sample_aspects,
         )
 
-        # Should contain clear in original marker (case-insensitive check)
-        assert "already clear in original" in prompt.lower() or "✓" in prompt
+        # Should contain clear in original marker
+        assert "[CLEAR_IN_ORIGINAL]" in prompt
 
     def test_output_format_includes_required_fields(self, sample_aspects, refinement_values):
         """Test that output format includes all required fields."""
         builder = SynthesisPromptBuilder()
         prompt = builder.build_synthesis_prompt(
-            original_query="test query",
-            refinement_aspect_values=refinement_values,
-            aspects=sample_aspects,
+            original_input="test query",
+            aspectID_value_mapping=refinement_values,
+            aspect_list=sample_aspects,
         )
 
         # Check all required fields are present
-        assert '"refined_query"' in prompt
-        assert '"refinement_aspects"' in prompt
-        assert '"key_changes"' in prompt
-
-        # Check field descriptions are present
-        assert "final synthesized query" in prompt.lower()
+        assert '"synthesized_statement"' in prompt
+        assert '"detail_values"' in prompt
+        assert '"search_optimized"' in prompt
+        assert '"search_filters"' in prompt
+        assert '"terminology"' in prompt
+        assert '"metadata"' in prompt
+        assert '"processing_log"' in prompt
 
     def test_empty_refinements(self, sample_aspects):
         """Test with no refinement values."""
         builder = SynthesisPromptBuilder()
         prompt = builder.build_synthesis_prompt(
-            original_query="test query",
-            refinement_aspect_values={},
-            aspects=sample_aspects,
+            original_input="test query",
+            aspectID_value_mapping={},
+            aspect_list=sample_aspects,
         )
 
         # Should still build valid prompt
@@ -139,9 +140,9 @@ class TestSynthesisPromptBuilder:
         """Test that quality requirements are included in prompt."""
         builder = SynthesisPromptBuilder()
         prompt = builder.build_synthesis_prompt(
-            original_query="test query",
-            refinement_aspect_values=refinement_values,
-            aspects=sample_aspects,
+            original_input="test query",
+            aspectID_value_mapping=refinement_values,
+            aspect_list=sample_aspects,
         )
 
         # Check for quality guidance

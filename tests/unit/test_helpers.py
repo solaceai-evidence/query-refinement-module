@@ -17,7 +17,7 @@ def make_aspect(
         id=aspect_id,
         aspect_name=name,
         aspect_description=description,
-        refinement_instructions=analysis_prompt,
+        evaluation_instructions=analysis_prompt,
         system_prompt=system_prompt,
         response_format=response_format,
         examples=examples,

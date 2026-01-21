@@ -25,7 +25,7 @@ def print_full_unified_prompt(aspect: RefinementAspect, query: str, show_followu
     
     print("\n[USER PROMPT - INITIAL]\n")
     initial_prompt = aspect.build_unified_prompt(
-        original_query=query,
+        original_input=query,
         follow_up_history=[],
         dependency_context={},
         mode='initial'
@@ -35,7 +35,7 @@ def print_full_unified_prompt(aspect: RefinementAspect, query: str, show_followu
     if show_followup:
         print("\n[USER PROMPT - FOLLOWUP]\n")
         followup_prompt = aspect.build_unified_prompt(
-            original_query=query,
+            original_input=query,
             follow_up_history=[
                 {'question': 'What age range?', 'response': 'Adults 18-65'},
                 {'question': 'Any specific gender?', 'response': 'All genders'}
@@ -96,9 +96,9 @@ def print_synthesis_prompt(aspects: list[RefinementAspect], query: str):
     
     print("\n[USER PROMPT]\n")
     synthesis_prompt = builder.build_synthesis_prompt(
-        original_query=query,
-        refinement_aspect_values=refinement_aspect_values,
-        aspects=aspects
+        original_input=query,
+        aspectID_value_mapping=refinement_aspect_values,
+        aspect_list=aspects
     )
     print(synthesis_prompt)
     
@@ -190,3 +190,8 @@ def main():
             print_summary(aspect)
     else:
         for aspect in aspects:
+            print_full_unified_prompt(aspect, query, show_followup=show_followup)
+
+
+if __name__ == "__main__":
+    main()
