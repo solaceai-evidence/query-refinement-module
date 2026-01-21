@@ -6,7 +6,7 @@ with only the conversation history section differing based on mode.
 """
 import json
 import pytest
-from query_refinement_module.schema import RefinementAspect, RefinementAnalysisResponse
+from query_refinement_module.schema import RefinementAspect, DimensionEvaluationResponse
 
 
 @pytest.fixture
@@ -16,7 +16,7 @@ def sample_aspect():
         id='test_aspect',
         aspect_name='Test Aspect',
         aspect_description='A test aspect for validation',
-        refinement_instructions='Extract the {query} details carefully.',
+        evaluation_instructions='Extract the {query} details carefully.',
         response_format={'type': 'json'},
         examples=[]
     )
@@ -52,7 +52,7 @@ def test_dependency_section_with_completed_aspects():
         id='outcome',
         aspect_name='Outcome',
         aspect_description='Study outcome',
-        refinement_instructions='Test',
+        evaluation_instructions='Test',
         response_format={'type': 'json'},
         depends_on=['population', 'intervention']  # This aspect depends on these
     )
@@ -72,11 +72,11 @@ def test_dependency_section_with_completed_aspects():
     
     result = aspect._build_dependency_section(dependency_context)
     
-    assert "**Completed Aspects (for context):**" in result
-    assert "**Population** ⚠️ (this aspect depends on this)" in result
-    assert "Adults aged 18-65" in result
-    assert "**Intervention** ⚠️ (this aspect depends on this)" in result
-    assert "Statins" in result
+    assert "**Completed Dimensions (for context):**" in result
+    assert "**Population** ⚠️ (the current dimension depends on this)" in result
+    assert "Value: Adults aged 18-65" in result
+    assert "**Intervention** ⚠️ (the current dimension depends on this)" in result
+    assert "Value: Statins" in result
 
 
 def test_dependency_section_empty_when_no_dependencies(sample_aspect):
@@ -86,35 +86,35 @@ def test_dependency_section_empty_when_no_dependencies(sample_aspect):
     assert result == ""
 
 
-def test_refinement_instructions_uses_aspect_field():
-    """Should use aspect.refinement_instructions field."""
+def test_evaluation_instructions_uses_aspect_field():
+    """Should use aspect.evaluation_instructions field."""
     aspect = RefinementAspect(
         id='test',
         aspect_name='Test',
         aspect_description='Testing',
-        refinement_instructions='Extract the {query} details carefully.',
+        evaluation_instructions='Extract the {query} details carefully.',
         response_format={'type': 'json'}
     )
     
-    result = aspect._build_refinement_instructions_section('sample query')
+    result = aspect._build_evaluation_instructions_section('sample query')
     
     assert "Extract the sample query details carefully" in result
 
 
-def test_refinement_instructions_empty_when_not_provided():
-    """Should return empty string when refinement_instructions not provided."""
+def test_evaluation_instructions_empty_when_not_provided():
+    """Should return empty string when evaluation_instructions not provided."""
     aspect = RefinementAspect(
         id='test',
         aspect_name='Test',
         aspect_description='Testing',
-        refinement_instructions='',
+        evaluation_instructions='',
         response_format={'type': 'json'}
     )
     
-    result = aspect._build_refinement_instructions_section('sample query')
+    result = aspect._build_evaluation_instructions_section('sample query')
     
-    # Even with empty refinement_instructions, the function returns the template
-    assert "**Analysis Guidelines:**" in result
+    # Even with empty evaluation_instructions, the function returns the template
+    assert "Evaluation Strategy" in result
     assert "sample query" in result
 
 
@@ -124,7 +124,7 @@ def test_examples_section_formats_all_categories(sample_aspect):
         id='test',
         aspect_name='Test',
         aspect_description='Testing',
-        refinement_instructions='Test instructions',
+        evaluation_instructions='Test instructions',
         response_format={'type': 'json'},
         examples={
             'clear': [
@@ -157,7 +157,7 @@ def test_examples_section_empty_when_no_examples(sample_aspect):
         id='test',
         aspect_name='Test',
         aspect_description='Testing',
-        refinement_instructions='Test instructions',
+        evaluation_instructions='Test instructions',
         response_format={'type': 'json'}
     )
     
@@ -172,7 +172,7 @@ def test_unified_prompt_formats_correctly():
         id='population',
         aspect_name='Population',
         aspect_description='Target population for study',
-        refinement_instructions='Identify specific demographics from {query}.',
+        evaluation_instructions='Identify specific demographics from {query}.',
         response_format={'type': 'json'},
         examples={
             'clear': [
@@ -185,7 +185,7 @@ def test_unified_prompt_formats_correctly():
     )
     
     result = aspect.build_unified_prompt(
-        original_query='heart disease study',
+        original_input='heart disease study',
         follow_up_history=[],
         dependency_context={},
         mode='initial'
@@ -201,7 +201,7 @@ def test_unified_prompt_formats_correctly():
 def test_refinement_analysis_response_validation():
     """Should validate RefinementAnalysisResponse completeness."""
     # Complete response must have refinement_aspect_value - validation happens during construction
-    complete_response = RefinementAnalysisResponse(
+    complete_response = DimensionEvaluationResponse(
         is_complete=True,
         reasoning='All details clear',
         refinement_aspect_value='Adults aged 18-65',
@@ -214,7 +214,7 @@ def test_refinement_analysis_response_validation():
     assert complete_response.refinement_aspect_value == 'Adults aged 18-65'
     
     # Incomplete response must have next_question - validation happens during construction
-    incomplete_response = RefinementAnalysisResponse(
+    incomplete_response = DimensionEvaluationResponse(
         is_complete=False,
         reasoning='Need age range',
         refinement_aspect_value=None,
@@ -233,7 +233,7 @@ def test_refinement_analysis_response_invalid_complete():
     from pydantic import ValidationError
     
     with pytest.raises(ValidationError) as exc_info:
-        RefinementAnalysisResponse(
+        DimensionEvaluationResponse(
             is_complete=True,
             reasoning='Complete',
             refinement_aspect_value=None,  # Missing!
@@ -251,7 +251,7 @@ def test_refinement_analysis_response_invalid_incomplete():
     from pydantic import ValidationError
     
     with pytest.raises(ValidationError) as exc_info:
-        RefinementAnalysisResponse(
+        DimensionEvaluationResponse(
             is_complete=False,
             reasoning='Incomplete',
             refinement_aspect_value=None,

@@ -16,7 +16,7 @@ def make_aspect(aspect_id: str = "aspect") -> RefinementAspect:
         id=aspect_id,
         aspect_name=f"Aspect {aspect_id}",
         aspect_description=f"Description {aspect_id}",
-        refinement_instructions="Analyze {query}",
+        evaluation_instructions="Analyze {query}",
         depends_on=[],
     )
 

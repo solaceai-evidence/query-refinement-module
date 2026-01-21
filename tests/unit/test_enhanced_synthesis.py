@@ -42,7 +42,7 @@ def make_aspect(
         id=aspect_id,
         aspect_name=name,
         aspect_description=description,
-        refinement_instructions=analysis_prompt,
+        evaluation_instructions=analysis_prompt,
         depends_on=depends_on or [],
         allow_follow_up=allow_follow_up,
         max_follow_ups=max_follow_ups,

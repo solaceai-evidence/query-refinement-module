@@ -62,9 +62,9 @@ from .interfaces import (
 from .providers import NoOpTracingProvider, TraceEventEmitter
 from .schema import (
     RefinementAspect,
-    RefinementAnalysisResponse,
+    DimensionEvaluationResponse,
     SynthesisPromptBuilder,
-    SynthesisResponse,
+    QueryRefinementResponse,
 )
 
 from .prompt.system_role import (
@@ -376,7 +376,7 @@ class QueryAspectRefiner:
                 )
 
         refinement_instructions_prompt_sections = [
-            self.refinement_aspect.get_refinement_instructions_prompt(statement=query, **kwargs)
+            self.refinement_aspect.get_evaluation_instructions_prompt(statement=query, **kwargs)
         ]
 
         if context_lines:
@@ -532,7 +532,7 @@ class QueryAspectRefiner:
             )
         history_section = "\n".join(history_section_lines)
 
-        base_prompt = self.refinement_aspect.get_refinement_instructions_prompt(
+        base_prompt = self.refinement_aspect.get_evaluation_instructions_prompt(
             statement=original_query
         )
 
@@ -1243,7 +1243,7 @@ class QueryRefinementManager:
         session: QueryRefinementSession,
         aspect_id: str,
         mode: Literal['initial', 'followup'] = 'initial'
-    ) -> RefinementAnalysisResponse:
+    ) -> DimensionEvaluationResponse:
         """
         Unified method for generating and executing analysis prompts.
         
@@ -1271,7 +1271,7 @@ class QueryRefinementManager:
         # Build complete unified prompt using aspect's method
         dependency_context = session.get_dependency_context(aspect_id)
         user_prompt = aspect.build_unified_prompt(
-            original_query=session.original_query,
+            original_input=session.original_query,
             follow_up_history=step.follow_up_history,
             dependency_context=dependency_context,
             mode=mode
@@ -1305,7 +1305,7 @@ class QueryRefinementManager:
         
         # Create and validate response (Pydantic validators handle field validation)
         try:
-            result = RefinementAnalysisResponse(**parsed_payload)
+            result = DimensionEvaluationResponse(**parsed_payload)
             return result
         except Exception as e:
             logger.error(f"Failed to create RefinementAnalysisResponse: {e}, payload: {parsed_payload}")
@@ -1315,7 +1315,7 @@ class QueryRefinementManager:
         self,
         session: QueryRefinementSession,
         aspect_id: str,
-        result: RefinementAnalysisResponse
+        result: DimensionEvaluationResponse
     ) -> Dict[str, Any]:
         """
         Process analysis result and update session step accordingly.
@@ -2204,6 +2204,9 @@ class QueryRefinementManager:
                 metadata={
                     "aspect_id": aspect.id,
                     "attempt": attempt_number,
+                    "is_complete": parsed_payload.get("is_complete", False),
+                    "has_refinement_value": bool(parsed_payload.get("refinement_aspect_value")),
+                    "has_next_question": bool(parsed_payload.get("next_question")),
                 }
             )
             return self._ValidationResult(
@@ -2396,9 +2399,9 @@ class QueryRefinementManager:
         prompt_builder = SynthesisPromptBuilder()
         
         user_prompt = prompt_builder.build_synthesis_prompt(
-            original_query=session.original_query,
-            refinement_aspect_values=refinement_aspect_values,
-            aspects=aspects,
+            original_input=session.original_query,
+            aspectID_value_mapping=refinement_aspect_values,
+            aspect_list=aspects,
         )
         
         if additional_guidance:
@@ -2442,17 +2445,47 @@ class QueryRefinementManager:
         # Try to parse as structured JSON response
         synthesis_response = None
         try:
-            response_data = json.loads(refined_query)
-            synthesis_response = SynthesisResponse(**response_data)
+            # Strip markdown code fences if present
+            cleaned_text = refined_query
+            if cleaned_text.startswith("```"):
+                lines = cleaned_text.splitlines()
+                if len(lines) >= 2 and lines[0].startswith("```"):
+                    # Drop opening fence and optional closing fence
+                    body = lines[1:]
+                    if body and body[-1].startswith("```"):
+                        body = body[:-1]
+                    cleaned_text = "\n".join(body)
+            
+            response_data = json.loads(cleaned_text)
+            synthesis_response = QueryRefinementResponse(**response_data)
             refined_query = synthesis_response.refined_query
             logger.info(
                 "Successfully parsed structured synthesis response"
+            )
+            self.trace_emitter.emit(
+                "synthesis_response_parsed",
+                metadata={
+                    "has_structured_response": True,
+                    "response_length": len(refined_query),
+                    "has_key_changes": bool(synthesis_response.key_changes),
+                    "refinement_aspects_count": len(synthesis_response.refinement_aspects) if synthesis_response.refinement_aspects else 0,
+                }
             )
         except (json.JSONDecodeError, ValueError) as parse_error:
             # Fallback to plain text response (backward compatibility)
             logger.warning(
                 "Could not parse synthesis response as JSON, using plain text: %s",
                 parse_error
+            )
+            self.trace_emitter.emit(
+                "synthesis_response_parse_failed",
+                level="warning",
+                metadata={
+                    "error_type": type(parse_error).__name__,
+                    "error_message": str(parse_error),
+                    "response_preview": cleaned_text[:200] if cleaned_text else "<empty>",
+                    "response_length": len(cleaned_text) if cleaned_text else 0,
+                }
             )
             if not refined_query:
                 logger.warning("LLM synthesis returned empty response; using original query")

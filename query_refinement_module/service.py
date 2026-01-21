@@ -171,7 +171,7 @@ class QueryRefinementService:
         question = step.refinement_question
         if not question:
             try:
-                question = step.refinement_aspect.get_refinement_instructions_prompt(
+                question = step.refinement_aspect.get_evaluation_instructions_prompt(
                     statement=session.original_query
                 )
             except Exception:  # pragma: no cover - best effort fallback

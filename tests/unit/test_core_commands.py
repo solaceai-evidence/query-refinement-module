@@ -13,7 +13,7 @@ def _make_session(aspect_id: str = "aspect_a") -> QueryRefinementSession:
         id=aspect_id,
         aspect_name="Aspect",
         aspect_description="Test aspect",
-        refinement_instructions="Analyze {query}",
+        evaluation_instructions="Analyze {query}",
     )
     session.add_step(aspect)
     return session
@@ -154,7 +154,7 @@ def test_handle_command_back_truncates_steps():
             id=f"aspect_{i}",
             aspect_name=f"Aspect {i}",
             aspect_description=f"Test aspect {i}",
-            refinement_instructions="Analyze {query}",
+            evaluation_instructions="Analyze {query}",
         )
         session.add_step(aspect)
     
@@ -196,7 +196,7 @@ def test_handle_command_restart_truncates_all_steps():
             id=f"aspect_{i}",
             aspect_name=f"Aspect {i}",
             aspect_description=f"Test aspect {i}",
-            refinement_instructions="Analyze {query}",
+            evaluation_instructions="Analyze {query}",
         )
         session.add_step(aspect)
         session.steps[i].is_complete = True

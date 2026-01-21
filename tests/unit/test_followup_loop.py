@@ -30,7 +30,7 @@ def make_aspect(id="aspect", allow_follow_up=True, max_follow_ups=2):
         id=id,
         aspect_name="Test Aspect",
         aspect_description="desc",
-        refinement_instructions="Analyze {query}",
+        evaluation_instructions="Analyze {query}",
         allow_follow_up=allow_follow_up,
         max_follow_ups=max_follow_ups,
     )

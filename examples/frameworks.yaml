@@ -817,8 +817,8 @@ mph_dissertation:
       rationale: This is exploratory research on barriers, not evaluating interventions
         or exposures
 pico_advanced:
-- id: population_demographic
-  aspect_name: Population Demographic
+- id: population_demographics
+  aspect_name: Population Demographics
   aspect_description: Defines the target population's basic demographic characteristics
     including age range, gender, ethnicity, but excluding geographic scope and clinical
     setting
