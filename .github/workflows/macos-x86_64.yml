@@ -15,7 +15,7 @@ jobs:
   build-macos-x86_64:
     runs-on: macos-latest
     env:
-      PYTHON_VERSION: '3.10'
+      PYTHON_VERSION: '3.12'
       ARCH: 'x86_64'
     steps:
       - name: Checkout repository
@@ -29,14 +29,18 @@ jobs:
       - name: Install Poetry
         run: |
           curl -sSL https://install.python-poetry.org | python3 -
-          echo "export PATH=\"$HOME/.local/bin:$PATH\"" >> $GITHUB_ENV
-    
-      - name: Install PyInstaller
-        run: poetry run pip install pyinstaller
+          echo "$HOME/.local/bin" >> $GITHUB_PATH
+
+      - name: Configure Poetry env
+        run: |
+          poetry env use "${PYTHON_VERSION}"
+          poetry config virtualenvs.in-project true
 
       - name: Install dependencies
-        run: |
-          poetry install --no-interaction --no-root
+        run: poetry install --no-interaction --no-root
+
+      - name: Install PyInstaller
+        run: poetry run pip install pyinstaller
 
       - name: Build QueryRefine (x86_64)
         run: |
@@ -46,13 +50,11 @@ jobs:
       - name: Verify anthropic_tokenizer.json is bundled
         run: |
           set -e
-          # Check if output directory exists
-          if [ ! -d dist/QueryRefine ]; then
-            echo "Build output directory dist/QueryRefine does not exist! Build may have failed."
+          if [ ! -d packaging/macos/dist/QueryRefine ]; then
+            echo "Build output directory packaging/macos/dist/QueryRefine does not exist! Build may have failed."
             exit 1
           fi
-          # Search for anthropic_tokenizer.json recursively in CLI and .app bundle
-          FOUND=$(find dist/QueryRefine -name anthropic_tokenizer.json)
+          FOUND=$(find packaging/macos/dist/QueryRefine -name anthropic_tokenizer.json)
           if [ -z "$FOUND" ]; then
             echo "anthropic_tokenizer.json not found in any QueryRefine output!"
             exit 1
@@ -61,13 +63,13 @@ jobs:
 
       - name: Prepare release folder
         run: |
-          mkdir -p ../../release/macos/x86_64
-          cp -R dist/QueryRefine/QueryRefine ../../release/macos/x86_64/
-          cp ../../README.md ../../release/macos/x86_64/
-          cp sample_framework.yaml ../../release/macos/x86_64/
-          cp sample.env ../../release/macos/x86_64/
-          cp Run\ Query\ Refine.command ../../release/macos/x86_64/
-          cp Configure\ Environment.command ../../release/macos/x86_64/
+          mkdir -p release/macos/x86_64
+          cp -R packaging/macos/dist/QueryRefine/QueryRefine release/macos/x86_64/
+          cp README.md release/macos/x86_64/
+          cp packaging/macos/sample_framework.yaml release/macos/x86_64/
+          cp packaging/macos/sample.env release/macos/x86_64/
+          cp packaging/macos/Run\ Query\ Refine.command release/macos/x86_64/
+          cp packaging/macos/Configure\ Environment.command release/macos/x86_64/
 
       - name: Upload release artifact
         uses: actions/upload-artifact@v4
