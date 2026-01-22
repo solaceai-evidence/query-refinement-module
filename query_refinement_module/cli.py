@@ -138,7 +138,7 @@ async def run_cli(manager: QueryRefinementManager, framework_name: str, query: s
             # Generate initial question for this aspect using unified approach
             print("🔄 Generating question...\n")
             try:
-                result = manager.get_analysis_prompts(
+                result = await manager.get_analysis_prompts(
                     session=session,
                     aspect_id=step.refinement_aspect.id,
                     mode='initial'
@@ -203,7 +203,7 @@ async def run_cli(manager: QueryRefinementManager, framework_name: str, query: s
                             print("\n🔄 Regenerating question...")
                             # Use unified approach to regenerate
                             mode = 'followup' if step.follow_up_history else 'initial'
-                            result = manager.get_analysis_prompts(
+                            result = await manager.get_analysis_prompts(
                                 session=session,
                                 aspect_id=step.refinement_aspect.id,
                                 mode=mode

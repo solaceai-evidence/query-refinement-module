@@ -18,7 +18,7 @@ class Settings(BaseSettings):
     
     # App metadata
     app_name: str = "Query Refinement API"
-    app_version: str = "0.2.0"
+    app_version: str = "0.3.0"
     debug: bool = False
     environment: str = Field(default="development", description="Environment: development, staging, production")
     

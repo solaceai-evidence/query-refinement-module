@@ -361,12 +361,7 @@ def test_build_next_prompt_uses_prompt_and_description():
             self.description = "desc"  # Legacy support
             self.raises = raises
 
-        def get_refinement_instructions_prompt(self, *, statement):
-            if self.raises:
-                raise RuntimeError("boom")
-            return f"Prompt for {statement}"
-        
-        def get_refinement_instructions_prompt(self, *, statement):
+        def get_evaluation_instructions_prompt(self, *, statement):
             if self.raises:
                 raise RuntimeError("boom")
             return f"Prompt for {statement}"

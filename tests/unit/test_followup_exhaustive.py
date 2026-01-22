@@ -55,19 +55,19 @@ def test_user_command_edge_cases():
     # /back at first step
     result = session.handle_command(CommandResult(command=UserCommand.BACK, is_valid=True))
     assert not result["success"]
-    # /goto invalid step
+    # /skip with active step - should succeed
     result = session.handle_command(CommandResult(command=UserCommand.SKIP, argument=None, is_valid=True))
-    assert not result["success"]
-    # /skip with no active step
-    session.steps[0].is_complete = True
+    assert result["success"]  # First skip succeeds
+    assert session.steps[0].was_skipped
+    # /skip with no active step (already skipped)
     result = session.handle_command(CommandResult(command=UserCommand.SKIP, is_valid=True))
-    assert not result["success"]
+    assert not result["success"]  # Second skip fails - no active step
     # /done with no active step
     result = session.handle_command(CommandResult(command=UserCommand.DONE, is_valid=True))
     assert not result["success"]
-    # /restart clears all
+    # /restart clears all steps
     session.steps[0].is_complete = False
     session.steps[0].follow_up_history = [{"question": "Q", "response": "A"}]
     result = session.handle_command(CommandResult(command=UserCommand.RESTART, is_valid=True))
     assert result["success"]
-    assert session.steps[0].follow_up_history == []
+    assert len(session.steps) == 0  # /restart clears all steps entirely
