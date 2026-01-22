@@ -156,7 +156,7 @@ class RefinementAspect:
         id: Unique identifier for the refinement aspect
         aspect_name: Human-readable refinement aspect name
         aspect_description: Brief description of what this refinement aspect refines
-        system_prompt: User optional system-level prompt defining the AI's role/persona for this refinement aspect
+        system_prompt: DEPRECATED - No longer used. System prompts must be static for LLM caching.
         evaluation_instructions: Developer-based Prompt template for analyzing the query (must include {query})
         examples: Optional example queries for few-shot learning and prompt engineering
         response_format: Expected response structure (optional, for structured responses)
@@ -171,8 +171,9 @@ class RefinementAspect:
     # developer prompt - should focus on analysis logic, not response format (REQUIRED)
     evaluation_instructions: str
     
-    # Optional: System prompt defining AI role/persona for this refinement aspect (if none, use system-level default)
-    # Example: "You are a clinical research expert specializing in population definition."
+    # DEPRECATED: Custom system prompts break LLM prompt caching (system prompt must be static)
+    # All dimension-specific content should go in evaluation_instructions, examples, and aspect_description
+    # which flow through the user prompt template. The global GLOBAL_SYSTEM_PROMPT is now always used.
     system_prompt: Optional[str] = None
 
     # Optional: Example queries for few-shot learning and prompt engineering
@@ -407,20 +408,26 @@ class RefinementAspect:
         """
         Get the system role prompt for this refinement aspect.
         
-        Returns:
-            System role prompt if defined, otherwise a generic default with description
-        """
-        if self.system_prompt and self.system_prompt.strip():
-            return self.system_prompt
+        DEPRECATED: Custom system prompts are no longer supported to enable LLM prompt caching.
+        Always returns GLOBAL_SYSTEM_PROMPT regardless of aspect.system_prompt value.
         
-        # Default system prompt (concise to save tokens) - format template variables
-        try:
-            return GLOBAL_SYSTEM_PROMPT.format(
-                self=self
+        Returns:
+            GLOBAL_SYSTEM_PROMPT (static across all dimensions for caching)
+        """
+        # DEPRECATION: Ignore custom system_prompt to enable caching
+        # Dimension-specific guidance belongs in evaluation_instructions/examples (user prompt)
+        if self.system_prompt and self.system_prompt.strip():
+            import warnings
+            warnings.warn(
+                f"system_prompt for aspect '{self.aspect_name}' is deprecated and ignored. "
+                "Move dimension-specific content to evaluation_instructions and examples. "
+                "System prompts must be static for LLM caching to work.",
+                DeprecationWarning,
+                stacklevel=2
             )
-        except (KeyError, AttributeError):
-            # Fallback if formatting fails
-            return GLOBAL_SYSTEM_PROMPT
+        
+        # Always use global system prompt for caching
+        return GLOBAL_SYSTEM_PROMPT
     
     def get_prompts(self, query: str) -> tuple[str, str]:
         """

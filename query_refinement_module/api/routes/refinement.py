@@ -163,6 +163,7 @@ class SynthesizeQueryResponse(BaseModel):
     query_id: int
     refined_query: str
     used_llm: bool
+    structured_output: Optional[Dict[str, Any]] = None
     metadata: Dict[str, Any]
 
 
@@ -254,7 +255,10 @@ async def _build_next_prompt(manager, session) -> Optional[Dict[str, Any]]:
         
         # No question exists - analyze with LLM to determine if dimension is already clear
         try:
+            import time
+            llm_start = time.time()
             logger.info(f"  -> Generating question via LLM analysis for aspect '{step.refinement_aspect.aspect_name}'")
+            logger.info(f"  -> Aspect ID: {step.refinement_aspect.id}, mode: initial")
             
             # Call LLM to analyze dimension with full context
             analysis_result = await _generate_question_with_retry(
@@ -263,6 +267,9 @@ async def _build_next_prompt(manager, session) -> Optional[Dict[str, Any]]:
                 aspect_id=step.refinement_aspect.id,
                 mode='initial'
             )
+            
+            llm_duration = (time.time() - llm_start) * 1000
+            logger.info(f"  -> LLM call completed in {llm_duration:.2f}ms for aspect '{step.refinement_aspect.aspect_name}'")
             
             # Process the analysis
             status = manager.process_analysis_result(
@@ -1107,6 +1114,57 @@ async def synthesize_refined_query(
     
     refined_query = synthesis_result.get('refined_query', '')
     
+    # Build structured output from synthesis result
+    structured_output = None
+    if synthesis_result.get('detail_values'):
+        # Already parsed by core.py
+        structured_output = {
+            'detail_values': synthesis_result.get('detail_values'),
+            'search_optimized': synthesis_result.get('search_optimized'),
+            'search_filters': synthesis_result.get('search_filters'),
+            'terminology': synthesis_result.get('terminology'),
+            'synthesized_statement': synthesis_result.get('synthesized_statement'),
+        }
+    elif refined_query and (refined_query.startswith('{') or refined_query.startswith('```')):
+        # Try to parse JSON from refined_query string (fallback if core.py parsing failed)
+        try:
+            import json
+            import re
+            
+            # Strip markdown code fences if present
+            json_str = refined_query
+            if json_str.startswith('```'):
+                # Remove opening fence (```json or ```)
+                lines = json_str.split('\n')
+                if lines[0].startswith('```'):
+                    lines = lines[1:]
+                # Remove closing fence
+                if lines and lines[-1].strip().startswith('```'):
+                    lines = lines[:-1]
+                json_str = '\n'.join(lines)
+            
+            # Parse JSON
+            parsed_data = json.loads(json_str)
+            
+            # Extract structured fields
+            structured_output = {
+                'detail_values': parsed_data.get('detail_values'),
+                'search_optimized': parsed_data.get('search_optimized'),
+                'search_filters': parsed_data.get('search_filters'),
+                'terminology': parsed_data.get('terminology'),
+                'synthesized_statement': parsed_data.get('synthesized_statement'),
+            }
+            
+            # Use synthesized_statement as refined_query if available
+            if parsed_data.get('synthesized_statement'):
+                refined_query = parsed_data['synthesized_statement']
+                
+            logger.info("Successfully parsed JSON from refined_query string")
+            
+        except (json.JSONDecodeError, ValueError) as e:
+            logger.warning(f"Failed to parse JSON from refined_query: {e}")
+            # Keep refined_query as-is, structured_output remains None
+    
     # Update database
     update_refined_query(db, request.query_id, refined_query)
     
@@ -1122,6 +1180,7 @@ async def synthesize_refined_query(
             "query_id": request.query_id,
             "used_llm": synthesis_result.get('used_llm', False),
             "refined_query_length": len(refined_query),
+            "has_structured_output": structured_output is not None,
             "duration_ms": round(duration_ms, 2),
         },
     )
@@ -1130,5 +1189,6 @@ async def synthesize_refined_query(
         query_id=request.query_id,
         refined_query=refined_query,
         used_llm=synthesis_result.get('used_llm', False),
+        structured_output=structured_output,
         metadata=synthesis_result.get('metadata', {})
     )

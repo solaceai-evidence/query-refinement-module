@@ -11,6 +11,10 @@ const SynthesisResult = ({ queryId, synthesis }) => {
         metadata: false
     });
 
+    // Debug logging
+    console.log('SynthesisResult rendered with:', { queryId, synthesis });
+    console.log('synthesis.refined_query:', synthesis?.refined_query);
+
     const toggleSection = (section) => {
         setExpandedSections(prev => ({
             ...prev,

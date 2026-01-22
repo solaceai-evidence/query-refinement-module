@@ -2,32 +2,6 @@ mph_dissertation:
   - id: research_domain
     aspect_name: research domain
     aspect_description: the public health topic or health issue under investigation
-    system_prompt:
-      'You are a supportive research advisor helping Master of Public Health
-      (MPH) students refine their dissertation research topics by asking clarifying
-      questions.
-
-      Your Job: Students provide a description of their dissertation research interest
-      (as a question, statement, aim, or paragraph). Clarify the public health topic
-      or health issue under investigation. Focus ONLY on this aspect—ignore other research
-      elements.
-
-
-      Conversation Approach: 1. **Acknowledge first**: Recognize what''s already clear
-      before requesting clarification 2. **Natural dialogue**: Engage conversationally,
-      not like a form or checklist 3. **Their language**: Build on their terminology;
-      don''t impose jargon 4. **Concrete examples**: Offer 2-4 specific MPH-relevant
-      examples they can adapt 5. **Progressive refinement**: Address 1-2 unclear points
-      per turn 6. **Explain value**: Briefly note how clarification will help their
-      research
-
-      Boundaries: - You refine research descriptions, not search literature or write
-      proposals - Keep focus on developing clear, researchable dissertations suitable
-      for MPH programs - If asked about ethics, analysis methods, or supervision, acknowledge
-      importance but note these are outside this tool''s scope
-
-      Tone: Supportive and collaborative. Frame refinement as "developing clarity" not
-      "fixing problems." Students should feel helped, not corrected.'
     evaluation_instructions: |
       ## Evaluation Criteria
       ### STRONG domains:
@@ -159,8 +133,8 @@ mph_dissertation:
     aspect_description:
       what the student specifically wants to investigate, examine,
       or understand about their topic
-    depends_on: 
-    - research_domain
+    depends_on:
+      - research_domain
     evaluation_instructions: '### What you''re evaluating:
 
       Is there a clear investigative direction - what specifically will be studied/examined/understood?
@@ -344,10 +318,12 @@ mph_dissertation:
   - id: population_demographics
     aspect_name: population demographics
     aspect_description: who is being studied and in what context or location
-    depends_on: 
-    - research_domain
-    - research_focus
+    depends_on:
+      - research_domain
+      - research_focus
     evaluation_instructions: '### What you''re evaluating:
+
+     You''re helping MPH students define WHO they''re studying and WHERE/IN WHAT CONTEXT. This grounds abstract research questions in specific, real-world populations and settings.
 
       Are the study population and setting clearly defined with relevant characteristics?
 
@@ -482,9 +458,9 @@ mph_dissertation:
     aspect_name: study design
     aspect_description: the methodological approach and temporal scope of the research
     depends_on:
-    - research_focus
-    - population_demographics
-    - intervention_exposure
+      - research_focus
+      - population_demographics
+      - intervention_exposure
     evaluation_instructions: '### What you''re evaluating:
 
       Is the study design clearly specified and appropriate? Is the timeframe indicated?
@@ -800,10 +776,9 @@ mph_dissertation:
             nutrition knowledge?"
   - id: intervention_exposure
     aspect_name: intervention or exposure
-    aspect_description:
-      the intervention being evaluated or exposure being examined (only applicable for certain research types)
+    aspect_description: the intervention being evaluated or exposure being examined (only applicable for certain research types)
     depends_on:
-    - research_focus
+      - research_focus
     evaluation_instructions: '### When this aspect applies:
 
       - Research focus involves evaluating an intervention''s effectiveness

@@ -950,7 +950,7 @@ class QueryRefinementSession:
         
         return {
             "success": True,
-            "message": f"Skipped: {active.refinement_aspect.aspect_name}. No data will be provided to dependent aspects.",
+            "message": f"Skipped: {active.refinement_aspect.aspect_name}.\nNo specifications from this dimension will be provided to dependent refinement dimensions.",
             "step": active,
         }
     
@@ -985,9 +985,11 @@ class QueryRefinementSession:
         if not active.refinement_aspect_value:
             message += " (no additional details provided)."
 
+        # Important: mark_skipped=False even if no value - user said /done, not /skip
+        # This preserves the distinction for auditing: /done = user decision, /skip = explicit skip
         return self._finalize_active_step(
             active,
-            mark_skipped=None,
+            mark_skipped=False,  # User said "done", not "skip" - preserve audit trail
             success_message=message,
         )
 
@@ -1034,7 +1036,6 @@ class QueryRefinementSession:
         status_lines = [
             "Session Status:",
             f"  Processed: {summary['completed']}/{processed_count} complete",
-            f"  Remaining aspects: {remaining_count}",
             f"  Follow-ups asked: {summary['total_follow_ups']}",
         ]
         
@@ -1317,14 +1318,16 @@ class QueryRefinementManager:
             mode=mode
         )
         
-        # Get system prompt (from aspect or default)
-        system_prompt = aspect.system_prompt or GLOBAL_SYSTEM_PROMPT
-        if "{self.aspect_name}" in system_prompt or "{aspect_name}" in system_prompt:
-            system_prompt = system_prompt.replace("{self.aspect_name}", aspect.aspect_name)
-            system_prompt = system_prompt.replace("{aspect_name}", aspect.aspect_name)
-        if "{self.aspect_description}" in system_prompt or "{aspect_description}" in system_prompt:
-            system_prompt = system_prompt.replace("{self.aspect_description}", aspect.aspect_description)
-            system_prompt = system_prompt.replace("{aspect_description}", aspect.aspect_description)
+        # Always use GLOBAL_SYSTEM_PROMPT for caching (dimension-specific content goes in user prompt)
+        # DEPRECATED: aspect.system_prompt is ignored to enable prompt caching
+        system_prompt = GLOBAL_SYSTEM_PROMPT
+        
+        # Log prompt sizes for performance diagnostics
+        system_prompt_len = len(system_prompt)
+        user_prompt_len = len(user_prompt)
+        total_chars = system_prompt_len + user_prompt_len
+        estimated_tokens = total_chars // 4  # Rough estimate: ~4 chars per token
+        logger.info(f"Prompt sizes for aspect '{aspect_id}' ({mode}) - System: {system_prompt_len} chars, User: {user_prompt_len} chars, Total: {total_chars} chars (~{estimated_tokens} tokens)")
         
         # Call LLM with unified prompt
         response_text, parsed_payload, is_error, error_message = await self._get_llm_response_with_validation(
@@ -1379,6 +1382,12 @@ class QueryRefinementManager:
             # Refinement complete - store final value
             step.refinement_aspect_value = result.refinement_aspect_value
             step.is_complete = True
+            
+            # Log the assembled value for debugging
+            logger.info(
+                f"Dimension complete for '{step.refinement_aspect.aspect_name}' | "
+                f"Assembled value: {result.refinement_aspect_value}"
+            )
             
             return {
                 'complete': True,
@@ -2148,12 +2157,30 @@ class QueryRefinementManager:
             # 1. Not all LLM providers support it consistently (especially Claude via LiteLLM)
             # 2. We handle JSON parsing with markdown stripping as a robust fallback
             # 3. Prompt engineering + validation works reliably across all models
+            import time
+            call_start = time.time()
+            
             result = await self.llm_provider.complete_async(
                 system_prompt=system_prompt,
                 user_prompt=user_prompt,
                 cache_system_prompt=True  # System prompts are static per-aspect
             )
+            
+            call_duration = (time.time() - call_start) * 1000
             response_text = (result.context or "").strip()
+            
+            # Log LLM performance and caching info
+            logger.info(f"LLM call completed in {call_duration:.2f}ms for aspect '{aspect.id}'")
+            
+            # Check if response metadata indicates cache hit (Anthropic-specific)
+            if hasattr(result, 'usage') and result.usage:
+                usage = result.usage if hasattr(result.usage, '__dict__') else {}
+                cache_hit = getattr(usage, 'cache_read_input_tokens', 0) > 0 if hasattr(usage, '__dict__') else False
+                if cache_hit:
+                    logger.info(f"  -> Cache HIT: {getattr(usage, 'cache_read_input_tokens', 0)} tokens read from cache")
+                else:
+                    logger.info(f"  -> Cache MISS: System prompt cached for future requests")
+            
             return response_text, None
             
         except Exception as exc:  # pragma: no cover
@@ -2433,14 +2460,14 @@ class QueryRefinementManager:
         refinement_aspect_values = {}
         for step in session.steps:
             aspect_id = step.refinement_aspect.id
-            if step.refinement_aspect_value is not None:
-                # Use native value (dict/list/str/etc)
+            # Check for non-empty value (None or empty string are considered "no value")
+            if step.refinement_aspect_value is not None and step.refinement_aspect_value != "":
+                # Use native value (dict/list/str/etc) - either extracted from original or from user dialogue
                 refinement_aspect_values[aspect_id] = step.refinement_aspect_value
-            elif step.was_skipped:
+            elif step.was_skipped or (step.is_complete and not step.refinement_aspect_value):
+                # Skipped explicitly (/skip) or completed without value (/done, or auto-complete without extraction)
                 refinement_aspect_values[aspect_id] = "[SKIPPED]"
-            elif not step.follow_up_history and step.is_complete:
-                # Was clear in original query
-                refinement_aspect_values[aspect_id] = "[CLEAR_IN_ORIGINAL]"
+            # else: dimension incomplete - omit from synthesis (shouldn't happen for complete sessions)
 
         if not clarifications and not baseline_summaries:
             duration_ms = (time.time() - start_time) * 1000
@@ -2492,6 +2519,16 @@ class QueryRefinementManager:
             completion_kwargs["temperature"] = temperature
         if max_tokens is not None:
             completion_kwargs["max_tokens"] = max_tokens
+        
+        # Try to use structured output for providers that support it
+        # This works with OpenAI gpt-4o and later, Anthropic Claude Sonnet 4+
+        # For other providers, the prompt already instructs to return JSON
+        try:
+            # Use basic JSON object format (more widely supported)
+            completion_kwargs["response_format"] = {"type": "json_object"}
+        except Exception:
+            # Provider doesn't support response_format, rely on prompt instructions
+            pass
 
         try:
             result = await self.llm_provider.complete_async(
@@ -2512,10 +2549,10 @@ class QueryRefinementManager:
 
         refined_query = (result.context or "").strip()
 
-        # Try to parse as structured JSON response
+        # Try to parse as structured JSON response with robust error handling
         synthesis_response = None
         try:
-            # Strip markdown code fences if present
+            # Strip markdown code fences if present (some models add these)
             cleaned_text = refined_query
             if cleaned_text.startswith("```"):
                 lines = cleaned_text.splitlines()
@@ -2526,11 +2563,40 @@ class QueryRefinementManager:
                         body = body[:-1]
                     cleaned_text = "\n".join(body)
             
+            # Try to find JSON if it's embedded in text
+            if not cleaned_text.startswith("{"):
+                # Look for JSON object start
+                json_start = cleaned_text.find("{")
+                if json_start != -1:
+                    cleaned_text = cleaned_text[json_start:]
+                    # Find matching closing brace
+                    brace_count = 0
+                    for i, char in enumerate(cleaned_text):
+                        if char == "{":
+                            brace_count += 1
+                        elif char == "}":
+                            brace_count -= 1
+                            if brace_count == 0:
+                                cleaned_text = cleaned_text[:i+1]
+                                break
+            
+            # Log the full raw response before JSON parsing to debug malformed JSON
+            logger.info(
+                "Raw synthesis LLM response | Length: %d chars | First 500 chars: %s",
+                len(cleaned_text),
+                cleaned_text[:500]
+            )
+            logger.debug("Full synthesis LLM response:\n%s", cleaned_text)
+            
+            # Parse JSON
             response_data = json.loads(cleaned_text)
+            
+            # Validate with Pydantic model
             synthesis_response = QueryRefinementResponse(**response_data)
             refined_query = synthesis_response.synthesized_statement
+            
             logger.info(
-                "Successfully parsed structured synthesis response"
+                "Successfully parsed and validated structured synthesis response"
             )
             self.trace_emitter.emit(
                 "synthesis_response_parsed",
@@ -2541,18 +2607,43 @@ class QueryRefinementManager:
                     "detail_values_count": len(synthesis_response.detail_values) if synthesis_response.detail_values else 0,
                 }
             )
-        except (json.JSONDecodeError, ValueError) as parse_error:
-            # Fallback to plain text response (backward compatibility)
+        except json.JSONDecodeError as parse_error:
+            # JSON parsing failed - log detailed error
             logger.warning(
-                "Could not parse synthesis response as JSON, using plain text: %s",
-                parse_error
+                "JSON parsing failed: %s at line %d column %d (char %d)",
+                parse_error.msg,
+                parse_error.lineno,
+                parse_error.colno,
+                parse_error.pos
             )
             self.trace_emitter.emit(
                 "synthesis_response_parse_failed",
                 level="warning",
                 metadata={
-                    "error_type": type(parse_error).__name__,
+                    "error_type": "JSONDecodeError",
                     "error_message": str(parse_error),
+                    "error_line": parse_error.lineno,
+                    "error_column": parse_error.colno,
+                    "response_preview": cleaned_text[:200] if cleaned_text else "<empty>",
+                    "response_length": len(cleaned_text) if cleaned_text else 0,
+                }
+            )
+            # Use raw response as fallback
+            if not refined_query or refined_query == cleaned_text:
+                logger.warning("Using original query as fallback due to parsing failure")
+                refined_query = session.original_query
+        except (ValueError, TypeError) as validation_error:
+            # Pydantic validation failed - JSON structure doesn't match schema
+            logger.warning(
+                "Response validation failed: %s",
+                validation_error
+            )
+            self.trace_emitter.emit(
+                "synthesis_response_parse_failed",
+                level="warning",
+                metadata={
+                    "error_type": type(validation_error).__name__,
+                    "error_message": str(validation_error),
                     "response_preview": cleaned_text[:200] if cleaned_text else "<empty>",
                     "response_length": len(cleaned_text) if cleaned_text else 0,
                 }

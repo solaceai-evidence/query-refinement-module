@@ -129,11 +129,20 @@ const Refinement = () => {
             };
             saveSession(sessionData);
 
-            // Add to conversation history
-            setConversationHistory([{
-                type: 'query',
-                content: initialQuery
-            }]);
+            // Add to conversation history - both initial query and first question
+            setConversationHistory([
+                {
+                    type: 'query',
+                    content: initialQuery
+                },
+                ...(response.next_prompt?.question ? [{
+                    type: 'question',
+                    content: response.next_prompt.question,
+                    aspectId: response.next_prompt.aspect_id,
+                    aspectName: response.next_prompt.aspect_name,
+                    timestamp: new Date().toISOString()
+                }] : [])
+            ]);
         } catch (err) {
             logger.error('Failed to start refinement', err, { framework: selectedFramework });
             setError(err.response?.data?.detail || 'Failed to start refinement');
@@ -171,10 +180,12 @@ const Refinement = () => {
         setCommandResult(null); // Clear any previous command result
 
         try {
-            // Add answer or command to history
-            setConversationHistory(prev => [...prev,
-            createHistoryItem(isCommand ? 'command' : 'answer', answer, { aspectId: currentAspectId })
-            ]);
+            // For commands, add to history immediately. For answers, wait until we have the next question.
+            if (isCommand) {
+                setConversationHistory(prev => [...prev,
+                createHistoryItem('command', answer, { aspectId: currentAspectId })
+                ]);
+            }
 
             const response = await refinementService.continueRefinement(
                 sessionId,
@@ -313,7 +324,7 @@ const Refinement = () => {
             } else {
                 console.log('[TRACE] Regular answer response (not a command)');
 
-                // Regular answer response - add question to history if next_prompt exists
+                // Regular answer response - add answer and next question together
                 if (response.next_prompt) {
                     // Validate question exists
                     if (!response.next_prompt.question) {
@@ -324,20 +335,31 @@ const Refinement = () => {
                     }
 
                     if (response.next_prompt.question) {
-                        console.log('[TRACE] Adding next question to history');
+                        console.log('[TRACE] Adding answer and next question to history together');
                         setConversationHistory(prev => [...prev,
+                        // Add the answer first
+                        createHistoryItem('answer', answer, { aspectId: currentAspectId }),
+                        // Then add the next question
                         createHistoryItem('question', response.next_prompt.question, {
                             aspectId: response.next_prompt.aspect_id,
                             aspectName: response.next_prompt.aspect_name
                         })
                         ]);
                     } else {
-                        console.warn('[TRACE] next_prompt.question is null or empty');
+                        console.warn('[TRACE] next_prompt.question is null or empty - adding answer only');
+                        // Add answer even if no question follows
+                        setConversationHistory(prev => [...prev,
+                        createHistoryItem('answer', answer, { aspectId: currentAspectId })
+                        ]);
                     }
                     setCurrentQuestion(response.next_prompt);
                     setCurrentAspectId(response.next_prompt.aspect_id);
                 } else {
-                    console.log('[TRACE] No next_prompt - may trigger synthesis');
+                    console.log('[TRACE] No next_prompt - adding answer and triggering synthesis');
+                    // Add answer before synthesis
+                    setConversationHistory(prev => [...prev,
+                    createHistoryItem('answer', answer, { aspectId: currentAspectId })
+                    ]);
                     setCurrentQuestion(null);
                     setCurrentAspectId(null);
                     await handleSynthesis();
@@ -394,10 +416,15 @@ const Refinement = () => {
         setLoading(true);
         try {
             const result = await refinementService.getSynthesis(queryId);
+            console.log('Synthesis result received:', result);
+            console.log('Synthesis refined_query:', result?.refined_query);
+            console.log('Synthesis structured_output:', result?.structured_output);
             setSynthesis(result);
             setStage('synthesis');
             clearSession(); // Clear saved session after completion
         } catch (err) {
+            console.error('Synthesis error:', err);
+            console.error('Error response:', err.response?.data);
             setError(err.response?.data?.detail || 'Failed to synthesize query');
         } finally {
             setLoading(false);
@@ -456,13 +483,13 @@ const Refinement = () => {
 
                 {stage === 'initial-query' && (
                     <div className="initial-query-form">
-                        <h2>Enter Your Initial Query</h2>
+                        <h2>Describe Your Research Dissertation Topic</h2>
                         <p>Framework: <strong>{selectedFramework}</strong></p>
                         <form onSubmit={handleInitialQuerySubmit}>
                             <textarea
                                 value={initialQuery}
                                 onChange={(e) => setInitialQuery(e.target.value)}
-                                placeholder="Enter your research question or query..."
+                                placeholder="Enter your dissertation topic, research idea, question, or statement..."
                                 rows={6}
                                 disabled={loading}
                             />
@@ -489,24 +516,25 @@ const Refinement = () => {
                 {stage === 'refinement' && (
                     <div className="refinement-interface">
                         <div className="refinement-main">
-                            <div className="conversation-container">
-                                {conversationHistory.length > 0 && (
+                            {conversationHistory.length > 0 && (
+                                <div className="history-panel">
+                                    <div className="history-panel-header">Conversation History</div>
                                     <div className="conversation-history">
                                         {conversationHistory.map((item, index) => {
                                             if (item.type === 'command') {
                                                 return (
                                                     <CommandHistoryItem
-                                                        key={`${item.timestamp} -${index} `}
+                                                        key={`${item.timestamp}-${index}`}
                                                         command={item.content}
                                                         result={item.result}
                                                     />
                                                 );
                                             }
                                             return (
-                                                <div key={`${item.timestamp} -${index} `} className={`history - item ${item.type} `}>
+                                                <div key={`${item.timestamp}-${index}`} className={`history-item ${item.type}`}>
                                                     <div className="history-label">
                                                         {item.type === 'query' ? '📝 Initial Query' :
-                                                            item.type === 'question' ? `❓ Question${item.aspectName ? ` (${item.aspectName})` : ''} ` :
+                                                            item.type === 'question' ? `❓ Question${item.aspectName ? ` (${item.aspectName})` : ''}` :
                                                                 '💬 Your Answer'}
                                                     </div>
                                                     <div className="history-content">{item.content}</div>
@@ -514,8 +542,9 @@ const Refinement = () => {
                                             );
                                         })}
                                     </div>
-                                )}
-                            </div>
+                                </div>
+                            )}
+
                             {currentQuestion && (
                                 <div className="question-input-fixed">
                                     <QuestionRenderer

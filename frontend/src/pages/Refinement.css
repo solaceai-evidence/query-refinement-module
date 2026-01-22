@@ -5,7 +5,7 @@
 
 .refinement-header {
     background: white;
-    padding: 20px 40px;
+    padding: 12px 24px;
     box-shadow: 0 2px 4px rgba(0, 0, 0, 0.1);
     display: flex;
     justify-content: space-between;
@@ -14,7 +14,7 @@
 
 .refinement-header h1 {
     margin: 0;
-    font-size: 24px;
+    font-size: 18px;
     color: #333;
 }
 
@@ -37,7 +37,7 @@
 }
 
 .refinement-content {
-    padding: 40px 20px;
+    padding: 16px 20px;
     max-width: 1400px;
     margin: 0 auto;
 }
@@ -110,23 +110,65 @@
     display: flex;
     justify-content: center;
     align-items: start;
-    height: calc(100vh - 140px);
+    height: calc(100vh - 90px);
 }
 
 .refinement-main {
     display: flex;
     flex-direction: column;
     height: 100%;
-    max-height: calc(100vh - 140px);
+    max-height: calc(100vh - 90px);
     width: 100%;
     max-width: 1200px;
+    gap: 12px;
+}
+
+.history-panel {
+    flex: 0 0 auto;
+    max-height: 40vh;
+    overflow-y: auto;
+    background: white;
+    border-radius: 8px;
+    padding: 12px;
+    box-shadow: 0 2px 8px rgba(0, 0, 0, 0.08);
+    border: 1px solid #e0e4e8;
+}
+
+.history-panel-header {
+    font-size: 11px;
+    font-weight: 600;
+    color: #667eea;
+    text-transform: uppercase;
+    letter-spacing: 0.5px;
+    margin-bottom: 10px;
+    padding-bottom: 8px;
+    border-bottom: 1px solid #e0e4e8;
+}
+
+/* Scrollbar styling for history panel */
+.history-panel::-webkit-scrollbar {
+    width: 6px;
+}
+
+.history-panel::-webkit-scrollbar-track {
+    background: #f1f1f1;
+    border-radius: 3px;
+}
+
+.history-panel::-webkit-scrollbar-thumb {
+    background: #667eea;
+    border-radius: 3px;
+}
+
+.history-panel::-webkit-scrollbar-thumb:hover {
+    background: #5568d3;
 }
 
 .conversation-container {
     flex: 1;
     overflow-y: auto;
     padding-right: 10px;
-    margin-bottom: 20px;
+    margin-bottom: 12px;
 }
 
 /* Scrollbar styling */
@@ -149,28 +191,25 @@
 }
 
 .question-input-fixed {
-    position: sticky;
-    bottom: 0;
-    background: #f5f7fa;
-    padding: 20px;
-    border-top: 2px solid #e0e4e8;
-    border-radius: 12px 12px 0 0;
-    box-shadow: 0 -4px 12px rgba(0, 0, 0, 0.08);
-    z-index: 10;
+    flex: 0 0 auto;
+    background: white;
+    padding: 12px;
+    border-radius: 8px;
+    box-shadow: 0 2px 8px rgba(0, 0, 0, 0.08);
+    border: 1px solid #e0e4e8;
 }
 
 .conversation-history {
     display: flex;
     flex-direction: column;
-    gap: 15px;
-    padding-bottom: 20px;
+    gap: 8px;
 }
 
 .history-item {
     background: white;
-    padding: 20px;
-    border-radius: 12px;
-    box-shadow: 0 2px 8px rgba(0, 0, 0, 0.08);
+    padding: 10px 12px;
+    border-radius: 6px;
+    box-shadow: 0 1px 4px rgba(0, 0, 0, 0.06);
     transition: transform 0.2s ease, box-shadow 0.2s ease;
     animation: fadeInUp 0.3s ease-out;
 }
@@ -208,15 +247,15 @@
 }
 
 .history-label {
-    font-size: 13px;
-    font-weight: 700;
+    font-size: 10px;
+    font-weight: 600;
     color: #555;
     text-transform: uppercase;
-    letter-spacing: 0.8px;
-    margin-bottom: 10px;
+    letter-spacing: 0.5px;
+    margin-bottom: 6px;
     display: flex;
     align-items: center;
-    gap: 6px;
+    gap: 4px;
 }
 
 .history-item.question .history-label {
@@ -229,8 +268,8 @@
 
 .history-content {
     color: #333;
-    line-height: 1.8;
-    font-size: 14px;
+    line-height: 1.5;
+    font-size: 12px;
     white-space: pre-wrap;
     word-wrap: break-word;
 }
