@@ -92,9 +92,13 @@ services:
       QUERY_REFINEMENT_LLM_API_KEY: ${QUERY_REFINEMENT_LLM_API_KEY}
       QUERY_REFINEMENT_LLM_TEMPERATURE: ${QUERY_REFINEMENT_LLM_TEMPERATURE:-0.2}
       
+      # Async Architecture - LLM Concurrency (50 concurrent calls with semaphore)
+      LLM_MAX_CONCURRENT: ${LLM_MAX_CONCURRENT:-50}
+      LLM_CONNECTION_POOL_SIZE: ${LLM_CONNECTION_POOL_SIZE:-100}
+      LLM_KEEPALIVE_CONNECTIONS: ${LLM_KEEPALIVE_CONNECTIONS:-50}
+      
       # Rate Limiting
-      LLM_RATE_LIMIT_RPM: ${LLM_RATE_LIMIT_RPM:-50}
-      LLM_MAX_CONCURRENT: ${LLM_MAX_CONCURRENT:-5}
+      LLM_RATE_LIMIT_RPM: ${LLM_RATE_LIMIT_RPM:-100}
       
       # Server
       WORKERS: ${WORKERS:-4}
@@ -113,6 +117,14 @@ services:
     networks:
       - query-refinement-network
     restart: unless-stopped
+    deploy:
+      resources:
+        limits:
+          cpus: '2.0'
+          memory: 2G
+        reservations:
+          cpus: '0.5'
+          memory: 512M
     # Run database migrations on startup
     command: >
       sh -c "

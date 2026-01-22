@@ -37,7 +37,8 @@ WORKDIR /app
 COPY pyproject.toml poetry.lock* ./
 
 # Install dependencies (no dev dependencies in production)
-RUN poetry install --no-root --no-dev --no-interaction --no-ansi
+RUN poetry install --no-root --no-dev --no-interaction --no-ansi && \
+    poetry run pip install requests
 
 # ============================================================================
 # Runtime Stage: Minimal production image

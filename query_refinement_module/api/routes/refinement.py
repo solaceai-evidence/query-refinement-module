@@ -411,7 +411,7 @@ async def start_refinement(
     if first_step:
         # Use unified approach to generate initial question
         try:
-            result = manager.get_analysis_prompts(
+            result = await manager.get_analysis_prompts(
                 session=session,
                 aspect_id=first_step.refinement_aspect.id,
                 mode='initial'
@@ -498,8 +498,7 @@ async def submit_answer(
     # If session not in Redis, reconstruct from database (fallback)
     if not session:
         logger.warning("Session not found in Redis for query_id=%d, reconstructing from database", query_id)
-        session = await asyncio.to_thread(
-            manager.initialize,
+        session = await manager.initialize(
             db_query.original_query,
             framework,
         )
@@ -608,7 +607,7 @@ async def submit_answer(
     
     # Run follow-up loop to check if aspect is complete
     try:
-        result = manager.run_followup_until_clear(session, aspect_id=active_step.refinement_aspect.id)
+        result = await manager.run_followup_until_clear(session, aspect_id=active_step.refinement_aspect.id)
     except ConnectionError as e:
         raise HTTPException(
             status_code=status.HTTP_503_SERVICE_UNAVAILABLE,
@@ -706,8 +705,7 @@ async def get_refinement_status(
     # Fallback: Reconstruct from database if Redis miss
     if not session:
         logger.warning(f"Session not found in Redis for query_id={query_id}, reconstructing from database")
-        session = await asyncio.to_thread(
-            manager.initialize,
+        session = await manager.initialize(
             db_query.original_query,
             framework,
         )
@@ -781,8 +779,7 @@ async def synthesize_refined_query(
     # If session not in Redis, reconstruct from database (fallback)
     if not session:
         logger.warning("Session not found in Redis for query_id=%d, reconstructing from database", request.query_id)
-        session = await asyncio.to_thread(
-            manager.initialize,
+        session = await manager.initialize(
             db_query.original_query,
             framework,
         )
@@ -809,7 +806,7 @@ async def synthesize_refined_query(
     
     # Synthesize refined query
     try:
-        synthesis_result = manager.synthesize_refined_query(session)
+        synthesis_result = await manager.synthesize_refined_query(session)
     except Exception as e:
         raise HTTPException(
             status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,

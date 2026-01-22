@@ -58,25 +58,16 @@ Initialize a new refinement session.
 {
   "session_id": "550e8400-e29b-41d4-a716-446655440000",
   "summary": {
-    "is_complete": false,
     "total_aspects": 4,
     "aspects_needing_refinement": 2,
     "aspects_clear": 2,
-    "aspects": [
-      {
-        "id": "outcome",
-        "name": "Outcome",
-        "description": "What outcome is being measured",
-        "status": "needs_refinement",
-        "reason": "Stroke is mentioned but not specific...",
-        "clarifying_question": "What specific stroke outcomes are you interested in?"
-      },
-      {
-        "id": "population",
-        "name": "Population",
-        "status": "clear"
-      }
-    ]
+    "is_complete": false
+  },
+  "next_prompt": {
+    "aspect_id": "outcome",
+    "aspect_name": "Outcome",
+    "question": "What specific stroke outcomes are you interested in?",
+    "description": "What outcome is being measured"
   }
 }
 ```
@@ -236,12 +227,12 @@ sequenceDiagram
 
 ## Session TTL Recommendations
 
-| Use Case | Recommended TTL | Storage |
-|----------|-----------------|---------|
-| Interactive UI | 1-2 hours | Redis |
-| Batch Processing | 5-10 minutes | Redis |
-| Long-running | 24 hours | PostgreSQL |
-| Testing | No expiry | File/Memory |
+| Use Case         | Recommended TTL | Storage     |
+| ---------------- | --------------- | ----------- |
+| Interactive UI   | 1-2 hours       | Redis       |
+| Batch Processing | 5-10 minutes    | Redis       |
+| Long-running     | 24 hours        | PostgreSQL  |
+| Testing          | No expiry       | File/Memory |
 
 ## Security Considerations
 

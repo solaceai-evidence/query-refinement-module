@@ -222,7 +222,7 @@ class StubManager:
             "status": "complete"
         }
 
-    def synthesize_refined_query(self, session):
+    async def synthesize_refined_query(self, session):
         return {"refined_query": "refined", "used_llm": True}
 
 
