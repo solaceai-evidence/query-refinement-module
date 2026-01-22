@@ -48,7 +48,7 @@ pico_advanced:
     Tone: Supportive and collaborative. Be efficient—don''t over-explain.
 
     '
-  refinement_instructions: "### Objective:\nEvaluate whether the population demographic\
+  evaluation_instructions: "### Objective:\nEvaluate whether the population demographic\
     \ specification is clearly and specifically defined for:\n1. Study replication\n\
     2. Results generalization\n3. Ethical review requirements\n\n### Evaluation Criteria:\n\
     \     Assess clarity and completeness across: \n     - Age (explicit range or\
@@ -163,7 +163,7 @@ pico_advanced:
     Tone: Supportive and collaborative. Be efficient—don''t over-explain.
 
     '
-  refinement_instructions: "### Objective:\n  Determine whether the geographic location\
+  evaluation_instructions: "### Objective:\n  Determine whether the geographic location\
     \ and setting are sufficiently specified to support:\n    - replication\n    -\
     \ generalization\n    - feasibility\n\n### Considerations\n  1. Country/Region/City:\
     \ Is a specific place named (e.g., \"Spain\", \"New York City\", \"West Africa\"\
@@ -262,7 +262,7 @@ pico_advanced:
     Tone: Supportive and collaborative. Be efficient—don''t over-explain.
 
     '
-  refinement_instructions: "### Objective\n  Evaluate whether the clinical profile\
+  evaluation_instructions: "### Objective\n  Evaluate whether the clinical profile\
     \ and health status specification enables:\n    - Accurate patient identification\
     \ and recruitment\n    - Appropriate treatment selection\n    - Valid outcome\
     \ interpretation\n\n### Clinical Profile Dimensions\n  1. Primary Condition/Diagnosis\n\
@@ -381,7 +381,7 @@ pico_advanced:
     Tone: Supportive and collaborative. Be efficient—don''t over-explain.
 
     '
-  refinement_instructions: "### Objective\n Analyze whether the intervention is sufficiently\
+  evaluation_instructions: "### Objective\n Analyze whether the intervention is sufficiently\
     \ detailed for study replication\n\n### Assess clarity and completeness across\
     \ the following Intervention Dimensions\n 1. Intervention Type\n    - Pharmacological\
     \ (drug, biologic)\n    - Procedural (surgery, device)\n    - Behavioral (therapy,\
@@ -497,7 +497,7 @@ pico_advanced:
     Tone: Supportive and collaborative. Be efficient—don''t over-explain.
 
     '
-  refinement_instructions: "### Objective\n  Analyze whether an appropriate comparison/control\
+  evaluation_instructions: "### Objective\n  Analyze whether an appropriate comparison/control\
     \ group is specified.\n  Key Questions:\n  - Is a comparator mentioned?\n  - Is\
     \ the comparator appropriate for the research question?\n  - Is the comparator\
     \ as well-defined as the intervention?\n  - Are ethical considerations addressed\
@@ -600,7 +600,7 @@ pico_advanced:
     Tone: Supportive and collaborative. Be efficient—don''t over-explain.
 
     '
-  refinement_instructions: "### What you are evaluating:\n  Analyze whether primary\
+  evaluation_instructions: "### What you are evaluating:\n  Analyze whether primary\
     \ outcomes are adequately specified.\n\n### Outcome Dimensions\n  1. Outcome Type:\n\
     \    - Clinical outcomes (mortality, morbidity)\n    - Surrogate/biomarker outcomes\n\
     \    - Patient-reported outcomes (PROs)\n    - Functional outcomes\n    - Safety/adverse\
@@ -715,7 +715,7 @@ pico_advanced:
     Tone: Supportive and collaborative. Be efficient—don''t over-explain.
 
     '
-  refinement_instructions: "### What you are evaluating:\nAssess whether the study\
+  evaluation_instructions: "### What you are evaluating:\nAssess whether the study\
     \ design and methodological context are sufficiently specified\n\n### Design Dimensions\n\
     \n1. Study Type\n  - RCT (parallel, crossover, cluster)\n  - Observational (cohort,\
     \ case-control)\n  - Systematic review/meta-analysis\n  - Pragmatic trial\n\n\

@@ -27,7 +27,7 @@ mph_dissertation:
 
     ## Tone: Supportive and collaborative. Frame refinement as "developing clarity"
     not "fixing problems". Students should feel helped, not corrected.'
-  refinement_instructions: "### What you are evaluating: \n  Is the public health\
+  evaluation_instructions: "### What you are evaluating: \n  Is the public health\
     \ topic/health issue clear and appropriately scoped?\n\n### STRONG domains: \n\
     - Identify a specific health issue or public health topic\n- Bounded enough for\
     \ dissertation research (not entire fields)\n- Recognized public health relevance\n\
@@ -151,7 +151,7 @@ mph_dissertation:
   aspect_name: research focus
   aspect_description: what the student specifically wants to investigate, examine,
     or understand about their topic
-  refinement_instructions: '### What you''re evaluating:
+  evaluation_instructions: '### What you''re evaluating:
 
     Is there a clear investigative direction - what specifically will be studied/examined/understood?
 
@@ -311,7 +311,7 @@ mph_dissertation:
 - id: statement
   aspect_name: population and setting
   aspect_description: who is being studied and in what context or location
-  refinement_instructions: '### What you''re evaluating:
+  evaluation_instructions: '### What you''re evaluating:
 
     Are the study population and setting clearly defined with relevant characteristics?
 
@@ -431,7 +431,7 @@ mph_dissertation:
   aspect_name: study design and timeframe
   aspect_description: the methodological approach (study design) and temporal scope
     (timeframe ) of the research.
-  refinement_instructions: '### What you''re evaluating:
+  evaluation_instructions: '### What you''re evaluating:
 
     Is the study design clearly specified and appropriate? Is the timeframe indicated?
 
@@ -573,7 +573,7 @@ mph_dissertation:
   aspect_name: statements of interest
   aspect_description: what will be measured, observed, or understood as results of
     the research
-  refinement_instructions: '### What you''re evaluating:
+  evaluation_instructions: '### What you''re evaluating:
 
     Are the statements/results of interest clearly specified and measurable?
 
@@ -712,7 +712,7 @@ mph_dissertation:
   aspect_name: intervention or exposure
   aspect_description: the intervention being evaluated or exposure being examined
     (only applicable for certain research types)
-  refinement_instructions: '### When this aspect applies:
+  evaluation_instructions: '### When this aspect applies:
 
     - Research focus involves evaluating an intervention''s effectiveness
 

@@ -6,7 +6,7 @@ pico_clinical_research:
     Ensures demographic characteristics, conditions, and inclusion/exclusion criteria are clearly defined.'
   allow_follow_up: true
   max_follow_ups: 2
-  refinement_instructions: "\nAnalyze whether the following research query adequately specifies the target population or if\
+  evaluation_instructions: "\nAnalyze whether the following research query adequately specifies the target population or if\
     \ additional clarification is needed.\n\n## QUERY TO ANALYZE: {input}\n\n## CONTEXT: Why Population Specification Matters\n\
     \nClear population definition is critical for:\n- Study reproducibility and generalizability\n- Appropriate patient recruitment\
     \ and enrollment\n- Accurate interpretation of research findings\n- Comparison across different studies\n- Ethical considerations\
@@ -72,7 +72,7 @@ pico_clinical_research:
     - therapeutics
     - surgery
     - clinical_trials
-  refinement_instructions: '# TASK: Intervention Specification Analysis
+  evaluation_instructions: '# TASK: Intervention Specification Analysis
 
 
     You are a clinical pharmacology and therapeutics expert with deep knowledge of treatment protocols
@@ -317,7 +317,7 @@ pico_clinical_research:
     - methodology
     - bioethics
     - clinical_trials
-  refinement_instructions: '# TASK: Comparison/Control Group Analysis
+  evaluation_instructions: '# TASK: Comparison/Control Group Analysis
 
 
     You are a clinical research methodologist specializing in comparative effectiveness research
@@ -594,7 +594,7 @@ pico_clinical_research:
     - epidemiology
     - patient_reported_outcomes
     - clinical_trials
-  refinement_instructions: '# TASK: Outcome Measures Analysis
+  evaluation_instructions: '# TASK: Outcome Measures Analysis
 
 
     You are a clinical outcomes researcher with expertise in endpoint selection, measurement,

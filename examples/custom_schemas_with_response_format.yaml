@@ -14,7 +14,7 @@ my_enhanced_schema:
     metadata:
       domain: general
       priority: high
-    refinement_instructions: 'Analyze the query for temporal clarity:
+    evaluation_instructions: 'Analyze the query for temporal clarity:
 
 
       Query: {input}
@@ -70,7 +70,7 @@ my_enhanced_schema:
     metadata:
       domain: general
       priority: medium
-    refinement_instructions: 'Analyze geographic scope in the query:
+    evaluation_instructions: 'Analyze geographic scope in the query:
 
 
       Query: {input}
@@ -129,7 +129,7 @@ my_enhanced_schema:
       examples:
         - Which field perspective interests you most?
         - Is this interdisciplinary or focused on one discipline?
-    refinement_instructions:
+    evaluation_instructions:
       'Determine if the research field needs clarification:
 
 
@@ -192,7 +192,7 @@ pico_enhanced:
       domain: biomedical
       framework: PICO
       priority: critical
-    refinement_instructions: 'Analyze population specification in the statement:
+    evaluation_instructions: 'Analyze population specification in the statement:
 
 
       Statement: {input}
@@ -251,7 +251,7 @@ pico_enhanced:
       domain: biomedical
       framework: PICO
       priority: critical
-    refinement_instructions: |
+    evaluation_instructions: |
       Analyze intervention specification:
 
 
@@ -296,7 +296,7 @@ pico_enhanced:
       domain: biomedical
       framework: PICO
       priority: critical
-    refinement_instructions: 'Analyze outcome specification:
+    evaluation_instructions: 'Analyze outcome specification:
 
 
       Query: {input}
@@ -348,7 +348,7 @@ legal_enhanced:
     metadata:
       domain: legal
       priority: critical
-    refinement_instructions: 'Analyze jurisdiction specification:
+    evaluation_instructions: 'Analyze jurisdiction specification:
 
 
       Query: {input}
@@ -404,7 +404,7 @@ legal_enhanced:
     metadata:
       domain: legal
       priority: high
-    refinement_instructions:
+    evaluation_instructions:
       "Determine legal source type needed:\n\nQuery: {input}\n\
       \n**Source Type Categories:**\n- Primary law:\n  * Case law (judicial opinions)\n\
       \  * Statutes/codes\n  * Regulations\n  * Constitutional provisions\n- Secondary\
@@ -435,7 +435,7 @@ structured_response_example:
     metadata:
       domain: academic_research
       priority: high
-    refinement_instructions: "Analyze methodology specification:
+    evaluation_instructions: "Analyze methodology specification:
 
 
       Query: {input}

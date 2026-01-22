@@ -13,7 +13,7 @@ pico:
         clarifying_question: Specific question to ask when clarification is required
     allow_follow_up: true
     max_follow_ups: 2
-    refinement_instructions: "Analyze the query: {input}
+    evaluation_instructions: "Analyze the query: {input}
 
 
       Determine if the population/participants are clearly defined.
@@ -40,7 +40,7 @@ pico:
         clarifying_question: Specific question to ask about intervention details
     allow_follow_up: true
     max_follow_ups: 2
-    refinement_instructions: "Analyze the query: {input}
+    evaluation_instructions: "Analyze the query: {input}
 
       Determine if the intervention/treatment/exposure is clearly specified.
 
@@ -67,7 +67,7 @@ pico:
         clarifying_question: Focused follow-up question about the comparison
     allow_follow_up: true
     max_follow_ups: 1
-    refinement_instructions: "Analyze the query: {input}
+    evaluation_instructions: "Analyze the query: {input}
 
 
       Determine if there is a comparison/control condition specified or implied.
@@ -100,7 +100,7 @@ pico:
         clarifying_question: Specific question to refine outcome details
     allow_follow_up: true
     max_follow_ups: 2
-    refinement_instructions: "Analyze the statement: {input}
+    evaluation_instructions: "Analyze the statement: {input}
 
       Determine if the outcome/endpoint is clearly specified.
 

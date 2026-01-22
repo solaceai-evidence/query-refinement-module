@@ -4,7 +4,7 @@ pico_population_subdimensions:
     aspect_description:
       "Clarifies basic demographic characteristics: age, gender, ethnicity,
       geographic location."
-    refinement_instructions: "# TASK: Demographic Characteristics Analysis
+    evaluation_instructions: "# TASK: Demographic Characteristics Analysis
 
       Analyze if the query specifies the target population's basic demographic profile.
 
@@ -83,7 +83,7 @@ pico_population_subdimensions:
           example_question: Are you focusing on a specific depression subtype? (e.g., major depressive disorder, persistent depressive disorder)
     allow_follow_up: true
     max_follow_ups: 2
-    refinement_instructions: "# TASK: Clinical Condition Analysis
+    evaluation_instructions: "# TASK: Clinical Condition Analysis
 
       Analyze if the query adequately specifies the target clinical condition.
 
@@ -125,7 +125,7 @@ pico_population_subdimensions:
             moderate, severe)
     allow_follow_up: true
     max_follow_ups: 2
-    refinement_instructions: "# TASK: Comorbidities and Medical History Analysis
+    evaluation_instructions: "# TASK: Comorbidities and Medical History Analysis
 
 
       Analyze if the query specifies relevant comorbidities and medical history.
@@ -155,7 +155,7 @@ pico_population_subdimensions:
           has: One specific inclusion criterion (BP threshold)
           missing: Other eligibility criteria unclear
           example_question: Are there other inclusion or exclusion criteria to specify?
-    refinement_instructions: "# TASK: Eligibility Criteria Analysis
+    evaluation_instructions: "# TASK: Eligibility Criteria Analysis
 
 
       Analyze if the query specifies eligibility criteria clearly.
@@ -189,7 +189,7 @@ pico_population_subdimensions:
           has: Special population (pediatric) identified
           missing: No setting or recruitment context specified
           example_question: What is the study setting? (e.g., hospitals, clinics, community)
-    refinement_instructions: "# TASK: Special Populations and Setting Analysis
+    evaluation_instructions: "# TASK: Special Populations and Setting Analysis
 
 
       Analyze if the query specifies special population considerations and study setting.
