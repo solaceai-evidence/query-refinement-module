@@ -232,8 +232,7 @@ async def run_cli(manager: QueryRefinementManager, framework_name: str, query: s
                 # Run follow-up analysis
                 print("\n🔄 Analyzing your answer...")
                 try:
-                    result = await asyncio.to_thread(
-                        manager.run_followup_until_clear,
+                    result = await manager.run_followup_until_clear(
                         session,
                         aspect_id=step.refinement_aspect.id,
                         max_rounds=5
@@ -267,7 +266,7 @@ async def run_cli(manager: QueryRefinementManager, framework_name: str, query: s
             print(f"Original: {session.original_query}\n")
 
             try:
-                synthesis = manager.synthesize_refined_query(session)
+                synthesis = await manager.synthesize_refined_query(session)
             except ValueError as exc:
                 print(f"Error: {exc}")
             except Exception as exc:

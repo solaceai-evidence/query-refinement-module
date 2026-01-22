@@ -70,8 +70,8 @@ class InitializeResponse(BaseModel):
     # {
     #   "is_complete": false,
     #   "total_aspects": 4,
-    #   "incomplete_count": 2,
-    #   "complete_count": 2,
+    #   "aspects_needing_refinement": 2,
+    #   "aspects_clear": 2,
     #   "aspects": [
     #     {
     #       "id": "outcome",
