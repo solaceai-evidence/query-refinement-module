@@ -63,8 +63,7 @@ class QueryRefinementService:
         session_id = request.session_id or self._session_id_factory()
         
         # Always use sequential initialization (no parallel mode)
-        session = await asyncio.to_thread(
-            self._manager.initialize_sequential,
+        session = self._manager.initialize_sequential(
             request.original_query,
             request.refinement_framework,
         )

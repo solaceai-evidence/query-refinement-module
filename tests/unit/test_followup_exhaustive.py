@@ -1,4 +1,6 @@
  
+import pytest
+
 from query_refinement_module.core import (
     QueryAspectRefiner,
     QueryRefinementSession,
@@ -34,13 +36,14 @@ def test_followup_with_null_response():
     assert refiner.refinement_aspect_value_as_str is None
 
 
-def test_followup_manager_edge_cases():
+@pytest.mark.asyncio
+async def test_followup_manager_edge_cases():
     aspect = make_aspect(allow_follow_up=True)
     manager = QueryRefinementManager(llm_provider=None, query_analyzer=None)
     session = QueryRefinementSession(original_query="query")
     step = session.add_step(aspect)
     step.is_complete = True
-    result = manager.run_followup_until_clear(session)
+    result = await manager.run_followup_until_clear(session)
     assert result["is_complete"]
     assert result["rounds"] == 0
 
