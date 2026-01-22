@@ -364,31 +364,135 @@ class ConcurrentSessionStorage(SessionStorageInterface):
 
     async def save_session_async(self, session_id: str, session: Any) -> None:
         """Async-safe session save with per-session locking."""
+        import time
+        from query_refinement_module.tracing import get_request_id, get_trace_id
+        
+        request_id = get_request_id() or "-"
+        trace_id = get_trace_id() or "-"
+        start_time = time.time()
+        
+        logger.info(
+            "Saving session to storage",
+            extra={
+                "request_id": request_id,
+                "trace_id": trace_id,
+                "session_id": session_id,
+                "backend": self._backend.__class__.__name__,
+            },
+        )
+        
         lock = self._get_lock(session_id)
         async with lock:
             # Run the synchronous storage operation in a thread pool
             await asyncio.to_thread(self._backend.save_session, session_id, session)
+        
+        duration_ms = (time.time() - start_time) * 1000
+        logger.info(
+            "Session saved to storage",
+            extra={
+                "request_id": request_id,
+                "trace_id": trace_id,
+                "session_id": session_id,
+                "duration_ms": round(duration_ms, 2),
+            },
+        )
 
     async def load_session_async(self, session_id: str) -> Any:
         """Async-safe session load with per-session locking."""
+        import time
+        from query_refinement_module.tracing import get_request_id, get_trace_id
+        
+        request_id = get_request_id() or "-"
+        trace_id = get_trace_id() or "-"
+        start_time = time.time()
+        
+        logger.info(
+            "Loading session from storage",
+            extra={
+                "request_id": request_id,
+                "trace_id": trace_id,
+                "session_id": session_id,
+                "backend": self._backend.__class__.__name__,
+            },
+        )
+        
         lock = self._get_lock(session_id)
         async with lock:
             # Run the synchronous storage operation in a thread pool
-            return await asyncio.to_thread(self._backend.load_session, session_id)
+            result = await asyncio.to_thread(self._backend.load_session, session_id)
+        
+        duration_ms = (time.time() - start_time) * 1000
+        logger.info(
+            "Session loaded from storage",
+            extra={
+                "request_id": request_id,
+                "trace_id": trace_id,
+                "session_id": session_id,
+                "found": result is not None,
+                "duration_ms": round(duration_ms, 2),
+            },
+        )
+        
+        return result
 
     async def delete_session_async(self, session_id: str) -> None:
         """Async-safe session delete with per-session locking and cleanup."""
+        import time
+        from query_refinement_module.tracing import get_request_id, get_trace_id
+        
+        request_id = get_request_id() or "-"
+        trace_id = get_trace_id() or "-"
+        start_time = time.time()
+        
+        logger.info(
+            "Deleting session from storage",
+            extra={
+                "request_id": request_id,
+                "trace_id": trace_id,
+                "session_id": session_id,
+                "backend": self._backend.__class__.__name__,
+            },
+        )
+        
         lock = self._get_lock(session_id)
         async with lock:
             # Run the synchronous storage operation in a thread pool
             await asyncio.to_thread(self._backend.delete_session, session_id)
         # Clean up the lock after deletion
         self._cleanup_lock(session_id)
+        
+        duration_ms = (time.time() - start_time) * 1000
+        logger.info(
+            "Session deleted from storage",
+            extra={
+                "request_id": request_id,
+                "trace_id": trace_id,
+                "session_id": session_id,
+                "duration_ms": round(duration_ms, 2),
+            },
+        )
 
     async def session_exists_async(self, session_id: str) -> bool:
         """Async-safe session existence check."""
+        from query_refinement_module.tracing import get_request_id, get_trace_id
+        
+        request_id = get_request_id() or "-"
+        trace_id = get_trace_id() or "-"
+        
         # No locking needed for existence checks (read-only, idempotent)
-        return await asyncio.to_thread(self._backend.session_exists, session_id)
+        exists = await asyncio.to_thread(self._backend.session_exists, session_id)
+        
+        logger.debug(
+            "Session existence check",
+            extra={
+                "request_id": request_id,
+                "trace_id": trace_id,
+                "session_id": session_id,
+                "exists": exists,
+            },
+        )
+        
+        return exists
 
     # Synchronous interface methods (for backward compatibility)
     def save_session(self, session_id: str, session: Any) -> None:
@@ -434,7 +538,8 @@ class LiteLLMProvider(LLMProviderInterface):
         self._default_completion_kwargs = default_completion_kwargs or {}
         
         # Semaphore to limit concurrent LLM calls (prevent overwhelming server)
-        self._semaphore = asyncio.Semaphore(50)  # Max 50 concurrent calls
+        self._max_concurrent = 50  # Store for logging
+        self._semaphore = asyncio.Semaphore(self._max_concurrent)  # Max 50 concurrent calls
         
         # Initialize persistent HTTP client for connection pooling (if httpx available)
         self._http_client: Optional[Any] = None
@@ -459,11 +564,71 @@ class LiteLLMProvider(LLMProviderInterface):
         **kwargs: Any,
     ) -> LLMCompletionResult:
         """Complete a prompt asynchronously with automatic retry on rate limit errors."""
+        import time
+        from query_refinement_module.tracing import get_request_id, get_trace_id
+        
+        request_id = get_request_id() or "-"
+        trace_id = get_trace_id() or "-"
+        
+        # Log semaphore queue depth before acquiring
+        queue_depth = self._semaphore._value  # Available permits
+        max_concurrent = self._max_concurrent  # Total permits
+        waiting = max_concurrent - queue_depth  # Estimated waiting tasks
+        
+        logger.info(
+            "Attempting to acquire LLM semaphore",
+            extra={
+                "request_id": request_id,
+                "trace_id": trace_id,
+                "semaphore_available": queue_depth,
+                "semaphore_max": max_concurrent,
+                "estimated_waiting": waiting,
+            },
+        )
+        
+        # Track wait time for semaphore acquisition
+        wait_start = time.time()
+        
         # Apply semaphore to limit concurrent calls
         async with self._semaphore:
-            return await self._complete_async_internal(
-                user_prompt, system_prompt, model, temperature, max_tokens, **kwargs
-            )
+            wait_time_ms = (time.time() - wait_start) * 1000
+            
+            # Log acquisition with wait time if significant
+            if wait_time_ms > 100:  # Log if waited more than 100ms
+                logger.info(
+                    "Acquired LLM semaphore after wait",
+                    extra={
+                        "request_id": request_id,
+                        "trace_id": trace_id,
+                        "wait_time_ms": round(wait_time_ms, 2),
+                        "semaphore_available_after": self._semaphore._value,
+                    },
+                )
+            else:
+                logger.debug(
+                    "Acquired LLM semaphore immediately",
+                    extra={
+                        "request_id": request_id,
+                        "trace_id": trace_id,
+                        "semaphore_available_after": self._semaphore._value,
+                    },
+                )
+            
+            try:
+                result = await self._complete_async_internal(
+                    user_prompt, system_prompt, model, temperature, max_tokens, **kwargs
+                )
+                return result
+            finally:
+                # Log semaphore release
+                logger.debug(
+                    "Released LLM semaphore",
+                    extra={
+                        "request_id": request_id,
+                        "trace_id": trace_id,
+                        "semaphore_available_after_release": self._semaphore._value + 1,
+                    },
+                )
     
     async def _complete_async_internal(
         self,

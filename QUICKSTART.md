@@ -1,6 +1,6 @@
-# 🚀 Quick Start Guide - Query Refinement Web App
+# Quick Start Guide - Query Refinement Web App
 
-Get the web application running in under 5 minutes!
+Get the web application running
 
 ## Prerequisites
 

@@ -342,6 +342,24 @@ async def start_refinement(
     
     Aspects are refined sequentially in dependency order, one at a time.
     """
+    import time
+    from query_refinement_module.tracing import generate_request_id, set_request_id, get_request_id
+    
+    # Generate and set request ID for tracing
+    request_id = generate_request_id()
+    set_request_id(request_id)
+    
+    start_time = time.time()
+    logger.info(
+        "API: Starting refinement workflow",
+        extra={
+            "request_id": request_id,
+            "user_id": current_user.id,
+            "framework_name": request.framework_name,
+            "query_length": len(request.original_query),
+        },
+    )
+    
     # Get the refinement framework
     try:
         framework = get_framework(request.framework_name)
@@ -443,6 +461,19 @@ async def start_refinement(
     # Save session to Redis for subsequent requests
     session_manager.save_session(db_query.id, session)
     
+    duration_ms = (time.time() - start_time) * 1000
+    logger.info(
+        "API: Refinement workflow started successfully",
+        extra={
+            "request_id": request_id,
+            "user_id": current_user.id,
+            "session_id": db_session.id,
+            "query_id": db_query.id,
+            "total_aspects": summary["total_aspects"],
+            "duration_ms": round(duration_ms, 2),
+        },
+    )
+    
     return StartRefinementResponse(
         session_id=db_session.id,
         query_id=db_query.id,
@@ -475,6 +506,27 @@ async def submit_answer(
     - Control commands (/skip, /done): Mark current step complete and advance
     - Synthesis command (/submit, /end): Flag session ready for synthesis
     """
+    import time
+    from query_refinement_module.tracing import generate_request_id, set_request_id, get_request_id
+    
+    # Generate and set request ID for tracing
+    request_id = generate_request_id()
+    set_request_id(request_id)
+    
+    start_time = time.time()
+    is_command = request.answer.strip().startswith('/')
+    
+    logger.info(
+        "API: Submitting answer",
+        extra={
+            "request_id": request_id,
+            "user_id": current_user.id,
+            "query_id": query_id,
+            "is_command": is_command,
+            "answer_length": len(request.answer),
+        },
+    )
+    
     # Get query and verify ownership
     db_query = get_query(db, query_id)
     if not db_query:
@@ -667,6 +719,19 @@ async def submit_answer(
     # Save updated session back to Redis
     session_manager.save_session(query_id, session)
     
+    duration_ms = (time.time() - start_time) * 1000
+    logger.info(
+        "API: Answer submitted successfully",
+        extra={
+            "request_id": request_id,
+            "user_id": current_user.id,
+            "query_id": query_id,
+            "is_command": is_command,
+            "is_complete": is_complete,
+            "duration_ms": round(duration_ms, 2),
+        },
+    )
+    
     return SubmitAnswerResponse(
         refinement_step_id=db_step.id,
         followup_id=db_followup.id,
@@ -686,6 +751,23 @@ async def get_refinement_status(
     """
     Get the current status of a refinement workflow.
     """
+    import time
+    from query_refinement_module.tracing import generate_request_id, set_request_id, get_request_id
+    
+    # Generate and set request ID for tracing
+    request_id = generate_request_id()
+    set_request_id(request_id)
+    
+    start_time = time.time()
+    logger.info(
+        "API: Getting refinement status",
+        extra={
+            "request_id": request_id,
+            "user_id": current_user.id,
+            "query_id": query_id,
+        },
+    )
+    
     db_query = get_query(db, query_id)
     if not db_query:
         raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Query not found")
@@ -735,6 +817,19 @@ async def get_refinement_status(
     summary = manager.get_initialization_summary(session)
     active_step = session.get_active_step()
     
+    duration_ms = (time.time() - start_time) * 1000
+    logger.info(
+        "API: Refinement status retrieved",
+        extra={
+            "request_id": request_id,
+            "user_id": current_user.id,
+            "query_id": query_id,
+            "is_complete": session.is_complete(),
+            "current_aspect": active_step.refinement_aspect.aspect_name if active_step else None,
+            "duration_ms": round(duration_ms, 2),
+        },
+    )
+    
     return GetRefinementStatusResponse(
         query_id=query_id,
         original_query=db_query.original_query,
@@ -759,6 +854,23 @@ async def synthesize_refined_query(
     This combines the original query with all refinement clarifications
     into a well-formed refined query.
     """
+    import time
+    from query_refinement_module.tracing import generate_request_id, set_request_id, get_request_id
+    
+    # Generate and set request ID for tracing
+    request_id_val = generate_request_id()
+    set_request_id(request_id_val)
+    
+    start_time = time.time()
+    logger.info(
+        "API: Synthesizing refined query",
+        extra={
+            "request_id": request_id_val,
+            "user_id": current_user.id,
+            "query_id": request.query_id,
+        },
+    )
+    
     db_query = get_query(db, request.query_id)
     if not db_query:
         raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Query not found")
@@ -820,6 +932,19 @@ async def synthesize_refined_query(
     
     # Delete session from Redis (workflow complete)
     session_manager.delete_session(request.query_id)
+    
+    duration_ms = (time.time() - start_time) * 1000
+    logger.info(
+        "API: Query synthesis completed",
+        extra={
+            "request_id": request_id_val,
+            "user_id": current_user.id,
+            "query_id": request.query_id,
+            "used_llm": synthesis_result.get('used_llm', False),
+            "refined_query_length": len(refined_query),
+            "duration_ms": round(duration_ms, 2),
+        },
+    )
     
     return SynthesizeQueryResponse(
         query_id=request.query_id,

@@ -1121,7 +1121,25 @@ class QueryRefinementManager:
         
         Uses unified prompt system for consistent handling of follow-up conversations.
         """
+        import time
+        from query_refinement_module.tracing import get_request_id, get_trace_id
+        
+        start_time = time.time()
+        request_id = get_request_id() or "-"
+        trace_id = get_trace_id() or "-"
+        
         step = self._get_target_step(session, aspect_id)
+        logger.info(
+            "Starting follow-up analysis loop",
+            extra={
+                "request_id": request_id,
+                "trace_id": trace_id,
+                "aspect_id": aspect_id or "current",
+                "max_rounds": max_rounds,
+                "aspect_complete": step.is_complete,
+            },
+        )
+        
         rounds = 0
         max_followups = max_rounds if max_rounds is not None else step.refinement_aspect.max_follow_ups
 
@@ -1176,6 +1194,20 @@ class QueryRefinementManager:
                 step.is_complete = True
                 break
 
+        duration_ms = (time.time() - start_time) * 1000
+        logger.info(
+            "Completed follow-up analysis loop",
+            extra={
+                "request_id": request_id,
+                "trace_id": trace_id,
+                "aspect_id": aspect_id or "current",
+                "rounds_completed": rounds,
+                "max_rounds": max_followups,
+                "is_complete": step.is_complete,
+                "duration_ms": round(duration_ms, 2),
+            },
+        )
+        
         return self._build_followup_result(step, step.refinement_aspect_value_as_str, rounds)
 
     def _get_target_step(
@@ -2369,6 +2401,24 @@ class QueryRefinementManager:
             Dictionary containing the refined query, whether the LLM was invoked,
             and supporting metadata.
         """
+        import time
+        from query_refinement_module.tracing import get_request_id, get_trace_id
+        
+        start_time = time.time()
+        request_id = get_request_id() or "-"
+        trace_id = get_trace_id() or "-"
+        
+        logger.info(
+            "Starting query synthesis",
+            extra={
+                "request_id": request_id,
+                "trace_id": trace_id,
+                "model": model,
+                "temperature": temperature,
+                "max_tokens": max_tokens,
+                "has_additional_guidance": additional_guidance is not None,
+            },
+        )
 
         clarifications, baseline_summaries = self._gather_refinement_details(session)
 
@@ -2386,8 +2436,14 @@ class QueryRefinementManager:
                 refinement_aspect_values[aspect_id] = "[CLEAR_IN_ORIGINAL]"
 
         if not clarifications and not baseline_summaries:
+            duration_ms = (time.time() - start_time) * 1000
             logger.info(
-                "Skipping LLM synthesis: no refinement clarifications or summaries recorded."
+                "Skipping LLM synthesis: no refinement clarifications or summaries recorded.",
+                extra={
+                    "request_id": request_id,
+                    "trace_id": trace_id,
+                    "duration_ms": round(duration_ms, 2),
+                },
             )
             return {
                 "refined_query": session.original_query,
@@ -2504,6 +2560,23 @@ class QueryRefinementManager:
                 "baseline_count": len(baseline_summaries),
                 "response_length": len(refined_query),
                 "structured_response": synthesis_response is not None,
+            },
+        )
+
+        duration_ms = (time.time() - start_time) * 1000
+        logger.info(
+            "Completed query synthesis",
+            extra={
+                "request_id": request_id,
+                "trace_id": trace_id,
+                "duration_ms": round(duration_ms, 2),
+                "used_llm": True,
+                "clarification_count": len(clarifications),
+                "baseline_count": len(baseline_summaries),
+                "response_length": len(refined_query),
+                "structured_response": synthesis_response is not None,
+                "prompt_tokens": result.metadata.get("prompt_tokens", 0) if result.metadata else 0,
+                "completion_tokens": result.metadata.get("completion_tokens", 0) if result.metadata else 0,
             },
         )
 
