@@ -445,14 +445,16 @@ def test_session_back_restart_status_and_list():
     back_success = session._go_back()
     assert back_success["success"]
     assert back_success["step_index"] == 0
-    assert not step_b.follow_up_history  # Cleared on revisit
+    # step_b is removed from session (truncated), not just history cleared
+    assert len(session.steps) == 1
+    assert session.steps[0].refinement_aspect.id == "a"
 
     status = session._get_status()
     assert "Session Status" in status["message"]
-    assert status["summary"]["total_steps"] == 2
+    assert status["summary"]["total_steps"] == 1  # step_b was truncated
 
     step_list = session._list_steps()
-    assert "Refinement Steps" in step_list["message"]
+    assert "Processed Steps" in step_list["message"]
 
     restart = session._restart()
     assert restart["success"]

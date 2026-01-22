@@ -279,10 +279,11 @@ def test_dependency_context_fallback_chain():
     step2.add_follow_up("Q", "Raw answer")
     step2.is_complete = True
     
-    # Test Priority 5: skipped
+    # Test Priority 5: skipped - should be EXCLUDED from context entirely
     aspect3 = make_aspect(aspect_id="a3", name="A3", description="D3")
     step3 = session.add_step(aspect3)
     step3.was_skipped = True
+    step3.is_complete = True
     
     # Target aspect depends on all
     target = make_aspect(aspect_id="target", depends_on=["a1", "a2", "a3"])
@@ -292,7 +293,8 @@ def test_dependency_context_fallback_chain():
     
     assert context["a1"]["value"] == "Synthesized value"
     assert context["a2"]["value"] == "Raw answer"
-    assert "declined to provide" in context["a3"]["value"]
+    # Skipped aspects are excluded from context (not included with "declined" message)
+    assert "a3" not in context
 
 
 # ---------------------------------------------------------------------------
@@ -363,7 +365,8 @@ def test_get_prompts_handles_missing_description():
 # Test 4: Final Synthesis Prompt Enhancement
 # ---------------------------------------------------------------------------
 
-def test_synthesis_prompt_includes_quality_requirements():
+@pytest.mark.asyncio
+async def test_synthesis_prompt_includes_quality_requirements():
     """Verify synthesize_refined_query includes enhanced quality instructions."""
     aspect = make_aspect(aspect_id="pop", name="Population")
     llm = StubLLMProvider(responses=["Refined output"])
@@ -375,7 +378,7 @@ def test_synthesis_prompt_includes_quality_requirements():
     step.add_follow_up("Q", "Well, probably 18-65 years old")
     step.is_complete = True
     
-    result = manager.synthesize_refined_query(session)
+    result = await manager.synthesize_refined_query(session)
     
     # Check that quality requirements were in the prompt
     assert len(llm.calls) == 1
