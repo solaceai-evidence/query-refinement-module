@@ -285,7 +285,7 @@ class SessionManager:
             "was_skipped": step.was_skipped,
             "needs_refinement_rationale": step.needs_refinement_rationale,
             "refinement_question": step.refinement_question,
-            "initial_summary": step.initial_summary
+            "refinement_aspect_value": step.refinement_aspect_value
         }
     
     def _deserialize_session(
@@ -327,7 +327,7 @@ class SessionManager:
                 was_skipped=step_data.get("was_skipped", False),
                 needs_refinement_rationale=step_data.get("needs_refinement_rationale"),
                 refinement_question=step_data.get("refinement_question"),
-                initial_summary=step_data.get("initial_summary")
+                refinement_aspect_value=step_data.get("refinement_aspect_value")
             )
             
             session.steps.append(step)

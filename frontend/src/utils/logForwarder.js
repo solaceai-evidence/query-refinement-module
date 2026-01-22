@@ -14,7 +14,7 @@
  */
 
 import { getRequestId, getTraceId } from './logger';
-import authService from './auth';
+import { authUtils } from './auth';
 
 const API_ENDPOINT = '/api/logs/frontend';
 const BATCH_SIZE = 100;
@@ -210,7 +210,7 @@ class FrontendLogForwarder {
         }
 
         // Don't send if not authenticated
-        const token = authService.getToken();
+        const token = authUtils.getToken();
         if (!token) {
             console.debug('FrontendLogForwarder: Not authenticated, skipping log forwarding');
             this.logQueue = []; // Clear queue since we can't send

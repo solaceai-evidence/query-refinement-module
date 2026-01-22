@@ -106,7 +106,7 @@ fi
 
 # Start backend in background with Poetry
 echo -e "${BLUE}[7/7] Starting backend API...${NC}"
-poetry run uvicorn query_refinement_module.api.main:app --reload --host 0.0.0.0 --port 8000 > backend.log 2>&1 &
+poetry run uvicorn query_refinement_module.api.main:app --host 0.0.0.0 --port 8000 > backend.log 2>&1 &
 BACKEND_PID=$!
 echo -e "${GREEN}Backend started (PID: $BACKEND_PID)${NC}"
 echo "  API: http://localhost:8000"

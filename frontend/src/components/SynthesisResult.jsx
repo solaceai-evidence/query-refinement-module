@@ -5,11 +5,22 @@ import './SynthesisResult.css';
 const SynthesisResult = ({ queryId, synthesis }) => {
     const [comment, setComment] = useState('');
     const [feedbackSubmitted, setFeedbackSubmitted] = useState(false);
+    const [expandedSections, setExpandedSections] = useState({
+        refinedQuery: true,
+        structuredOutput: true,
+        metadata: false
+    });
+
+    const toggleSection = (section) => {
+        setExpandedSections(prev => ({
+            ...prev,
+            [section]: !prev[section]
+        }));
+    };
 
     const handleFeedbackSubmit = async (e) => {
         e.preventDefault();
         try {
-            // Send feedback without rating (research-focused comments only)
             await refinementService.submitFeedback(queryId, null, comment);
             setFeedbackSubmitted(true);
         } catch (error) {
@@ -17,8 +28,10 @@ const SynthesisResult = ({ queryId, synthesis }) => {
         }
     };
 
-    const copyToClipboard = () => {
-        navigator.clipboard.writeText(synthesis.refined_query);
+    const copyToClipboard = (text, label = 'text') => {
+        navigator.clipboard.writeText(text);
+        // Could add toast notification here
+        console.log(`Copied ${label} to clipboard`);
     };
 
     const exportAsJson = () => {
@@ -27,9 +40,61 @@ const SynthesisResult = ({ queryId, synthesis }) => {
         const url = URL.createObjectURL(blob);
         const a = document.createElement('a');
         a.href = url;
-        a.download = `query-${queryId}.json`;
+        a.download = `query-refinement-${queryId}.json`;
         a.click();
         URL.revokeObjectURL(url);
+    };
+
+    // Render structured data in a readable format
+    const renderStructuredData = (data, depth = 0) => {
+        if (data === null || data === undefined) {
+            return <span className="json-null">null</span>;
+        }
+
+        if (typeof data === 'boolean') {
+            return <span className="json-boolean">{data.toString()}</span>;
+        }
+
+        if (typeof data === 'number') {
+            return <span className="json-number">{data}</span>;
+        }
+
+        if (typeof data === 'string') {
+            return <span className="json-string">"{data}"</span>;
+        }
+
+        if (Array.isArray(data)) {
+            if (data.length === 0) return <span className="json-empty">[]</span>;
+
+            return (
+                <div className="json-array" style={{ marginLeft: `${depth * 20}px` }}>
+                    {data.map((item, index) => (
+                        <div key={index} className="json-array-item">
+                            <span className="json-index">[{index}]</span>
+                            {renderStructuredData(item, depth + 1)}
+                        </div>
+                    ))}
+                </div>
+            );
+        }
+
+        if (typeof data === 'object') {
+            const entries = Object.entries(data);
+            if (entries.length === 0) return <span className="json-empty">{'{}'}</span>;
+
+            return (
+                <div className="json-object" style={{ marginLeft: `${depth * 20}px` }}>
+                    {entries.map(([key, value]) => (
+                        <div key={key} className="json-property">
+                            <span className="json-key">{key}:</span>
+                            {renderStructuredData(value, depth + 1)}
+                        </div>
+                    ))}
+                </div>
+            );
+        }
+
+        return <span>{String(data)}</span>;
     };
 
     return (
@@ -37,31 +102,62 @@ const SynthesisResult = ({ queryId, synthesis }) => {
             <h2>✓ Refinement Complete</h2>
 
             <div className="result-section">
-                <h3>Refined Query</h3>
-                <div className="refined-query">
-                    {synthesis.refined_query}
+                <div className="section-header" onClick={() => toggleSection('refinedQuery')}>
+                    <h3>Refined Query</h3>
+                    <span className="toggle-icon">{expandedSections.refinedQuery ? '−' : '+'}</span>
                 </div>
-                <div className="result-actions">
-                    <button onClick={copyToClipboard} className="btn-secondary">
-                        Copy to Clipboard
-                    </button>
-                    <button onClick={exportAsJson} className="btn-secondary">
-                        Export as JSON
-                    </button>
-                </div>
+                {expandedSections.refinedQuery && (
+                    <>
+                        <div className="refined-query">
+                            {synthesis.refined_query}
+                        </div>
+                        <div className="result-actions">
+                            <button onClick={() => copyToClipboard(synthesis.refined_query, 'refined query')} className="btn-secondary">
+                                📋 Copy Query
+                            </button>
+                            <button onClick={exportAsJson} className="btn-secondary">
+                                💾 Export JSON
+                            </button>
+                        </div>
+                    </>
+                )}
             </div>
 
-            {synthesis.metadata && (
+            {synthesis.structured_output && (
                 <div className="result-section">
-                    <h3>Metadata</h3>
-                    <div className="metadata">
-                        {Object.entries(synthesis.metadata).map(([key, value]) => (
-                            <div key={key} className="metadata-item">
-                                <span className="metadata-key">{key}:</span>
-                                <span className="metadata-value">{JSON.stringify(value)}</span>
-                            </div>
-                        ))}
+                    <div className="section-header" onClick={() => toggleSection('structuredOutput')}>
+                        <h3>Structured Research Output</h3>
+                        <span className="toggle-icon">{expandedSections.structuredOutput ? '−' : '+'}</span>
                     </div>
+                    {expandedSections.structuredOutput && (
+                        <>
+                            <div className="structured-output">
+                                {renderStructuredData(synthesis.structured_output)}
+                            </div>
+                            <div className="result-actions">
+                                <button
+                                    onClick={() => copyToClipboard(JSON.stringify(synthesis.structured_output, null, 2), 'structured output')}
+                                    className="btn-secondary"
+                                >
+                                    📋 Copy JSON
+                                </button>
+                            </div>
+                        </>
+                    )}
+                </div>
+            )}
+
+            {synthesis.metadata && Object.keys(synthesis.metadata).length > 0 && (
+                <div className="result-section">
+                    <div className="section-header" onClick={() => toggleSection('metadata')}>
+                        <h3>Metadata</h3>
+                        <span className="toggle-icon">{expandedSections.metadata ? '−' : '+'}</span>
+                    </div>
+                    {expandedSections.metadata && (
+                        <div className="metadata">
+                            {renderStructuredData(synthesis.metadata)}
+                        </div>
+                    )}
                 </div>
             )}
 

@@ -170,6 +170,57 @@ class SynthesizeQueryResponse(BaseModel):
 # Utility Functions
 # ==========================================
 
+async def _generate_question_with_retry(
+    manager,
+    session,
+    aspect_id: str,
+    mode: str = 'initial',
+    max_retries: int = 1
+):
+    """
+    Generate question with retry logic and exponential backoff.
+    
+    Args:
+        manager: QueryRefinementManager instance
+        session: QueryRefinementSession instance
+        aspect_id: ID of the aspect to generate question for
+        mode: 'initial' or 'followup'
+        max_retries: Maximum number of retry attempts (default: 1)
+    
+    Returns:
+        DimensionEvaluationResponse from LLM
+    
+    Raises:
+        Exception: If all retry attempts fail
+    """
+    last_error = None
+    
+    for attempt in range(max_retries + 1):
+        try:
+            if attempt > 0:
+                # Exponential backoff: 2^attempt seconds
+                delay = 2 ** attempt
+                logger.info(f"Retry attempt {attempt}/{max_retries} after {delay}s delay for aspect {aspect_id}")
+                await asyncio.sleep(delay)
+            
+            result = await manager.get_analysis_prompts(
+                session=session,
+                aspect_id=aspect_id,
+                mode=mode
+            )
+            return result
+            
+        except Exception as e:
+            last_error = e
+            logger.warning(f"LLM call failed (attempt {attempt + 1}/{max_retries + 1}): {e}")
+            
+            if attempt >= max_retries:
+                raise last_error
+    
+    # Should never reach here, but for type safety
+    raise last_error if last_error else Exception("Question generation failed")
+
+
 def _build_next_prompt(session) -> Optional[Dict[str, Any]]:
     """
     Build the next prompt from the next unrefined aspect in dependency order.
@@ -182,13 +233,24 @@ def _build_next_prompt(session) -> Optional[Dict[str, Any]]:
         logger.info("  -> No unrefined aspects remaining, returning None")
         return None
     
+    # Validate question exists, generate fallback if missing
+    question = step.refinement_question
+    if not question:
+        logger.warning(
+            f"Question is None for aspect '{step.refinement_aspect.aspect_name}', generating fallback"
+        )
+        question = (
+            step.refinement_aspect.aspect_description 
+            or f"Please provide details about {step.refinement_aspect.aspect_name}"
+        )
+        step.refinement_question = question
+    
     result = {
         "aspect_id": step.refinement_aspect.id,
         "aspect_name": step.refinement_aspect.aspect_name,
-        "question": step.refinement_question,
-        "description": step.refinement_aspect.aspect_description,
+        "question": question,
     }
-    logger.info(f"  -> Built prompt for '{result['aspect_name']}', question: '{result['question'][:100] if result['question'] else 'None'}...'")
+    logger.info(f"  -> Built prompt for '{result['aspect_name']}', question: '{result['question'][:100]}...")
     return result
 
 
@@ -424,29 +486,44 @@ async def start_refinement(
             aspect_name=step.refinement_aspect.aspect_name
         )
     
-    # Generate first question on-demand using get_next_unrefined_aspect
-    first_step = session.get_next_unrefined_aspect()
-    if first_step:
-        # Use unified approach to generate initial question
+    # Generate question on-demand, looping until we find an aspect that needs refinement
+    max_attempts = len(session.steps)  # Prevent infinite loop
+    attempts = 0
+    current_step = session.get_next_unrefined_aspect()
+    
+    while current_step and attempts < max_attempts:
+        attempts += 1
         try:
-            result = await manager.get_analysis_prompts(
+            # Generate question with retry logic
+            result = await _generate_question_with_retry(
+                manager=manager,
                 session=session,
-                aspect_id=first_step.refinement_aspect.id,
+                aspect_id=current_step.refinement_aspect.id,
                 mode='initial'
             )
             
             # Process the result
-            status = manager.process_analysis_result(
+            analysis_status = manager.process_analysis_result(
                 session=session,
-                aspect_id=first_step.refinement_aspect.id,
+                aspect_id=current_step.refinement_aspect.id,
                 result=result
             )
             
-            # If complete, move to next aspect
-            if status['complete']:
-                first_step = session.get_next_unrefined_aspect()
+            # If not complete, we have a question to ask - break
+            if not analysis_status['complete']:
+                break
+                
+            # If complete, move to next aspect and continue loop
+            current_step = session.get_next_unrefined_aspect()
+            
         except Exception as e:
-            logger.error(f"Error generating first question: {e}", exc_info=True)
+            logger.error(f"Error generating question for aspect {current_step.refinement_aspect.aspect_name}: {e}", exc_info=True)
+            # Generate fallback question using description
+            current_step.refinement_question = (
+                current_step.refinement_aspect.aspect_description 
+                or f"Please provide details about {current_step.refinement_aspect.aspect_name}"
+            )
+            break
     
     # Get summary (will show all aspects as not yet analyzed)
     summary = {
@@ -705,16 +782,59 @@ async def submit_answer(
     next_prompt = None
     if not is_complete:
         # Still need follow-up on same aspect
-        # Read the question from the step object, NOT from result dict
         next_prompt = {
             "aspect_id": active_step.refinement_aspect.id,
             "aspect_name": active_step.refinement_aspect.aspect_name,
-            "question": active_step.refinement_question or "",
-            "description": active_step.refinement_aspect.aspect_description,
+            "question": active_step.refinement_question or active_step.refinement_aspect.aspect_description or "",
         }
     else:
-        # Move to next aspect
-        next_prompt = _build_next_prompt(session)
+        # Move to next aspect - generate question on-demand with retry logic
+        next_step = session.get_next_unrefined_aspect()
+        if next_step:
+            try:
+                # Generate initial question for next aspect with retry
+                question_result = await _generate_question_with_retry(
+                    manager=manager,
+                    session=session,
+                    aspect_id=next_step.refinement_aspect.id,
+                    mode='initial'
+                )
+                
+                # Process the result to update the step
+                analysis_status = manager.process_analysis_result(
+                    session=session,
+                    aspect_id=next_step.refinement_aspect.id,
+                    result=question_result
+                )
+                
+                # If this aspect is also complete, try next one
+                if analysis_status['complete']:
+                    next_step = session.get_next_unrefined_aspect()
+                    if next_step:
+                        question_result = await _generate_question_with_retry(
+                            manager=manager,
+                            session=session,
+                            aspect_id=next_step.refinement_aspect.id,
+                            mode='initial'
+                        )
+                        manager.process_analysis_result(
+                            session=session,
+                            aspect_id=next_step.refinement_aspect.id,
+                            result=question_result
+                        )
+                
+                # Build prompt with the generated question
+                next_prompt = _build_next_prompt(session)
+                
+            except Exception as e:
+                logger.error(f"Error generating next question: {e}", exc_info=True)
+                # Generate fallback question
+                if next_step:
+                    next_step.refinement_question = (
+                        next_step.refinement_aspect.aspect_description 
+                        or f"Please provide details about {next_step.refinement_aspect.aspect_name}"
+                    )
+                next_prompt = _build_next_prompt(session)
     
     # Save updated session back to Redis
     session_manager.save_session(query_id, session)

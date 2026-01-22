@@ -16,22 +16,13 @@ const CommandButtons = ({ onCommand, disabled }) => {
     const controlCommands = getCommandsByCategory('control').filter(
         ({ command }) => command !== USER_COMMANDS.SUBMIT // Filter out submit, we'll add it separately
     );
-    const navigationCommands = getCommandsByCategory('navigation').filter(
-        ({ command }) => command !== USER_COMMANDS.GOTO // Filter out goto, handled separately
-    );
+    const navigationCommands = getCommandsByCategory('navigation');
 
     // Add submit command explicitly
     controlCommands.push({
         command: USER_COMMANDS.SUBMIT,
         metadata: COMMAND_METADATA[USER_COMMANDS.SUBMIT]
     });
-
-    const handleGoto = () => {
-        const stepNum = prompt('Enter step number to jump to:');
-        if (stepNum && !isNaN(stepNum)) {
-            onCommand(`${USER_COMMANDS.GOTO} ${stepNum}`);
-        }
-    };
 
     return (
         <div className="command-buttons">
@@ -89,15 +80,6 @@ const CommandButtons = ({ onCommand, disabled }) => {
                                 <span className="command-text">{metadata.label}</span>
                             </button>
                         ))}
-                        <button
-                            className="command-btn"
-                            onClick={handleGoto}
-                            disabled={disabled}
-                            title={COMMAND_METADATA[USER_COMMANDS.GOTO].hint}
-                        >
-                            <span className="command-icon">{COMMAND_METADATA[USER_COMMANDS.GOTO].icon}</span>
-                            <span className="command-text">{COMMAND_METADATA[USER_COMMANDS.GOTO].label}</span>
-                        </button>
                     </div>
                 </div>
             </div>

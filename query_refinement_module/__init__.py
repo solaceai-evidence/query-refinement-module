@@ -33,7 +33,6 @@ The module is organized into several layers:
 
 __version__ = "0.1.0"
 
-from .cli import build_manager as build_cli_manager, main as cli_main, run_cli
 from .core import QueryRefinementManager, QueryRefinementSession
 from .providers import (
     FileTracingProvider,

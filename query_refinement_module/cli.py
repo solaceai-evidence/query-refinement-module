@@ -96,14 +96,14 @@ async def run_cli(manager: QueryRefinementManager, framework_name: str, query: s
     print("="*80)
     
     # Use sequential initialization (no upfront analysis)
-    print("\n🔄 Initializing session...")
+    print("\n Initializing session...")
     session = manager.initialize_sequential(query, framework)
     print(f"✓ Session ready with {len(session.steps)} aspects to refine\n")
 
     print("="*80)
     print("INSTRUCTIONS")
     print("="*80)
-    print("• Answer each question to refine the aspect")
+    print("• Answer each question to clarify details on the research dimensions associated with your input")
     print("• Commands: /help, /status, /back, /skip, /done, /end")
     print("• Press Ctrl+C to exit at any time")
     print("="*80 + "\n")
@@ -136,7 +136,7 @@ async def run_cli(manager: QueryRefinementManager, framework_name: str, query: s
                 print(f"\n{context_text}\n")
 
             # Generate initial question for this aspect using unified approach
-            print("🔄 Generating question...\n")
+            print(" Generating clarifying question...\n")
             try:
                 result = await manager.get_analysis_prompts(
                     session=session,
@@ -162,7 +162,7 @@ async def run_cli(manager: QueryRefinementManager, framework_name: str, query: s
                 question = result.next_question
                 
             except Exception as e:
-                print(f"❌ Error: {e}")
+                print(f" Error: {e}")
                 print(f"Skipping aspect {header}...")
                 step.was_skipped = True
                 step.is_complete = True
@@ -200,7 +200,7 @@ async def run_cli(manager: QueryRefinementManager, framework_name: str, query: s
                     # If /clear was used, regenerate the question
                     if payload.get("regenerate_question"):
                         try:
-                            print("\n🔄 Regenerating question...")
+                            print("\n Regenerating question...")
                             # Use unified approach to regenerate
                             mode = 'followup' if step.follow_up_history else 'initial'
                             result = await manager.get_analysis_prompts(
@@ -221,7 +221,7 @@ async def run_cli(manager: QueryRefinementManager, framework_name: str, query: s
                                 question = result.next_question
                                 print(f"\n{question}\n")
                         except Exception as e:
-                            print(f"❌ Error regenerating question: {e}")
+                            print(f" Error regenerating question: {e}")
                     continue
 
                 # Record answer
@@ -230,7 +230,7 @@ async def run_cli(manager: QueryRefinementManager, framework_name: str, query: s
                 step.add_follow_up(question=question, response=user_input)
                 
                 # Run follow-up analysis
-                print("\n🔄 Analyzing your answer...")
+                print("\n Analyzing your answer...")
                 try:
                     result = await manager.run_followup_until_clear(
                         session,
@@ -251,7 +251,7 @@ async def run_cli(manager: QueryRefinementManager, framework_name: str, query: s
                         print(f"\n{question}\n")
                         
                 except Exception as e:
-                    print(f"❌ Error during analysis: {e}")
+                    print(f" Error during analysis: {e}")
                     print(f"Marking {header} as complete with current answer.")
                     step.is_complete = True
                     break
@@ -309,7 +309,7 @@ async def run_cli(manager: QueryRefinementManager, framework_name: str, query: s
 
 def parse_args(argv: Optional[list[str]] = None) -> argparse.Namespace:
     parser = argparse.ArgumentParser(description="Interactive CLI for query refinement testing.")
-    parser.add_argument("--framework", "-f", help="Name of the framework to load", required=False)
+    parser.add_argument("--framework", "-f", help="Name of the refinement framework to load", required=False)
     parser.add_argument("--query", "-q", help="Original query to refine", required=False)
     parser.add_argument("--list-frameworks", action="store_true", help="List available frameworks and exit")
     parser.add_argument("--trace", action="store_true", help="Enable verbose console tracing")

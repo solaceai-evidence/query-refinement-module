@@ -2,7 +2,6 @@ import { useState, useEffect } from 'react';
 import { useNavigate } from 'react-router-dom';
 import FrameworkSelector from '../components/FrameworkSelector';
 import QuestionRenderer from '../components/QuestionRenderer';
-import AspectStatusPanel from '../components/AspectStatusPanel';
 import SynthesisResult from '../components/SynthesisResult';
 import CommandButtons from '../components/CommandButtons';
 import CommandHistoryItem from '../components/CommandHistoryItem';
@@ -106,8 +105,16 @@ const Refinement = () => {
             logUserAction('session_started', {
                 framework: selectedFramework,
                 query_length: initialQuery.length,
-                aspect_count: response.summary?.aspects?.length || 0
+                aspect_count: response.summary?.aspects || 0
             });
+
+            // Validate question exists
+            if (response.next_prompt && !response.next_prompt.question) {
+                console.warn('[Refinement] Question is missing from next_prompt, may show fallback text', {
+                    aspectId: response.next_prompt.aspect_id,
+                    aspectName: response.next_prompt.aspect_name
+                });
+            }
 
             setCurrentQuestion(response.next_prompt);
             setCurrentAspectId(response.next_prompt?.aspect_id);
@@ -144,6 +151,13 @@ const Refinement = () => {
         const isCommand = isUserCommand(answer);
 
         logger.debug('handleAnswer called', { answer, isCommand, sessionId, queryId });
+
+        // Handle /restart command locally without calling backend
+        if (answer.trim() === '/restart') {
+            logger.info('Restart command - clearing local state');
+            handleStartOver();
+            return;
+        }
 
         // Validate required data
         if (!sessionId || !queryId) {
@@ -301,6 +315,14 @@ const Refinement = () => {
 
                 // Regular answer response - add question to history if next_prompt exists
                 if (response.next_prompt) {
+                    // Validate question exists
+                    if (!response.next_prompt.question) {
+                        console.warn('[Refinement] Question missing in answer response', {
+                            aspectId: response.next_prompt.aspect_id,
+                            aspectName: response.next_prompt.aspect_name
+                        });
+                    }
+
                     if (response.next_prompt.question) {
                         console.log('[TRACE] Adding next question to history');
                         setConversationHistory(prev => [...prev,
@@ -466,9 +488,6 @@ const Refinement = () => {
 
                 {stage === 'refinement' && (
                     <div className="refinement-interface">
-                        <div className="refinement-sidebar">
-                            <AspectStatusPanel aspects={aspects} />
-                        </div>
                         <div className="refinement-main">
                             <div className="conversation-container">
                                 {conversationHistory.length > 0 && (
@@ -497,10 +516,10 @@ const Refinement = () => {
                                     </div>
                                 )}
                             </div>
-                            {currentQuestion && currentQuestion.question && (
+                            {currentQuestion && (
                                 <div className="question-input-fixed">
                                     <QuestionRenderer
-                                        question={currentQuestion.question}
+                                        question={currentQuestion.question || 'Please wait while we generate your question...'}
                                         onAnswer={handleAnswer}
                                         loading={loading}
                                     />
@@ -511,11 +530,11 @@ const Refinement = () => {
                                 </div>
                             )}
                         </div>
-                    </div>
-                )}
 
-                {stage === 'synthesis' && synthesis && (
-                    <SynthesisResult queryId={queryId} synthesis={synthesis} />
+                        {stage === 'synthesis' && synthesis && (
+                            <SynthesisResult queryId={queryId} synthesis={synthesis} />
+                        )}
+                    </div>
                 )}
             </main>
         </div>

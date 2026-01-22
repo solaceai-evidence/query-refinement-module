@@ -19,8 +19,30 @@
     margin-bottom: 20px;
 }
 
+.section-header {
+    display: flex;
+    justify-content: space-between;
+    align-items: center;
+    cursor: pointer;
+    user-select: none;
+    margin-bottom: 15px;
+}
+
+.section-header:hover {
+    opacity: 0.8;
+}
+
+.section-header h3 {
+    margin: 0;
+}
+
+.toggle-icon {
+    font-size: 24px;
+    font-weight: bold;
+    color: #667eea;
+}
+
 .result-section h3 {
-    margin: 0 0 15px 0;
     color: #333;
     font-size: 18px;
 }
@@ -34,6 +56,71 @@
     color: #333;
     border-left: 4px solid #667eea;
     margin-bottom: 15px;
+    white-space: pre-wrap;
+    word-wrap: break-word;
+}
+
+.structured-output {
+    background: #f8f9fa;
+    padding: 20px;
+    border-radius: 5px;
+    font-family: 'Consolas', 'Monaco', 'Courier New', monospace;
+    font-size: 14px;
+    line-height: 1.6;
+    color: #333;
+    border-left: 4px solid #28a745;
+    margin-bottom: 15px;
+    overflow-x: auto;
+}
+
+.json-object,
+.json-array {
+    margin: 4px 0;
+}
+
+.json-property {
+    margin: 4px 0;
+    display: flex;
+    gap: 8px;
+}
+
+.json-key {
+    color: #0066cc;
+    font-weight: 600;
+}
+
+.json-string {
+    color: #d14;
+}
+
+.json-number {
+    color: #099;
+}
+
+.json-boolean {
+    color: #905;
+    font-weight: bold;
+}
+
+.json-null {
+    color: #999;
+    font-style: italic;
+}
+
+.json-empty {
+    color: #999;
+}
+
+.json-array-item {
+    margin: 4px 0;
+    display: flex;
+    gap: 8px;
+}
+
+.json-index {
+    color: #666;
+    font-weight: 600;
+    min-width: 40px;
 }
 
 .result-actions {

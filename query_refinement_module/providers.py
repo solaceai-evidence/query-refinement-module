@@ -658,6 +658,9 @@ class LiteLLMProvider(LLMProviderInterface):
         completion_kwargs.setdefault("temperature", temperature)
         if max_tokens is not None and "max_tokens" not in completion_kwargs:
             completion_kwargs["max_tokens"] = max_tokens
+        
+        # Explicitly disable streaming for non-streaming calls
+        completion_kwargs["stream"] = False
 
         # Get current request context for tracing
         request_id = get_request_id()
@@ -670,6 +673,7 @@ class LiteLLMProvider(LLMProviderInterface):
                 "model": target_model,
                 "temperature": completion_kwargs.get("temperature"),
                 "max_tokens": completion_kwargs.get("max_tokens"),
+                "stream": completion_kwargs.get("stream"),
                 "request_id": request_id,
                 "trace_id": trace_id,
             },
@@ -681,6 +685,10 @@ class LiteLLMProvider(LLMProviderInterface):
         
         for attempt in range(max_retries + 1):
             try:
+                # Track LLM call timing
+                import time
+                llm_start = time.time()
+                
                 # Use async acompletion 
                 response = await litellm.acompletion(
                     model=target_model,
@@ -690,12 +698,18 @@ class LiteLLMProvider(LLMProviderInterface):
                     client=self._http_client,  # Use persistent HTTP client if available
                     **completion_kwargs,
                 )
+                
+                llm_duration = (time.time() - llm_start) * 1000  # Convert to milliseconds
 
-                # Type guard: ensure response is a dict, not a stream wrapper
-                if not isinstance(response, dict):
+                # Convert ModelResponse to dict if needed (litellm sometimes returns ModelResponse objects)
+                if hasattr(response, 'model_dump'):
+                    response = response.model_dump()
+                elif hasattr(response, 'dict'):
+                    response = response.dict()
+                elif not isinstance(response, dict):
                     raise TypeError(
                         f"Expected dict response from litellm.acompletion, got {type(response).__name__}. "
-                        "Stream mode should not be enabled for this call."
+                        f"Stream setting was: {completion_kwargs.get('stream')}"
                     )
 
                 message = response["choices"][0]["message"].get("content", "")
@@ -713,12 +727,24 @@ class LiteLLMProvider(LLMProviderInterface):
                     "response_id": response.get("id"),
                     "prompt_tokens": usage.get("prompt_tokens") if usage else None,
                     "completion_tokens": usage.get("completion_tokens") if usage else None,
+                    "llm_duration_ms": round(llm_duration, 2),
                     "request_id": request_id,
                     "trace_id": trace_id,
                 }
                 
                 if rate_limit_info:
                     metadata["rate_limit_info"] = rate_limit_info
+                
+                logger.info(
+                    "LLM completion successful",
+                    extra={
+                        "llm_duration_ms": round(llm_duration, 2),
+                        "total_tokens": total_tokens,
+                        "model": target_model,
+                        "request_id": request_id,
+                        "trace_id": trace_id,
+                    }
+                )
 
                 logger.info(
                     "Completion received",
@@ -805,6 +831,9 @@ class LiteLLMProvider(LLMProviderInterface):
         completion_kwargs.setdefault("temperature", temperature)
         if max_tokens is not None and "max_tokens" not in completion_kwargs:
             completion_kwargs["max_tokens"] = max_tokens
+        
+        # Explicitly disable streaming for non-streaming calls
+        completion_kwargs["stream"] = False
 
         # Get current request context for distributed tracing
         request_id = get_request_id()
@@ -836,11 +865,15 @@ class LiteLLMProvider(LLMProviderInterface):
                     **completion_kwargs,
                 )
 
-                # Type guard: ensure response is a dict, not a stream wrapper
-                if not isinstance(response, dict):
+                # Convert ModelResponse to dict if needed (litellm sometimes returns ModelResponse objects)
+                if hasattr(response, 'model_dump'):
+                    response = response.model_dump()
+                elif hasattr(response, 'dict'):
+                    response = response.dict()
+                elif not isinstance(response, dict):
                     raise TypeError(
                         f"Expected dict response from litellm.completion, got {type(response).__name__}. "
-                        "Stream mode should not be enabled for this call."
+                        f"Stream setting was: {completion_kwargs.get('stream')}"
                     )
 
                 message = response["choices"][0]["message"].get("content", "")

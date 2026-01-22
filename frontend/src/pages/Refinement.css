@@ -107,18 +107,10 @@
 }
 
 .refinement-interface {
-    display: grid;
-    grid-template-columns: 350px 1fr;
-    gap: 20px;
+    display: flex;
+    justify-content: center;
     align-items: start;
     height: calc(100vh - 140px);
-}
-
-.refinement-sidebar {
-    position: sticky;
-    top: 20px;
-    height: calc(100vh - 160px);
-    overflow-y: auto;
 }
 
 .refinement-main {
@@ -126,6 +118,8 @@
     flex-direction: column;
     height: 100%;
     max-height: calc(100vh - 140px);
+    width: 100%;
+    max-width: 1200px;
 }
 
 .conversation-container {
@@ -392,22 +386,20 @@
 
 @media (max-width: 1024px) {
     .refinement-interface {
-        grid-template-columns: 1fr;
         height: auto;
-    }
-
-    .refinement-sidebar {
-        position: static;
-        height: auto;
-        max-height: 300px;
     }
 
     .refinement-main {
         max-height: calc(100vh - 200px);
+        padding: 0 15px;
     }
 
     .conversation-container {
         max-height: calc(100vh - 400px);
+    }
+
+    .initial-query-form {
+        padding: 30px 25px;
     }
 }
 
@@ -416,6 +408,21 @@
         flex-direction: column;
         gap: 15px;
         align-items: flex-start;
+        padding: 15px 20px;
+    }
+
+    .refinement-header h1 {
+        font-size: 20px;
+    }
+
+    .header-actions {
+        width: 100%;
+        justify-content: space-between;
+        gap: 15px;
+    }
+
+    .btn-link {
+        font-size: 13px;
     }
 
     .refinement-content {
@@ -426,12 +433,90 @@
         height: auto;
     }
 
+    .refinement-main {
+        padding: 0 10px;
+    }
+
     .conversation-container {
         max-height: calc(100vh - 450px);
         min-height: 300px;
+        padding-right: 5px;
     }
 
     .question-input-fixed {
+        padding: 15px 10px;
+        border-radius: 8px 8px 0 0;
+    }
+
+    .history-item {
         padding: 15px;
+        border-radius: 8px;
+    }
+
+    .history-label {
+        font-size: 12px;
+    }
+
+    .history-content {
+        font-size: 13px;
+    }
+
+    .initial-query-form {
+        padding: 25px 20px;
+    }
+
+    .initial-query-form h2 {
+        font-size: 20px;
+    }
+
+    .form-actions {
+        flex-direction: column;
+    }
+
+    .form-actions button {
+        width: 100%;
+    }
+}
+
+@media (max-width: 480px) {
+    .refinement-header {
+        padding: 12px 15px;
+    }
+
+    .refinement-header h1 {
+        font-size: 18px;
+    }
+
+    .refinement-content {
+        padding: 15px 8px;
+    }
+
+    .refinement-main {
+        padding: 0 5px;
+    }
+
+    .conversation-container {
+        padding-right: 3px;
+    }
+
+    .history-item {
+        padding: 12px;
+    }
+
+    .question-input-fixed {
+        padding: 12px 8px;
+    }
+
+    .initial-query-form {
+        padding: 20px 15px;
+    }
+
+    .command-result {
+        border-radius: 8px;
+    }
+
+    .error-banner {
+        padding: 12px 15px;
+        font-size: 14px;
     }
 }

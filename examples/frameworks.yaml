@@ -159,6 +159,7 @@ mph_dissertation:
     aspect_description:
       what the student specifically wants to investigate, examine,
       or understand about their topic
+    depends_on: [research_domain]
     evaluation_instructions: '### What you''re evaluating:
 
       Is there a clear investigative direction - what specifically will be studied/examined/understood?
@@ -339,9 +340,10 @@ mph_dissertation:
             nutrition education in schools, or how school food environment affects children's
             dietary choices?"
           statement: I think schools should do more about nutrition
-  - id: statement
-    aspect_name: population and setting
+  - id: population_demographics
+    aspect_name: population demographics
     aspect_description: who is being studied and in what context or location
+    depends_on: [research_domain, research_focus]
     evaluation_instructions: '### What you''re evaluating:
 
       Are the study population and setting clearly defined with relevant characteristics?

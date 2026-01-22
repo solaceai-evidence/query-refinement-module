@@ -13,7 +13,13 @@ const QuestionRenderer = ({ question, onAnswer, loading }) => {
     };
 
     return (
-        <div className="question-renderer">
+        <div className={`question-renderer ${loading ? 'loading' : ''}`}>
+            {loading && (
+                <div className="loading-overlay">
+                    <div className="loading-spinner"></div>
+                    <div className="loading-text">Processing your answer...</div>
+                </div>
+            )}
             <div className="question-box">
                 <div className="question-label">Question:</div>
                 <div className="question-text">{question}</div>

@@ -211,7 +211,7 @@ class LLMQueryAnalyzer(QueryAnalyzerInterface):
 
         # Use the standardized API for aspect prompts
         return "\n\n".join(
-            prompt_sections + [aspect.get_refinement_instructions_prompt(statement=query)]
+            prompt_sections + [aspect.get_evaluation_instructions_prompt(statement=query)]
         )
 
     @staticmethod

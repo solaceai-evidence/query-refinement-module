@@ -14,7 +14,6 @@ export const USER_COMMANDS = {
     BACK: '/back',
     PREV: '/prev',
     PREVIOUS: '/previous',
-    GOTO: '/goto',
     RESTART: '/restart',
 
     // Control commands
@@ -25,8 +24,7 @@ export const USER_COMMANDS = {
 
     // Information commands
     STATUS: '/status',
-    STEPS: '/steps',
-    HELP: '/help'
+    STEPS: '/steps'
 };
 
 /**
@@ -39,7 +37,7 @@ export const ALL_COMMANDS = Object.values(USER_COMMANDS);
  * Commands that accept arguments
  * @type {string[]}
  */
-export const COMMANDS_WITH_ARGS = [USER_COMMANDS.GOTO];
+export const COMMANDS_WITH_ARGS = [];
 
 /**
  * Command aliases (multiple commands that do the same thing)
@@ -66,13 +64,6 @@ export const COMMAND_METADATA = {
         label: 'Steps',
         icon: '📋',
         hint: 'List all refinement steps',
-        category: 'info',
-        behavior: 'informational' // Don't change flow state
-    },
-    [USER_COMMANDS.HELP]: {
-        label: 'Help',
-        icon: '❓',
-        hint: 'Show available commands',
         category: 'info',
         behavior: 'informational' // Don't change flow state
     },
@@ -110,13 +101,6 @@ export const COMMAND_METADATA = {
         hint: 'Finish refinement now',
         category: 'control',
         behavior: 'terminating' // Ends the flow
-    },
-    [USER_COMMANDS.GOTO]: {
-        label: 'Go To',
-        icon: '🎯',
-        hint: 'Jump to specific step',
-        category: 'navigation',
-        behavior: 'navigation' // Changes current question
     }
 };
 

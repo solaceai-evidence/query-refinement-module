@@ -65,8 +65,11 @@
 }
 
 .command-btn:disabled {
-    opacity: 0.5;
+    opacity: 0.4;
     cursor: not-allowed;
+    background: #f9f9f9;
+    color: #aaa;
+    border-color: #e5e5e5;
 }
 
 .command-icon {
@@ -75,4 +78,51 @@
 
 .command-text {
     font-weight: 500;
+}
+
+@media (max-width: 768px) {
+    .command-buttons {
+        padding: 15px;
+    }
+
+    .command-label {
+        font-size: 13px;
+    }
+
+    .command-button-group {
+        gap: 8px;
+    }
+
+    .command-btn {
+        padding: 10px 16px;
+        font-size: 14px;
+        flex: 1 1 calc(50% - 4px);
+        min-width: 0;
+        justify-content: center;
+    }
+
+    .section-label {
+        font-size: 11px;
+    }
+}
+
+@media (max-width: 480px) {
+    .command-buttons {
+        padding: 12px;
+    }
+
+    .command-button-group {
+        flex-direction: column;
+        gap: 8px;
+    }
+
+    .command-btn {
+        width: 100%;
+        padding: 12px 16px;
+        justify-content: center;
+    }
+
+    .command-icon {
+        font-size: 18px;
+    }
 }
