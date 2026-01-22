@@ -69,7 +69,7 @@ from .schema import (
 )
 
 from .prompt.system_role import (
-    DEFAULT_SYSTEM_PROMPT_REFINEMENT_START,
+    GLOBAL_SYSTEM_PROMPT,
 )
 
 # Module logger - use get_logger() in functions for request context
@@ -1312,7 +1312,7 @@ class QueryRefinementManager:
         )
         
         # Get system prompt (from aspect or default)
-        system_prompt = aspect.system_prompt or DEFAULT_SYSTEM_PROMPT_REFINEMENT_START
+        system_prompt = aspect.system_prompt or GLOBAL_SYSTEM_PROMPT
         if "{self.aspect_name}" in system_prompt or "{aspect_name}" in system_prompt:
             system_prompt = system_prompt.replace("{self.aspect_name}", aspect.aspect_name)
             system_prompt = system_prompt.replace("{aspect_name}", aspect.aspect_name)
@@ -2144,7 +2144,8 @@ class QueryRefinementManager:
             # 3. Prompt engineering + validation works reliably across all models
             result = await self.llm_provider.complete_async(
                 system_prompt=system_prompt,
-                user_prompt=user_prompt
+                user_prompt=user_prompt,
+                cache_system_prompt=True  # System prompts are static per-aspect
             )
             response_text = (result.context or "").strip()
             return response_text, None
@@ -2491,6 +2492,7 @@ class QueryRefinementManager:
                 system_prompt=system_prompt,
                 user_prompt=user_prompt,
                 model=model,
+                cache_system_prompt=True,  # Synthesis system prompt is static
                 **completion_kwargs,
             )
         except Exception as exc:  # pragma: no cover - provider errors surfaced

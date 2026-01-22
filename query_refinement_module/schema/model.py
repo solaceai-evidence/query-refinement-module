@@ -11,10 +11,10 @@ import logging
 import json
 
 from ..prompt.system_role import (
-    DEFAULT_SYSTEM_PROMPT_REFINEMENT_START,
+    GLOBAL_SYSTEM_PROMPT,
 )
 from ..prompt.user import (
-    UNIFIED_ANALYSIS_PROMPT
+    EVALUATION_CRITERIA_PROMPT
 )
 
 logger = logging.getLogger(__name__)
@@ -214,7 +214,7 @@ class RefinementAspect:
         "next_question": "Focused clarifying question (required if is_complete=false)"
     }
 
-    UNIFIED_ANALYSIS_PROMPT = UNIFIED_ANALYSIS_PROMPT
+    UNIFIED_ANALYSIS_PROMPT = EVALUATION_CRITERIA_PROMPT
 
     def __post_init__(self):
         """Validate schema structure at load time."""
@@ -414,12 +414,12 @@ class RefinementAspect:
         
         # Default system prompt (concise to save tokens) - format template variables
         try:
-            return DEFAULT_SYSTEM_PROMPT_REFINEMENT_START.format(
+            return GLOBAL_SYSTEM_PROMPT.format(
                 self=self
             )
         except (KeyError, AttributeError):
             # Fallback if formatting fails
-            return DEFAULT_SYSTEM_PROMPT_REFINEMENT_START
+            return GLOBAL_SYSTEM_PROMPT
     
     def get_prompts(self, query: str) -> tuple[str, str]:
         """

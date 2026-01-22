@@ -523,6 +523,7 @@ class LiteLLMProvider(LLMProviderInterface):
         api_key: Optional[str] = None,
         api_base: Optional[str] = None,
         default_completion_kwargs: Optional[Dict[str, Any]] = None,
+        enable_prompt_caching: bool = True,
     ) -> None:
         if litellm is None:
             raise RuntimeError(
@@ -536,6 +537,7 @@ class LiteLLMProvider(LLMProviderInterface):
         self._api_key = api_key
         self._api_base = api_base
         self._default_completion_kwargs = default_completion_kwargs or {}
+        self._enable_prompt_caching = enable_prompt_caching
         
         # Semaphore to limit concurrent LLM calls (prevent overwhelming server)
         self._max_concurrent = 50  # Store for logging
@@ -561,9 +563,15 @@ class LiteLLMProvider(LLMProviderInterface):
         model: Optional[str] = None,
         temperature: float = 0.0,
         max_tokens: Optional[int] = None,
+        cache_system_prompt: bool = False,
         **kwargs: Any,
     ) -> LLMCompletionResult:
-        """Complete a prompt asynchronously with automatic retry on rate limit errors."""
+        """Complete a prompt asynchronously with automatic retry on rate limit errors.
+        
+        Args:
+            cache_system_prompt: If True and provider supports it, cache the system prompt
+                               for reduced token usage and faster responses.
+        """
         import time
         from query_refinement_module.tracing import get_request_id, get_trace_id
         
@@ -616,7 +624,7 @@ class LiteLLMProvider(LLMProviderInterface):
             
             try:
                 result = await self._complete_async_internal(
-                    user_prompt, system_prompt, model, temperature, max_tokens, **kwargs
+                    user_prompt, system_prompt, model, temperature, max_tokens, cache_system_prompt, **kwargs
                 )
                 return result
             finally:
@@ -637,6 +645,7 @@ class LiteLLMProvider(LLMProviderInterface):
         model: Optional[str] = None,
         temperature: float = 0.0,
         max_tokens: Optional[int] = None,
+        cache_system_prompt: bool = False,
         **kwargs: Any,
     ) -> LLMCompletionResult:
         """Internal completion logic with retry and rate limit handling."""
@@ -651,7 +660,27 @@ class LiteLLMProvider(LLMProviderInterface):
 
         messages = []
         if system_prompt:
-            messages.append({"role": "system", "content": system_prompt})
+            system_message = {"role": "system", "content": system_prompt}
+            # Add cache control if enabled and requested
+            if cache_system_prompt and self._enable_prompt_caching:
+                try:
+                    system_message["cache_control"] = {"type": "ephemeral"}
+                    logger.debug(
+                        "System prompt caching enabled",
+                        extra={
+                            "model": target_model,
+                            "request_id": get_request_id(),
+                            "trace_id": get_trace_id(),
+                        }
+                    )
+                except Exception as e:
+                    # Gracefully handle providers that don't support caching
+                    logger.debug(
+                        "Could not apply prompt caching (provider may not support it): %s",
+                        e,
+                        extra={"model": target_model}
+                    )
+            messages.append(system_message)
         messages.append({"role": "user", "content": user_prompt})
 
         completion_kwargs: Dict[str, Any] = {**self._default_completion_kwargs, **kwargs}

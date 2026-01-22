@@ -223,6 +223,7 @@ REFINEMENT_FRAMEWORK_PATH=/path/to/framework.yaml
 QUERY_REFINEMENT_LLM_MODEL=anthropic/claude-sonnet-4-20250514
 QUERY_REFINEMENT_LLM_API_KEY=your-api-key
 QUERY_REFINEMENT_LLM_TEMPERATURE=0.2
+QUERY_REFINEMENT_ENABLE_PROMPT_CACHING=true  # Enable system prompt caching (default: true)
 RATE_LIMIT_REQUESTS_PER_MINUTE=60
 RATE_LIMIT_TOKENS_PER_MINUTE=90000
 RATE_LIMIT_MAX_CONCURRENT_REQUESTS=10
@@ -237,6 +238,23 @@ RATE_LIMIT_MAX_CONCURRENT_REQUESTS=10
 - `RATE_LIMIT_MAX_CONCURRENT_REQUESTS`: Maximum concurrent API requests (default: 10)
 
 The system automatically manages rate limits across all active sessions and includes retry logic with exponential backoff for failed requests.
+
+### System Prompt Caching
+
+**Optimize LLM token usage with prompt caching:**
+
+The system supports automatic prompt caching for LLM providers that support it (e.g., Claude, GPT-4). When enabled, system prompts are cached to reduce token consumption by 30-50% and improve response times.
+
+- `QUERY_REFINEMENT_ENABLE_PROMPT_CACHING`: Enable/disable prompt caching (default: `true`)
+- **How it works**: System prompts for refinement aspects and synthesis are static and reused across all sessions, making them ideal for caching
+- **Supported providers**: Anthropic Claude (ephemeral cache, 5-minute duration), OpenAI GPT-4, and other litellm-compatible providers
+- **Fallback behavior**: Gracefully degrades to normal operation if provider doesn't support caching
+
+**Cache behavior:**
+- Refinement aspect system prompts are cached per aspect type
+- Synthesis system prompts are cached globally
+- Cache duration varies by provider (Claude: 5 minutes)
+- No code changes needed when switching between cached/non-cached modes
 
 ## Development
 

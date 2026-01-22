@@ -1,7 +1,9 @@
-UNIFIED_ANALYSIS_PROMPT = """
+EVALUATION_CRITERIA_PROMPT = """
 **Original Research Input:** "{original_input}"
 
-**Research Dimension:** {aspect_name} ({aspect_description})
+**Current research dimension to evaluate:** {aspect_name} 
+
+**Dimension description:** {aspect_description}
 
 ---
 
@@ -24,19 +26,24 @@ UNIFIED_ANALYSIS_PROMPT = """
 {output_format_section}
 """
 
-SYNTHESIS_PROMPT_TEMPLATE = """
-# TASK
 
-Integrate the original research input with clarified details, then generate search-optimized variants and extract search filters.
+
+SYNTHESIS_PROMPT_TEMPLATE = """
+# SYNTHESIS INSTRUCTIONS
+
+## TASK
+
+Integrate the original research input with the clarified details from relevant research dimensions, then generate search-optimized variants and extract search filters.
 
 ---
 
 ## ORIGINAL INPUT
+
 "{original_input}"
 
 ---
 
-## CLARIFIED DETAILS
+## CLARIFIED DETAILS (Dimensions specifications)
 
 {aspects_section}
 

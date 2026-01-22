@@ -14,6 +14,7 @@ _ENV_API_BASE = "QUERY_REFINEMENT_LLM_API_BASE"
 _ENV_TEMPERATURE = "QUERY_REFINEMENT_LLM_TEMPERATURE"
 _ENV_MAX_TOKENS = "QUERY_REFINEMENT_LLM_MAX_TOKENS"
 _ENV_COMPLETION_KWARGS = "QUERY_REFINEMENT_LLM_COMPLETION_KWARGS"
+_ENV_ENABLE_PROMPT_CACHING = "QUERY_REFINEMENT_ENABLE_PROMPT_CACHING"
 
 
 def _parse_float(value: Optional[str], default: float) -> float:
@@ -48,6 +49,19 @@ def _parse_completion_kwargs(raw: Optional[str]) -> Dict[str, Any]:
     return parsed
 
 
+def _parse_bool(value: Optional[str], default: bool) -> bool:
+    """Parse boolean from environment variable."""
+    if value is None or value.strip() == "":
+        return default
+    normalized = value.strip().lower()
+    if normalized in ("true", "1", "yes", "on"):
+        return True
+    elif normalized in ("false", "0", "no", "off"):
+        return False
+    else:
+        return default  # For unrecognized values, use default
+
+
 @dataclass
 class LLMSettings:
     """Centralised configuration for the default LLM provider/analyzer stack."""
@@ -58,6 +72,7 @@ class LLMSettings:
     temperature: float = 0.0
     max_tokens: Optional[int] = None
     completion_kwargs: Dict[str, Any] = field(default_factory=dict)
+    enable_prompt_caching: bool = True
 
     @classmethod
     def from_env(cls, *, require_model: bool = True) -> "LLMSettings":
@@ -79,6 +94,7 @@ class LLMSettings:
         temperature = _parse_float(os.getenv(_ENV_TEMPERATURE), default=0.0)
         max_tokens = _parse_int(os.getenv(_ENV_MAX_TOKENS))
         completion_kwargs = _parse_completion_kwargs(os.getenv(_ENV_COMPLETION_KWARGS))
+        enable_prompt_caching = _parse_bool(os.getenv(_ENV_ENABLE_PROMPT_CACHING), default=True)
 
         return cls(
             model=model,
@@ -87,6 +103,7 @@ class LLMSettings:
             temperature=temperature,
             max_tokens=max_tokens,
             completion_kwargs=completion_kwargs,
+            enable_prompt_caching=enable_prompt_caching,
         )
 
     def as_provider_kwargs(self) -> Dict[str, Any]:
@@ -97,6 +114,7 @@ class LLMSettings:
             "api_key": self.api_key,
             "api_base": self.api_base,
             "default_completion_kwargs": copy.deepcopy(self.completion_kwargs),
+            "enable_prompt_caching": self.enable_prompt_caching,
         }
 
     def as_analyzer_kwargs(self) -> Dict[str, Any]:

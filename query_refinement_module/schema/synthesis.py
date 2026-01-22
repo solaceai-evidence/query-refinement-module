@@ -4,7 +4,7 @@ Synthesis prompt builder for integrating clarified details with input to synthes
 
 from typing import Dict, Any, List
 from .model import RefinementAspect
-from ..prompt.system_role import SYNTHESIS_SYSTEM_PROMPT
+from ..prompt.system_role import GLOBAL_SYSTEM_PROMPT
 from ..prompt.user import SYNTHESIS_PROMPT_TEMPLATE
 
 class SynthesisPromptBuilder:
@@ -200,4 +200,4 @@ Return a single JSON object with this exact structure:
         Returns:
             System prompt defining the synthesis role
         """
-        return SYNTHESIS_SYSTEM_PROMPT
+        return GLOBAL_SYSTEM_PROMPT
