@@ -20,7 +20,7 @@ _JSON_BLOCK_RE = re.compile(r"\{.*\}", re.DOTALL)
 
 
 class LLMQueryAnalyzer(QueryAnalyzerInterface):
-    """LLM-driven analyzer that uses aspect prompts to detect refinement gaps."""
+    """LLM-driven analyzer that uses dimension-based prompts to detect refinement gaps."""
 
     def __init__(
         self,
@@ -164,33 +164,35 @@ class LLMQueryAnalyzer(QueryAnalyzerInterface):
                 clarifying_question=aspect.aspect_name,
             )
 
-        if "needs_refinement" not in payload:
+        # Parse unified response format (is_complete, reasoning, next_question)
+        if "is_complete" not in payload:
             logger.warning(
-                "Analyzer response for aspect '%s' missing 'needs_refinement'; defaulting to manual refinement.",
+                "Analyzer response for aspect '%s' missing 'is_complete'; defaulting to manual refinement.",
                 aspect.id,
             )
             return AspectAnalysisResult(
                 needs_refinement=True,
-                explanation="Analyzer response missing required 'needs_refinement' field.",
+                explanation="Analyzer response missing required 'is_complete' field.",
                 clarifying_question=aspect.aspect_name,
             )
 
-        needs_refinement = self._coerce_bool(payload["needs_refinement"])
-        explanation = payload.get("explanation") or ""
-        clarifying_question = payload.get("clarifying_question")
+        is_complete = self._coerce_bool(payload["is_complete"])
+        reasoning = payload.get("reasoning") or ""
+        next_question = payload.get("next_question")
 
-        if needs_refinement:
-            if not clarifying_question:
+        if not is_complete:
+            if not next_question:
                 logger.warning(
-                    "Analyzer response for aspect '%s' missing 'clarifying_question'. Using aspect name as fallback.",
+                    "Analyzer response for aspect '%s' missing 'next_question'. Using aspect name as fallback.",
                     aspect.id,
                 )
-                clarifying_question = aspect.aspect_name
+                next_question = aspect.aspect_name
 
+        # Return in legacy format for backward compatibility
         return AspectAnalysisResult(
-            needs_refinement=needs_refinement,
-            explanation=explanation,
-            clarifying_question=clarifying_question,
+            needs_refinement=not is_complete,  # Invert logic
+            explanation=reasoning,
+            clarifying_question=next_question,
         )
 
     def _build_prompt(

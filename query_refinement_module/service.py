@@ -58,11 +58,12 @@ class QueryRefinementService:
         self._session_id_factory = session_id_factory or (lambda: str(uuid.uuid4()))
 
     async def create_session(self, request: SessionCreateRequest) -> SessionCreateResponse:
-        """Initialize a new refinement session."""
+        """Initialize a new refinement session using sequential on-demand workflow."""
 
         session_id = request.session_id or self._session_id_factory()
-        session = await asyncio.to_thread(
-            self._manager.initialize,
+        
+        # Always use sequential initialization (no parallel mode)
+        session = self._manager.initialize_sequential(
             request.original_query,
             request.refinement_framework,
         )
@@ -169,7 +170,7 @@ class QueryRefinementService:
         question = step.refinement_question
         if not question:
             try:
-                question = step.refinement_aspect.get_refinement_instructions_prompt(
+                question = step.refinement_aspect.get_evaluation_instructions_prompt(
                     statement=session.original_query
                 )
             except Exception:  # pragma: no cover - best effort fallback
@@ -186,6 +187,6 @@ class QueryRefinementService:
             aspect_id=step.refinement_aspect.id,
             aspect_name=step.refinement_aspect.aspect_name,
             question=question,
-            rationale=step.needs_refinement_rationale,
+            reasoning=step.needs_refinement_rationale,
             dependency_context=dependency_context,
         )

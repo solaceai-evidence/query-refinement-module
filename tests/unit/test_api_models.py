@@ -14,7 +14,7 @@ def make_aspect(aspect_id="aspect", name="Aspect"):
         id=aspect_id,
         aspect_name=name,
         aspect_description=f"Description for {name}",
-        refinement_instructions="Analyze {query}",
+        evaluation_instructions="Analyze {query}",
         depends_on=[],
     )
 

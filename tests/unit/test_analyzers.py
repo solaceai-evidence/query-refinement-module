@@ -46,7 +46,7 @@ def build_analyzer(responses, **kwargs):
 
 
 def test_analyze_aspect_with_valid_payload():
-    payload = '{"needs_refinement": false, "explanation": "clear"}'
+    payload = '{"is_complete": true, "reasoning": "clear"}'
     analyzer, provider = build_analyzer([payload], temperature=0.2, completion_kwargs={"top_p": 0.9})
     aspect = DummyAspect()
 
@@ -68,7 +68,7 @@ def test_analyze_aspect_requires_provider():
 
 
 def test_analyze_aspect_accepts_override_provider():
-    override = RecordingProvider(['{"needs_refinement": true, "explanation": "details", "clarifying_question": "Q"}'])
+    override = RecordingProvider(['{"is_complete": false, "reasoning": "details", "next_question": "Q"}'])
     analyzer = LLMQueryAnalyzer(llm_provider=None)
     aspect = DummyAspect()
 
@@ -91,7 +91,7 @@ def test_analyze_aspect_handles_missing_payload():
 
 
 def test_analyze_aspect_missing_required_field():
-    analyzer, _ = build_analyzer(['{"explanation": "oops"}'])
+    analyzer, _ = build_analyzer(['{"reasoning": "oops"}'])
     aspect = DummyAspect(name="Intervention")
 
     result = analyzer.analyze_aspect("query", aspect)
@@ -102,7 +102,7 @@ def test_analyze_aspect_missing_required_field():
 
 
 def test_analyze_aspect_missing_clarifying_question():
-    analyzer, _ = build_analyzer(['{"needs_refinement": true, "explanation": "", "clarifying_question": ""}'])
+    analyzer, _ = build_analyzer(['{"is_complete": false, "reasoning": "", "next_question": ""}'])
     aspect = DummyAspect(name="Outcome")
 
     result = analyzer.analyze_aspect("query", aspect)

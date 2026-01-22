@@ -102,7 +102,6 @@ export type ContinueRefinementResponse = SubmitAnswerResponse | CommandResponse;
 
 export interface AspectSummary {
     aspect_name: string;
-    status: string;
     is_complete: boolean;
     needs_review?: boolean;
     was_skipped?: boolean;

@@ -18,14 +18,17 @@ class AspectAnalysisResult:
     """
     Result of analyzing a single aspect.
     
-    This matches the structured output from LLM analysis (BASE_SCHEMA_FIELDS in RefinementAspect):
-    - needs_refinement: boolean
-    - explanation: string (why refinement is/isn't needed)
-    - clarifying_question: string (the question to ask if refinement needed)
+    DEPRECATED: This class maintains backward compatibility for the analyzer interface.
+    The system now uses unified response format internally (RefinementAnalysisResponse).
+    
+    Legacy fields mapped to unified format:
+    - needs_refinement → is_complete (inverted logic)
+    - explanation → reasoning
+    - clarifying_question → next_question
     
     Attributes:
         needs_refinement: Whether the aspect needs refinement.
-        reason: Explanation of why refinement is or isn't needed.
+        explanation: Explanation of why refinement is or isn't needed.
         clarifying_question: The question to ask the user (if needs_refinement=True).
     """
     needs_refinement: bool
@@ -240,6 +243,42 @@ class LLMProviderInterface(ABC):
         pass
         raise NotImplementedError("LLMProviderInterface.complete() must be implemented by subclasses.")
     
+    async def complete_async(
+        self,
+        user_prompt: str,
+        system_prompt: Optional[str] = None,
+        model: Optional[str] = None,
+        temperature: float = 0.0,
+        max_tokens: Optional[int] = None,
+        **kwargs,
+    ) -> LLMCompletionResult:
+        """
+        Generate a completion from the LLM asynchronously.
+        
+        Default implementation raises NotImplementedError. Providers should
+        override this for native async support.
+
+        Args:
+            user_prompt (str): The input prompt to send to the LLM.
+            system_prompt (Optional[str]): An optional system prompt to guide the LLM.
+            model (Optional[str]): The model identifier to use for the completion.
+            temperature (float): Sampling temperature for the completion.
+            max_tokens (Optional[int]): Maximum number of tokens to generate.
+            **kwargs: Additional provider-specific parameters.
+
+        Returns:
+            LLMCompletionResult: The result of the LLM completion.
+        
+        Raises:
+            NotImplementedError: If the provider doesn't support async operations.
+            RateLimitExceeded: If the request exceeds rate limits.
+            Exception: For any errors during the completion process.
+        """
+        raise NotImplementedError(
+            f"{self.__class__.__name__} does not implement complete_async(). "
+            "Use complete() or implement async support."
+        )
+    
     @abstractmethod
     def get_model_info(self, model: str) -> Dict[str, Any]:
         """
@@ -316,6 +355,30 @@ class QueryAnalyzerInterface(ABC):
             - reason: explanation of why (required for needs_refinement=True, optional otherwise)
         """
         pass
+    
+    async def analyze_aspect_async(
+        self,
+        query: str,
+        aspect: "RefinementAspect",
+        dependency_context: Optional[Dict[str, Any]],
+        llm_provider: Optional["LLMProviderInterface"] = None,
+    ) -> "AspectAnalysisResult":
+        """
+        Async version of analyze_aspect - evaluates a single refinement aspect asynchronously.
+
+        Args:
+            query: The original query to analyze.
+            aspect: The specific refinement aspect to evaluate.
+            dependency_context: Values from dependency aspects (aspect_id -> value or query reference).
+            llm_provider: Optional LLM provider for LLM-based analysis.
+
+        Returns:
+            AspectAnalysisResult with:
+            - needs_refinement: bool indicating if refinement is needed
+            - reason: explanation of why (required for needs_refinement=True, optional otherwise)
+        """
+        # Default implementation: call sync version
+        return self.analyze_aspect(query, aspect, dependency_context, llm_provider)
     
     def supports_batch_analysis(self) -> bool:
         """

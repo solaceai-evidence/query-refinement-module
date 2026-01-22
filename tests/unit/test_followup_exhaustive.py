@@ -1,4 +1,6 @@
  
+import pytest
+
 from query_refinement_module.core import (
     QueryAspectRefiner,
     QueryRefinementSession,
@@ -12,7 +14,7 @@ def test_followup_null_and_empty_history():
     aspect = make_aspect(allow_follow_up=True)
     refiner = QueryAspectRefiner(refinement_aspect=aspect)
     assert refiner.follow_up_count == 0
-    assert refiner.final_response is None
+    assert refiner.refinement_aspect_value_as_str is None
     assert refiner.get_conversation_history_text() == "no previous follow-up questions."
     prompt = refiner.format_follow_up_prompt_template("query")
     assert "FOLLOW-UP CONTEXT" in prompt
@@ -31,16 +33,17 @@ def test_followup_with_null_response():
     aspect = make_aspect(allow_follow_up=True)
     refiner = QueryAspectRefiner(refinement_aspect=aspect)
     refiner.add_follow_up("Q1", None)
-    assert refiner.final_response is None
+    assert refiner.refinement_aspect_value_as_str is None
 
 
-def test_followup_manager_edge_cases():
+@pytest.mark.asyncio
+async def test_followup_manager_edge_cases():
     aspect = make_aspect(allow_follow_up=True)
     manager = QueryRefinementManager(llm_provider=None, query_analyzer=None)
     session = QueryRefinementSession(original_query="query")
     step = session.add_step(aspect)
     step.is_complete = True
-    result = manager.run_followup_until_clear(session)
+    result = await manager.run_followup_until_clear(session)
     assert result["is_complete"]
     assert result["rounds"] == 0
 
@@ -52,19 +55,19 @@ def test_user_command_edge_cases():
     # /back at first step
     result = session.handle_command(CommandResult(command=UserCommand.BACK, is_valid=True))
     assert not result["success"]
-    # /goto invalid step
-    result = session.handle_command(CommandResult(command=UserCommand.GOTO, argument="99", is_valid=True))
-    assert not result["success"]
-    # /skip with no active step
-    session.steps[0].is_complete = True
+    # /skip with active step - should succeed
+    result = session.handle_command(CommandResult(command=UserCommand.SKIP, argument=None, is_valid=True))
+    assert result["success"]  # First skip succeeds
+    assert session.steps[0].was_skipped
+    # /skip with no active step (already skipped)
     result = session.handle_command(CommandResult(command=UserCommand.SKIP, is_valid=True))
-    assert not result["success"]
+    assert not result["success"]  # Second skip fails - no active step
     # /done with no active step
     result = session.handle_command(CommandResult(command=UserCommand.DONE, is_valid=True))
     assert not result["success"]
-    # /restart clears all
+    # /restart clears all steps
     session.steps[0].is_complete = False
     session.steps[0].follow_up_history = [{"question": "Q", "response": "A"}]
     result = session.handle_command(CommandResult(command=UserCommand.RESTART, is_valid=True))
     assert result["success"]
-    assert session.steps[0].follow_up_history == []
+    assert len(session.steps) == 0  # /restart clears all steps entirely

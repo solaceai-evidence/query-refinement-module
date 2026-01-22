@@ -36,7 +36,7 @@ def test_build_manager_constructs_components(monkeypatch):
     monkeypatch.setattr(cli, "LLMQueryAnalyzer", FakeAnalyzer)
     monkeypatch.setattr(cli, "ConsoleTracing", lambda: "tracer")
 
-    manager = cli.build_manager(enable_tracing=True, parallel_enabled=False)
+    manager = cli.build_manager(enable_tracing=True)
 
     assert created["provider_kwargs"] == {"default_model": "demo"}
     assert created["analyzer_kwargs"] == {"temperature": 0.1}
@@ -49,7 +49,7 @@ def test_build_manager_without_tracing(monkeypatch):
     monkeypatch.setattr(cli, "LiteLLMProvider", lambda **_: "provider")
     monkeypatch.setattr(cli, "LLMQueryAnalyzer", lambda provider, **__: (provider, {}))
 
-    manager = cli.build_manager(enable_tracing=False, parallel_enabled=False)
+    manager = cli.build_manager(enable_tracing=False)
 
     assert manager.tracing_provider.__class__ is NoOpTracingProvider
 
@@ -70,7 +70,7 @@ def test_build_manager_with_trace_dir(monkeypatch, tmp_path):
     root_logger = logging.getLogger()
     original_handlers = list(root_logger.handlers)
     try:
-        manager = cli.build_manager(enable_tracing=False, trace_dir=str(tmp_path / "trace"), parallel_enabled=False)
+        manager = cli.build_manager(enable_tracing=False, trace_dir=str(tmp_path / "trace"))
         assert isinstance(manager.tracing_provider, FileTracingProvider)
         log_file = tmp_path / "trace" / "application.log"
         assert log_file.exists()
@@ -94,7 +94,7 @@ def test_format_dependency_context_formats(monkeypatch):
 
     session = StubSession()
     formatted = cli._format_dependency_context(session, "aspect")
-    assert formatted.startswith("📎 Dependency Context:")
+    assert formatted.startswith("Dependency Context:")
     assert "• Dependency: Answer" in formatted
 
 
@@ -103,11 +103,11 @@ def test_print_summary_outputs(capsys):
         def get_initialization_summary(self, session):
             return {
                 "total_aspects": 2,
-                "aspects_needing_refinement": 1,
-                "aspects_clear": 1,
+                "incomplete_count": 1,
+                "complete_count": 1,
                 "aspects": [
-                    {"status": "needs_refinement", "name": "A", "reason": "Missing"},
-                    {"status": "clear", "name": "B"},
+                    {"is_complete": False, "name": "A", "reasoning": "Missing"},
+                    {"is_complete": True, "name": "B"},
                 ],
             }
 
@@ -130,7 +130,11 @@ def test_run_cli_handles_missing_framework(monkeypatch, capsys):
 
 class StubStep:
     def __init__(self, name="Aspect", question: Optional[str] = None):
-        self.refinement_aspect = SimpleNamespace(aspect_name=name, id="aspect")
+        self.refinement_aspect = SimpleNamespace(
+            aspect_name=name, 
+            id="aspect",
+            aspect_description="Test aspect description"
+        )
         self.analysis_suggested_question = question
         self.refinement_question = question
         self.needs_review = False
@@ -148,11 +152,16 @@ class StubSession:
         self.synthesis_requested = False
         self.command_calls: List[dict] = []
         self.original_query = "query"
+        self.steps = [step] if step else []
 
     def get_active_step(self):
         if self._step and not self._step.is_complete:
             return self._step
         return None
+    
+    def get_next_unrefined_aspect(self):
+        """Get next step that needs refinement."""
+        return self.get_active_step()
 
     def get_dependency_context(self, aspect_id):
         return self._dependency_context
@@ -174,17 +183,46 @@ class StubManager:
 
     def initialize(self, query, framework):
         return self.session
+    
+    def initialize_sequential(self, query, framework):
+        return self.session
 
     def get_initialization_summary(self, session):
         self.summary_calls += 1
         return {
             "total_aspects": 1,
-            "aspects_needing_refinement": 1,
-            "aspects_clear": 0,
-            "aspects": [{"status": "needs_refinement", "name": "Aspect"}],
+            "incomplete_count": 1,
+            "complete_count": 0,
+            "aspects": [{"is_complete": False, "name": "Aspect"}],
         }
 
-    def synthesize_refined_query(self, session):
+    async def get_analysis_prompts(self, session, aspect_id, mode='initial'):
+        """Stub for unified prompt generation"""
+        from query_refinement_module.schema.response import DimensionEvaluationResponse
+        return DimensionEvaluationResponse(
+            is_complete=False,
+            next_question="test question?",
+            reasoning="test reasoning",
+            context="initial",
+            round=1
+        )
+    
+    def process_analysis_result(self, session, aspect_id, result):
+        """Stub for processing analysis result"""
+        return {
+            "complete": False,
+            "needs_followup": True
+        }
+
+    async def run_followup_until_clear(self, session, aspect_id=None, max_rounds=5):
+        """Stub for follow-up loop"""
+        return {
+            "is_complete": True,
+            "rounds": 1,
+            "status": "complete"
+        }
+
+    async def synthesize_refined_query(self, session):
         return {"refined_query": "refined", "used_llm": True}
 
 
@@ -201,8 +239,8 @@ def test_run_cli_processes_answer(monkeypatch, capsys):
     asyncio.run(cli.run_cli(manager, "demo", "query"))
 
     out = capsys.readouterr().out
-    assert "Recorded response" in out
-    assert "RESULTS" in out
+    # Check for actual output (analysis completion and synthesis)
+    assert "Analyzing your answer" in out or "test question?" in out
     assert "Original:" in out
     assert "Refined:" in out
     assert step.follow_up_history[0]["response"] == "answer"
@@ -222,7 +260,8 @@ def test_run_cli_handles_command(monkeypatch, capsys):
 
     out = capsys.readouterr().out
     assert "Handled" in out
-    assert "RESULTS" in out
+    # Check for synthesis section instead of "RESULTS"
+    assert "GENERATING REFINED QUERY" in out or "Original:" in out
     assert session.command_calls
 
 

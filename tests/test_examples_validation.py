@@ -9,7 +9,7 @@ def _build_aspect(examples):
         id="demo",
         aspect_name="Demo",
         aspect_description="Demo description",
-        refinement_instructions="Evaluate {query}",
+        evaluation_instructions="Evaluate {query}",
         examples=examples,
     )
 

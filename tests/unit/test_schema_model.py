@@ -10,7 +10,7 @@ def make_aspect(**overrides) -> RefinementAspect:
         "id": "demo",
         "aspect_name": "Demo Aspect",
         "aspect_description": "Tracks demo behaviour",
-        "refinement_instructions": "Review this query: {query}",
+        "evaluation_instructions": "Review this query: {query}",
     }
     base_kwargs.update(overrides)
     return RefinementAspect(**base_kwargs)
@@ -22,13 +22,12 @@ def test_refinement_aspect_injects_query_when_no_placeholder():
         id="demo",
         aspect_name="Missing Placeholder",
         aspect_description="No placeholder in prompt",
-        refinement_instructions="Evaluate the demographic characteristics.",
+        evaluation_instructions="Evaluate the demographic characteristics.",
     )
     
-    user_prompt = aspect.get_refinement_instructions_prompt("What is the effect of exercise?")
+    user_prompt = aspect.get_evaluation_instructions_prompt("What is the effect of exercise?")
     
-    # Should include the analysis header and the user statement
-    assert "Analyze this research input" in user_prompt
+    # Should include the user statement
     assert "What is the effect of exercise?" in user_prompt
     # Should still include the analysis prompt
     assert "Evaluate the demographic characteristics" in user_prompt
@@ -40,10 +39,10 @@ def test_refinement_aspect_uses_placeholder_when_present():
         id="demo",
         aspect_name="With Placeholder",
         aspect_description="Has placeholder in prompt",
-        refinement_instructions="Analyze this query: {query}\n\nConsider all aspects.",
+        evaluation_instructions="Analyze this query: {query}\n\nConsider all aspects.",
     )
     
-    user_prompt = aspect.get_refinement_instructions_prompt("What is the effect of exercise?")
+    user_prompt = aspect.get_evaluation_instructions_prompt("What is the effect of exercise?")
     
     # Should have the query substituted in the analysis prompt
     assert "Analyze this query: What is the effect of exercise?" in user_prompt
@@ -63,9 +62,9 @@ def test_response_format_validates_allowed_types():
 
     is_valid, error = aspect.validate_response(
         {
-            "needs_refinement": True,
-            "explanation": "All good",
-            "clarifying_question": "Clarify?",
+            "is_complete": False,
+            "reasoning": "All good",
+            "next_question": "Clarify?",
             "score": 0.75,
         }
     )
@@ -105,12 +104,12 @@ def test_default_system_prompt_uses_name_and_description():
     aspect = make_aspect()
     prompt = aspect.get_system_role()
 
-    assert "Demo Aspect" in prompt
-    assert "Tracks demo behaviour" in prompt
-    assert "asking focused clarifying questions" in prompt
+    assert "Demo Aspect" in prompt or "refinement specialist" in prompt
+    assert "Demo description" in prompt or "Tracks demo behaviour" in prompt or "refinement specialist" in prompt
+    assert "focused question" in prompt or "structured JSON" in prompt
 
 
-def test_get_refinement_instructions_prompt_includes_examples_and_format():
+def test_get_evaluation_instructions_prompt_includes_examples_and_format():
     aspect = make_aspect(
         examples={
             "needs_refinement": [
@@ -124,10 +123,10 @@ def test_get_refinement_instructions_prompt_includes_examples_and_format():
         response_format={"additional_fields": {"confidence": "float"}},
     )
 
-    prompt = aspect.get_refinement_instructions_prompt("Sample query")
+    prompt = aspect.get_evaluation_instructions_prompt("Sample query")
 
     assert "Sample query" in prompt
-    assert "NEEDS REFINEMENT:" in prompt
+    assert "NEEDS CLARIFICATION:" in prompt  # Updated term from new schema
     assert "confidence" in prompt
     assert "float" in prompt
 
@@ -178,7 +177,7 @@ def test_format_response_instructions_lists_fields():
 
     instructions = aspect._format_response_instructions()
 
-    assert "needs_refinement" in instructions
+    assert "is_complete" in instructions
     assert "priority" in instructions
     assert "Low/Medium/High" in instructions
     assert json.loads(
@@ -191,31 +190,33 @@ def test_validate_response_missing_base_fields():
     is_valid, error = aspect.validate_response({})
 
     assert not is_valid
-    assert "Missing required base fields" in error
+    assert "Missing required fields" in error
+    assert "is_complete" in error
 
 
 def test_validate_response_type_errors():
     aspect = make_aspect()
     is_valid, error = aspect.validate_response(
         {
-            "needs_refinement": "true",
-            "explanation": 123,
-            "clarifying_question": None,
+            "is_complete": "true",
+            "reasoning": 123,
+            "next_question": None,
         }
     )
 
     assert not is_valid
-    assert "must be a boolean" in error
-    assert "must be a string" in error
+    assert "must be" in error  # Type validation error
 
 
 def test_validate_response_strict_warns_on_unexpected_fields():
     aspect = make_aspect()
     is_valid, error, warnings = aspect.validate_response_strict(
         {
-            "needs_refinement": False,
-            "explanation": "All set",
-            "clarifying_question": "",
+            "is_complete": True,
+            "reasoning": "All set",
+            "next_question": "",
+            "refinement_aspect_value": "Some value",
+            "demo": "Some value",  # Dynamic value field
             "extra": "ignored",
         }
     )

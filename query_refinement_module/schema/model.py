@@ -13,6 +13,9 @@ import json
 from ..prompt.system_role import (
     DEFAULT_SYSTEM_PROMPT_REFINEMENT_START,
 )
+from ..prompt.user import (
+    UNIFIED_ANALYSIS_PROMPT
+)
 
 logger = logging.getLogger(__name__)
 
@@ -37,12 +40,12 @@ class ClearExample(BaseExample, total=False):
 
 class NeedsRefinementExample(BaseExample, total=False):
     """
-    Example demonstrating missing or incomplete information.
+    Example demonstrating statements that need clarification.
     
     Suggested fields:
         statement: The statement/context for the example (REQUIRED)
         query: Legacy alternative (DEPRECATED)
-        issue: What information is missing or incomplete
+        issue: What makes this example unclear or incomplete
         missing: Specifically what details are absent
         example_question: Example question to clarify the gap
     """
@@ -110,7 +113,7 @@ class ExamplesDict(TypedDict, total=False):
         needs_refinement: NeedsRefinementExample - Examples missing critical information
         partial: PartialExample - Examples with some but not all information
         ambiguous: AmbiguousExample - Examples with vague specifications
-        other: OtherExample - Edge cases or guidance that does not fit other buckets
+        other: OtherExample - Edge cases or guidance that does not fit other buckets (too specific or too broad, for instance)
     """
     clear: NotRequired[List[ClearExample]]
     needs_refinement: NotRequired[List[NeedsRefinementExample]]
@@ -139,50 +142,36 @@ class RefinementAspect:
     clarification, such as temporal scope, target population, methodology, etc.
 
     The aspect includes:
-    - An to determine if refinement is needed
-    - Optional system prompt to set the AI's role/persona
-    - Optional example queries for few-shot learning and prompt engineering
+    - An analysis prompt to determine if refinement is needed
+    - User optional system prompt to set the AI's role/persona
+    - User optional example queries for few-shot learning and prompt engineering
     - A response format specification for consistent, structured responses
     - Optional follow-up configuration
     - Extensible metadata
 
     Response Format Structure:
-    - Base fields (always included): needs_refinement, explanation, example_question
-    - Custom fields: Add domain-specific fields via 'additional_fields'
-    
-    Example response_format:
-        {
-            "type": "json",
-            "additional_fields": {
-                "priority": "string",
-                "confidence": "float"
-            },
-            "field_descriptions": {
-                "priority": "Urgency level: high, medium, low",
-                "confidence": "Confidence score 0.0-1.0"
-            }
-        }
+    - Base fields (always included): is_complete, reasoning, refined_value, next_question
 
     Attributes:
         id: Unique identifier for the refinement aspect
         aspect_name: Human-readable refinement aspect name
         aspect_description: Brief description of what this refinement aspect refines
-        system_prompt: Optional system-level prompt defining the AI's role/persona for this refinement aspect
-        refinement_instructions: Developer-based Prompt template for analyzing the query (must include {query})
+        system_prompt: User optional system-level prompt defining the AI's role/persona for this refinement aspect
+        evaluation_instructions: Developer-based Prompt template for analyzing the query (must include {query})
         examples: Optional example queries for few-shot learning and prompt engineering
         response_format: Expected response structure (optional, for structured responses)
         depends_on: List of refinement aspect IDs this refinement aspect depends on (for context)
         allow_follow_up: Whether follow-up questions are allowed (default: True)
-        max_follow_ups: Maximum number of follow-up rounds allowed (default: 3)
+        max_follow_ups: Maximum number of follow-up rounds allowed (default: 5)
         metadata: Additional metadata for extensibility
     """
     id: str
     aspect_name: str
     aspect_description: str
     # developer prompt - should focus on analysis logic, not response format (REQUIRED)
-    refinement_instructions: str
+    evaluation_instructions: str
     
-    # Optional: System prompt defining AI role/persona for this refinement aspect
+    # Optional: System prompt defining AI role/persona for this refinement aspect (if none, use system-level default)
     # Example: "You are a clinical research expert specializing in population definition."
     system_prompt: Optional[str] = None
 
@@ -199,36 +188,42 @@ class RefinementAspect:
     # Only declared dependencies will be included in the analysis context
     depends_on: List[str] = field(default_factory=list)
     
+    #TODO deprecate in favour of user commands to navigate and control follow-ups
     # Should this refinement aspect support follow-up question to the initial suggested question?
     allow_follow_up: bool = True
     # Maximum number of follow-ups allowed (if follow-ups are allowed)
-    max_follow_ups: int = 3
+    max_follow_ups: int = 6
 
     # Optional metadata for extensibility
-    # e.g., domain, priority, examples, options, etc.
+    # e.g., domain, priority, confidence score, etc.
     metadata: Dict[str, Any] = field(default_factory=dict)
 
-    # Base schema fields that are always required in the response format
+    # Base schema fields for unified response format (used by user prompt)
     BASE_SCHEMA_FIELDS = {
-        "needs_refinement": "boolean",
-        "explanation": "string",
-        "clarifying_question": "string"
+        "is_complete": "boolean",
+        "reasoning": "string",
+        "refinement_aspect_value": "string",
+        "next_question": "string"
     }
 
     # Field descriptions for the base schema fields
     BASE_FIELD_DESCRIPTIONS = {
-        "needs_refinement": "Whether this query specification needs clarification (true/false)",
-        "explanation": "Brief explanation of why the query does or does not need refinement",
-        "clarifying_question": "The clarifying question to ask the user if refinement is needed; otherwise empty"
+        "is_complete": "Whether this aspect is sufficiently refined and clear (true/false)",
+        "reasoning": "Brief explanation of why the aspect is/isn't complete",
+        "refinement_aspect_value": "Extracted or synthesized value (required if is_complete=true)",
+        "next_question": "Focused clarifying question (required if is_complete=false)"
     }
+
+    UNIFIED_ANALYSIS_PROMPT = UNIFIED_ANALYSIS_PROMPT
 
     def __post_init__(self):
         """Validate schema structure at load time."""
-        # 1. Validate response_format structure (if provided)
+        # 1. Validate value_field_type
+        # 2. Validate response_format structure (if provided)
         if self.response_format:
             self._validate_response_format_structure()
         
-        # 2. Validate examples structure (if provided)
+        # 3. Validate examples structure (if provided)
         if self.examples:
             self._validate_examples_structure()
     
@@ -246,7 +241,7 @@ class RefinementAspect:
         valid_types = {"string", "boolean", "integer", "float", "array", "object"}
         
         # Check additional_fields uses valid types
-        additional_fields = self.response_format.get("additional_fields", {})
+        additional_fields = self.response_format.get("additional_fields", {}) if self.response_format else {}
         if additional_fields:
             if not isinstance(additional_fields, dict):
                 raise ValueError(
@@ -266,7 +261,7 @@ class RefinementAspect:
                     )
         
         # Check field_descriptions keys match additional_fields (warning, not error)
-        field_descriptions = self.response_format.get("field_descriptions", {})
+        field_descriptions = self.response_format.get("field_descriptions", {}) if self.response_format else {}
         if field_descriptions:
             if not isinstance(field_descriptions, dict):
                 logger.warning(
@@ -372,7 +367,7 @@ class RefinementAspect:
                             f"Schema '{self.aspect_name}': examples['{category}'][{idx}]['{field_name}'] must be a string"
                         )
 
-    def get_refinement_instructions_prompt(self, statement: str) -> str:
+    def get_evaluation_instructions_prompt(self, statement: str) -> str:
         """
         Generate the developer prompt including examples and response format instructions.
         
@@ -386,15 +381,15 @@ class RefinementAspect:
         # Always start with the user's research input explicitly stated
         
         # Check if refinement_instructions contains {query}/{input}/{statement} placeholder
-        if "{input}" in self.refinement_instructions or "{statement}" in self.refinement_instructions or "{query}" in self.refinement_instructions:
+        if "{input}" in self.evaluation_instructions or "{statement}" in self.evaluation_instructions or "{query}" in self.evaluation_instructions:
             # Format the developer prompt with the statement submitted by the user
             prompt_parts.append(
-                self.refinement_instructions.format(query=statement, statement=statement,input=statement)
+                self.evaluation_instructions.format(query=statement, statement=statement,input=statement)
             )
         else:
             # Prepend the user's input explicitly, then add the analysis prompt as-is
-            prompt_parts.append(f"## Analyze this research input: {statement}.\n")
-            prompt_parts.append(self.refinement_instructions)
+            prompt_parts.append(f"** Research input:** {statement}.\n")
+            prompt_parts.append(self.evaluation_instructions)
         
         # Inject examples if available
         if self.examples:
@@ -436,7 +431,7 @@ class RefinementAspect:
         Returns:
             Tuple of (system_prompt, developer_prompt)
         """
-        return self.get_system_role(), self.get_refinement_instructions_prompt(query)
+        return self.get_system_role(), self.get_evaluation_instructions_prompt(query)
 
     def _format_examples(self) -> str:
         """
@@ -460,7 +455,7 @@ class RefinementAspect:
         # Category display config: (key, header, prefix)
         category_config = [
             ("clear", "CLEAR SPECIFICATIONS:"),
-            ("needs_refinement", "NEEDS REFINEMENT:"),
+            ("needs_refinement", "NEEDS CLARIFICATION:"),
             ("partial", "PARTIAL INFORMATION:"),
             ("vague_ambiguous", "VAGUE OR AMBIGUOUS:"),
             ("other", "ADDITIONAL GUIDANCE:"),
@@ -517,43 +512,74 @@ class RefinementAspect:
         # Add header for the entire examples section
         return "--- GUIDANCE EXAMPLES ---\n" + "\n".join(sections)
     
+    def _get_complete_schema_fields(self) -> Dict[str, str]:
+        """
+        Get complete schema fields including base fields and dynamic value field.
+        
+        Returns:
+            Dictionary mapping field names to types
+        """
+        # Start with base fields
+        schema = self.BASE_SCHEMA_FIELDS.copy()
+        
+        # Add any additional custom fields from response_format
+        if self.response_format:
+            additional = self.response_format.get("additional_fields", {})
+            schema.update(additional)
+        
+        return schema
+    
+    def _get_complete_field_descriptions(self) -> Dict[str, str]:
+        """
+        Get complete field descriptions including auto-generated synthesis instructions.
+        
+        Returns:
+            Dictionary mapping field names to descriptions
+        """
+        descriptions = self.BASE_FIELD_DESCRIPTIONS.copy()
+        
+        # Add custom descriptions from response_format
+        if self.response_format:
+            custom = self.response_format.get("field_descriptions", {})
+            descriptions.update(custom)
+        
+        return descriptions
+    
     def _format_response_instructions(self) -> str:
         """
         Format response_format into clear instructions.
-        Always includes base fields, plus any additional custom fields.
+        Includes base fields, dynamic value field, and any additional custom fields.
         """
         instructions = ["Respond in the following JSON format:"]
         
-        # Build complete schema: base fields + additional fields
-        complete_schema = self.BASE_SCHEMA_FIELDS.copy()
-        complete_descriptions = self.BASE_FIELD_DESCRIPTIONS.copy()
+        # Get complete schema with dynamic field
+        complete_schema = self._get_complete_schema_fields()
+        complete_descriptions = self._get_complete_field_descriptions()
         
-        # Add additional fields if specified
-        if self.response_format:
-            additional_fields = self.response_format.get("additional_fields", {})
-            complete_schema.update(additional_fields)
-            
-            # Add custom field descriptions if provided
-            custom_descriptions = self.response_format.get("field_descriptions", {})
-            complete_descriptions.update(custom_descriptions)
-        
-        if self.response_format:
-            schema_example = {key: f"<{ftype}>" for key, ftype in complete_schema.items()}
-            instructions.append(f"\n```json\n{json.dumps(schema_example, indent=2)}\n```")
+        # Show schema example
+        schema_example = {key: f"<{ftype}>" for key, ftype in complete_schema.items()}
+        instructions.append(f"\n```json\n{json.dumps(schema_example, indent=2)}\n```")
         
         # Add field descriptions
         instructions.append("\nField descriptions:")
         for field_name, ftype in complete_schema.items():
             desc = complete_descriptions.get(field_name, f"Value of type {ftype}")
-            required = " (REQUIRED)" if field_name in self.BASE_SCHEMA_FIELDS else " (optional)"
-            instructions.append(f"- {field_name} ({ftype}){required}: {desc}")
+            
+            # Mark required fields (base fields + dynamic value field)
+            is_required = (
+                field_name in self.BASE_SCHEMA_FIELDS or 
+                field_name == self.id  # Dynamic value field is REQUIRED
+            )
+            required_tag = " (REQUIRED)" if is_required else " (optional)"
+            
+            instructions.append(f"- {field_name} ({ftype}){required_tag}: {desc}")
         
         return "\n".join(instructions)
     
     def validate_response(self, response: Dict[str, Any]) -> tuple[bool, Optional[str]]:
         """
         Validate that a response contains all required fields with correct types.
-        Validates both base fields and custom fields defined in response_format.
+        Validates base fields, dynamic value field, and custom fields.
         
         Args:
             response: The response dictionary to validate
@@ -561,26 +587,45 @@ class RefinementAspect:
         Returns:
             Tuple of (is_valid, error_message)
         """
-        # Check all base fields are present
+        # Check base fields for unified response format
         missing_fields = []
-        for field_name in self.BASE_SCHEMA_FIELDS.keys():
-            if field_name not in response:
-                missing_fields.append(field_name)
+        
+        # Required fields: is_complete, reasoning
+        if "is_complete" not in response:
+            missing_fields.append("is_complete")
+        if "reasoning" not in response:
+            missing_fields.append("reasoning")
+        
+        # Either refinement_aspect_value OR next_question must be present (mutually exclusive)
+        has_refined = "refinement_aspect_value" in response
+        has_next_q = "next_question" in response
+        if not has_refined and not has_next_q:
+            missing_fields.append("refinement_aspect_value OR next_question")
 
         if missing_fields:
-            return False, f"Missing required base fields: {', '.join(missing_fields)}"
+            return False, f"Missing required fields: {', '.join(missing_fields)}"
         
         # Validate base field types
         validation_errors = []
         
-        if not isinstance(response.get("needs_refinement"), bool):
-            validation_errors.append("'needs_refinement' must be a boolean")
+        # Validate is_complete (boolean)
+        if not isinstance(response.get("is_complete"), bool):
+            validation_errors.append("'is_complete' must be a boolean")
         
-        if not isinstance(response.get("explanation"), str):
-            validation_errors.append("'explanation' must be a string")
+        # Validate reasoning (string)
+        if not isinstance(response.get("reasoning"), str):
+            validation_errors.append("'reasoning' must be a string")
         
-        if not isinstance(response.get("clarifying_question"), str):
-            validation_errors.append("'clarifying_question' must be a string")
+        # Validate conditional fields based on is_complete
+        is_complete = response.get("is_complete", False)
+        if is_complete:
+            refinement_aspect_value = response.get("refinement_aspect_value")
+            if not refinement_aspect_value or not isinstance(refinement_aspect_value, str):
+                validation_errors.append("'refinement_aspect_value' required as non-empty string when is_complete=true")
+        else:
+            next_question = response.get("next_question")
+            if not next_question or not isinstance(next_question, str):
+                validation_errors.append("'next_question' required as non-empty string when is_complete=false")
         
         # Validate custom fields if response_format is defined
         if self.response_format:
@@ -673,6 +718,9 @@ class RefinementAspect:
         warnings = []
         expected_fields = set(self.BASE_SCHEMA_FIELDS.keys())
         
+        # Add dynamic value field to expected fields
+        expected_fields.add(self.id)
+        
         if self.response_format:
             additional_fields = self.response_format.get("additional_fields", {})
             expected_fields.update(additional_fields.keys())
@@ -686,6 +734,244 @@ class RefinementAspect:
             )
         
         return True, None, warnings
+
+    def build_unified_prompt(
+        self,
+        original_input: str,
+        follow_up_history: List[Dict[str, str]],
+        dependency_context: Dict[str, Dict[str, Any]],
+        mode: str = 'initial'
+    ) -> str:
+        """
+        Build complete unified prompt for dimension evaluation.
+        
+        This orchestrates all sections of the prompt including conversation history,
+        dependencies, instructions, and examples.
+        
+        Args:
+            original_input: The original user input
+            follow_up_history: List of Q&A exchanges for this aspect
+            dependency_context: Dict mapping aspect IDs to their completed values
+            mode: 'initial' or 'followup' (determines if conversation history is shown)
+        
+        Returns:
+            Complete formatted prompt ready for LLM
+        """
+        # Build each section
+        conversation_section = self._build_conversation_section(follow_up_history, mode)
+        dependency_section = self._build_dependency_section(dependency_context)
+        evaluation_instructions = self._build_evaluation_instructions_section(original_input)
+        examples_section = self._build_examples_section_for_prompt()
+        output_format_section = self._build_output_format_section()
+        
+        # Format the complete prompt
+        return self.UNIFIED_ANALYSIS_PROMPT.format(
+            aspect_name=self.aspect_name,
+            aspect_description=self.aspect_description,
+            original_input=original_input,
+            conversation_section=conversation_section,
+            dependency_section=dependency_section,
+            evaluation_instructions=evaluation_instructions,
+            examples_section=examples_section,
+            output_format_section=output_format_section
+        )
+    
+    def _build_output_format_section(self) -> str:
+        """
+        Build the output format section dynamically from BASE_SCHEMA_FIELDS and BASE_FIELD_DESCRIPTIONS.
+        
+        This ensures single source of truth - if field definitions change, the prompt updates automatically.
+        
+        Returns:
+            Formatted output format section with JSON schema and rules
+        """
+        lines = ["**OUTPUT (JSON):**", ""]
+        
+        # Build JSON example from BASE_SCHEMA_FIELDS
+        json_example = "{"
+        for field_name, field_type in self.BASE_SCHEMA_FIELDS.items():
+            # Show example values based on type
+            if field_type == "boolean":
+                example_value = "true/false"
+            elif field_type == "float":
+                example_value = "0.0-1.0"
+            elif field_type == "string":
+                # Use description hints for string fields
+                if field_name == "reasoning":
+                    example_value = '"why complete/incomplete (1-2 sentences)"'
+                elif field_name == "refinement_aspect_value":
+                    example_value = '"clear, specific value (if complete) OR null"'
+                elif field_name == "next_question":
+                    example_value = '"focused question with inline examples (if incomplete) OR null"'
+                else:
+                    example_value = '"<string>"'
+            else:
+                example_value = f'"<{field_type}>"'
+            
+            lines.append(f'  "{field_name}": {example_value},')
+        
+        # Remove trailing comma from last field
+        if lines[-1].endswith(','):
+            lines[-1] = lines[-1][:-1]
+        
+        lines.append("}")
+        lines.append("")
+        
+        # Add rules section
+        lines.append("**Rules:**")
+        lines.append("- `is_complete=true` → `refinement_aspect_value` must be non-null, `next_question` must be null")
+        lines.append("- `is_complete=false` → `next_question` must be non-null, `refinement_aspect_value` must be null")
+        
+        # Add field-specific guidance from descriptions
+        refinement_desc = self.BASE_FIELD_DESCRIPTIONS.get("refinement_aspect_value", "")
+        if "verbatim" in refinement_desc.lower() or "exact" in refinement_desc.lower():
+            lines.append("- `refinement_aspect_value`: Extract verbatim from original input/dependency context, or combine user's answers preserving their exact wording and intended meaning. Do NOT rephrase or reinterpret—capture what the user actually said.")
+        
+        next_q_desc = self.BASE_FIELD_DESCRIPTIONS.get("next_question", "")
+        if "example" in next_q_desc.lower():
+            lines.append("- `next_question`: Include concrete options or examples inline within the question text")
+        
+        return "\n".join(lines)
+    
+    def _build_conversation_section(
+        self,
+        follow_up_history: List[Dict[str, str]],
+        mode: str
+    ) -> str:
+        """
+        Build conversation history section.
+        
+        Args:
+            follow_up_history: List of Q&A exchanges
+            mode: 'initial' (no history) or 'followup' (with history)
+        
+        Returns:
+            Formatted conversation section (empty for initial mode)
+        """
+        if mode == 'initial' or not follow_up_history:
+            return ""
+        
+        lines = ["**Conversation History:**\n"]
+        for i, turn in enumerate(follow_up_history, 1):
+            question = turn.get('question', '')
+            response = turn.get('response', '')
+            lines.append(f"Q{i}: {question}")
+            lines.append(f"A{i}: {response}\n")
+        
+        return "\n".join(lines)
+    
+    def _build_dependency_section(
+        self,
+        dependency_context: Dict[str, Dict[str, Any]]
+    ) -> str:
+        """
+        Build dependency context showing completed/clarified dimensions.
+        
+        If current aspect depends on shown aspects, adds a visual marker.
+        
+        Args:
+            dependency_context: Dict mapping aspect IDs to their context
+        
+        Returns:
+            Formatted dependency section (empty if no dependencies)
+        """
+        if not dependency_context:
+            return ""
+        
+        lines = ["**Completed Dimensions (for context):**\n"]
+        
+        has_dependencies = bool(self.depends_on)
+        
+        for dep_id, context in dependency_context.items():
+            aspect_name = context.get('name', dep_id)
+            aspect_desc = context.get('description', '')
+            refined_value = context.get('value', '')
+            
+            # Mark if current aspect depends on this
+            dependency_marker = ""
+            if has_dependencies and dep_id in self.depends_on:
+                dependency_marker = " ⚠️ (the current dimension depends on this)"
+            
+            lines.append(f"**{aspect_name}**{dependency_marker}")
+            if aspect_desc:
+                lines.append(f"  Description: {aspect_desc}")
+            lines.append(f"  Value: {refined_value}\n")
+        
+        if has_dependencies:
+            lines.append("\n⚠️ = Consider these values when analyzing the current aspect\n")
+        
+        return "\n".join(lines)
+    
+    def _build_evaluation_instructions_section(self, original_input: str) -> str:
+        """
+        Build evaluation instructions section.
+        
+        This uses the aspect's evaluation_instructions which contains
+        type-specific evaluation criteria and objectives.
+        
+        Args:
+            original_input: research input to analyze
+        
+        Returns:
+            Formatted evaluation instructions with header
+        """
+        # Get the evaluation instructions (already formatted)
+        instructions = self.get_evaluation_instructions_prompt(statement=original_input)
+        
+        # Add a header
+        return f"# Evaluation Strategy:\n\n{instructions}\n"
+    
+    def _build_examples_section_for_prompt(self) -> str:
+        """
+        Build examples section from aspect schema for inclusion in unified prompt.
+        
+        Examples come AFTER evaluation instructions in the prompt.
+        Categories: clear, needs_refinement, partial, vague_ambiguous, other
+        
+        Returns:
+            Formatted examples section (empty if no examples)
+        """
+        if not self.examples:
+            return ""
+        
+        lines = ["**Examples:**\n"]
+        
+        # Process each category
+        category_map = {
+            'clear': 'Clear Examples',
+            'needs_refinement': 'Needs Refinement',
+            'partial': 'Partial Examples',
+            'vague_ambiguous': 'Vague/Ambiguous Examples',
+            'other': 'Other Cases'
+        }
+        
+        for category, examples_list in self.examples.items():
+            if not examples_list:
+                continue
+            
+            category_title = category_map.get(category, category.replace('_', ' ').title())
+            lines.append(f"\n{category_title}:")
+            
+            # Ensure examples_list is actually a list
+            if not isinstance(examples_list, list):
+                logger.warning(f"Examples category '{category}' is not a list, skipping")
+                continue
+            
+            for ex in examples_list:
+                # Get statement or query (statement preferred)
+                statement = ex.get('statement') or ex.get('query', '')
+                if statement:
+                    lines.append(f"- Example: {statement}.")
+                
+                # Add contextual fields (rationale, issue, missing, etc.)
+                for key in ['rationale', 'issue', 'missing', 'has', 'example_question', 'note', 'guidance']:
+                    if key in ex:
+                        key_title = key.replace('_', ' ').title()
+                        lines.append(f"  {key_title}: {ex[key]}")
+                
+                lines.append("")  # Blank line between examples
+        
+        return "\n".join(lines)
 
     def to_dict(self) -> Dict[str, Any]:
         """Convert refinement aspect to dictionary for serialization."""

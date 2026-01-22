@@ -11,6 +11,7 @@ Key Features:
 - Performance monitoring
 - Error handling with detailed context
 """
+import asyncio
 import logging
 import time
 from fastapi import APIRouter, Depends, HTTPException, status
@@ -34,7 +35,7 @@ from query_refinement_module.db.crud import (
     get_query_metadata_summary,
 )
 from query_refinement_module.api.auth import get_current_user
-from query_refinement_module.api.dependencies import get_refinement_manager, get_parallel_config, get_session_manager
+from query_refinement_module.api.dependencies import get_refinement_manager, get_session_manager
 from query_refinement_module.schema.registry import get_framework, list_frameworks
 from query_refinement_module.api.session_manager import SessionManager
 from query_refinement_module.core import (
@@ -170,11 +171,15 @@ class SynthesizeQueryResponse(BaseModel):
 # ==========================================
 
 def _build_next_prompt(session) -> Optional[Dict[str, Any]]:
-    """Build the next prompt from the active step."""
-    step = session.get_active_step()
-    logger.info(f"_build_next_prompt called: active_step={'exists' if step else 'None'}")
+    """
+    Build the next prompt from the next unrefined aspect in dependency order.
+    
+    Uses get_next_unrefined_aspect() for sequential on-demand refinement.
+    """
+    step = session.get_next_unrefined_aspect()
+    logger.info(f"_build_next_prompt called: next_unrefined_aspect={'exists' if step else 'None'}")
     if not step:
-        logger.info("  -> No active step, returning None")
+        logger.info("  -> No unrefined aspects remaining, returning None")
         return None
     
     result = {
@@ -319,23 +324,42 @@ def get_available_frameworks():
 
 
 @router.post("/start", response_model=StartRefinementResponse, status_code=status.HTTP_201_CREATED)
-def start_refinement(
+async def start_refinement(
     request: StartRefinementRequest,
     manager: QueryRefinementManager = Depends(get_refinement_manager),
     current_user = Depends(get_current_user),
     db: Session = Depends(get_db),
-    parallel_config = Depends(get_parallel_config),
     session_manager: SessionManager = Depends(get_session_manager)
 ):
     """
-    Start a new query refinement workflow.
+    Start a new query refinement workflow using sequential on-demand mode.
     
     This initializes a refinement session by:
     1. Loading the specified framework
-    2. Analyzing the query to determine what needs refinement
+    2. Creating session WITHOUT upfront LLM analysis
     3. Creating database records for session, query, and steps
-    4. Returning the initialization summary and first question(s)
+    4. Generating first question on-demand and returning it
+    
+    Aspects are refined sequentially in dependency order, one at a time.
     """
+    import time
+    from query_refinement_module.tracing import generate_request_id, set_request_id, get_request_id
+    
+    # Generate and set request ID for tracing
+    request_id = generate_request_id()
+    set_request_id(request_id)
+    
+    start_time = time.time()
+    logger.info(
+        "API: Starting refinement workflow",
+        extra={
+            "request_id": request_id,
+            "user_id": current_user.id,
+            "framework_name": request.framework_name,
+            "query_length": len(request.original_query),
+        },
+    )
+    
     # Get the refinement framework
     try:
         framework = get_framework(request.framework_name)
@@ -345,12 +369,12 @@ def start_refinement(
             detail=f"Framework '{request.framework_name}' not found: {str(e)}"
         )
     
-    # Initialize the refinement session (core logic)
+    # Initialize the refinement session using sequential mode (no upfront analysis)
     try:
-        session = manager.initialize(
-            original_query=request.original_query,
-            refinement_framework=framework,
-            parallel_config=parallel_config
+        session = await asyncio.to_thread(
+            manager.initialize_sequential,
+            request.original_query,
+            framework,
         )
     except ConnectionError as e:
         raise HTTPException(
@@ -400,12 +424,55 @@ def start_refinement(
             aspect_name=step.refinement_aspect.aspect_name
         )
     
-    # Get initialization summary
-    summary = manager.get_initialization_summary(session)
+    # Generate first question on-demand using get_next_unrefined_aspect
+    first_step = session.get_next_unrefined_aspect()
+    if first_step:
+        # Use unified approach to generate initial question
+        try:
+            result = await manager.get_analysis_prompts(
+                session=session,
+                aspect_id=first_step.refinement_aspect.id,
+                mode='initial'
+            )
+            
+            # Process the result
+            status = manager.process_analysis_result(
+                session=session,
+                aspect_id=first_step.refinement_aspect.id,
+                result=result
+            )
+            
+            # If complete, move to next aspect
+            if status['complete']:
+                first_step = session.get_next_unrefined_aspect()
+        except Exception as e:
+            logger.error(f"Error generating first question: {e}", exc_info=True)
+    
+    # Get summary (will show all aspects as not yet analyzed)
+    summary = {
+        "total_aspects": len(session.steps),
+        "aspects_needing_refinement": len([s for s in session.steps if not s.is_complete]),
+        "aspects_clear": len([s for s in session.steps if s.is_complete]),
+        "is_complete": session.is_complete(),
+    }
+    
     next_prompt = _build_next_prompt(session)
     
     # Save session to Redis for subsequent requests
     session_manager.save_session(db_query.id, session)
+    
+    duration_ms = (time.time() - start_time) * 1000
+    logger.info(
+        "API: Refinement workflow started successfully",
+        extra={
+            "request_id": request_id,
+            "user_id": current_user.id,
+            "session_id": db_session.id,
+            "query_id": db_query.id,
+            "total_aspects": summary["total_aspects"],
+            "duration_ms": round(duration_ms, 2),
+        },
+    )
     
     return StartRefinementResponse(
         session_id=db_session.id,
@@ -416,7 +483,7 @@ def start_refinement(
 
 
 @router.post("/queries/{query_id}/answer", response_model=Union[SubmitAnswerResponse, CommandResponse])
-def submit_answer(
+async def submit_answer(
     query_id: int,
     request: SubmitAnswerRequest,
     manager: QueryRefinementManager = Depends(get_refinement_manager),
@@ -439,6 +506,27 @@ def submit_answer(
     - Control commands (/skip, /done): Mark current step complete and advance
     - Synthesis command (/submit, /end): Flag session ready for synthesis
     """
+    import time
+    from query_refinement_module.tracing import generate_request_id, set_request_id, get_request_id
+    
+    # Generate and set request ID for tracing
+    request_id = generate_request_id()
+    set_request_id(request_id)
+    
+    start_time = time.time()
+    is_command = request.answer.strip().startswith('/')
+    
+    logger.info(
+        "API: Submitting answer",
+        extra={
+            "request_id": request_id,
+            "user_id": current_user.id,
+            "query_id": query_id,
+            "is_command": is_command,
+            "answer_length": len(request.answer),
+        },
+    )
+    
     # Get query and verify ownership
     db_query = get_query(db, query_id)
     if not db_query:
@@ -462,7 +550,10 @@ def submit_answer(
     # If session not in Redis, reconstruct from database (fallback)
     if not session:
         logger.warning("Session not found in Redis for query_id=%d, reconstructing from database", query_id)
-        session = manager.initialize(db_query.original_query, framework)
+        session = await manager.initialize(
+            db_query.original_query,
+            framework,
+        )
         
         # Restore follow-up history from database
         db_steps = get_query_refinement_steps(db, query_id)
@@ -568,7 +659,7 @@ def submit_answer(
     
     # Run follow-up loop to check if aspect is complete
     try:
-        result = manager.run_followup_until_clear(session, aspect_id=active_step.refinement_aspect.id)
+        result = await manager.run_followup_until_clear(session, aspect_id=active_step.refinement_aspect.id)
     except ConnectionError as e:
         raise HTTPException(
             status_code=status.HTTP_503_SERVICE_UNAVAILABLE,
@@ -628,6 +719,19 @@ def submit_answer(
     # Save updated session back to Redis
     session_manager.save_session(query_id, session)
     
+    duration_ms = (time.time() - start_time) * 1000
+    logger.info(
+        "API: Answer submitted successfully",
+        extra={
+            "request_id": request_id,
+            "user_id": current_user.id,
+            "query_id": query_id,
+            "is_command": is_command,
+            "is_complete": is_complete,
+            "duration_ms": round(duration_ms, 2),
+        },
+    )
+    
     return SubmitAnswerResponse(
         refinement_step_id=db_step.id,
         followup_id=db_followup.id,
@@ -637,7 +741,7 @@ def submit_answer(
 
 
 @router.get("/queries/{query_id}/status", response_model=GetRefinementStatusResponse)
-def get_refinement_status(
+async def get_refinement_status(
     query_id: int,
     manager: QueryRefinementManager = Depends(get_refinement_manager),
     current_user = Depends(get_current_user),
@@ -647,6 +751,23 @@ def get_refinement_status(
     """
     Get the current status of a refinement workflow.
     """
+    import time
+    from query_refinement_module.tracing import generate_request_id, set_request_id, get_request_id
+    
+    # Generate and set request ID for tracing
+    request_id = generate_request_id()
+    set_request_id(request_id)
+    
+    start_time = time.time()
+    logger.info(
+        "API: Getting refinement status",
+        extra={
+            "request_id": request_id,
+            "user_id": current_user.id,
+            "query_id": query_id,
+        },
+    )
+    
     db_query = get_query(db, query_id)
     if not db_query:
         raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Query not found")
@@ -666,7 +787,10 @@ def get_refinement_status(
     # Fallback: Reconstruct from database if Redis miss
     if not session:
         logger.warning(f"Session not found in Redis for query_id={query_id}, reconstructing from database")
-        session = manager.initialize(db_query.original_query, framework)
+        session = await manager.initialize(
+            db_query.original_query,
+            framework,
+        )
         
         # Restore follow-up history from database
         db_steps = get_query_refinement_steps(db, query_id)
@@ -693,6 +817,19 @@ def get_refinement_status(
     summary = manager.get_initialization_summary(session)
     active_step = session.get_active_step()
     
+    duration_ms = (time.time() - start_time) * 1000
+    logger.info(
+        "API: Refinement status retrieved",
+        extra={
+            "request_id": request_id,
+            "user_id": current_user.id,
+            "query_id": query_id,
+            "is_complete": session.is_complete(),
+            "current_aspect": active_step.refinement_aspect.aspect_name if active_step else None,
+            "duration_ms": round(duration_ms, 2),
+        },
+    )
+    
     return GetRefinementStatusResponse(
         query_id=query_id,
         original_query=db_query.original_query,
@@ -704,7 +841,7 @@ def get_refinement_status(
 
 
 @router.post("/synthesize", response_model=SynthesizeQueryResponse)
-def synthesize_refined_query(
+async def synthesize_refined_query(
     request: SynthesizeQueryRequest,
     manager: QueryRefinementManager = Depends(get_refinement_manager),
     current_user = Depends(get_current_user),
@@ -717,6 +854,23 @@ def synthesize_refined_query(
     This combines the original query with all refinement clarifications
     into a well-formed refined query.
     """
+    import time
+    from query_refinement_module.tracing import generate_request_id, set_request_id, get_request_id
+    
+    # Generate and set request ID for tracing
+    request_id_val = generate_request_id()
+    set_request_id(request_id_val)
+    
+    start_time = time.time()
+    logger.info(
+        "API: Synthesizing refined query",
+        extra={
+            "request_id": request_id_val,
+            "user_id": current_user.id,
+            "query_id": request.query_id,
+        },
+    )
+    
     db_query = get_query(db, request.query_id)
     if not db_query:
         raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Query not found")
@@ -737,7 +891,10 @@ def synthesize_refined_query(
     # If session not in Redis, reconstruct from database (fallback)
     if not session:
         logger.warning("Session not found in Redis for query_id=%d, reconstructing from database", request.query_id)
-        session = manager.initialize(db_query.original_query, framework)
+        session = await manager.initialize(
+            db_query.original_query,
+            framework,
+        )
         
         # Load follow-ups from database and populate session
         db_steps = get_query_refinement_steps(db, request.query_id)
@@ -761,7 +918,7 @@ def synthesize_refined_query(
     
     # Synthesize refined query
     try:
-        synthesis_result = manager.synthesize_refined_query(session)
+        synthesis_result = await manager.synthesize_refined_query(session)
     except Exception as e:
         raise HTTPException(
             status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
@@ -775,6 +932,19 @@ def synthesize_refined_query(
     
     # Delete session from Redis (workflow complete)
     session_manager.delete_session(request.query_id)
+    
+    duration_ms = (time.time() - start_time) * 1000
+    logger.info(
+        "API: Query synthesis completed",
+        extra={
+            "request_id": request_id_val,
+            "user_id": current_user.id,
+            "query_id": request.query_id,
+            "used_llm": synthesis_result.get('used_llm', False),
+            "refined_query_length": len(refined_query),
+            "duration_ms": round(duration_ms, 2),
+        },
+    )
     
     return SynthesizeQueryResponse(
         query_id=request.query_id,

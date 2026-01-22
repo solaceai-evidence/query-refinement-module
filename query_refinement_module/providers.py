@@ -7,7 +7,10 @@ import time
 from contextlib import contextmanager
 from datetime import UTC, datetime
 from pathlib import Path
-from typing import Any, Dict, Optional
+from typing import Any, Dict, Optional, TYPE_CHECKING
+
+if TYPE_CHECKING:
+    from .interfaces import RateLimitConfig
 
 __all__ = [
     "NoOpTracingProvider",
@@ -361,31 +364,135 @@ class ConcurrentSessionStorage(SessionStorageInterface):
 
     async def save_session_async(self, session_id: str, session: Any) -> None:
         """Async-safe session save with per-session locking."""
+        import time
+        from query_refinement_module.tracing import get_request_id, get_trace_id
+        
+        request_id = get_request_id() or "-"
+        trace_id = get_trace_id() or "-"
+        start_time = time.time()
+        
+        logger.info(
+            "Saving session to storage",
+            extra={
+                "request_id": request_id,
+                "trace_id": trace_id,
+                "session_id": session_id,
+                "backend": self._backend.__class__.__name__,
+            },
+        )
+        
         lock = self._get_lock(session_id)
         async with lock:
             # Run the synchronous storage operation in a thread pool
             await asyncio.to_thread(self._backend.save_session, session_id, session)
+        
+        duration_ms = (time.time() - start_time) * 1000
+        logger.info(
+            "Session saved to storage",
+            extra={
+                "request_id": request_id,
+                "trace_id": trace_id,
+                "session_id": session_id,
+                "duration_ms": round(duration_ms, 2),
+            },
+        )
 
     async def load_session_async(self, session_id: str) -> Any:
         """Async-safe session load with per-session locking."""
+        import time
+        from query_refinement_module.tracing import get_request_id, get_trace_id
+        
+        request_id = get_request_id() or "-"
+        trace_id = get_trace_id() or "-"
+        start_time = time.time()
+        
+        logger.info(
+            "Loading session from storage",
+            extra={
+                "request_id": request_id,
+                "trace_id": trace_id,
+                "session_id": session_id,
+                "backend": self._backend.__class__.__name__,
+            },
+        )
+        
         lock = self._get_lock(session_id)
         async with lock:
             # Run the synchronous storage operation in a thread pool
-            return await asyncio.to_thread(self._backend.load_session, session_id)
+            result = await asyncio.to_thread(self._backend.load_session, session_id)
+        
+        duration_ms = (time.time() - start_time) * 1000
+        logger.info(
+            "Session loaded from storage",
+            extra={
+                "request_id": request_id,
+                "trace_id": trace_id,
+                "session_id": session_id,
+                "found": result is not None,
+                "duration_ms": round(duration_ms, 2),
+            },
+        )
+        
+        return result
 
     async def delete_session_async(self, session_id: str) -> None:
         """Async-safe session delete with per-session locking and cleanup."""
+        import time
+        from query_refinement_module.tracing import get_request_id, get_trace_id
+        
+        request_id = get_request_id() or "-"
+        trace_id = get_trace_id() or "-"
+        start_time = time.time()
+        
+        logger.info(
+            "Deleting session from storage",
+            extra={
+                "request_id": request_id,
+                "trace_id": trace_id,
+                "session_id": session_id,
+                "backend": self._backend.__class__.__name__,
+            },
+        )
+        
         lock = self._get_lock(session_id)
         async with lock:
             # Run the synchronous storage operation in a thread pool
             await asyncio.to_thread(self._backend.delete_session, session_id)
         # Clean up the lock after deletion
         self._cleanup_lock(session_id)
+        
+        duration_ms = (time.time() - start_time) * 1000
+        logger.info(
+            "Session deleted from storage",
+            extra={
+                "request_id": request_id,
+                "trace_id": trace_id,
+                "session_id": session_id,
+                "duration_ms": round(duration_ms, 2),
+            },
+        )
 
     async def session_exists_async(self, session_id: str) -> bool:
         """Async-safe session existence check."""
+        from query_refinement_module.tracing import get_request_id, get_trace_id
+        
+        request_id = get_request_id() or "-"
+        trace_id = get_trace_id() or "-"
+        
         # No locking needed for existence checks (read-only, idempotent)
-        return await asyncio.to_thread(self._backend.session_exists, session_id)
+        exists = await asyncio.to_thread(self._backend.session_exists, session_id)
+        
+        logger.debug(
+            "Session existence check",
+            extra={
+                "request_id": request_id,
+                "trace_id": trace_id,
+                "session_id": session_id,
+                "exists": exists,
+            },
+        )
+        
+        return exists
 
     # Synchronous interface methods (for backward compatibility)
     def save_session(self, session_id: str, session: Any) -> None:
@@ -430,18 +537,22 @@ class LiteLLMProvider(LLMProviderInterface):
         self._api_base = api_base
         self._default_completion_kwargs = default_completion_kwargs or {}
         
+        # Semaphore to limit concurrent LLM calls (prevent overwhelming server)
+        self._max_concurrent = 50  # Store for logging
+        self._semaphore = asyncio.Semaphore(self._max_concurrent)  # Max 50 concurrent calls
+        
         # Initialize persistent HTTP client for connection pooling (if httpx available)
         self._http_client: Optional[Any] = None
         if httpx is not None:
             self._http_client = httpx.AsyncClient(
                 limits=httpx.Limits(
-                    max_connections=20,
-                    max_keepalive_connections=10,
+                    max_connections=100,      # Increased for 50 concurrent users
+                    max_keepalive_connections=50,  # Increased for 50 concurrent users
                     keepalive_expiry=30.0,
                 ),
                 timeout=httpx.Timeout(60.0),
             )
-            logger.debug("Initialized HTTP connection pool for LiteLLM provider")
+            logger.debug("Initialized HTTP connection pool for LiteLLM provider (max_connections=100)")
 
     async def complete_async(
         self,
@@ -453,6 +564,82 @@ class LiteLLMProvider(LLMProviderInterface):
         **kwargs: Any,
     ) -> LLMCompletionResult:
         """Complete a prompt asynchronously with automatic retry on rate limit errors."""
+        import time
+        from query_refinement_module.tracing import get_request_id, get_trace_id
+        
+        request_id = get_request_id() or "-"
+        trace_id = get_trace_id() or "-"
+        
+        # Log semaphore queue depth before acquiring
+        queue_depth = self._semaphore._value  # Available permits
+        max_concurrent = self._max_concurrent  # Total permits
+        waiting = max_concurrent - queue_depth  # Estimated waiting tasks
+        
+        logger.info(
+            "Attempting to acquire LLM semaphore",
+            extra={
+                "request_id": request_id,
+                "trace_id": trace_id,
+                "semaphore_available": queue_depth,
+                "semaphore_max": max_concurrent,
+                "estimated_waiting": waiting,
+            },
+        )
+        
+        # Track wait time for semaphore acquisition
+        wait_start = time.time()
+        
+        # Apply semaphore to limit concurrent calls
+        async with self._semaphore:
+            wait_time_ms = (time.time() - wait_start) * 1000
+            
+            # Log acquisition with wait time if significant
+            if wait_time_ms > 100:  # Log if waited more than 100ms
+                logger.info(
+                    "Acquired LLM semaphore after wait",
+                    extra={
+                        "request_id": request_id,
+                        "trace_id": trace_id,
+                        "wait_time_ms": round(wait_time_ms, 2),
+                        "semaphore_available_after": self._semaphore._value,
+                    },
+                )
+            else:
+                logger.debug(
+                    "Acquired LLM semaphore immediately",
+                    extra={
+                        "request_id": request_id,
+                        "trace_id": trace_id,
+                        "semaphore_available_after": self._semaphore._value,
+                    },
+                )
+            
+            try:
+                result = await self._complete_async_internal(
+                    user_prompt, system_prompt, model, temperature, max_tokens, **kwargs
+                )
+                return result
+            finally:
+                # Log semaphore release
+                logger.debug(
+                    "Released LLM semaphore",
+                    extra={
+                        "request_id": request_id,
+                        "trace_id": trace_id,
+                        "semaphore_available_after_release": self._semaphore._value + 1,
+                    },
+                )
+    
+    async def _complete_async_internal(
+        self,
+        user_prompt: str,
+        system_prompt: Optional[str] = None,
+        model: Optional[str] = None,
+        temperature: float = 0.0,
+        max_tokens: Optional[int] = None,
+        **kwargs: Any,
+    ) -> LLMCompletionResult:
+        """Internal completion logic with retry and rate limit handling."""
         if litellm is None:
             raise RuntimeError(
                 "litellm package is required for LiteLLMProvider. Install with 'pip install litellm'."
@@ -472,7 +659,7 @@ class LiteLLMProvider(LLMProviderInterface):
         if max_tokens is not None and "max_tokens" not in completion_kwargs:
             completion_kwargs["max_tokens"] = max_tokens
 
-        # Get current request context for distributed tracing
+        # Get current request context for tracing
         request_id = get_request_id()
         trace_id = get_trace_id()
 
@@ -494,7 +681,7 @@ class LiteLLMProvider(LLMProviderInterface):
         
         for attempt in range(max_retries + 1):
             try:
-                # Use async acompletion for true async I/O
+                # Use async acompletion 
                 response = await litellm.acompletion(
                     model=target_model,
                     messages=messages,
@@ -504,9 +691,16 @@ class LiteLLMProvider(LLMProviderInterface):
                     **completion_kwargs,
                 )
 
+                # Type guard: ensure response is a dict, not a stream wrapper
+                if not isinstance(response, dict):
+                    raise TypeError(
+                        f"Expected dict response from litellm.acompletion, got {type(response).__name__}. "
+                        "Stream mode should not be enabled for this call."
+                    )
+
                 message = response["choices"][0]["message"].get("content", "")
                 usage = response.get("usage", {})
-                total_tokens = usage.get("total_tokens")
+                total_tokens = usage.get("total_tokens") if usage else None
                 
                 # Parse rate limit headers if available
                 response_headers = getattr(response, "_hidden_params", {}).get("response_headers", {})
@@ -517,8 +711,8 @@ class LiteLLMProvider(LLMProviderInterface):
                     "model": target_model,
                     "usage": usage,
                     "response_id": response.get("id"),
-                    "prompt_tokens": usage.get("prompt_tokens"),
-                    "completion_tokens": usage.get("completion_tokens"),
+                    "prompt_tokens": usage.get("prompt_tokens") if usage else None,
+                    "completion_tokens": usage.get("completion_tokens") if usage else None,
                     "request_id": request_id,
                     "trace_id": trace_id,
                 }
@@ -572,13 +766,16 @@ class LiteLLMProvider(LLMProviderInterface):
                     retry_after = self._extract_retry_after(e) or 60.0
                     raise RateLimitExceeded(
                         message=f"Rate limit exceeded for model {target_model}: {str(e)}",
-                        retry_after=retry_after,
+                        retry_after=int(retry_after) if retry_after else None,
                         limit_type="provider",
                         scope="global",
                     )
                 
                 # Non-rate-limit errors are raised immediately
                 raise
+        
+        # This line should never be reached (loop always returns or raises)
+        raise RuntimeError("Unexpected: complete_async loop terminated without return or exception")
 
     def complete(
         self,
@@ -639,9 +836,16 @@ class LiteLLMProvider(LLMProviderInterface):
                     **completion_kwargs,
                 )
 
+                # Type guard: ensure response is a dict, not a stream wrapper
+                if not isinstance(response, dict):
+                    raise TypeError(
+                        f"Expected dict response from litellm.completion, got {type(response).__name__}. "
+                        "Stream mode should not be enabled for this call."
+                    )
+
                 message = response["choices"][0]["message"].get("content", "")
                 usage = response.get("usage", {})
-                total_tokens = usage.get("total_tokens")
+                total_tokens = usage.get("total_tokens") if usage else None
                 
                 # Parse rate limit headers if available
                 response_headers = getattr(response, "_hidden_params", {}).get("response_headers", {})
@@ -652,8 +856,8 @@ class LiteLLMProvider(LLMProviderInterface):
                     "model": target_model,
                     "usage": usage,
                     "response_id": response.get("id"),
-                    "prompt_tokens": usage.get("prompt_tokens"),
-                    "completion_tokens": usage.get("completion_tokens"),
+                    "prompt_tokens": usage.get("prompt_tokens") if usage else None,
+                    "completion_tokens": usage.get("completion_tokens") if usage else None,
                     "request_id": request_id,
                     "trace_id": trace_id,
                 }
@@ -716,13 +920,16 @@ class LiteLLMProvider(LLMProviderInterface):
                     retry_after = self._extract_retry_after(e) or 60.0
                     raise RateLimitExceeded(
                         message=f"Rate limit exceeded for model {target_model}: {str(e)}",
-                        retry_after=retry_after,
+                        retry_after=int(retry_after) if retry_after else None,
                         limit_type="provider",
                         scope="global",
                     )
                 
                 # Non-rate-limit errors are raised immediately
                 raise
+        
+        # This line should never be reached (loop always returns or raises)
+        raise RuntimeError("Unexpected: complete loop terminated without return or exception")
 
     def get_model_info(self, model: str) -> Dict[str, Any]:
         if litellm is None:

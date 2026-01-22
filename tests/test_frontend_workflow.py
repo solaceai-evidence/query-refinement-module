@@ -6,6 +6,7 @@ This helps identify backend problems without using the browser.
 import requests
 import json
 import sys
+import time
 
 BASE_URL = "http://localhost:8000"
 
@@ -62,8 +63,25 @@ def register_and_login():
     print(f"✓ Got token: {token[:20]}...")
     return token
 
-def test_workflow(token):
+def main():
     """Test the complete refinement workflow"""
+    # Check if server is running
+    try:
+        response = requests.get(f"{BASE_URL}/health", timeout=2)
+        if response.status_code != 200:
+            print("❌ API server is not healthy")
+            print("Start the server with: poetry run uvicorn query_refinement_module.api.main:app --reload")
+            sys.exit(1)
+    except requests.exceptions.ConnectionError:
+        print("❌ API server is not running")
+        print("Start the server with: poetry run uvicorn query_refinement_module.api.main:app --reload")
+        sys.exit(1)
+    
+    token = register_and_login()
+    test_workflow(token)
+
+def test_workflow(token):
+    """Run the workflow steps with the given token"""
     headers = {"Authorization": f"Bearer {token}"}
     
     # Step 1: Get frameworks
@@ -177,15 +195,11 @@ def test_workflow(token):
             print(f"✓ Message: {data.get('message')}")
 
 if __name__ == "__main__":
-    import time
-    
     try:
-        token = register_and_login()
-        test_workflow(token)
-        
+        main()
         print_section("✅ Test Complete")
+        print("All workflow steps completed successfully!")
         print("Review the output above to identify any issues.")
-        
     except Exception as e:
         print_section("❌ Test Failed")
         print(f"Error: {e}")

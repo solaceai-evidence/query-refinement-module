@@ -15,12 +15,12 @@ def test_reload_from_env_loads_framework(monkeypatch, tmp_path):
           - id: aspect_a
             aspect_name: Aspect A
             aspect_description: Test aspect
-            refinement_instructions: |
+            evaluation_instructions: |
               Analyze {query}
             examples:
               clear:
                 - query: "What is the effect of drug X on condition Y in population Z?"
-                  analysis: "The query clearly specifies the intervention, condition, and population."
+                  rationale: "The query clearly specifies the intervention, condition, and population."
               needs_refinement:
                 - query: "What is the effect of drug X?"
                   issue: "The query does not specify the condition or population."
@@ -89,7 +89,7 @@ def test_list_frameworks_multiple(monkeypatch, tmp_path):
           - id: aspect_1
             aspect_name: Aspect 1
             aspect_description: First framework aspect
-            refinement_instructions: |
+            evaluation_instructions: |
               Analyze {query}
             response_format:
               type: json
@@ -101,7 +101,7 @@ def test_list_frameworks_multiple(monkeypatch, tmp_path):
           - id: aspect_2
             aspect_name: Aspect 2
             aspect_description: Second framework aspect
-            refinement_instructions: |
+            evaluation_instructions: |
               Analyze {query}
             response_format:
               type: json
@@ -136,7 +136,7 @@ def test_get_last_load_error(monkeypatch, tmp_path):
           - id: aspect_ok
             aspect_name: Aspect OK
             aspect_description: Valid aspect
-            refinement_instructions: |
+            evaluation_instructions: |
               Analyze {query}
             response_format:
               type: json

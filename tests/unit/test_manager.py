@@ -1,3 +1,4 @@
+import pytest
 import textwrap
 
 from query_refinement_module.core import QueryRefinementManager, parse_user_command
@@ -36,6 +37,18 @@ class StubProvider(LLMProviderInterface):
             context=self.response_text,
             model=model or "stub-model",
         )
+    
+    async def complete_async(
+        self,
+        user_prompt: str,
+        system_prompt: str | None = None,
+        model: str | None = None,
+        temperature: float = 0.0,
+        max_tokens: int | None = None,
+        **kwargs,
+    ) -> LLMCompletionResult:
+        """Async version delegates to sync complete()"""
+        return self.complete(user_prompt, system_prompt, model, temperature, max_tokens, **kwargs)
 
     def get_model_info(self, model: str):  # pragma: no cover - not used in tests
         return {"model": model}
@@ -48,6 +61,10 @@ class StubAnalyzer(QueryAnalyzerInterface):
             explanation="This aspect is already clear",
             clarifying_question=None,
         )
+    
+    async def analyze_aspect_async(self, query, aspect, dependency_context=None, llm_provider=None):
+        """Async version delegates to sync analyze_aspect()"""
+        return self.analyze_aspect(query, aspect, dependency_context, llm_provider)
 
 
 class NeedsRefinementAnalyzer(QueryAnalyzerInterface):
@@ -57,6 +74,10 @@ class NeedsRefinementAnalyzer(QueryAnalyzerInterface):
             explanation="Population details missing",
             clarifying_question="Which population are you studying?",
         )
+    
+    async def analyze_aspect_async(self, query, aspect, dependency_context=None, llm_provider=None):
+        """Async version delegates to sync analyze_aspect()"""
+        return self.analyze_aspect(query, aspect, dependency_context, llm_provider)
 
 
 def _write_framework(tmp_path):
@@ -66,10 +87,7 @@ def _write_framework(tmp_path):
           - id: aspect_a
             aspect_name: Aspect A
             aspect_description: First aspect
-            refinement_instructions: |
-              Analyze {query}
-            response_format:
-              type: json
+            evaluation_instructions: Analyze the query
         """
     )
     path = tmp_path / "framework.yaml"
@@ -77,7 +95,8 @@ def _write_framework(tmp_path):
     return path
 
 
-def test_initialize_stores_initial_summary(monkeypatch, tmp_path):
+@pytest.mark.asyncio
+async def test_initialize_stores_initial_summary(monkeypatch, tmp_path):
     framework_path = _write_framework(tmp_path)
     monkeypatch.setenv("REFINEMENT_FRAMEWORK_PATH", str(framework_path))
     registry.reload_from_env(raise_on_error=True)
@@ -86,22 +105,24 @@ def test_initialize_stores_initial_summary(monkeypatch, tmp_path):
     analyzer = StubAnalyzer()
     manager = QueryRefinementManager(provider, analyzer)
 
-    session = manager.initialize("Original question", registry.get_framework("demo"))
+    session = await manager.initialize("Original question", registry.get_framework("demo"))
 
     step = session.steps[0]
-    assert step.initial_summary == "This aspect is already clear"
+    assert step.refinement_aspect_value == "This aspect is already clear"
 
-    synthesis = manager.synthesize_refined_query(session)
+    synthesis = await manager.synthesize_refined_query(session)
     assert synthesis["refined_query"] == "Refined Query"
     assert synthesis["baseline_summaries"] == [("Aspect A", "This aspect is already clear")]
     assert provider.calls, "Provider should be invoked for synthesis"
 
     user_prompt = provider.calls[0]["user_prompt"]
-    assert "DETAILS ALREADY SPECIFIED IN THE ORIGINAL QUERY" in user_prompt
-    assert "Aspect A: This aspect is already clear" in user_prompt
+    # Check that the synthesis prompt contains the aspect details
+    assert "Aspect A" in user_prompt
+    assert "This aspect is already clear" in user_prompt
 
 
-def test_skip_does_not_trigger_synthesis(monkeypatch, tmp_path):
+@pytest.mark.asyncio
+async def test_skip_does_not_trigger_synthesis(monkeypatch, tmp_path):
     framework_path = _write_framework(tmp_path)
     monkeypatch.setenv("REFINEMENT_FRAMEWORK_PATH", str(framework_path))
     registry.reload_from_env(raise_on_error=True)
@@ -110,13 +131,13 @@ def test_skip_does_not_trigger_synthesis(monkeypatch, tmp_path):
     analyzer = NeedsRefinementAnalyzer()
     manager = QueryRefinementManager(provider, analyzer)
 
-    session = manager.initialize("Original question", registry.get_framework("demo"))
+    session = await manager.initialize("Original question", registry.get_framework("demo"))
 
     # Simulate user skipping the only refinement aspect
     command = parse_user_command("/skip")
     session.handle_command(command)
 
-    synthesis = manager.synthesize_refined_query(session)
+    synthesis = await manager.synthesize_refined_query(session)
 
     assert synthesis["refined_query"] == "Original question"
     assert synthesis["used_llm"] is False

@@ -24,7 +24,6 @@ def build_manager(
     enable_tracing: bool,
     trace_dir: Optional[str] = None,
     log_dir: Optional[str] = None,
-    parallel_enabled: bool = True,
 ) -> QueryRefinementManager:
     logs_directory = log_dir or trace_dir
     if logs_directory:
@@ -42,37 +41,10 @@ def build_manager(
     provider = LiteLLMProvider(**settings.as_provider_kwargs())
     analyzer = LLMQueryAnalyzer(provider, **settings.as_analyzer_kwargs())
 
-    # Build parallel config if enabled
-    parallel_config = None
-    if parallel_enabled:
-        from .interfaces import RateLimitConfig
-        from .parallel import ParallelConfig
-        from .rate_limiter import TokenBucketRateLimiter, BackoffStrategy
-        
-        # Get rate limits from environment or provider defaults
-        rate_limit_config = RateLimitConfig.from_env()
-        if not rate_limit_config or not rate_limit_config.requests_per_minute:
-            # Use provider defaults
-            rate_limit_config = provider.get_rate_limits()
-        
-        rate_limiter = TokenBucketRateLimiter(
-            config=rate_limit_config,
-            scope="global",
-        )
-        
-        parallel_config = ParallelConfig(
-            enabled=True,
-            max_concurrent=rate_limit_config.max_concurrent_requests or 5,
-            rate_limiter=rate_limiter,
-            backoff_strategy=BackoffStrategy(),
-            max_retries=3,
-        )
-
     return QueryRefinementManager(
         llm_provider=provider,
         query_analyzer=analyzer,
         tracing_provider=tracer,
-        parallel_config=parallel_config,
     )
 
 
@@ -81,7 +53,7 @@ def _format_dependency_context(session, aspect_id: str) -> Optional[str]:
     if not context:
         return None
 
-    lines = ["📎 Dependency Context:"]
+    lines = ["Dependency Context:"]
     for dep_id, info in context.items():
         label = info.get("name", dep_id)
         value = info.get("value", "[unspecified]")
@@ -95,20 +67,20 @@ def _print_summary(manager: QueryRefinementManager, session) -> None:
     print("SESSION SUMMARY")
     print("="*80)
     print(f"Refinement aspects in this framework: {summary['total_aspects']}")
-    print(f"Needs refinement: {summary['aspects_needing_refinement']}")
-    print(f"Already clear: {summary['aspects_clear']}")
+    print(f"Needs refinement: {summary['incomplete_count']}")
+    print(f"Already clear: {summary['complete_count']}")
     print()
     for aspect in summary["aspects"]:
-        status = aspect["status"]
+        status = "complete" if aspect["is_complete"] else "needs_refinement"
         print(f"  [{status.upper()}] {aspect['name']}")
-        reason = aspect.get("reason")
+        reason = aspect.get("reasoning")
         if reason:
             print(f"  → {reason}")
         print()
     print("="*80)
 
 
-async def run_cli(manager: QueryRefinementManager, framework_name: str, query: str, parallel_enabled: bool = True) -> None:
+async def run_cli(manager: QueryRefinementManager, framework_name: str, query: str) -> None:
     try:
         framework = registry.get_framework(framework_name)
     except ValueError as exc:
@@ -116,65 +88,23 @@ async def run_cli(manager: QueryRefinementManager, framework_name: str, query: s
         return
 
     print("\n" + "="*80)
-    if parallel_enabled and manager.parallel_config:
-        print(f"⚡ PARALLEL MODE: Up to {manager.parallel_config.max_concurrent} concurrent requests")
-    else:
-        print("📝 SEQUENTIAL MODE: Processing one aspect at a time")
+    print("QUERY REFINEMENT - Sequential On-Demand Mode")
+    print("="*80)
+    print(f"Original query: {query}")
+    print(f"Framework: {framework_name}")
+    print(f"Total aspects: {len(framework)}")
     print("="*80)
     
-    # Use streaming initialization if parallel mode is enabled
-    session = None
-    if parallel_enabled and manager.parallel_config:
-        print("\n🔄 Analyzing aspects (results will stream as they complete)...\n")
-        
-        try:
-            async for session_partial, level_idx, level_results, metadata, is_final in manager.initialize_streaming(
-                query, framework, manager.parallel_config
-            ):
-                session = session_partial
-                
-                if is_final:
-                    # Final result - print summary
-                    break
-                
-                # Intermediate result - show progress
-                total_completed = metadata.get("total_completed", 0)
-                total_aspects = metadata.get("total_aspects", 0)
-                elapsed = metadata.get("elapsed_time", 0)
-                successful = metadata.get("successful_in_level", 0)
-                failed = metadata.get("failed_in_level", 0)
-                
-                print(f"✓ Level {level_idx + 1}/{metadata.get('total_levels', '?')} complete: "
-                      f"{successful}/{len(level_results)} aspects successful "
-                      f"[{total_completed}/{total_aspects} total, {elapsed:.1f}s]")
-                
-                # Show which aspects were analyzed in this level
-                for aspect_id, result in level_results.items():
-                    if result:
-                        status = "✓ clear" if not result.needs_refinement else "→ needs refinement"
-                        print(f"  {status}: {aspect_id}")
-                    else:
-                        print(f"  ✗ failed: {aspect_id}")
-                
-                print()
-        except Exception as e:
-            print(f"⚠️  Streaming initialization failed: {e}")
-            import traceback
-            traceback.print_exc()
-            print("Falling back to standard initialization...\n")
-            session = manager.initialize(query, framework)
-    else:
-        # Non-streaming (sequential or fallback)
-        session = manager.initialize(query, framework)
-    
-    if session:
-        _print_summary(manager, session)
+    # Use sequential initialization (no upfront analysis)
+    print("\n🔄 Initializing session...")
+    session = manager.initialize_sequential(query, framework)
+    print(f"✓ Session ready with {len(session.steps)} aspects to refine\n")
 
-    print("\n" + "="*80)
+    print("="*80)
     print("INSTRUCTIONS")
     print("="*80)
-    print("• Type your answers to refine each aspect")
-    print("• Use commands like /help, /status, /back, /skip, /end")
+    print("• Answer each question to refine the aspect")
+    print("• Commands: /help, /status, /back, /skip, /done, /end")
     print("• Press Ctrl+C to exit at any time")
     print("="*80 + "\n")
 
@@ -185,76 +115,182 @@ async def run_cli(manager: QueryRefinementManager, framework_name: str, query: s
             if session.synthesis_requested:
                 break
 
-            step = session.get_active_step()
+            # Get next aspect that needs refinement (respects dependencies)
+            step = session.get_next_unrefined_aspect()
             if not step:
+                # All aspects complete
                 break
 
-            if hasattr(manager, "ensure_step_is_ready"):
-                if not manager.ensure_step_is_ready(session, step):
-                    # Aspect resolved after refreshed analysis; move to next candidate.
-                    continue
-
             header = step.refinement_aspect.aspect_name
-            question = step.refinement_question or header
+            aspect_desc = step.refinement_aspect.aspect_description or ""
             
             print("\n" + "─"*80)
-            if step.needs_review:
-                print(f"📋 {header.upper()} (needs review)")
-            else:
-                print(f"📋 {header.upper()}")
+            print(f" {header.upper()}")
+            if aspect_desc:
+                print(f" {aspect_desc}")
             print("─"*80)
 
+            # Show dependency context if available
             context_text = _format_dependency_context(session, step.refinement_aspect.id)
             if context_text:
                 print(f"\n{context_text}\n")
 
+            # Generate initial question for this aspect using unified approach
+            print("🔄 Generating question...\n")
+            try:
+                result = await manager.get_analysis_prompts(
+                    session=session,
+                    aspect_id=step.refinement_aspect.id,
+                    mode='initial'
+                )
+                
+                # Process result
+                status = manager.process_analysis_result(
+                    session=session,
+                    aspect_id=step.refinement_aspect.id,
+                    result=result
+                )
+                
+                if status['complete']:
+                    # Aspect is already clear from the query
+                    print(f"✓ {header} is already clear from your query")
+                    if result.reasoning:
+                        print(f"  {result.reasoning}")
+                    continue
+                
+                # Not complete - show question to user
+                question = result.next_question
+                
+            except Exception as e:
+                print(f"❌ Error: {e}")
+                print(f"Skipping aspect {header}...")
+                step.was_skipped = True
+                step.is_complete = True
+                continue
+            
             print(f"{question}\n")
             
-            # Use async-friendly input - wrap blocking input in executor
-            try:
-                user_input = await asyncio.to_thread(input, "→ ")
-                user_input = user_input.strip()
-            except (KeyboardInterrupt, asyncio.CancelledError):
-                print("\n\n🛑 Session interrupted. Exiting...")
-                interrupted = True
-                break
-            if not user_input:
-                continue
-
-            if is_user_command(user_input):
-                command_result = parse_user_command(user_input)
-                payload = session.handle_command(command_result)
-                print(payload.get("message", ""))
-                if payload.get("submit") or session.synthesis_requested:
+            # Interactive loop for this aspect
+            while not step.is_complete:
+                # Get user input
+                try:
+                    user_input = await asyncio.to_thread(input, "→ ")
+                    user_input = user_input.strip()
+                except (KeyboardInterrupt, asyncio.CancelledError):
+                    print("\n\n Session interrupted. Exiting...")
+                    interrupted = True
+                    break
+                
+                if not user_input:
                     continue
-                invalidated = payload.get("invalidated", []) or []
-                if invalidated:
-                    print("Revisit: " + ", ".join(invalidated))
-                continue
 
-            step.add_follow_up(question=question, response=user_input)
-            step.is_complete = True
-            step.needs_review = False
-            print(f"Recorded response for {header}.")
+                # Handle commands
+                if is_user_command(user_input):
+                    command_result = parse_user_command(user_input)
+                    payload = session.handle_command(command_result)
+                    print(payload.get("message", ""))
+                    if payload.get("submit") or session.synthesis_requested:
+                        break
+                    invalidated = payload.get("invalidated", []) or []
+                    if invalidated:
+                        print("Revisit: " + ", ".join(invalidated))
+                    # If skip/done was executed, the step is now complete
+                    if step.is_complete:
+                        break
+                    # If /clear was used, regenerate the question
+                    if payload.get("regenerate_question"):
+                        try:
+                            print("\n🔄 Regenerating question...")
+                            # Use unified approach to regenerate
+                            mode = 'followup' if step.follow_up_history else 'initial'
+                            result = await manager.get_analysis_prompts(
+                                session=session,
+                                aspect_id=step.refinement_aspect.id,
+                                mode=mode
+                            )
+                            
+                            status = manager.process_analysis_result(
+                                session=session,
+                                aspect_id=step.refinement_aspect.id,
+                                result=result
+                            )
+                            
+                            if status['complete']:
+                                print(f"✓ {header} is now complete")
+                            else:
+                                question = result.next_question
+                                print(f"\n{question}\n")
+                        except Exception as e:
+                            print(f"❌ Error regenerating question: {e}")
+                    continue
 
-        print("\n" + "="*80)
-        print("RESULTS")
-        print("="*80)
-        print(f"Original: {session.original_query}")
+                # Record answer
+                if not question:
+                    question = step.refinement_question or f"Please provide details about {header}"
+                step.add_follow_up(question=question, response=user_input)
+                
+                # Run follow-up analysis
+                print("\n🔄 Analyzing your answer...")
+                try:
+                    result = await manager.run_followup_until_clear(
+                        session,
+                        aspect_id=step.refinement_aspect.id,
+                        max_rounds=5
+                    )
+                    
+                    is_complete = result.get('is_complete', False)
+                    rounds = result.get('rounds', 0)
+                    
+                    if is_complete:
+                        print(f"✓ {header} complete after {rounds} round(s)")
+                        step.is_complete = True
+                        break
+                    else:
+                        # Need more clarification
+                        question = step.refinement_question or f"Can you provide more details about {header}?"
+                        print(f"\n{question}\n")
+                        
+                except Exception as e:
+                    print(f"❌ Error during analysis: {e}")
+                    print(f"Marking {header} as complete with current answer.")
+                    step.is_complete = True
+                    break
+            
+            if interrupted:
+                break
 
-        try:
-            synthesis = manager.synthesize_refined_query(session)
-        except ValueError as exc:
-            print(f"Error: {exc}")
-        except Exception as exc:
-            print(f"Error: {exc}")
-        else:
-            refined_query = synthesis.get("refined_query", "").strip()
-            if refined_query:
-                print(f"Refined:  {refined_query}")
+        if not interrupted:
+            print("\n" + "="*80)
+            print("GENERATING REFINED QUERY")
+            print("="*80)
+            print(f"Original: {session.original_query}\n")
+
+            try:
+                synthesis = await manager.synthesize_refined_query(session)
+            except ValueError as exc:
+                print(f"Error: {exc}")
+            except Exception as exc:
+                print(f"Error: {exc}")
             else:
-                print(f"Refined:  {session.original_query}")
-        print("="*80)
+                refined_query = synthesis.get("refined_query", "").strip()
+                refined_values = synthesis.get("refined_values", {})
+                
+                if refined_query:
+                    print(f"Refined:  {refined_query}\n")
+                else:
+                    print(f"Refined:  {session.original_query}\n")
+                
+                # Show extracted values
+                if refined_values:
+                    print("─"*80)
+                    print("EXTRACTED VALUES")
+                    print("─"*80)
+                    for aspect_id, value in refined_values.items():
+                        aspect = next((s.refinement_aspect for s in session.steps if s.refinement_aspect.id == aspect_id), None)
+                        aspect_name = aspect.aspect_name if aspect else aspect_id
+                        print(f"• {aspect_name}: {value}")
+                    
+            print("="*80)
 
     except KeyboardInterrupt:
         interrupted = True
@@ -279,20 +315,6 @@ def parse_args(argv: Optional[list[str]] = None) -> argparse.Namespace:
     parser.add_argument("--trace", action="store_true", help="Enable verbose console tracing")
     parser.add_argument("--trace-dir", help="Write tracing operations and events to this directory")
     parser.add_argument("--log-dir", help="Directory for application logs (defaults to trace-dir when set)")
-    
-    # Parallel execution options
-    parallel_group = parser.add_mutually_exclusive_group()
-    parallel_group.add_argument(
-        "--parallel",
-        action="store_true",
-        default=None,
-        help="Enable parallel aspect analysis (default: enabled via QUERY_REFINEMENT_PARALLEL_MODE)"
-    )
-    parallel_group.add_argument(
-        "--no-parallel",
-        action="store_true",
-        help="Disable parallel execution, process aspects sequentially"
-    )
     
     return parser.parse_args(argv)
 
@@ -345,23 +367,12 @@ def main(argv: Optional[list[str]] = None) -> None:
         return
 
     trace_enabled = bool(args.trace or args.trace_dir)
-    
-    # Determine parallel mode: CLI flags override environment variable
-    if args.no_parallel:
-        parallel_enabled = False
-    elif args.parallel:
-        parallel_enabled = True
-    else:
-        # Check environment variable (default: true)
-        env_parallel = os.getenv("QUERY_REFINEMENT_PARALLEL_MODE", "true").lower()
-        parallel_enabled = env_parallel in ("true", "1", "yes", "on")
 
     try:
         manager = build_manager(
             enable_tracing=trace_enabled,
             trace_dir=args.trace_dir,
             log_dir=args.log_dir,
-            parallel_enabled=parallel_enabled,
         )
     except RuntimeError as exc:
         print(f"Failed to initialise LLM provider: {exc}")
@@ -371,11 +382,11 @@ def main(argv: Optional[list[str]] = None) -> None:
         return
 
     try:
-        asyncio.run(run_cli(manager, framework_name, query, parallel_enabled=parallel_enabled))
+        asyncio.run(run_cli(manager, framework_name, query))
     except KeyboardInterrupt:
-        print("\n\n🛑 Session interrupted. Goodbye!")
+        print("\n\n Session interrupted. Goodbye!")
     except asyncio.CancelledError:
-        print("\n\n🛑 Session cancelled. Goodbye!")
+        print("\n\n Session cancelled. Goodbye!")
 
 
 if __name__ == "__main__":  # pragma: no cover

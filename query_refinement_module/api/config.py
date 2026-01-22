@@ -18,7 +18,7 @@ class Settings(BaseSettings):
     
     # App metadata
     app_name: str = "Query Refinement API"
-    app_version: str = "0.2.0"
+    app_version: str = "0.3.0"
     debug: bool = False
     environment: str = Field(default="development", description="Environment: development, staging, production")
     
@@ -100,15 +100,6 @@ class Settings(BaseSettings):
     # Rate limiter backend
     rate_limiter_backend: str = Field(default="memory", description="Rate limiter backend: 'memory' or 'redis'")
     redis_rate_limit_prefix: str = Field(default="qr:ratelimit", description="Redis key prefix for rate limit data")
-    
-    # Parallel Execution Configuration
-    parallel_execution_enabled: bool = Field(default=False, description="Enable parallel aspect analysis")
-    parallel_max_concurrent: int = Field(default=5, description="Max concurrent aspects per dependency level")
-    parallel_max_retries: int = Field(default=3, description="Max retry attempts for rate-limited calls")
-    parallel_backoff_base_delay: float = Field(default=1.0, description="Base delay for exponential backoff (seconds)")
-    parallel_backoff_max_delay: float = Field(default=60.0, description="Max delay for exponential backoff (seconds)")
-    parallel_backoff_multiplier: float = Field(default=2.0, description="Exponential multiplier for backoff")
-    parallel_backoff_jitter: float = Field(default=0.1, description="Jitter factor for backoff (0.0-1.0)")
     
     # Configuration using pydantic-settings v2 style
     model_config = SettingsConfigDict(
