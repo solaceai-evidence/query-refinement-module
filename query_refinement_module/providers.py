@@ -7,7 +7,10 @@ import time
 from contextlib import contextmanager
 from datetime import UTC, datetime
 from pathlib import Path
-from typing import Any, Dict, Optional
+from typing import Any, Dict, Optional, TYPE_CHECKING
+
+if TYPE_CHECKING:
+    from .interfaces import RateLimitConfig
 
 __all__ = [
     "NoOpTracingProvider",
@@ -472,7 +475,7 @@ class LiteLLMProvider(LLMProviderInterface):
         if max_tokens is not None and "max_tokens" not in completion_kwargs:
             completion_kwargs["max_tokens"] = max_tokens
 
-        # Get current request context for distributed tracing
+        # Get current request context for tracing
         request_id = get_request_id()
         trace_id = get_trace_id()
 
@@ -494,7 +497,7 @@ class LiteLLMProvider(LLMProviderInterface):
         
         for attempt in range(max_retries + 1):
             try:
-                # Use async acompletion for true async I/O
+                # Use async acompletion 
                 response = await litellm.acompletion(
                     model=target_model,
                     messages=messages,
@@ -504,9 +507,16 @@ class LiteLLMProvider(LLMProviderInterface):
                     **completion_kwargs,
                 )
 
+                # Type guard: ensure response is a dict, not a stream wrapper
+                if not isinstance(response, dict):
+                    raise TypeError(
+                        f"Expected dict response from litellm.acompletion, got {type(response).__name__}. "
+                        "Stream mode should not be enabled for this call."
+                    )
+
                 message = response["choices"][0]["message"].get("content", "")
                 usage = response.get("usage", {})
-                total_tokens = usage.get("total_tokens")
+                total_tokens = usage.get("total_tokens") if usage else None
                 
                 # Parse rate limit headers if available
                 response_headers = getattr(response, "_hidden_params", {}).get("response_headers", {})
@@ -517,8 +527,8 @@ class LiteLLMProvider(LLMProviderInterface):
                     "model": target_model,
                     "usage": usage,
                     "response_id": response.get("id"),
-                    "prompt_tokens": usage.get("prompt_tokens"),
-                    "completion_tokens": usage.get("completion_tokens"),
+                    "prompt_tokens": usage.get("prompt_tokens") if usage else None,
+                    "completion_tokens": usage.get("completion_tokens") if usage else None,
                     "request_id": request_id,
                     "trace_id": trace_id,
                 }
@@ -572,13 +582,16 @@ class LiteLLMProvider(LLMProviderInterface):
                     retry_after = self._extract_retry_after(e) or 60.0
                     raise RateLimitExceeded(
                         message=f"Rate limit exceeded for model {target_model}: {str(e)}",
-                        retry_after=retry_after,
+                        retry_after=int(retry_after) if retry_after else None,
                         limit_type="provider",
                         scope="global",
                     )
                 
                 # Non-rate-limit errors are raised immediately
                 raise
+        
+        # This line should never be reached (loop always returns or raises)
+        raise RuntimeError("Unexpected: complete_async loop terminated without return or exception")
 
     def complete(
         self,
@@ -639,9 +652,16 @@ class LiteLLMProvider(LLMProviderInterface):
                     **completion_kwargs,
                 )
 
+                # Type guard: ensure response is a dict, not a stream wrapper
+                if not isinstance(response, dict):
+                    raise TypeError(
+                        f"Expected dict response from litellm.completion, got {type(response).__name__}. "
+                        "Stream mode should not be enabled for this call."
+                    )
+
                 message = response["choices"][0]["message"].get("content", "")
                 usage = response.get("usage", {})
-                total_tokens = usage.get("total_tokens")
+                total_tokens = usage.get("total_tokens") if usage else None
                 
                 # Parse rate limit headers if available
                 response_headers = getattr(response, "_hidden_params", {}).get("response_headers", {})
@@ -652,8 +672,8 @@ class LiteLLMProvider(LLMProviderInterface):
                     "model": target_model,
                     "usage": usage,
                     "response_id": response.get("id"),
-                    "prompt_tokens": usage.get("prompt_tokens"),
-                    "completion_tokens": usage.get("completion_tokens"),
+                    "prompt_tokens": usage.get("prompt_tokens") if usage else None,
+                    "completion_tokens": usage.get("completion_tokens") if usage else None,
                     "request_id": request_id,
                     "trace_id": trace_id,
                 }
@@ -716,13 +736,16 @@ class LiteLLMProvider(LLMProviderInterface):
                     retry_after = self._extract_retry_after(e) or 60.0
                     raise RateLimitExceeded(
                         message=f"Rate limit exceeded for model {target_model}: {str(e)}",
-                        retry_after=retry_after,
+                        retry_after=int(retry_after) if retry_after else None,
                         limit_type="provider",
                         scope="global",
                     )
                 
                 # Non-rate-limit errors are raised immediately
                 raise
+        
+        # This line should never be reached (loop always returns or raises)
+        raise RuntimeError("Unexpected: complete loop terminated without return or exception")
 
     def get_model_info(self, model: str) -> Dict[str, Any]:
         if litellm is None:

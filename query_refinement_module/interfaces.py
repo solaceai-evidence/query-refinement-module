@@ -243,6 +243,42 @@ class LLMProviderInterface(ABC):
         pass
         raise NotImplementedError("LLMProviderInterface.complete() must be implemented by subclasses.")
     
+    async def complete_async(
+        self,
+        user_prompt: str,
+        system_prompt: Optional[str] = None,
+        model: Optional[str] = None,
+        temperature: float = 0.0,
+        max_tokens: Optional[int] = None,
+        **kwargs,
+    ) -> LLMCompletionResult:
+        """
+        Generate a completion from the LLM asynchronously.
+        
+        Default implementation raises NotImplementedError. Providers should
+        override this for native async support.
+
+        Args:
+            user_prompt (str): The input prompt to send to the LLM.
+            system_prompt (Optional[str]): An optional system prompt to guide the LLM.
+            model (Optional[str]): The model identifier to use for the completion.
+            temperature (float): Sampling temperature for the completion.
+            max_tokens (Optional[int]): Maximum number of tokens to generate.
+            **kwargs: Additional provider-specific parameters.
+
+        Returns:
+            LLMCompletionResult: The result of the LLM completion.
+        
+        Raises:
+            NotImplementedError: If the provider doesn't support async operations.
+            RateLimitExceeded: If the request exceeds rate limits.
+            Exception: For any errors during the completion process.
+        """
+        raise NotImplementedError(
+            f"{self.__class__.__name__} does not implement complete_async(). "
+            "Use complete() or implement async support."
+        )
+    
     @abstractmethod
     def get_model_info(self, model: str) -> Dict[str, Any]:
         """

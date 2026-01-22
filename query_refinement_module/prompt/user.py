@@ -4,7 +4,7 @@ UNIFIED_ANALYSIS_PROMPT = """
 **Research Dimension:** {aspect_name} ({aspect_description})
 
 ---
-**Conversation History for {aspect_name}:**
+
 {conversation_section}
 
 ---

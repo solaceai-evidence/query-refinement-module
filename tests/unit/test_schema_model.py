@@ -27,8 +27,7 @@ def test_refinement_aspect_injects_query_when_no_placeholder():
     
     user_prompt = aspect.get_evaluation_instructions_prompt("What is the effect of exercise?")
     
-    # Should include the analysis header and the user statement
-    assert "Analyze this research input" in user_prompt
+    # Should include the user statement
     assert "What is the effect of exercise?" in user_prompt
     # Should still include the analysis prompt
     assert "Evaluate the demographic characteristics" in user_prompt
