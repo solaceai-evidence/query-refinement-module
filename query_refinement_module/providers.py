@@ -433,18 +433,21 @@ class LiteLLMProvider(LLMProviderInterface):
         self._api_base = api_base
         self._default_completion_kwargs = default_completion_kwargs or {}
         
+        # Semaphore to limit concurrent LLM calls (prevent overwhelming server)
+        self._semaphore = asyncio.Semaphore(50)  # Max 50 concurrent calls
+        
         # Initialize persistent HTTP client for connection pooling (if httpx available)
         self._http_client: Optional[Any] = None
         if httpx is not None:
             self._http_client = httpx.AsyncClient(
                 limits=httpx.Limits(
-                    max_connections=20,
-                    max_keepalive_connections=10,
+                    max_connections=100,      # Increased for 50 concurrent users
+                    max_keepalive_connections=50,  # Increased for 50 concurrent users
                     keepalive_expiry=30.0,
                 ),
                 timeout=httpx.Timeout(60.0),
             )
-            logger.debug("Initialized HTTP connection pool for LiteLLM provider")
+            logger.debug("Initialized HTTP connection pool for LiteLLM provider (max_connections=100)")
 
     async def complete_async(
         self,
@@ -456,6 +459,22 @@ class LiteLLMProvider(LLMProviderInterface):
         **kwargs: Any,
     ) -> LLMCompletionResult:
         """Complete a prompt asynchronously with automatic retry on rate limit errors."""
+        # Apply semaphore to limit concurrent calls
+        async with self._semaphore:
+            return await self._complete_async_internal(
+                user_prompt, system_prompt, model, temperature, max_tokens, **kwargs
+            )
+    
+    async def _complete_async_internal(
+        self,
+        user_prompt: str,
+        system_prompt: Optional[str] = None,
+        model: Optional[str] = None,
+        temperature: float = 0.0,
+        max_tokens: Optional[int] = None,
+        **kwargs: Any,
+    ) -> LLMCompletionResult:
+        """Internal completion logic with retry and rate limit handling."""
         if litellm is None:
             raise RuntimeError(
                 "litellm package is required for LiteLLMProvider. Install with 'pip install litellm'."

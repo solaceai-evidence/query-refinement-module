@@ -1110,7 +1110,7 @@ class QueryRefinementSession:
 
 
 class QueryRefinementManager:
-    def run_followup_until_clear(
+    async def run_followup_until_clear(
         self,
         session: QueryRefinementSession,
         aspect_id: Optional[str] = None,
@@ -1131,7 +1131,7 @@ class QueryRefinementManager:
         while not step.is_complete and rounds < max_followups:
             try:
                 # Use unified prompt system with followup mode
-                result = self.get_analysis_prompts(
+                result = await self.get_analysis_prompts(
                     session=session,
                     aspect_id=step.refinement_aspect.id,
                     mode='followup'
@@ -1240,14 +1240,14 @@ class QueryRefinementManager:
             }
         )
 
-    def get_analysis_prompts(
+    async def get_analysis_prompts(
         self,
         session: QueryRefinementSession,
         aspect_id: str,
         mode: Literal['initial', 'followup'] = 'initial'
     ) -> DimensionEvaluationResponse:
         """
-        Unified method for generating and executing analysis prompts.
+        Unified method for generating and executing analysis prompts asynchronously.
         
         Uses the same prompt template for both initial and follow-up analysis,
         with only the conversation history section differing based on mode.
@@ -1289,7 +1289,7 @@ class QueryRefinementManager:
             system_prompt = system_prompt.replace("{aspect_description}", aspect.aspect_description)
         
         # Call LLM with unified prompt
-        response_text, parsed_payload, is_error, error_message = self._get_llm_response_with_validation(
+        response_text, parsed_payload, is_error, error_message = await self._get_llm_response_with_validation(
             aspect=aspect,
             system_prompt=system_prompt,
             user_prompt=user_prompt
@@ -1363,7 +1363,7 @@ class QueryRefinementManager:
                 'round': result.round
             }
 
-    def initialize(
+    async def initialize(
         self,
         original_query: str,
         refinement_framework: List[RefinementAspect],
@@ -1396,7 +1396,7 @@ class QueryRefinementManager:
             session = self._create_session(original_query)
             
             # Run sequential analysis
-            analysis_results = self._analyze_aspects_sequential(
+            analysis_results = await self._analyze_aspects_sequential(
                 original_query=original_query,
                 refinement_framework=refinement_framework,
                 session=session,
@@ -1563,7 +1563,7 @@ class QueryRefinementManager:
             }
         )
 
-    def _analyze_aspects_sequential(
+    async def _analyze_aspects_sequential(
         self,
         original_query: str,
         refinement_framework: List[RefinementAspect],
@@ -1601,7 +1601,7 @@ class QueryRefinementManager:
             # Analyze this specific aspect with its dependency context
             analysis_result = None
             try:
-                analysis_result = self.query_analyzer.analyze_aspect(
+                analysis_result = await self.query_analyzer.analyze_aspect_async(
                     query=original_query,
                     aspect=aspect,
                     dependency_context=analyzer_context,
@@ -1671,7 +1671,7 @@ class QueryRefinementManager:
             session = self._create_session(original_query)
             
             # Use sequential execution
-            analysis_results = self._analyze_aspects_sequential(
+            analysis_results = await self._analyze_aspects_sequential(
                 original_query=original_query,
                 refinement_framework=refinement_framework,
                 session=session,
@@ -1803,7 +1803,7 @@ class QueryRefinementManager:
 
         return True
 
-    def process_next_step(self, session: QueryRefinementSession) -> Optional[Dict[str, Any]]:
+    async def process_next_step(self, session: QueryRefinementSession) -> Optional[Dict[str, Any]]:
         """
         Process the next incomplete refinement step with exactly ONE LLM interaction.
 
@@ -1828,7 +1828,7 @@ class QueryRefinementManager:
                 return None
             
             # Execute step
-            return self._execute_step(session, step)
+            return await self._execute_step(session, step)
 
     def _find_next_ready_step(
         self,
@@ -1856,7 +1856,7 @@ class QueryRefinementManager:
             if self.ensure_step_is_ready(session, step):
                 return step
 
-    def _execute_step(
+    async def _execute_step(
         self,
         session: QueryRefinementSession,
         step: QueryAspectRefiner
@@ -1886,7 +1886,7 @@ class QueryRefinementManager:
             dependency_context=dependency_context
         )
         
-        response_text, parsed_payload, is_error, error_message = self._get_llm_response_with_validation(
+        response_text, parsed_payload, is_error, error_message = await self._get_llm_response_with_validation(
             aspect=aspect,
             system_prompt=system_prompt,
             user_prompt=user_prompt
@@ -1974,14 +1974,14 @@ class QueryRefinementManager:
             "error": False
         }
 
-    def _get_llm_response_with_validation(
+    async def _get_llm_response_with_validation(
         self,
         aspect: RefinementAspect,
         system_prompt: str,
         user_prompt: str,
     ) -> tuple[str, Optional[Dict[str, Any]], bool, Optional[str]]:
         """
-        Call the LLM and enforce structured response validation when required.
+        Call the LLM asynchronously and enforce structured response validation when required.
         
         Retries up to validation_max_retries times if validation fails.
 
@@ -2003,7 +2003,7 @@ class QueryRefinementManager:
             attempt_number = attempt + 1
             
             # Call LLM
-            response_text, llm_error = self._call_llm(
+            response_text, llm_error = await self._call_llm(
                 aspect=aspect,
                 system_prompt=system_prompt,
                 user_prompt=prompt,
@@ -2067,7 +2067,7 @@ class QueryRefinementManager:
 
         return "", None, True, "Unknown validation failure"
 
-    def _call_llm(
+    async def _call_llm(
         self,
         aspect: RefinementAspect,
         system_prompt: str,
@@ -2075,7 +2075,7 @@ class QueryRefinementManager:
         attempt_number: int,
     ) -> tuple[str, Optional[str]]:
         """
-        Call the LLM provider with the given prompts.
+        Call the LLM provider asynchronously with the given prompts.
         
         Returns:
             Tuple of (response_text, error_message). error_message is None on success.
@@ -2110,7 +2110,7 @@ class QueryRefinementManager:
             # 1. Not all LLM providers support it consistently (especially Claude via LiteLLM)
             # 2. We handle JSON parsing with markdown stripping as a robust fallback
             # 3. Prompt engineering + validation works reliably across all models
-            result = self.llm_provider.complete(
+            result = await self.llm_provider.complete_async(
                 system_prompt=system_prompt,
                 user_prompt=user_prompt
             )
@@ -2347,7 +2347,7 @@ class QueryRefinementManager:
 
         return clarifications, baseline_summaries
 
-    def synthesize_refined_query(
+    async def synthesize_refined_query(
         self,
         session: QueryRefinementSession,
         *,
@@ -2431,7 +2431,7 @@ class QueryRefinementManager:
             completion_kwargs["max_tokens"] = max_tokens
 
         try:
-            result = self.llm_provider.complete(
+            result = await self.llm_provider.complete_async(
                 system_prompt=system_prompt,
                 user_prompt=user_prompt,
                 model=model,

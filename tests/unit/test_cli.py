@@ -130,7 +130,11 @@ def test_run_cli_handles_missing_framework(monkeypatch, capsys):
 
 class StubStep:
     def __init__(self, name="Aspect", question: Optional[str] = None):
-        self.refinement_aspect = SimpleNamespace(aspect_name=name, id="aspect")
+        self.refinement_aspect = SimpleNamespace(
+            aspect_name=name, 
+            id="aspect",
+            aspect_description="Test aspect description"
+        )
         self.analysis_suggested_question = question
         self.refinement_question = question
         self.needs_review = False
@@ -154,6 +158,10 @@ class StubSession:
         if self._step and not self._step.is_complete:
             return self._step
         return None
+    
+    def get_next_unrefined_aspect(self):
+        """Get next step that needs refinement."""
+        return self.get_active_step()
 
     def get_dependency_context(self, aspect_id):
         return self._dependency_context

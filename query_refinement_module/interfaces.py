@@ -356,6 +356,30 @@ class QueryAnalyzerInterface(ABC):
         """
         pass
     
+    async def analyze_aspect_async(
+        self,
+        query: str,
+        aspect: "RefinementAspect",
+        dependency_context: Optional[Dict[str, Any]],
+        llm_provider: Optional["LLMProviderInterface"] = None,
+    ) -> "AspectAnalysisResult":
+        """
+        Async version of analyze_aspect - evaluates a single refinement aspect asynchronously.
+
+        Args:
+            query: The original query to analyze.
+            aspect: The specific refinement aspect to evaluate.
+            dependency_context: Values from dependency aspects (aspect_id -> value or query reference).
+            llm_provider: Optional LLM provider for LLM-based analysis.
+
+        Returns:
+            AspectAnalysisResult with:
+            - needs_refinement: bool indicating if refinement is needed
+            - reason: explanation of why (required for needs_refinement=True, optional otherwise)
+        """
+        # Default implementation: call sync version
+        return self.analyze_aspect(query, aspect, dependency_context, llm_provider)
+    
     def supports_batch_analysis(self) -> bool:
         """
         Indicates whether the analyzer can perform batch analysis.

@@ -79,6 +79,18 @@ class StubLLMProvider(LLMProviderInterface):
         if isinstance(item, Exception):
             raise item
         return DummyCompletionResult(context=item, model="test")
+    
+    async def complete_async(
+        self,
+        user_prompt: str,
+        system_prompt: Optional[str] = None,
+        model: Optional[str] = None,
+        temperature: float = 0.0,
+        max_tokens: Optional[int] = None,
+        **kwargs,
+    ) -> LLMCompletionResult:
+        """Async version delegates to sync complete()"""
+        return self.complete(user_prompt, system_prompt, model, temperature, max_tokens, **kwargs)
 
     def get_model_info(self, model: str) -> Dict[str, Any]:
         return {}
@@ -103,6 +115,16 @@ class StubQueryAnalyzer(QueryAnalyzerInterface):
                 clarifying_question="Question?"
             )
         )
+    
+    async def analyze_aspect_async(
+        self,
+        query: str,
+        aspect: RefinementAspect,
+        dependency_context: Optional[Dict[str, str]] = None,
+        llm_provider: Optional[LLMProviderInterface] = None,
+    ) -> AspectAnalysisResult:
+        """Async version delegates to sync analyze_aspect()"""
+        return self.analyze_aspect(query, aspect, dependency_context, llm_provider)
 
 
 # ---------------------------------------------------------------------------
