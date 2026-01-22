@@ -183,13 +183,13 @@ Return a single JSON object with this exact structure:
         sections = []
         for aspect_id, value in aspectId2Spec_dict.items():
             name, description = aspect_info.get(aspect_id, (aspect_id, ""))
-          # Handle skipped aspects
-          display_value = "[SKIPPED]" if value is None or value == "" else value
+            # Handle skipped aspects
+            display_value = "[SKIPPED]" if value is None or value == "" else value
 
-          sections.append(
-            f"- **{name}** ({description})\n"
-            f"  Specification: {display_value}"
-          )
+            sections.append(
+                f"- **{name}** ({description})\n"
+                f"  Specification: {display_value}"
+            )
         return "\n".join(sections)
     
     @staticmethod

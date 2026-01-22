@@ -851,7 +851,7 @@ class RefinementAspect:
         if mode == 'initial' or not follow_up_history:
             return ""
         
-        lines = []
+        lines = ["**Conversation History:**\n"]
         for i, turn in enumerate(follow_up_history, 1):
             question = turn.get('question', '')
             response = turn.get('response', '')

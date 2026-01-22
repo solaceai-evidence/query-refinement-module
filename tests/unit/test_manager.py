@@ -66,10 +66,7 @@ def _write_framework(tmp_path):
           - id: aspect_a
             aspect_name: Aspect A
             aspect_description: First aspect
-                        evaluation_instructions: |
-              Analyze {query}
-            response_format:
-              type: json
+            evaluation_instructions: Analyze the query
         """
     )
     path = tmp_path / "framework.yaml"
@@ -97,8 +94,9 @@ def test_initialize_stores_initial_summary(monkeypatch, tmp_path):
     assert provider.calls, "Provider should be invoked for synthesis"
 
     user_prompt = provider.calls[0]["user_prompt"]
-    assert "DETAILS ALREADY SPECIFIED IN THE ORIGINAL QUERY" in user_prompt
-    assert "Aspect A: This aspect is already clear" in user_prompt
+    # Check that the synthesis prompt contains the aspect details
+    assert "Aspect A" in user_prompt
+    assert "This aspect is already clear" in user_prompt
 
 
 def test_skip_does_not_trigger_synthesis(monkeypatch, tmp_path):

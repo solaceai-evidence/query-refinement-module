@@ -58,6 +58,7 @@ from .interfaces import (
     LLMProviderInterface,
     TracingProviderInterface,
     QueryAnalyzerInterface,
+    AspectAnalysisResult,
 )
 from .providers import NoOpTracingProvider, TraceEventEmitter
 from .schema import (
@@ -191,7 +192,8 @@ def parse_user_command(user_input: str) -> CommandResult:
                 is_valid=False,
                 error_message=f"/{command.value} requires a step number. Example: /{command.value} 2"
             )
-        if command is UserCommand.GOTO and not argument.isdigit():
+        # Validate numeric arguments (all current commands requiring arguments expect numbers)
+        if not argument.isdigit():
             return CommandResult(
                 command=command,
                 argument=argument,
@@ -638,7 +640,7 @@ class QueryRefinementSession:
                 return step
         return None
     
-    def get_dependency_context(self, target_refinement_aspect_id: str) -> Dict[str, Dict[str, str]]:
+    def get_dependency_context(self, target_refinement_aspect_id: str) -> Dict[str, Dict[str, Any]]:
         """
         Build dependency context for a specific refinement aspect.
         
@@ -655,7 +657,7 @@ class QueryRefinementSession:
             - name: The aspect name
             - description: The aspect description
             - value: The actual value (formatted for complex types)
-            - type: The value_field_type (string, object, array, etc.)
+            - type: The value type (string, object, array, etc.)
         """
         step_index = {step.refinement_aspect.id: step for step in self.steps}
         target_step = step_index.get(target_refinement_aspect_id)
@@ -671,7 +673,7 @@ class QueryRefinementSession:
         if not dependencies:
             return {}
 
-        context: Dict[str, Dict[str, str]] = {}
+        context: Dict[str, Dict[str, Any]] = {}
         for dep_id in dependencies:
             dep_step = step_index.get(dep_id)
             if not dep_step:
@@ -1485,7 +1487,7 @@ class QueryRefinementManager:
         self,
         session: QueryRefinementSession,
         refinement_framework: List[RefinementAspect],
-        analysis_results: Dict[str, "AspectAnalysisResult"],
+        analysis_results: Dict[str, AspectAnalysisResult],
     ) -> int:
         """
         Populate session steps with analysis results.
@@ -1566,7 +1568,7 @@ class QueryRefinementManager:
         original_query: str,
         refinement_framework: List[RefinementAspect],
         session: QueryRefinementSession,
-    ) -> Dict[str, "AspectAnalysisResult"]:
+    ) -> Dict[str, AspectAnalysisResult]:
         """
         Analyze aspects sequentially in dependency order (original behavior).
         
@@ -2026,7 +2028,9 @@ class QueryRefinementManager:
             )
             
             if validation_result.is_valid:
-                return validation_result.normalized_text, validation_result.parsed_payload, False, None
+                # Ensure we have text to return (should always be true if valid)
+                result_text = validation_result.normalized_text or response_text or ""
+                return result_text, validation_result.parsed_payload, False, None
             
             # Retry if attempts remain
             if attempt < self.validation_max_retries:
@@ -2039,9 +2043,11 @@ class QueryRefinementManager:
                         "error": validation_result.error_message,
                     }
                 )
+                # Ensure error_message is not None before passing to augment
+                error_msg = validation_result.error_message or "Validation failed"
                 prompt = self._augment_prompt_for_retry(
                     base_prompt,
-                    validation_result.error_message,
+                    error_msg,
                     attempt_number,
                     response_text,
                 )
@@ -2458,7 +2464,7 @@ class QueryRefinementManager:
             
             response_data = json.loads(cleaned_text)
             synthesis_response = QueryRefinementResponse(**response_data)
-            refined_query = synthesis_response.refined_query
+            refined_query = synthesis_response.synthesized_statement
             logger.info(
                 "Successfully parsed structured synthesis response"
             )
@@ -2467,8 +2473,8 @@ class QueryRefinementManager:
                 metadata={
                     "has_structured_response": True,
                     "response_length": len(refined_query),
-                    "has_key_changes": bool(synthesis_response.key_changes),
-                    "refinement_aspects_count": len(synthesis_response.refinement_aspects) if synthesis_response.refinement_aspects else 0,
+                    "has_detail_values": bool(synthesis_response.detail_values),
+                    "detail_values_count": len(synthesis_response.detail_values) if synthesis_response.detail_values else 0,
                 }
             )
         except (json.JSONDecodeError, ValueError) as parse_error:
@@ -2512,21 +2518,11 @@ class QueryRefinementManager:
         
         # Include structured response fields if available
         if synthesis_response:
-            result_dict["key_changes"] = synthesis_response.key_changes
-            
-            # Include optional metadata if present
-            if synthesis_response.publication_years:
-                result_dict["publication_years"] = synthesis_response.publication_years
-            if synthesis_response.venues:
-                result_dict["venues"] = synthesis_response.venues
-            if synthesis_response.authors:
-                result_dict["authors"] = synthesis_response.authors
-            if synthesis_response.fields_of_study:
-                result_dict["fields_of_study"] = synthesis_response.fields_of_study
-            if synthesis_response.refined_statement:
-                result_dict["refined_statement"] = synthesis_response.refined_statement
-            if synthesis_response.refined_statement_keywords:
-                result_dict["refined_statement_keywords"] = synthesis_response.refined_statement_keywords
+            result_dict["detail_values"] = synthesis_response.detail_values
+            result_dict["search_optimized"] = synthesis_response.search_optimized
+            result_dict["search_filters"] = synthesis_response.search_filters
+            result_dict["terminology"] = synthesis_response.terminology
+            result_dict["synthesized_statement"] = synthesis_response.synthesized_statement
 
         return result_dict
 

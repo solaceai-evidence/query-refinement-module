@@ -133,7 +133,7 @@ class QueryRefinementResponse(BaseModel):
         validate_assignment=True
     )
     synthesized_statement: str
-    detail_values: Dict[str, str] = Field(default_factory=dict)
+    detail_values: Dict[str, str]
     search_optimized: SearchOptimized
     search_filters: SearchFilters
     terminology: Terminology

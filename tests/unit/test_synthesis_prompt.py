@@ -132,7 +132,7 @@ class TestSynthesisPromptBuilder:
         )
 
         # Should still build valid prompt
-        assert "Original Research Input" in prompt
+        assert "ORIGINAL INPUT" in prompt
         assert "test query" in prompt
         assert "OUTPUT FORMAT" in prompt
 

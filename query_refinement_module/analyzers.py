@@ -20,7 +20,7 @@ _JSON_BLOCK_RE = re.compile(r"\{.*\}", re.DOTALL)
 
 
 class LLMQueryAnalyzer(QueryAnalyzerInterface):
-    """LLM-driven analyzer that uses aspect prompts to detect refinement gaps."""
+    """LLM-driven analyzer that uses dimension-based prompts to detect refinement gaps."""
 
     def __init__(
         self,
