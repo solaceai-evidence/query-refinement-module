@@ -39,10 +39,10 @@ workers = int(os.getenv("WORKERS", (2 * multiprocessing.cpu_count()) + 1))
 # This provides the best performance for FastAPI applications
 worker_class = os.getenv("WORKER_CLASS", "uvicorn.workers.UvicornWorker")
 
-# Worker configuration
+# Worker configuration (optimized for 20 concurrent users)
 worker_connections = 1000  # Maximum simultaneous clients per worker
-max_requests = int(os.getenv("MAX_REQUESTS", "5000"))  # Restart worker after N requests (increased for async)
-max_requests_jitter = int(os.getenv("MAX_REQUESTS_JITTER", "500"))  # Add jitter to max_requests
+max_requests = int(os.getenv("MAX_REQUESTS", "3000"))  # Restart worker after N requests (optimized for 20 users)
+max_requests_jitter = int(os.getenv("MAX_REQUESTS_JITTER", "300"))  # Add jitter to max_requests
 worker_timeout = int(os.getenv("WORKER_TIMEOUT", "180"))  # Worker timeout (increased for LLM calls)
 keepalive = int(os.getenv("KEEPALIVE", "5"))  # Seconds to wait for requests on Keep-Alive connection
 

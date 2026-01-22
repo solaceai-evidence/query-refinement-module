@@ -16,27 +16,27 @@ services:
   # PostgreSQL - Production optimizations
   postgres:
     environment:
-      # Production-specific PostgreSQL tuning
-      POSTGRES_SHARED_BUFFERS: 256MB
-      POSTGRES_EFFECTIVE_CACHE_SIZE: 1GB
-      POSTGRES_WORK_MEM: 16MB
-      POSTGRES_MAINTENANCE_WORK_MEM: 128MB
-      POSTGRES_MAX_CONNECTIONS: 100
+      # Production-specific PostgreSQL tuning (optimized for 20 concurrent users)
+      POSTGRES_SHARED_BUFFERS: 128MB
+      POSTGRES_EFFECTIVE_CACHE_SIZE: 512MB
+      POSTGRES_WORK_MEM: 8MB
+      POSTGRES_MAINTENANCE_WORK_MEM: 64MB
+      POSTGRES_MAX_CONNECTIONS: 50
     deploy:
       resources:
         limits:
-          cpus: '1.0'
-          memory: 1G
+          cpus: '0.5'
+          memory: 512M
         reservations:
           cpus: '0.25'
           memory: 256M
     command: >
       postgres
-      -c shared_buffers=256MB
-      -c effective_cache_size=1GB
-      -c work_mem=16MB
-      -c maintenance_work_mem=128MB
-      -c max_connections=100
+      -c shared_buffers=128MB
+      -c effective_cache_size=512MB
+      -c work_mem=8MB
+      -c maintenance_work_mem=64MB
+      -c max_connections=50
       -c random_page_cost=1.1
       -c effective_io_concurrency=200
       -c wal_buffers=16MB
@@ -44,20 +44,20 @@ services:
       -c log_statement=none
       -c log_duration=off
 
-  # Redis - Production optimizations
+  # Redis - Production optimizations (optimized for 20 concurrent users)
   redis:
     deploy:
       resources:
         limits:
-          cpus: '0.5'
-          memory: 512M
+          cpus: '0.25'
+          memory: 256M
         reservations:
           cpus: '0.1'
           memory: 128M
     command: >
       redis-server
       --appendonly yes
-      --maxmemory 512mb
+      --maxmemory 256mb
       --maxmemory-policy allkeys-lru
       --save 900 1
       --save 300 10
@@ -76,11 +76,11 @@ services:
       LOG_LEVEL: INFO
       LOG_FORMAT: json
       
-      # Async/concurrency optimizations
-      WORKERS: "${WORKERS:-4}"
+      # Async/concurrency optimizations (optimized for 20 concurrent users)
+      WORKERS: "${WORKERS:-2}"
       WORKER_TIMEOUT: "180"
-      MAX_REQUESTS: "5000"
-      MAX_REQUESTS_JITTER: "500"
+      MAX_REQUESTS: "3000"
+      MAX_REQUESTS_JITTER: "300"
       
       # Enable all production features
       ENABLE_METRICS: "true"
@@ -94,11 +94,11 @@ services:
       replicas: 1  # Can be increased for high availability
       resources:
         limits:
-          cpus: '2.0'
-          memory: 2G
+          cpus: '1.0'
+          memory: 1G
         reservations:
-          cpus: '0.5'
-          memory: 512M
+          cpus: '0.25'
+          memory: 256M
 
   # Frontend - React application
   frontend:
