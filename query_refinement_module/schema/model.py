@@ -161,8 +161,8 @@ class RefinementAspect:
         examples: Optional example queries for few-shot learning and prompt engineering
         response_format: Expected response structure (optional, for structured responses)
         depends_on: List of refinement aspect IDs this refinement aspect depends on (for context)
-        allow_follow_up: Whether follow-up questions are allowed (default: True)
-        max_follow_ups: Maximum number of follow-up rounds allowed (default: 5)
+        allow_follow_up: Whether follow-up questions are allowed (legacy - user commands preferred)
+        max_follow_ups: Safety limit for CLI batch mode only (web API ignores this - user controls pace)
         metadata: Additional metadata for extensibility
     """
     id: str
@@ -188,11 +188,12 @@ class RefinementAspect:
     # Only declared dependencies will be included in the analysis context
     depends_on: List[str] = field(default_factory=list)
     
-    #TODO deprecate in favour of user commands to navigate and control follow-ups
-    # Should this refinement aspect support follow-up question to the initial suggested question?
+    # LEGACY/CLI-ONLY: User commands (/done, /skip) provide better control in web API
+    # These limits only prevent infinite loops in CLI batch mode
+    # Web API: User controls pace naturally (submit answers → LLM responds → user decides next)
     allow_follow_up: bool = True
-    # Maximum number of follow-ups allowed (if follow-ups are allowed)
-    max_follow_ups: int = 6
+    # Safety ceiling for CLI batch mode - ignored by web API (user-controlled termination)
+    max_follow_ups: int = 50  # High limit - only catches bugs, not constraining normal use
 
     # Optional metadata for extensibility
     # e.g., domain, priority, confidence score, etc.

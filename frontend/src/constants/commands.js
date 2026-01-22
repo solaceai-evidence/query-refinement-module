@@ -54,51 +54,51 @@ export const COMMAND_ALIASES = {
  */
 export const COMMAND_METADATA = {
     [USER_COMMANDS.STATUS]: {
-        label: 'Status',
+        label: 'View Progress',
         icon: '📊',
-        hint: 'View progress summary',
+        hint: 'Show how many dimensions completed',
         category: 'info',
         behavior: 'informational' // Don't change flow state
     },
     [USER_COMMANDS.STEPS]: {
-        label: 'Steps',
+        label: 'Show All Steps',
         icon: '📋',
-        hint: 'List all refinement steps',
+        hint: 'List all dimensions with status',
         category: 'info',
         behavior: 'informational' // Don't change flow state
     },
     [USER_COMMANDS.SKIP]: {
-        label: 'Skip',
+        label: 'Skip This Dimension',
         icon: '⏭️',
-        hint: 'Skip current question',
+        hint: 'Skip without providing details (moves to next)',
         category: 'control',
         behavior: 'navigation' // Changes current question
     },
     [USER_COMMANDS.DONE]: {
-        label: 'Done',
+        label: 'Dimension Complete',
         icon: '✅',
-        hint: 'Mark current step complete',
+        hint: 'Finish this dimension and move to next',
         category: 'control',
         behavior: 'navigation' // Changes current question
     },
     [USER_COMMANDS.BACK]: {
-        label: 'Back',
+        label: 'Previous Dimension',
         icon: '◀️',
-        hint: 'Go to previous question',
+        hint: 'Go back to previous dimension',
         category: 'navigation',
         behavior: 'navigation' // Changes current question
     },
     [USER_COMMANDS.RESTART]: {
-        label: 'Restart',
+        label: 'Start Over',
         icon: '🔄',
-        hint: 'Start refinement from beginning',
+        hint: 'Restart from first dimension',
         category: 'navigation',
         behavior: 'navigation' // Changes current question
     },
     [USER_COMMANDS.SUBMIT]: {
-        label: 'Submit',
+        label: 'Finish & Generate',
         icon: '🏁',
-        hint: 'Finish refinement now',
+        hint: 'Stop refining and generate final query',
         category: 'control',
         behavior: 'terminating' // Ends the flow
     }

@@ -221,40 +221,91 @@ async def _generate_question_with_retry(
     raise last_error if last_error else Exception("Question generation failed")
 
 
-def _build_next_prompt(session) -> Optional[Dict[str, Any]]:
+async def _build_next_prompt(manager, session) -> Optional[Dict[str, Any]]:
     """
     Build the next prompt from the next unrefined aspect in dependency order.
     
+    Analyzes dimensions with LLM to determine if they're already clear, auto-completing
+    when possible and only asking questions when clarification is truly needed.
+    
     Uses get_next_unrefined_aspect() for sequential on-demand refinement.
     """
-    step = session.get_next_unrefined_aspect()
-    logger.info(f"_build_next_prompt called: next_unrefined_aspect={'exists' if step else 'None'}")
-    if not step:
-        logger.info("  -> No unrefined aspects remaining, returning None")
-        return None
+    max_attempts = 10  # Prevent infinite loop
+    attempts = 0
     
-    # Validate question exists, generate fallback if missing
-    question = step.refinement_question
-    if not question:
-        logger.warning(
-            f"Question is None for aspect '{step.refinement_aspect.aspect_name}', generating fallback"
-        )
-        question = (
-            step.refinement_aspect.aspect_description 
-            or f"Please provide details about {step.refinement_aspect.aspect_name}"
-        )
-        step.refinement_question = question
+    while attempts < max_attempts:
+        attempts += 1
+        step = session.get_next_unrefined_aspect()
+        
+        logger.info(f"_build_next_prompt attempt {attempts}: next_unrefined_aspect={'exists' if step else 'None'}")
+        if not step:
+            logger.info("  -> No unrefined aspects remaining, returning None")
+            return None
+        
+        # If question already exists (from previous analysis), use it
+        if step.refinement_question:
+            result = {
+                "aspect_id": step.refinement_aspect.id,
+                "aspect_name": step.refinement_aspect.aspect_name,
+                "question": step.refinement_question,
+            }
+            logger.info(f"  -> Using existing question for '{result['aspect_name']}', question: '{result['question'][:100]}...")
+            return result
+        
+        # No question exists - analyze with LLM to determine if dimension is already clear
+        try:
+            logger.info(f"  -> Generating question via LLM analysis for aspect '{step.refinement_aspect.aspect_name}'")
+            
+            # Call LLM to analyze dimension with full context
+            analysis_result = await _generate_question_with_retry(
+                manager=manager,
+                session=session,
+                aspect_id=step.refinement_aspect.id,
+                mode='initial'
+            )
+            
+            # Process the analysis
+            status = manager.process_analysis_result(
+                session=session,
+                aspect_id=step.refinement_aspect.id,
+                result=analysis_result
+            )
+            
+            if status['complete']:
+                # Dimension is already clear - auto-completed, loop to next
+                logger.info(f"  -> Dimension '{step.refinement_aspect.aspect_name}' auto-completed with value: {str(status.get('refinement_aspect_value', ''))[:100]}")
+                continue
+            else:
+                # Dimension needs clarification - return the question
+                result = {
+                    "aspect_id": step.refinement_aspect.id,
+                    "aspect_name": step.refinement_aspect.aspect_name,
+                    "question": status['next_question'],
+                }
+                logger.info(f"  -> Generated question for '{result['aspect_name']}', question: '{result['question'][:100]}...")
+                return result
+                
+        except Exception as e:
+            # LLM failed - use simple fallback
+            logger.error(f"  -> LLM analysis failed for aspect '{step.refinement_aspect.aspect_name}': {e}")
+            fallback_question = f"Please provide details about {step.refinement_aspect.aspect_name}"
+            step.refinement_question = fallback_question
+            
+            result = {
+                "aspect_id": step.refinement_aspect.id,
+                "aspect_name": step.refinement_aspect.aspect_name,
+                "question": fallback_question,
+            }
+            logger.info(f"  -> Using fallback question for '{result['aspect_name']}'")
+            return result
     
-    result = {
-        "aspect_id": step.refinement_aspect.id,
-        "aspect_name": step.refinement_aspect.aspect_name,
-        "question": question,
-    }
-    logger.info(f"  -> Built prompt for '{result['aspect_name']}', question: '{result['question'][:100]}...")
-    return result
+    # Max attempts reached without finding a dimension that needs clarification
+    logger.warning(f"_build_next_prompt: Max attempts ({max_attempts}) reached")
+    return None
 
 
-def _build_command_response(
+async def _build_command_response(
+    manager,
     command_type: str,
     payload: Dict[str, Any],
     session,
@@ -294,7 +345,7 @@ def _build_command_response(
     # If command failed or needs force confirmation, preserve current prompt
     if not success or force_confirmation_needed:
         logger.info(f"[_build_command_response] Command failed or needs confirmation, preserving current prompt")
-        response.next_prompt = _build_next_prompt(session)
+        response.next_prompt = await _build_next_prompt(manager, session)
         if force_confirmation_needed:
             response.force_required = True
             response.invalidated_aspects = payload.get("invalidated", [])
@@ -304,7 +355,7 @@ def _build_command_response(
     if command_type in ["status"]:
         logger.info(f"[_build_command_response] STATUS command - adding step summary")
         response.step_summary = payload.get("summary")
-        response.next_prompt = _build_next_prompt(session)
+        response.next_prompt = await _build_next_prompt(manager, session)
     
     elif command_type in ["steps"]:
         logger.info(f"[_build_command_response] STEPS command - building step list")
@@ -331,12 +382,12 @@ def _build_command_response(
                 for step in steps
             ]
             logger.info(f"[_build_command_response] Built step list with {len(response.step_list)} steps")
-        response.next_prompt = _build_next_prompt(session)
+        response.next_prompt = await _build_next_prompt(manager, session)
     
     elif command_type in ["help"]:
         logger.info(f"[_build_command_response] HELP command - showing help text")
         # Help message is in 'message' field, show current prompt
-        response.next_prompt = _build_next_prompt(session)
+        response.next_prompt = await _build_next_prompt(manager, session)
     
     elif command_type in ["submit", "end"]:
         logger.info(f"[_build_command_response] SUBMIT/END command - marking synthesis ready")
@@ -347,15 +398,15 @@ def _build_command_response(
         logger.info(f"[_build_command_response] NAVIGATION command ({command_type}) - building next prompt")
         # Navigation commands - show new active step
         response.invalidated_aspects = payload.get("invalidated", [])
-        response.next_prompt = _build_next_prompt(session)
+        response.next_prompt = await _build_next_prompt(manager, session)
         logger.info(f"[_build_command_response] Next prompt: {'exists' if response.next_prompt else 'None'}")
         if response.next_prompt:
             logger.info(f"[_build_command_response]   -> Aspect: {response.next_prompt.get('aspect_name')}")
     
     elif command_type in ["skip", "done"]:
         logger.info(f"[_build_command_response] CONTROL command ({command_type}) - advancing to next step")
-        # Control commands - advance to next step
-        response.next_prompt = _build_next_prompt(session)
+        # Control commands - advance to next step with LLM analysis and auto-completion
+        response.next_prompt = await _build_next_prompt(manager, session)
         logger.info(f"[_build_command_response] Next prompt: {'exists' if response.next_prompt else 'None'}")
         if response.next_prompt:
             has_question = bool(response.next_prompt.get('question'))
@@ -533,7 +584,7 @@ async def start_refinement(
         "is_complete": session.is_complete(),
     }
     
-    next_prompt = _build_next_prompt(session)
+    next_prompt = await _build_next_prompt(manager, session)
     
     # Save session to Redis for subsequent requests
     session_manager.save_session(db_query.id, session)
@@ -672,7 +723,8 @@ async def submit_answer(
         # Handle invalid command
         if not cmd_result.is_valid:
             logger.warning(f"[Query {query_id}] Invalid command: {cmd_result.error_message}")
-            return _build_command_response(
+            return await _build_command_response(
+                manager=manager,
                 command_type=cmd_result.command.value,
                 payload={"success": False, "message": cmd_result.error_message or "Invalid command"},
                 session=session,
@@ -709,7 +761,8 @@ async def submit_answer(
                 session_manager.save_session(query_id, session)
         
         # Build and return command response
-        return _build_command_response(
+        return await _build_command_response(
+            manager=manager,
             command_type=command_type,
             payload=command_payload,
             session=session,
@@ -734,9 +787,21 @@ async def submit_answer(
         'response': user_input
     })
     
-    # Run follow-up loop to check if aspect is complete
+    # Analyze the user's answer with LLM (single call, not a loop)
     try:
-        result = await manager.run_followup_until_clear(session, aspect_id=active_step.refinement_aspect.id)
+        # Call LLM once to analyze if dimension is complete or needs more clarification
+        analysis_result = await manager.get_analysis_prompts(
+            session=session,
+            aspect_id=active_step.refinement_aspect.id,
+            mode='followup'
+        )
+        
+        # Process the result
+        status = manager.process_analysis_result(
+            session=session,
+            aspect_id=active_step.refinement_aspect.id,
+            result=analysis_result
+        )
     except ConnectionError as e:
         raise HTTPException(
             status_code=status.HTTP_503_SERVICE_UNAVAILABLE,
@@ -776,7 +841,7 @@ async def submit_answer(
     )
     
     # Check if aspect is complete
-    is_complete = result.get('is_complete', False)
+    is_complete = status.get('complete', False)
     
     # Get next prompt
     next_prompt = None
@@ -823,18 +888,13 @@ async def submit_answer(
                             result=question_result
                         )
                 
-                # Build prompt with the generated question
-                next_prompt = _build_next_prompt(session)
+                # Build prompt - will use existing question or cascade further
+                next_prompt = await _build_next_prompt(manager, session)
                 
             except Exception as e:
                 logger.error(f"Error generating next question: {e}", exc_info=True)
-                # Generate fallback question
-                if next_step:
-                    next_step.refinement_question = (
-                        next_step.refinement_aspect.aspect_description 
-                        or f"Please provide details about {next_step.refinement_aspect.aspect_name}"
-                    )
-                next_prompt = _build_next_prompt(session)
+                # Use async _build_next_prompt which has better fallback handling
+                next_prompt = await _build_next_prompt(manager, session)
     
     # Save updated session back to Redis
     session_manager.save_session(query_id, session)

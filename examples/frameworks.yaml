@@ -155,11 +155,12 @@ mph_dissertation:
             to address through education? For example: sexual health education for adolescents,
             diabetes self-management education, or nutrition education for obesity prevention?"
   - id: research_focus
-    aspect_name: research focus
+    aspect_name: Research Focus
     aspect_description:
       what the student specifically wants to investigate, examine,
       or understand about their topic
-    depends_on: [research_domain]
+    depends_on: 
+    - research_domain
     evaluation_instructions: '### What you''re evaluating:
 
       Is there a clear investigative direction - what specifically will be studied/examined/understood?
@@ -343,7 +344,9 @@ mph_dissertation:
   - id: population_demographics
     aspect_name: population demographics
     aspect_description: who is being studied and in what context or location
-    depends_on: [research_domain, research_focus]
+    depends_on: 
+    - research_domain
+    - research_focus
     evaluation_instructions: '### What you''re evaluating:
 
       Are the study population and setting clearly defined with relevant characteristics?
@@ -475,9 +478,13 @@ mph_dissertation:
             "It's better to focus on one age group for an MPH dissertation.
             Which is your primary interest: children, working-age adults, or elderly populations?
             Or are you specifically interested in comparing across age groups?"
-  - id: study_design_timeframe
-    aspect_name: study design and timeframe
+  - id: study_design
+    aspect_name: study design
     aspect_description: the methodological approach and temporal scope of the research
+    depends_on:
+    - research_focus
+    - population_demographics
+    - intervention_exposure
     evaluation_instructions: '### What you''re evaluating:
 
       Is the study design clearly specified and appropriate? Is the timeframe indicated?
@@ -635,8 +642,8 @@ mph_dissertation:
             association between X and Y (using observational design), or comparing statements
             in areas with/without intervention X (quasi-experimental)? These are more
             feasible while still addressing your interest."
-  - id: statements_interest
-    aspect_name: statements of interest
+  - id: outcomes_interest
+    aspect_name: outcomes of interest
     aspect_description:
       what will be measured, observed, or understood as results of
       the research
@@ -794,8 +801,9 @@ mph_dissertation:
   - id: intervention_exposure
     aspect_name: intervention or exposure
     aspect_description:
-      the intervention being evaluated or exposure being examined
-      (only applicable for certain research types)
+      the intervention being evaluated or exposure being examined (only applicable for certain research types)
+    depends_on:
+    - research_focus
     evaluation_instructions: '### When this aspect applies:
 
       - Research focus involves evaluating an intervention''s effectiveness

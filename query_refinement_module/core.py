@@ -416,7 +416,10 @@ class QueryAspectRefiner:
     
     def can_ask_followup(self) -> bool:
         """
-        Determines if a follow-up question can be asked based on the refinement aspect's max_follow_ups.
+        Check if follow-ups are allowed for this aspect.
+        
+        Note: This does NOT enforce max_follow_ups in web API (user controls pace).
+        Only used by CLI batch mode to prevent infinite loops.
         """
         return self.refinement_aspect.allow_follow_up and (self.follow_up_count < self.refinement_aspect.max_follow_ups)
 
@@ -1118,6 +1121,9 @@ class QueryRefinementManager:
     ) -> Dict[str, Any]:
         """
         Run follow-up analysis loop until aspect is complete or max rounds reached.
+        
+        **CLI/Batch Mode Only** - Auto-loops calling LLM multiple times.
+        Web API should NOT use this - it should call get_analysis_prompts once per user answer.
         
         Uses unified prompt system for consistent handling of follow-up conversations.
         """
