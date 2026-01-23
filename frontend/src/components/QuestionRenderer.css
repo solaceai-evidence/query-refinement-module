@@ -7,6 +7,33 @@
     position: relative;
 }
 
+.dimension-badge {
+    display: inline-flex;
+    align-items: center;
+    gap: 4px;
+    padding: 4px 8px;
+    background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
+    color: white;
+    border-radius: 4px;
+    font-size: 10px;
+    font-weight: 600;
+    text-transform: uppercase;
+    letter-spacing: 0.5px;
+    margin-bottom: 8px;
+    box-shadow: 0 2px 4px rgba(102, 126, 234, 0.2);
+}
+
+.dimension-icon {
+    font-size: 11px;
+}
+
+.dimension-name {
+    max-width: 200px;
+    overflow: hidden;
+    text-overflow: ellipsis;
+    white-space: nowrap;
+}
+
 .question-renderer.loading {
     pointer-events: none;
 }

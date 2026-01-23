@@ -102,7 +102,9 @@ export const refinementService = {
      * @returns {Promise<GetRefinementStatusResponse>}
      */
     async getStatus(queryId) {
-        const response = await apiClient.get(`/api/refinement/queries/${queryId}/status`);
+        const response = await apiClient.get(`/api/refinement/queries/${queryId}/status`, {
+            timeout: 10000 // 10 second timeout for status checks (should be fast)
+        });
         return response.data;
     },
 

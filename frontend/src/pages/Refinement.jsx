@@ -5,6 +5,7 @@ import QuestionRenderer from '../components/QuestionRenderer';
 import SynthesisResult from '../components/SynthesisResult';
 import CommandButtons from '../components/CommandButtons';
 import CommandHistoryItem from '../components/CommandHistoryItem';
+import ConfirmationDialog from '../components/ConfirmationDialog';
 import { refinementService } from '../services/refinement';
 import { useAuth } from '../context/AuthContext';
 import { isCommandResponse, createHistoryItem } from '../types';
@@ -35,6 +36,13 @@ const Refinement = () => {
     const [error, setError] = useState(null);
     const [conversationHistory, setConversationHistory] = useState([]);
     const [commandResult, setCommandResult] = useState(null);
+    const [confirmationDialog, setConfirmationDialog] = useState({
+        isOpen: false,
+        title: '',
+        message: '',
+        onConfirm: null,
+        type: 'warning'
+    });
     const { logout } = useAuth();
     const navigate = useNavigate();
 
@@ -388,7 +396,10 @@ const Refinement = () => {
             const status = await refinementService.getStatus(queryId);
             setAspects(status.aspects_summary?.aspects || []);
         } catch (err) {
-            console.error('Failed to update status:', err);
+            // Silently fail - status updates are non-critical
+            // Just log to console, don't block user interaction
+            console.warn('Failed to update aspect status (non-critical):', err.message);
+            logger.debug('Status update failed', { queryId, error: err.message });
         }
     };
 
@@ -402,6 +413,33 @@ const Refinement = () => {
         console.log('[COMMAND HANDLER] Current sessionId:', sessionId);
         console.log('[COMMAND HANDLER] Current queryId:', queryId);
         console.log('[COMMAND HANDLER] Current aspectId:', currentAspectId);
+
+        // Special handling for /skip command - confirm if there's existing data
+        if (command.trim() === '/skip') {
+            // Check if there are any answers for the current dimension in history
+            const currentDimensionAnswers = conversationHistory.filter(
+                item => item.type === 'answer' && item.aspectId === currentAspectId
+            );
+
+            if (currentDimensionAnswers.length > 0) {
+                // Dimension has answers - show confirmation dialog
+                const dimensionName = currentQuestion?.aspect_name || 'this dimension';
+
+                setConfirmationDialog({
+                    isOpen: true,
+                    title: 'Skip Dimension?',
+                    message: `Skipping "${dimensionName}" will remove all ${currentDimensionAnswers.length} answer(s) you've already provided for this dimension.\n\nDo you want to continue?`,
+                    type: 'warning',
+                    onConfirm: async () => {
+                        console.log('[COMMAND HANDLER] Skip confirmed by user');
+                        setConfirmationDialog({ ...confirmationDialog, isOpen: false });
+                        await handleAnswer(command);
+                    }
+                });
+                return; // Wait for user confirmation
+            }
+        }
+
         // Commands are handled through handleAnswer
         await handleAnswer(command);
     };
@@ -549,6 +587,7 @@ const Refinement = () => {
                                 <div className="question-input-fixed">
                                     <QuestionRenderer
                                         question={currentQuestion.question || 'Please wait while we generate your question...'}
+                                        aspectName={currentQuestion.aspect_name}
                                         onAnswer={handleAnswer}
                                         loading={loading}
                                     />
@@ -566,6 +605,18 @@ const Refinement = () => {
                     </div>
                 )}
             </main>
+
+            {/* Confirmation Dialog */}
+            <ConfirmationDialog
+                isOpen={confirmationDialog.isOpen}
+                title={confirmationDialog.title}
+                message={confirmationDialog.message}
+                onConfirm={confirmationDialog.onConfirm}
+                onCancel={() => setConfirmationDialog({ ...confirmationDialog, isOpen: false })}
+                type={confirmationDialog.type}
+                confirmText="Skip Dimension"
+                cancelText="Cancel"
+            />
         </div>
     );
 };
