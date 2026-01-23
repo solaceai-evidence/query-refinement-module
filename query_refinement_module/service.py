@@ -6,7 +6,6 @@ import asyncio
 import uuid
 from typing import Callable, Optional
 
-from .analyzers import LLMQueryAnalyzer
 from .api_models import (
     InteractionRequest,
     InteractionResponse,
@@ -17,7 +16,7 @@ from .api_models import (
 )
 from .core import (
     QueryRefinementManager,
-    QueryRefinementSession,
+    RefinementSession,
     is_user_command,
     parse_user_command,
 )
@@ -31,15 +30,20 @@ def build_manager_from_env(
     settings: Optional[LLMSettings] = None,
     tracing_provider: Optional[TracingProviderInterface] = None,
 ) -> QueryRefinementManager:
-    """Construct a ``QueryRefinementManager`` using environment-driven LLM settings."""
+    """Construct a ``QueryRefinementManager`` using environment-driven LLM settings.
+    
+    Note: This creates a manager WITHOUT a query analyzer (deprecated).
+    Use initialize_sequential() for on-demand refinement.
+    """
 
     resolved_settings = settings or LLMSettings.from_env()
     provider = LiteLLMProvider(**resolved_settings.as_provider_kwargs())
-    analyzer = LLMQueryAnalyzer(provider, **resolved_settings.as_analyzer_kwargs())
+    # Analyzer is deprecated - don't create one by default
+    # analyzer = LLMQueryAnalyzer(provider, **resolved_settings.as_analyzer_kwargs())
 
     return QueryRefinementManager(
         llm_provider=provider,
-        query_analyzer=analyzer,
+        query_analyzer=None,  # Use initialize_sequential() instead
         tracing_provider=tracing_provider,
     )
 
@@ -86,7 +90,7 @@ class QueryRefinementService:
     async def submit_user_message(self, request: InteractionRequest) -> InteractionResponse:
         """Process a user message (command or free-form response)."""
 
-        session: QueryRefinementSession = await asyncio.to_thread(
+        session: RefinementSession = await asyncio.to_thread(
             self._storage.load_session, request.session_id
         )
 
@@ -106,7 +110,7 @@ class QueryRefinementService:
                 response_message = "Refinement session is already complete."
             else:
                 question = (
-                    active_step.refinement_question
+                    active_step.follow_up_question
                     or active_step.refinement_aspect.aspect_name
                 )
                 active_step.add_follow_up(question=question, response=message)
@@ -139,7 +143,7 @@ class QueryRefinementService:
     async def get_session_status(self, session_id: str) -> SessionStatusResponse:
         """Fetch a point-in-time view of the session state."""
 
-        session: QueryRefinementSession = await asyncio.to_thread(
+        session: RefinementSession = await asyncio.to_thread(
             self._storage.load_session, session_id
         )
         summary = self._manager.get_initialization_summary(session)
@@ -160,14 +164,14 @@ class QueryRefinementService:
         await asyncio.to_thread(self._storage.delete_session, session_id)
 
     @staticmethod
-    def _build_next_prompt(session: QueryRefinementSession) -> Optional[NextPrompt]:
+    def _build_next_prompt(session: RefinementSession) -> Optional[NextPrompt]:
         """Construct the next prompt payload for the caller."""
 
         step = session.get_active_step()
         if not step:
             return None
 
-        question = step.refinement_question
+        question = step.follow_up_question
         if not question:
             try:
                 question = step.refinement_aspect.get_evaluation_instructions_prompt(
@@ -187,6 +191,6 @@ class QueryRefinementService:
             aspect_id=step.refinement_aspect.id,
             aspect_name=step.refinement_aspect.aspect_name,
             question=question,
-            reasoning=step.needs_refinement_rationale,
+            reasoning=step.reasoning,
             dependency_context=dependency_context,
         )

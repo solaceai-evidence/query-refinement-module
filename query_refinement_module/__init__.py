@@ -31,9 +31,9 @@ The module is organized into several layers:
     - Session persistence via the storage interface
 """
 
-__version__ = "0.1.0"
+__version__ = "2.0.0"
 
-from .core import QueryRefinementManager, QueryRefinementSession
+from .core import QueryRefinementManager, RefinementSession
 from .providers import (
     FileTracingProvider,
     InMemorySessionStorage,
@@ -41,7 +41,6 @@ from .providers import (
     RedisSessionStorage,
 )
 from .service import QueryRefinementService, build_manager_from_env
-from .analyzers import LLMQueryAnalyzer
 from .settings import LLMSettings
 from .logging_utils import configure_file_logging
 from .api_models import (
@@ -55,13 +54,12 @@ from .api_models import (
 
 __all__ = [
     "QueryRefinementManager",
-    "QueryRefinementSession",
+    "RefinementSession",
     "QueryRefinementService",
     "InMemorySessionStorage",
     "RedisSessionStorage",
     "LiteLLMProvider",
     "FileTracingProvider",
-    "LLMQueryAnalyzer",
     "configure_file_logging",
     "cli_main",
     "run_cli",

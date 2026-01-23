@@ -5,35 +5,12 @@ These interfaces define the contracts for external dependencies, enabling the mo
 """
 from abc import ABC, abstractmethod
 from dataclasses import dataclass
-from typing import TYPE_CHECKING, Any, Dict, Optional, List
+from typing import TYPE_CHECKING, Any, Dict, Optional, List, Union, Type
+import warnings
 
 if TYPE_CHECKING:
     from .schema import RefinementAspect
-
-# ===========
-# Analysis Result Types
-# ===========
-@dataclass
-class AspectAnalysisResult:
-    """
-    Result of analyzing a single aspect.
-    
-    DEPRECATED: This class maintains backward compatibility for the analyzer interface.
-    The system now uses unified response format internally (RefinementAnalysisResponse).
-    
-    Legacy fields mapped to unified format:
-    - needs_refinement → is_complete (inverted logic)
-    - explanation → reasoning
-    - clarifying_question → next_question
-    
-    Attributes:
-        needs_refinement: Whether the aspect needs refinement.
-        explanation: Explanation of why refinement is or isn't needed.
-        clarifying_question: The question to ask the user (if needs_refinement=True).
-    """
-    needs_refinement: bool
-    explanation: str
-    clarifying_question: Optional[str] = None
+    from pydantic import BaseModel
 
 # ========
 # Rate Limiting Types
@@ -214,26 +191,38 @@ class LLMProviderInterface(ABC):
     @abstractmethod
     def complete(
         self,
-        user_prompt: str,
+        user_prompt: str = "",
         system_prompt: Optional[str] = None,
         model: Optional[str] = None,
         temperature: float = 0.0,
         max_tokens: Optional[int] = None,
+        messages: Optional[List[Dict[str, str]]] = None,
+        response_format: Optional[Union[Dict[str, Any], Type["BaseModel"]]] = None,
         **kwargs,
     ) -> LLMCompletionResult:
         """
         Generate a completion from the LLM based on the provided prompt.
 
         Args:
-            user_prompt (str): The input prompt to send to the LLM.
+            user_prompt (str): The input prompt to send to the LLM (used if messages not provided).
             system_prompt (Optional[str]): An optional system prompt to guide the LLM.
             model (Optional[str]): The model identifier to use for the completion.
             temperature (float): Sampling temperature for the completion.
             max_tokens (Optional[int]): Maximum number of tokens to generate.
+            messages (Optional[List[Dict[str, str]]]): Full conversation history with roles.
+                If provided, takes precedence over user_prompt/system_prompt.
+                Format: [{"role": "system"|"user"|"assistant", "content": str}, ...]
+            response_format (Optional[Union[Dict, Type[BaseModel]]]): Structured output format.
+                Can be:
+                - {"type": "json_object"} for generic JSON
+                - {"type": "json_schema", "json_schema": {...}} for strict schema (OpenAI)
+                - Pydantic BaseModel class (auto-converted to provider-specific format)
             **kwargs: Additional provider-specific parameters.
 
         Returns:
             LLMCompletionResult: The result of the LLM completion.
+                If response_format is a Pydantic model and provider supports structured outputs,
+                result.context may contain the parsed object instead of raw text.
         
         Raises:
             NotImplementedError: If the method is not implemented by the subclass.
@@ -245,11 +234,13 @@ class LLMProviderInterface(ABC):
     
     async def complete_async(
         self,
-        user_prompt: str,
+        user_prompt: str = "",
         system_prompt: Optional[str] = None,
         model: Optional[str] = None,
         temperature: float = 0.0,
         max_tokens: Optional[int] = None,
+        messages: Optional[List[Dict[str, str]]] = None,
+        response_format: Optional[Union[Dict[str, Any], Type["BaseModel"]]] = None,
         **kwargs,
     ) -> LLMCompletionResult:
         """
@@ -259,15 +250,25 @@ class LLMProviderInterface(ABC):
         override this for native async support.
 
         Args:
-            user_prompt (str): The input prompt to send to the LLM.
+            user_prompt (str): The input prompt to send to the LLM (used if messages not provided).
             system_prompt (Optional[str]): An optional system prompt to guide the LLM.
             model (Optional[str]): The model identifier to use for the completion.
             temperature (float): Sampling temperature for the completion.
             max_tokens (Optional[int]): Maximum number of tokens to generate.
+            messages (Optional[List[Dict[str, str]]]): Full conversation history with roles.
+                If provided, takes precedence over user_prompt/system_prompt.
+                Format: [{"role": "system"|"user"|"assistant", "content": str}, ...]
+            response_format (Optional[Union[Dict, Type[BaseModel]]]): Structured output format.
+                Can be:
+                - {"type": "json_object"} for generic JSON
+                - {"type": "json_schema", "json_schema": {...}} for strict schema (OpenAI)
+                - Pydantic BaseModel class (auto-converted to provider-specific format)
             **kwargs: Additional provider-specific parameters.
 
         Returns:
             LLMCompletionResult: The result of the LLM completion.
+                If response_format is a Pydantic model and provider supports structured outputs,
+                result.context may contain the parsed object instead of raw text.
         
         Raises:
             NotImplementedError: If the provider doesn't support async operations.
@@ -311,116 +312,6 @@ class LLMProviderInterface(ABC):
             Default implementation returns unlimited (suitable for local models)
         """
         return RateLimitConfig.unlimited()
-    
-# ========
-# Query Analyzer Interface
-# ========
-class QueryAnalyzerInterface(ABC):
-    """
-    Abstract interface for query analyzers.
-
-    Analyzes a query against a refinement framework to determine which aspects
-    are already clear vs. which aspects need refinement through user interaction.
-
-    Two analysis modes are supported:
-    1. Sequential (dependency-aware): Analyze aspects one-by-one with dependency context
-    2. Batch (fast): Analyze all aspects at once without dependency context
-
-    Implementations should provide at least one mode via the abstract method.
-    """
-
-    @abstractmethod
-    def analyze_aspect(
-        self,
-        query: str,
-        aspect: "RefinementAspect",
-        dependency_context: Optional[Dict[str, str]] = None,
-        llm_provider: Optional["LLMProviderInterface"] = None,
-    ) -> "AspectAnalysisResult":
-        """
-        Analyze a single aspect to determine if it needs refinement.
-
-        This method enables dependency-aware sequential analysis during initialization.
-        Each aspect is analyzed with context from previously analyzed dependencies.
-
-        Args:
-            query: The original query to analyze.
-            aspect: The specific refinement aspect to evaluate.
-            dependency_context: Values from dependency aspects (aspect_id -> value or query reference).
-            llm_provider: Optional LLM provider for LLM-based analysis.
-
-        Returns:
-            AspectAnalysisResult with:
-            - needs_refinement: bool indicating if refinement is needed
-            - reason: explanation of why (required for needs_refinement=True, optional otherwise)
-        """
-        pass
-    
-    async def analyze_aspect_async(
-        self,
-        query: str,
-        aspect: "RefinementAspect",
-        dependency_context: Optional[Dict[str, Any]],
-        llm_provider: Optional["LLMProviderInterface"] = None,
-    ) -> "AspectAnalysisResult":
-        """
-        Async version of analyze_aspect - evaluates a single refinement aspect asynchronously.
-
-        Args:
-            query: The original query to analyze.
-            aspect: The specific refinement aspect to evaluate.
-            dependency_context: Values from dependency aspects (aspect_id -> value or query reference).
-            llm_provider: Optional LLM provider for LLM-based analysis.
-
-        Returns:
-            AspectAnalysisResult with:
-            - needs_refinement: bool indicating if refinement is needed
-            - reason: explanation of why (required for needs_refinement=True, optional otherwise)
-        """
-        # Default implementation: call sync version
-        return self.analyze_aspect(query, aspect, dependency_context, llm_provider)
-    
-    def supports_batch_analysis(self) -> bool:
-        """
-        Indicates whether the analyzer can perform batch analysis.
-        
-        Batch analysis is faster (single LLM call) but less accurate since it
-        lacks dependency context. Useful for independent aspects (e.g., at initial call) or performance-critical scenarios.
-
-        Returns:
-            bool: True if batch analysis is available, False otherwise.
-        """
-        return False
-    
-    def batch_analyze(
-        self,
-        query: str,
-        refinement_framework: List["RefinementAspect"],
-        llm_provider: Optional["LLMProviderInterface"] = None,
-    ) -> Dict[str, "AspectAnalysisResult"]:
-        """
-        Batch analyze all aspects at once (without dependency context).
-
-        This is an optimization for analyzers that can evaluate multiple aspects
-        in a single operation. It's faster but less accurate than sequential analysis.
-
-        Default implementation falls back to sequential analysis.
-
-        Args:
-            query: The query to analyze.
-            refinement_framework: All aspects to consider.
-            llm_provider: Optional LLM provider for LLM-based analysis.
-
-        Returns:
-            Dictionary mapping aspect IDs to their analysis results.
-        """
-        # Default: fall back to sequential analysis without dependency context
-        results = {}
-        for aspect in refinement_framework:
-            results[aspect.id] = self.analyze_aspect(
-                query, aspect, dependency_context=None, llm_provider=llm_provider
-            )
-        return results
     
 
 # ===========
@@ -594,12 +485,10 @@ class SessionStorageInterface(ABC):
 __all__ = [
     # core interfaces
     "LLMProviderInterface",
-    "QueryAnalyzerInterface",
     "TracingProviderInterface",
     "SessionStorageInterface",
     # result types
     "LLMCompletionResult",
-    "AspectAnalysisResult",
     # rate limiting
     "RateLimitConfig", 
     "RateLimitExceeded",

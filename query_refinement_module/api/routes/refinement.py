@@ -577,7 +577,7 @@ async def start_refinement(
         except Exception as e:
             logger.error(f"Error generating question for aspect {current_step.refinement_aspect.aspect_name}: {e}", exc_info=True)
             # Generate fallback question using description
-            current_step.refinement_question = (
+            current_step.follow_up_question = (
                 current_step.refinement_aspect.aspect_description 
                 or f"Please provide details about {current_step.refinement_aspect.aspect_name}"
             )
@@ -699,15 +699,15 @@ async def submit_answer(
             )
             if session_step:
                 for followup in db_step.followup_history:
-                    session_step.follow_up_history.append({
+                    session_step.conversation_history.append({
                         'question': followup.question,
                         'response': followup.answer or ''
                     })
-                if session_step.follow_up_history:
+                if session_step.conversation_history:
                     session_step.is_complete = True
                     # Restore the last question asked (needed for proper state)
                     last_followup = db_step.followup_history[-1]
-                    session_step.refinement_question = last_followup.question
+                    session_step.follow_up_question = last_followup.question
         
         # Re-cache the reconstructed session
         session_manager.save_session(query_id, session)
@@ -789,8 +789,8 @@ async def submit_answer(
         )
     
     # Add user's answer to follow-up history
-    active_step.follow_up_history.append({
-        'question': active_step.refinement_question or active_step.refinement_aspect.aspect_name,
+    active_step.conversation_history.append({
+        'question': active_step.follow_up_question or active_step.refinement_aspect.aspect_name,
         'response': user_input
     })
     
@@ -843,7 +843,7 @@ async def submit_answer(
     db_followup = create_followup(
         db,
         refinement_step_id=db_step.id,
-        question=active_step.refinement_question or active_step.refinement_aspect.aspect_name,
+        question=active_step.follow_up_question or active_step.refinement_aspect.aspect_name,
         answer=user_input
     )
     
@@ -857,7 +857,7 @@ async def submit_answer(
         next_prompt = {
             "aspect_id": active_step.refinement_aspect.id,
             "aspect_name": active_step.refinement_aspect.aspect_name,
-            "question": active_step.refinement_question or active_step.refinement_aspect.aspect_description or "",
+            "question": active_step.follow_up_question or active_step.refinement_aspect.aspect_description or "",
         }
     else:
         # Move to next aspect - generate question on-demand with retry logic
@@ -988,15 +988,15 @@ async def get_refinement_status(
             )
             if session_step:
                 for followup in db_step.followup_history:
-                    session_step.follow_up_history.append({
+                    session_step.conversation_history.append({
                         'question': followup.question,
                         'response': followup.answer or ''
                     })
-                if session_step.follow_up_history:
+                if session_step.conversation_history:
                     session_step.is_complete = True
                     # Restore the last question asked (needed for proper state)
                     last_followup = db_step.followup_history[-1]
-                    session_step.refinement_question = last_followup.question
+                    session_step.follow_up_question = last_followup.question
         
         # Re-cache the reconstructed session
         session_manager.save_session(query_id, session)
@@ -1094,13 +1094,13 @@ async def synthesize_refined_query(
             if session_step:
                 # Load follow-ups for this step
                 for followup in db_step.followup_history:
-                    session_step.follow_up_history.append({
+                    session_step.conversation_history.append({
                         'question': followup.question,
                         'response': followup.answer or ''
                     })
                 
                 # Mark complete if has answers
-                if session_step.follow_up_history:
+                if session_step.conversation_history:
                     session_step.is_complete = True
     
     # Synthesize refined query

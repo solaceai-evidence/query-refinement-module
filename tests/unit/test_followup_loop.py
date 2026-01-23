@@ -1,8 +1,8 @@
 import pytest
 from query_refinement_module.core import (
     QueryRefinementManager,
-    QueryRefinementSession,
-    QueryAspectRefiner,
+    RefinementSession,
+    AspectRefinementState,
 )
 from query_refinement_module.schema import RefinementAspect
 from query_refinement_module.interfaces import AspectAnalysisResult, LLMProviderInterface, QueryAnalyzerInterface
@@ -52,14 +52,14 @@ async def test_followup_loop_stops_on_is_complete():
     llm = DummyLLMProvider(responses)
     analyzer = DummyAnalyzer({"aspect": AspectAnalysisResult(needs_refinement=True, explanation="", clarifying_question="Q")})
     manager = QueryRefinementManager(llm, analyzer)
-    session = QueryRefinementSession("query")
+    session = RefinementSession("query")
     step = session.add_step(aspect)
     result = await manager.run_followup_until_clear(session)
     assert result["is_complete"]
     # Check that aspect value was captured
-    assert step.refinement_aspect_value is not None
+    assert step.normalized_value is not None
     assert result["rounds"] >= 1  # At least one round completed
-    assert len(step.follow_up_history) >= 1  # At least one follow-up recorded
+    assert len(step.conversation_history) >= 1  # At least one follow-up recorded
 
 @pytest.mark.asyncio
 async def test_followup_loop_respects_max_rounds():
@@ -73,12 +73,12 @@ async def test_followup_loop_respects_max_rounds():
     llm = DummyLLMProvider(responses)
     analyzer = DummyAnalyzer({"aspect": AspectAnalysisResult(needs_refinement=True, explanation="", clarifying_question="Q")})
     manager = QueryRefinementManager(llm, analyzer)
-    session = QueryRefinementSession("query")
+    session = RefinementSession("query")
     step = session.add_step(aspect)
     result = await manager.run_followup_until_clear(session)
     assert not result["is_complete"]
     assert result["rounds"] <= 1  # Respects max_follow_ups limit
-    assert len(step.follow_up_history) <= 1  # Limited follow-ups
+    assert len(step.conversation_history) <= 1  # Limited follow-ups
 
 @pytest.mark.asyncio
 async def test_followup_loop_handles_llm_error():
@@ -90,12 +90,12 @@ async def test_followup_loop_handles_llm_error():
     llm = ErrorLLMProvider(responses)
     analyzer = DummyAnalyzer({"aspect": AspectAnalysisResult(needs_refinement=True, explanation="", clarifying_question="Q")})
     manager = QueryRefinementManager(llm, analyzer)
-    session = QueryRefinementSession("query")
+    session = RefinementSession("query")
     step = session.add_step(aspect)
     # Should mark step complete and add error to history
     result = await manager.run_followup_until_clear(session)
     assert result["is_complete"]
-    assert "Validation error" in step.follow_up_history[-1]["response"]
+    assert "Validation error" in step.conversation_history[-1]["response"]
 
 @pytest.mark.asyncio
 async def test_followup_loop_respects_user_command_skip(monkeypatch):
@@ -106,7 +106,7 @@ async def test_followup_loop_respects_user_command_skip(monkeypatch):
     llm = DummyLLMProvider(responses)
     analyzer = DummyAnalyzer({"aspect": AspectAnalysisResult(needs_refinement=True, explanation="", clarifying_question="Q")})
     manager = QueryRefinementManager(llm, analyzer)
-    session = QueryRefinementSession("query")
+    session = RefinementSession("query")
     step = session.add_step(aspect)
     # Simulate user command by marking step complete before loop
     step.is_complete = True

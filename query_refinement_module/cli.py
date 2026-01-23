@@ -10,7 +10,6 @@ import os
 import sys
 from typing import Optional
 
-from .analyzers import LLMQueryAnalyzer
 from .core import QueryRefinementManager, is_user_command, parse_user_command
 from .logging_utils import configure_file_logging
 from .providers import ConsoleTracing, FileTracingProvider, LiteLLMProvider
@@ -39,11 +38,12 @@ def build_manager(
     settings = LLMSettings.from_env()
 
     provider = LiteLLMProvider(**settings.as_provider_kwargs())
-    analyzer = LLMQueryAnalyzer(provider, **settings.as_analyzer_kwargs())
+    # Analyzer is deprecated - don't create one by default
+    # analyzer = LLMQueryAnalyzer(provider, **settings.as_analyzer_kwargs())
 
     return QueryRefinementManager(
         llm_provider=provider,
-        query_analyzer=analyzer,
+        query_analyzer=None,  # Use initialize_sequential() instead
         tracing_provider=tracer,
     )
 
@@ -202,7 +202,7 @@ async def run_cli(manager: QueryRefinementManager, framework_name: str, query: s
                         try:
                             print("\n Regenerating question...")
                             # Use unified approach to regenerate
-                            mode = 'followup' if step.follow_up_history else 'initial'
+                            mode = 'followup' if step.conversation_history else 'initial'
                             result = await manager.get_analysis_prompts(
                                 session=session,
                                 aspect_id=step.refinement_aspect.id,
@@ -226,7 +226,7 @@ async def run_cli(manager: QueryRefinementManager, framework_name: str, query: s
 
                 # Record answer
                 if not question:
-                    question = step.refinement_question or f"Please provide details about {header}"
+                    question = step.follow_up_question or f"Please provide details about {header}"
                 step.add_follow_up(question=question, response=user_input)
                 
                 # Run follow-up analysis
@@ -247,7 +247,7 @@ async def run_cli(manager: QueryRefinementManager, framework_name: str, query: s
                         break
                     else:
                         # Need more clarification
-                        question = step.refinement_question or f"Can you provide more details about {header}?"
+                        question = step.follow_up_question or f"Can you provide more details about {header}?"
                         print(f"\n{question}\n")
                         
                 except Exception as e:

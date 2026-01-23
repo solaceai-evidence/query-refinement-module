@@ -6,7 +6,6 @@ from typing import Optional
 
 from query_refinement_module.core import QueryRefinementManager
 from query_refinement_module.providers import LiteLLMProvider
-from query_refinement_module.analyzers import LLMQueryAnalyzer
 from query_refinement_module.settings import LLMSettings
 from query_refinement_module.schema import registry
 from query_refinement_module.rate_limiter import (
@@ -32,7 +31,7 @@ def get_refinement_manager() -> QueryRefinementManager:
     
     This dependency provides a configured manager with:
     - LiteLLM provider for LLM completions
-    - Query analyzer for aspect analysis
+    - No query analyzer (deprecated - uses initialize_sequential)
     """
     # Get LLM settings from environment
     llm_settings = LLMSettings.from_env(require_model=False)
@@ -40,16 +39,16 @@ def get_refinement_manager() -> QueryRefinementManager:
     # Initialize LLM provider
     llm_provider = LiteLLMProvider(**llm_settings.as_provider_kwargs())
     
-    # Initialize query analyzer
-    query_analyzer = LLMQueryAnalyzer(
-        llm_provider=llm_provider,
-        **llm_settings.as_analyzer_kwargs()
-    )
+    # Analyzer is deprecated - don't create one
+    # query_analyzer = LLMQueryAnalyzer(
+    #     llm_provider=llm_provider,
+    #     **llm_settings.as_analyzer_kwargs()
+    # )
     
-    # Create manager
+    # Create manager without analyzer (use initialize_sequential)
     manager = QueryRefinementManager(
         llm_provider=llm_provider,
-        query_analyzer=query_analyzer
+        query_analyzer=None  # Use initialize_sequential() instead
     )
     
     return manager

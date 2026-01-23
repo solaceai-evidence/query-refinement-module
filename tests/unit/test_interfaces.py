@@ -3,10 +3,8 @@ from __future__ import annotations
 import pytest
 
 from query_refinement_module.interfaces import (
-    AspectAnalysisResult,
     LLMCompletionResult,
     LLMProviderInterface,
-    QueryAnalyzerInterface,
     SessionStorageInterface,
     TracingProviderInterface,
 )
@@ -48,22 +46,7 @@ def test_llm_provider_interface_methods_raise_notimplemented():
         provider.get_model_info("model")
 
 
-def test_query_analyzer_batch_analyze_falls_back_to_sequential():
-    class RecordingAnalyzer(QueryAnalyzerInterface):
-        def __init__(self):
-            self.calls = []
-
-        def analyze_aspect(self, query, aspect, dependency_context=None, llm_provider=None):
-            self.calls.append((query, aspect.id))
-            return AspectAnalysisResult(needs_refinement=False, explanation="")
-
-    analyzer = RecordingAnalyzer()
-    aspects = [make_aspect("a"), make_aspect("b")]
-
-    results = analyzer.batch_analyze("query", aspects)
-
-    assert set(results.keys()) == {"a", "b"}
-    assert analyzer.calls == [("query", "a"), ("query", "b")]
+# batch_analyze was removed as dead code - test removed
 
 
 def test_tracing_provider_interface_methods_raise_notimplemented():

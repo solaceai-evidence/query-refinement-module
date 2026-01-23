@@ -1,5 +1,5 @@
 from query_refinement_module.core import (
-    QueryRefinementSession,
+    RefinementSession,
     UserCommand,
     is_user_command,
     parse_user_command,
@@ -7,8 +7,8 @@ from query_refinement_module.core import (
 from query_refinement_module.schema.model import RefinementAspect
 
 
-def _make_session(aspect_id: str = "aspect_a") -> QueryRefinementSession:
-    session = QueryRefinementSession(original_query="Original question")
+def _make_session(aspect_id: str = "aspect_a") -> RefinementSession:
+    session = RefinementSession(original_query="Original question")
     aspect = RefinementAspect(
         id=aspect_id,
         aspect_name="Aspect",
@@ -48,7 +48,7 @@ def test_parse_user_command_submit_is_valid():
 
 
 def test_submit_command_marks_session_for_synthesis():
-    session = QueryRefinementSession(original_query="Example query")
+    session = RefinementSession(original_query="Example query")
     result = parse_user_command("/submit")
 
     payload = session.handle_command(result)
@@ -95,7 +95,7 @@ def test_handle_command_skip_marks_step_complete():
     assert payload["success"] is True
     assert step.is_complete is True
     assert step.was_skipped is True
-    assert step.refinement_aspect_value_as_str is None
+    assert step.normalized_value_as_str is None
 
 
 def test_handle_command_done_without_response_fails():
@@ -133,20 +133,20 @@ def test_handle_command_clear_clears_current_aspect():
     session = _make_session()
     step = session.steps[0]
     step.add_follow_up(question="Q?", response="Answer")
-    step.refinement_aspect_value = "some value"
+    step.normalized_value = "some value"
     
     payload = session.handle_command(parse_user_command("/clear"))
     
     assert payload["success"] is True
     assert payload["regenerate_question"] is True
-    assert len(step.follow_up_history) == 0
-    assert step.refinement_aspect_value is None
+    assert len(step.conversation_history) == 0
+    assert step.normalized_value is None
     assert step.is_complete is False
 
 
 def test_handle_command_back_truncates_steps():
     """Test /back removes current and future steps in sequential mode."""
-    session = QueryRefinementSession(original_query="Test query")
+    session = RefinementSession(original_query="Test query")
     
     # Add 3 steps
     for i in range(3):
@@ -175,20 +175,20 @@ def test_handle_command_skip_clears_all_data():
     step = session.steps[0]
     step.add_follow_up(question="Q1?", response="Answer 1")
     step.add_follow_up(question="Q2?", response="Answer 2")
-    step.refinement_aspect_value = "extracted value"
+    step.normalized_value = "extracted value"
     
     payload = session.handle_command(parse_user_command("/skip"))
     
     assert payload["success"] is True
     assert step.is_complete is True
     assert step.was_skipped is True
-    assert step.refinement_aspect_value is None
-    assert len(step.follow_up_history) == 0  # All history cleared
+    assert step.normalized_value is None
+    assert len(step.conversation_history) == 0  # All history cleared
 
 
 def test_handle_command_restart_truncates_all_steps():
     """Test /restart clears all steps for full regeneration."""
-    session = QueryRefinementSession(original_query="Test query")
+    session = RefinementSession(original_query="Test query")
     
     # Add and complete multiple steps
     for i in range(3):

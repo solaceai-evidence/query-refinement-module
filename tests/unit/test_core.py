@@ -7,9 +7,9 @@ import pytest
 from query_refinement_module.core import (
     COMMAND_ALIASES,
     CommandResult,
-    QueryAspectRefiner,
+    AspectRefinementState,
     QueryRefinementManager,
-    QueryRefinementSession,
+    RefinementSession,
     UserCommand,
     get_help_text,
     is_user_command,
@@ -225,14 +225,14 @@ def test_get_help_text_lists_commands():
 
 def test_query_aspect_refiner_follow_up_tracking():
     aspect = make_aspect()
-    refiner = QueryAspectRefiner(refinement_aspect=aspect)
+    refiner = AspectRefinementState(refinement_aspect=aspect)
 
     assert refiner.follow_up_count == 0
-    assert refiner.refinement_aspect_value_as_str is None
+    assert refiner.normalized_value_as_str is None
 
     refiner.add_follow_up(question="Q1", response="Answer")
     assert refiner.follow_up_count == 1
-    assert refiner.refinement_aspect_value_as_str == "Answer"  # Plain text is now stored in refinement_aspect_value
+    assert refiner.normalized_value_as_str == "Answer"  # Plain text is now stored in refinement_aspect_value
 
 
 def test_query_aspect_refiner_get_prompts_includes_dependency_context(caplog):
@@ -244,10 +244,10 @@ def test_query_aspect_refiner_get_prompts_includes_dependency_context(caplog):
         depends_on=["dep", "missing"],
     )
 
-    dep_refiner = QueryAspectRefiner(refinement_aspect=dep_aspect)
+    dep_refiner = AspectRefinementState(refinement_aspect=dep_aspect)
     dep_refiner.add_follow_up("Q", "Value")
 
-    target_refiner = QueryAspectRefiner(refinement_aspect=target_aspect)
+    target_refiner = AspectRefinementState(refinement_aspect=target_aspect)
 
     context = {
         "dep": {"name": "Dep", "value": "Value"},
@@ -269,7 +269,7 @@ def test_query_aspect_refiner_get_prompts_includes_dependency_context(caplog):
 
 def test_query_aspect_refiner_follow_up_prompt_template():
     aspect = make_aspect()
-    refiner = QueryAspectRefiner(refinement_aspect=aspect)
+    refiner = AspectRefinementState(refinement_aspect=aspect)
     refiner.add_follow_up("Initial", "First answer")
     refiner.add_follow_up("Follow-up", "Second answer")
 
@@ -286,7 +286,7 @@ def test_query_aspect_refiner_follow_up_prompt_template():
 def test_query_aspect_refiner_follow_up_includes_query_without_placeholder():
     """Test that follow-up prompts include the query even when analysis_prompt lacks {query}."""
     aspect = make_aspect(analysis_prompt="Evaluate the temporal characteristics.")
-    refiner = QueryAspectRefiner(refinement_aspect=aspect)
+    refiner = AspectRefinementState(refinement_aspect=aspect)
     refiner.add_follow_up("What time period?", "Last 5 years")
 
     prompt = refiner.format_follow_up_prompt_template("Effect of exercise on diabetes")
@@ -304,7 +304,7 @@ def test_query_aspect_refiner_follow_up_includes_query_without_placeholder():
 
 def test_query_aspect_refiner_can_ask_followup_respects_limits():
     aspect = make_aspect(allow_follow_up=True, max_follow_ups=1)
-    refiner = QueryAspectRefiner(refinement_aspect=aspect)
+    refiner = AspectRefinementState(refinement_aspect=aspect)
 
     assert refiner.can_ask_followup()
     refiner.add_follow_up("Q1", "A1")
@@ -313,7 +313,7 @@ def test_query_aspect_refiner_can_ask_followup_respects_limits():
 
 def test_query_aspect_refiner_conversation_history_text():
     aspect = make_aspect()
-    refiner = QueryAspectRefiner(refinement_aspect=aspect)
+    refiner = AspectRefinementState(refinement_aspect=aspect)
     assert refiner.get_conversation_history_text() == "no previous follow-up questions."
 
     refiner.add_follow_up("Question", "Answer")
@@ -331,7 +331,7 @@ def build_session_with_steps():
     aspect_a = make_aspect(aspect_id="a", name="Aspect A")
     aspect_b = make_aspect(aspect_id="b", name="Aspect B", depends_on=["a"])
 
-    session = QueryRefinementSession(original_query="original query")
+    session = RefinementSession(original_query="original query")
     step_a = session.add_step(aspect_a)
     step_b = session.add_step(aspect_b)
 
@@ -409,12 +409,12 @@ def test_session_handle_command_flow():
     clear_result = session.handle_command(CommandResult(command=UserCommand.CLEAR))
     assert clear_result["success"]
     assert clear_result["regenerate_question"] is True
-    assert len(step_b.follow_up_history) == 0
+    assert len(step_b.conversation_history) == 0
 
 
 def test_session_skip_and_finish_behaviour():
     aspect = make_aspect()
-    session = QueryRefinementSession(original_query="query")
+    session = RefinementSession(original_query="query")
     step = session.add_step(aspect)
 
     skip_result = session._skip_current()
@@ -425,7 +425,7 @@ def test_session_skip_and_finish_behaviour():
     assert finish_without_value["success"] is False
     assert step.was_skipped
 
-    finish_session = QueryRefinementSession(original_query="query")
+    finish_session = RefinementSession(original_query="query")
     finish_step = finish_session.add_step(make_aspect())
     finish_step.add_follow_up("Q", "A")
     finish = finish_session._finish_current()
@@ -434,7 +434,7 @@ def test_session_skip_and_finish_behaviour():
 
 
 def test_session_back_restart_status_and_list():
-    single_session = QueryRefinementSession(original_query="query")
+    single_session = RefinementSession(original_query="query")
     single_session.add_step(make_aspect())
     back_fail = single_session._go_back()
     assert not back_fail["success"]
@@ -458,7 +458,7 @@ def test_session_back_restart_status_and_list():
 
     restart = session._restart()
     assert restart["success"]
-    assert all(not step.follow_up_history for step in session.steps)
+    assert all(not step.conversation_history for step in session.steps)
 
 
 def test_session_request_synthesis_and_to_dict():
@@ -500,7 +500,7 @@ async def test_manager_initialize_applies_dependency_context():
 
     assert len(session.steps) == 2
     first, second = session.steps
-    assert first.is_complete and first.refinement_aspect_value == "Clear"
+    assert first.is_complete and first.normalized_value == "Clear"
     assert not second.is_complete
 
     # Dependency context for aspect B should include Aspect A value from original query (clear)
@@ -514,14 +514,14 @@ def test_skipped_aspects_excluded_from_dependency_context():
     aspect_a = make_aspect(aspect_id="a", name="Population")
     aspect_b = make_aspect(aspect_id="b", name="Intervention", depends_on=["a"])
     
-    session = QueryRefinementSession(original_query="Test query")
+    session = RefinementSession(original_query="Test query")
     step_a = session.add_step(aspect_a)
     step_b = session.add_step(aspect_b)
     
     # Skip aspect A (which B depends on)
     step_a.was_skipped = True
     step_a.is_complete = True
-    step_a.refinement_aspect_value = None  # Skipped aspects have no value
+    step_a.normalized_value = None  # Skipped aspects have no value
     
     # Get dependency context for B
     ctx = session.get_dependency_context("b")
@@ -555,28 +555,28 @@ def test_ensure_step_is_ready_autocompletes_dependent_aspect():
         },
     )
 
-    session = QueryRefinementSession(original_query="query")
+    session = RefinementSession(original_query="query")
     step_a = session.add_step(aspect_a)
     step_b = session.add_step(aspect_b)
 
     step_a.is_complete = True
-    step_a.refinement_aspect_value = "Population captured in original query"
+    step_a.normalized_value = "Population captured in original query"
 
     step_b.is_complete = False
-    step_b.refinement_question = "Need population"
+    step_b.follow_up_question = "Need population"
 
     ready = manager.ensure_step_is_ready(session, step_b)
 
     assert not ready  # auto-resolved, no prompt needed
     assert step_b.is_complete
-    assert "already" in (step_b.refinement_aspect_value or "").lower()
+    assert "already" in (step_b.normalized_value or "").lower()
 
 
 def test_dependency_context_uses_latest_follow_up_response():
     aspect_a = make_aspect(aspect_id="population")
     aspect_b = make_aspect(aspect_id="intervention", depends_on=["population"])
 
-    session = QueryRefinementSession(original_query="query")
+    session = RefinementSession(original_query="query")
     step_a = session.add_step(aspect_a)
     session.add_step(aspect_b)
 
@@ -590,7 +590,7 @@ def test_dependency_context_uses_latest_follow_up_response():
 @pytest.mark.asyncio
 async def test_process_next_step_returns_none_when_no_pending():
     manager = build_manager(responses=[], analysis_results={})
-    session = QueryRefinementSession(original_query="query")
+    session = RefinementSession(original_query="query")
 
     assert await manager.process_next_step(session) is None
 
@@ -606,18 +606,18 @@ async def test_process_next_step_records_follow_up_without_schema():
         "demo": "Synthesized answer"  # Dynamic value field
     })
     manager = build_manager(responses=[json_response, json_response, json_response], analysis_results={})
-    session = QueryRefinementSession(original_query="query")
+    session = RefinementSession(original_query="query")
     step = session.add_step(aspect)
-    step.refinement_question = "Question?"
+    step.follow_up_question = "Question?"
 
     result = await manager.process_next_step(session)
 
     assert result["response"] == json_response
     assert step.is_complete
-    assert step.follow_up_history[-1]["response"] == json_response
+    assert step.conversation_history[-1]["response"] == json_response
     # refinement_aspect_value_as_str returns the synthesized value from the dynamic field (aspect.id)
-    assert step.refinement_aspect_value_as_str == "Synthesized answer"
-    assert step.refinement_aspect_value == "Synthesized answer"
+    assert step.normalized_value_as_str == "Synthesized answer"
+    assert step.normalized_value == "Synthesized answer"
 
 
 @pytest.mark.asyncio
@@ -640,9 +640,9 @@ async def test_process_next_step_enforces_json_validation():
         })
     ]
     manager = build_manager(responses=responses, analysis_results={})
-    session = QueryRefinementSession(original_query="query")
+    session = RefinementSession(original_query="query")
     step = session.add_step(aspect)
-    step.refinement_question = "Question?"
+    step.follow_up_question = "Question?"
 
     result = await manager.process_next_step(session)
 
@@ -661,9 +661,9 @@ async def test_process_next_step_returns_error_after_failed_validation():
     )
     responses = ["not json", "still not json", "invalid again"]
     manager = build_manager(responses=responses, analysis_results={})
-    session = QueryRefinementSession(original_query="query")
+    session = RefinementSession(original_query="query")
     step = session.add_step(aspect)
-    step.refinement_question = "Question?"
+    step.follow_up_question = "Question?"
 
     result = await manager.process_next_step(session)
 
@@ -681,7 +681,7 @@ def test_augment_prompt_for_retry_appends_guidance():
 
 def test_build_follow_up_prompts_requires_history():
     manager = build_manager(responses=[], analysis_results={})
-    session = QueryRefinementSession(original_query="query")
+    session = RefinementSession(original_query="query")
     step = session.add_step(make_aspect())
 
     with pytest.raises(ValueError):
@@ -695,7 +695,7 @@ def test_build_follow_up_prompts_requires_history():
 
 def test_gather_refinement_details_compiles_lists():
     manager = build_manager(responses=[], analysis_results={})
-    session = QueryRefinementSession(original_query="query")
+    session = RefinementSession(original_query="query")
 
     aspect1 = make_aspect(aspect_id="a", name="A")
     aspect2 = make_aspect(aspect_id="b", name="B")
@@ -706,7 +706,7 @@ def test_gather_refinement_details_compiles_lists():
 
     step2 = session.add_step(aspect2)
     step2.is_complete = True
-    step2.refinement_aspect_value = "Already clear"
+    step2.normalized_value = "Already clear"
 
     clarifications, summaries = manager._gather_refinement_details(session)
     assert clarifications == [("A", "Value")]
@@ -716,7 +716,7 @@ def test_gather_refinement_details_compiles_lists():
 @pytest.mark.asyncio
 async def test_synthesize_refined_query_without_clarifications():
     manager = build_manager(responses=[], analysis_results={})
-    session = QueryRefinementSession(original_query="original")
+    session = RefinementSession(original_query="original")
 
     result = await manager.synthesize_refined_query(session)
     assert not result["used_llm"]
@@ -728,7 +728,7 @@ async def test_synthesize_refined_query_with_clarifications():
     aspect = make_aspect(aspect_id="a", name="Population")
     llm_response = "Refined query"
     manager = build_manager(responses=[llm_response], analysis_results={})
-    session = QueryRefinementSession(original_query="original query")
+    session = RefinementSession(original_query="original query")
     step = session.add_step(aspect)
     step.add_follow_up("Q", "Adults 18-65")
     step.is_complete = True
@@ -752,9 +752,9 @@ async def test_run_full_refinement_processes_steps():
         "demo": "answer"
     })
     manager = build_manager(responses=[json_response], analysis_results={})
-    session = QueryRefinementSession(original_query="query")
+    session = RefinementSession(original_query="query")
     step = session.add_step(aspect)
-    step.refinement_question = "Q"
+    step.follow_up_question = "Q"
 
     # Note: run_full_refinement is sync but internally calls async process_next_step
     # This may not work as expected - we'll process manually instead

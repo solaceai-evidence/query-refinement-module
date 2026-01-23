@@ -21,7 +21,6 @@ Users can use these commands to control the refinement flow:
 
 Navigation:
 - /back or /prev          - Go back to previous step
-- /goto <step_number>     - Jump to specific step (e.g., /goto 2)
 - /restart               - Start refinement from beginning
 
 Control:
@@ -57,8 +56,6 @@ from typing import Any, Callable, Dict, List, Literal, Optional, Union
 from .interfaces import (
     LLMProviderInterface,
     TracingProviderInterface,
-    QueryAnalyzerInterface,
-    AspectAnalysisResult,
 )
 from .providers import NoOpTracingProvider, TraceEventEmitter
 from .schema import (
@@ -71,6 +68,7 @@ from .schema import (
 from .prompt.system_role import (
     GLOBAL_SYSTEM_PROMPT,
 )
+from .session_commands import SessionCommands
 
 # Module logger - use get_logger() in functions for request context
 logger = logging.getLogger(__name__)
@@ -243,19 +241,29 @@ Examples:
 # =======
 
 @dataclass
-class QueryAspectRefiner:
+class AspectRefinementState:
     """
-    Represents the complete refinement process for a single aspect.
+    Represents the state of the evaluation for a single research dimension (aspect).
     
     Tracks the multi-turn conversation (initial question + follow-ups) until
     a final refined value for the aspect is obtained and accepted.
+
+    Attributes:
+        refinement_aspect: The RefinementAspect being refined   
+        conversation_history: List of Q&A dicts for multi-turn refinement
+        is_complete: Whether refinement is complete for this aspect
+        needs_review: Whether the aspect needs review due to dependency changes
+        was_skipped: Whether the user skipped this aspect entirely
+        reasoning: Analysis result reasoning for refinement need/question
+        follow_up_question: The clarification question for this aspect
+        refinement_aspect_value: The extracted refined value in native type
     """
 
     refinement_aspect: RefinementAspect
     
     # Multi-turn conversation history (initial + all follow-ups)
     # Each entry: {'question': '...', 'response': '...'}
-    follow_up_history: List[Dict[str, str]] = field(default_factory=list)
+    conversation_history: List[Dict[str, str]] = field(default_factory=list)
     
     # Completion status - set when refinement is accepted/skipped or not needed as info is clear
     is_complete: bool = False
@@ -263,39 +271,39 @@ class QueryAspectRefiner:
     # Review status - set when dependencies change, preserves history for review
     needs_review: bool = False
 
-    # Whether the step was explicitly skipped by the user without supplying a value
+    # Whether the step was explicitly skipped by the user without supplying a value (or if supplied, value will be discarded)
     was_skipped: bool = False
     
     # Analysis result - stored from LLM's structured analysis output during initialize()
-    # Contains: needs_refinement_rationale (why refinement needed/not), refinement_question (what to ask)
-    needs_refinement_rationale: Optional[str] = None
-    refinement_question: Optional[str] = None
+    # Contains: needs_refinement_rationale (why refinement needed/not), follow_up_question (what to ask)
+    reasoning: Optional[str] = None
+    follow_up_question: Optional[str] = None
     
-    # Stores the extracted value from the dynamic field (labelled as aspect.id) in its native type
-    refinement_aspect_value: Optional[Union[str, Dict, List, bool, int, float]] = None
+    # Stores the aspect specification as refined by user interaction 
+    normalized_value: Optional[Union[str, Dict, List, bool, int, float]] = None
     
     @property
     def follow_up_count(self) -> int:
         """Number of follow-up rounds completed."""
-        return len(self.follow_up_history)
+        return len(self.conversation_history)
     
     @property
-    def refinement_aspect_value_as_str(self) -> Optional[str]:
+    def normalized_value_as_str(self) -> Optional[str]:
         """
         Get string representation of refinement aspect value for display/storage.
         
         Returns:
-            String representation of refinement_aspect_value (JSON for complex types)
+            String representation of normalized_value (JSON for complex types)
         """
-        if self.refinement_aspect_value is not None:
-            if isinstance(self.refinement_aspect_value, (dict, list)):
-                return json.dumps(self.refinement_aspect_value, ensure_ascii=False)
-            return str(self.refinement_aspect_value)
+        if self.normalized_value is not None:
+            if isinstance(self.normalized_value, (dict, list)):
+                return json.dumps(self.normalized_value, ensure_ascii=False)
+            return str(self.normalized_value)
         return None
     
     def extract_and_store_value(self, response: str) -> None:
         """
-        Extract value from dynamic field in response and store in refinement_aspect_value.
+        Extract value from dynamic field in response and store in normalized_value.
         
         Single extraction point - eliminates duplicate logic across codebase.
         Parses JSON response, extracts aspect.id field, stores with native type.
@@ -317,7 +325,7 @@ class QueryAspectRefiner:
                         value = parsed[field_name]
                         # Store non-empty values (handle empty strings, lists, dicts)
                         if value or isinstance(value, (bool, int, float)):
-                            self.refinement_aspect_value = value
+                            self.normalized_value = value
                             return
             except (json.JSONDecodeError, TypeError):
                 pass  # Not valid JSON, fall to plain text handling
@@ -325,14 +333,14 @@ class QueryAspectRefiner:
         # For non-JSON responses, store the plain text directly
         # This preserves the behavior where any response contributes to the value
         if response.strip():
-            self.refinement_aspect_value = response.strip()
+            self.normalized_value = response.strip()
 
-    def get_system_role(self) -> str:
+    def get_global_system_role(self) -> str:
         """
-        Get the system role prompt for this refinement aspect.
+        Get the global system role prompt for this refinement aspect.
         
         Returns:
-            System prompt string (from refinement aspect or default)
+            Global system prompt string
         """
         return self.refinement_aspect.get_system_role()
     
@@ -393,7 +401,7 @@ class QueryAspectRefiner:
             )
         
         # Include conversation history for multi-turn refinement
-        if self.follow_up_history:
+        if self.conversation_history:
             conversation_lines = [
                 "",
                 "### Conversation history for this aspect\n"
@@ -402,7 +410,7 @@ class QueryAspectRefiner:
                 ""
             ]
             
-            for idx, exchange in enumerate(self.follow_up_history, 1):
+            for idx, exchange in enumerate(self.conversation_history, 1):
                 question = exchange.get('question', '')
                 response = exchange.get('response', '')
                 conversation_lines.append(f"**Turn {idx}:**")
@@ -413,6 +421,128 @@ class QueryAspectRefiner:
             refinement_instructions_prompt_sections.extend(conversation_lines)
 
         return system_prompt, "\n".join(refinement_instructions_prompt_sections)
+    
+    def get_messages(
+        self,
+        query: str,
+        dependency_context: Optional[Dict[str, Dict[str, str]]] = None,
+        **kwargs
+    ) -> List[Dict[str, str]]:
+        """
+        Build messages array for LLM API (multi-turn dialogue representation).
+        
+        Constructs structured messages with:
+        1. System message: Global platform instructions
+        2. System message: Current dimension name, description, evaluation criteria
+        3. System message: Previously completed dimensions (for context)
+        4. System message: Dependency specifications (dimensions this one depends on)
+        5. User message: Original query to analyze
+        6. Conversation history: Alternating assistant/user messages
+        
+        Args:
+            query: The query to analyze
+            dependency_context: Values from completed dependencies
+            **kwargs: Additional context for prompt formatting
+            
+        Returns:
+            List of message dicts with 'role' and 'content' keys
+        """
+        messages = []
+        
+        # 1. System message: Global platform instructions
+        messages.append({
+            'role': 'system',
+            'content': GLOBAL_SYSTEM_PROMPT
+        })
+        
+        # 2. System message: Current dimension specification
+        dimension_spec = "\n".join([
+            f"# Current Dimension: {self.refinement_aspect.aspect_name}",
+            f"\n**Description:** {self.refinement_aspect.aspect_description}",
+            f"\n## Evaluation Criteria\n",
+            self.refinement_aspect.evaluation_instructions
+        ])
+        messages.append({
+            'role': 'system',
+            'content': dimension_spec
+        })
+        
+        # 3. System message: Previously completed dimensions (for context)
+        if dependency_context:
+            completed_dims = []
+            for dep_id, entry in dependency_context.items():
+                if entry and entry.get("value"):
+                    dep_name = entry.get("name") or dep_id.replace("_", " ").title()
+                    dep_desc = entry.get("description", "")
+                    dep_value = entry["value"]
+                    
+                    if dep_desc:
+                        completed_dims.append(f"**{dep_name}** ({dep_desc}): {dep_value}")
+                    else:
+                        completed_dims.append(f"**{dep_name}**: {dep_value}")
+            
+            if completed_dims:
+                context_message = "\n".join([
+                    "# Previously Completed Dimensions",
+                    "\nThe following dimensions have been refined and clarified:",
+                    "",
+                    *completed_dims
+                ])
+                messages.append({
+                    'role': 'system',
+                    'content': context_message
+                })
+        
+        # 4. System message: Dependency specifications (what this dimension must consider)
+        if self.refinement_aspect.depends_on and dependency_context:
+            dependency_specs = []
+            for dep_id in self.refinement_aspect.depends_on:
+                entry = dependency_context.get(dep_id)
+                if entry and entry.get("value"):
+                    dep_name = entry.get("name") or dep_id.replace("_", " ").title()
+                    dep_desc = entry.get("description", "")
+                    dep_value = entry["value"]
+                    
+                    if dep_desc:
+                        dependency_specs.append(f"**{dep_name}** ({dep_desc}): {dep_value}")
+                    else:
+                        dependency_specs.append(f"**{dep_name}**: {dep_value}")
+            
+            if dependency_specs:
+                depends_message = "\n".join([
+                    "# Dimensions This Evaluation Must Consider",
+                    "\nWhen evaluating the current dimension, you MUST take into account:",
+                    "",
+                    *dependency_specs,
+                    "",
+                    "Use these as authoritative constraints when analyzing the user's input."
+                ])
+                messages.append({
+                    'role': 'system',
+                    'content': depends_message
+                })
+        
+        # 5. User message: Original query to analyze
+        user_message = f"**Original Research Input:**\n{query}"
+        messages.append({
+            'role': 'user',
+            'content': user_message
+        })
+        
+        # 6. Conversation history: Alternating assistant/user messages
+        for qa in self.conversation_history:
+            # Assistant asks the question
+            messages.append({
+                'role': 'assistant',
+                'content': qa['question']
+            })
+            # User provides the response
+            messages.append({
+                'role': 'user',
+                'content': qa['response']
+            })
+        
+        return messages
     
     def can_ask_followup(self) -> bool:
         """
@@ -430,7 +560,7 @@ class QueryAspectRefiner:
         Automatically extracts and stores the refined value from the response.
         """
         self.was_skipped = False
-        self.follow_up_history.append({
+        self.conversation_history.append({
             "question": question,
             "response": response
         })
@@ -441,11 +571,11 @@ class QueryAspectRefiner:
         """
         Format follow-up history for use in prompts.
         """
-        if not self.follow_up_history:
+        if not self.conversation_history:
             return "no previous follow-up questions."
         
         history_lines = []
-        for i, qa in enumerate(self.follow_up_history, start=0):
+        for i, qa in enumerate(self.conversation_history, start=0):
             history_lines.append(f"Follow-up {i+1}:") # i+1 to make it human-friendly
             history_lines.append(f" Q: {qa.get('question', '')}")
             history_lines.append(f" A: {qa.get('response', '')}")
@@ -473,10 +603,10 @@ class QueryAspectRefiner:
         """
 
         history_text = self.get_conversation_history_text()
-        latest_answer = self.refinement_aspect_value_as_str or ""
+        latest_answer = self.normalized_value_as_str or ""
         
         # Get current refinement aspect value for display
-        current_value = self.refinement_aspect_value
+        current_value = self.normalized_value
         value_display = ""
         if current_value is not None:
             field_name = self.refinement_aspect.id
@@ -545,7 +675,7 @@ class QueryAspectRefiner:
         return "\n\n".join(section for section in sections if section)
     
 @dataclass
-class QueryRefinementSession:
+class RefinementSession:
     """
     Represents an entire query refinement session.
     
@@ -554,7 +684,7 @@ class QueryRefinementSession:
     """
 
     original_query: str
-    steps: List[QueryAspectRefiner] = field(default_factory=list)
+    steps: List[AspectRefinementState] = field(default_factory=list)
     synthesis_requested: bool = False
     
     @property
@@ -565,7 +695,7 @@ class QueryRefinementSession:
     def add_step(
         self,
         refinement_aspect: RefinementAspect,
-    ) -> QueryAspectRefiner:
+    ) -> AspectRefinementState:
         """
         Adds a new refinement step to the session for a refinement aspect.
 
@@ -575,14 +705,14 @@ class QueryRefinementSession:
         Returns:
             QueryAspectRefiner: The newly created query aspectrefiner.
         """
-        step = QueryAspectRefiner(
+        step = AspectRefinementState(
             refinement_aspect=refinement_aspect,
             is_complete=False,
         )
         self.steps.append(step)
         return step
     
-    def get_active_step(self) -> Optional[QueryAspectRefiner]:
+    def get_active_step(self) -> Optional[AspectRefinementState]:
         """Return the first step that still requires user attention."""
 
         for step in self.steps:
@@ -591,7 +721,7 @@ class QueryRefinementSession:
 
         return None
     
-    def get_next_unrefined_aspect(self) -> Optional[QueryAspectRefiner]:
+    def get_next_unrefined_aspect(self) -> Optional[AspectRefinementState]:
         """
         Get the next aspect that needs refinement in dependency order.
         
@@ -628,7 +758,7 @@ class QueryRefinementSession:
         
         return None
     
-    def get_step_by_aspect_id(self, aspect_id: str) -> Optional[QueryAspectRefiner]:
+    def get_step_by_aspect_id(self, aspect_id: str) -> Optional[AspectRefinementState]:
         """
         Find a step by its refinement aspect ID.
         
@@ -702,8 +832,8 @@ class QueryRefinementSession:
                 )
                 continue
             
-            if dep_step.refinement_aspect_value is not None:
-                raw_value = dep_step.refinement_aspect_value
+            if dep_step.normalized_value is not None:
+                raw_value = dep_step.normalized_value
             elif dep_step.is_complete:
                 # Aspect was clear in original query
                 raw_value = f"[{aspect.aspect_name} is clear in original query: \"{self.original_query}\"]"
@@ -766,7 +896,7 @@ class QueryRefinementSession:
                     "is_complete": step.is_complete,
                     "needs_review": step.needs_review,
                     "follow_up_count": step.follow_up_count,
-                    "has_refinement_aspect_value": step.refinement_aspect_value_as_str is not None,
+                    "has_refinement_aspect_value": step.normalized_value_as_str is not None,
                 }
             )
 
@@ -794,13 +924,13 @@ class QueryRefinementSession:
         lines.append("")
         
         for step in self.steps:
-            if not step.follow_up_history:
+            if not step.conversation_history:
                 continue
                 
             lines.append(f"[{step.refinement_aspect.aspect_name}]")
             lines.append("")
             
-            for i, qa in enumerate(step.follow_up_history, 1):
+            for i, qa in enumerate(step.conversation_history, 1):
                 interaction_type = "initial" if i == 1 else f"follow-up {i-1}"
                 lines.append(f"  [{interaction_type}]")
                 lines.append(f"  Q: {qa.get('question', '')}")
@@ -808,8 +938,8 @@ class QueryRefinementSession:
                     lines.append(f"  A: {qa['response']}")
                 lines.append("")  # Blank line
             
-            if step.refinement_aspect_value_as_str:
-                lines.append(f"  ✓ Final value: {step.refinement_aspect_value_as_str}")
+            if step.normalized_value_as_str:
+                lines.append(f"  ✓ Final value: {step.normalized_value_as_str}")
                 lines.append("")
         
         return "\n".join(lines)
@@ -830,26 +960,9 @@ class QueryRefinementSession:
                 "message": cmd_result.error_message or "Invalid command",
             }
         
-        command = cmd_result.command
-
-        command_handlers: Dict[UserCommand, Callable[[], Dict[str, Any]]] = {
-            UserCommand.BACK: self._go_back,
-            UserCommand.PREVIOUS: self._go_back,
-            UserCommand.RESTART: self._restart,
-            UserCommand.SKIP: self._skip_current,
-            UserCommand.DONE: self._finish_current,
-            UserCommand.CLEAR: self._clear_current,
-            UserCommand.STATUS: self._get_status,
-            UserCommand.STEPS: self._list_steps,
-            UserCommand.SUBMIT: self._request_synthesis,
-            UserCommand.HELP: lambda: {"success": True, "message": get_help_text()},
-        }
-
-        handler = command_handlers.get(command)
-        if handler:
-            return handler()
-
-        return {"success": False, "message": f"Command {command.name} not implemented"}
+        # Delegate to SessionCommands helper
+        commands = SessionCommands(self)
+        return commands.execute(cmd_result.command)
     
     def _invalidate_dependents(self, changed_refinement_aspect_id: str) -> List[str]:
         """
@@ -879,213 +992,6 @@ class QueryRefinementSession:
         
         return invalidated
     
-    def _go_back(self) -> Dict[str, Any]:
-        """Navigate to previous aspect, truncating all subsequent aspects."""
-        active = self.get_active_step()
-        if not active:
-            return {"success": False, "message": "No active step to go back from"}
-        
-        active_idx = self.steps.index(active)
-        if active_idx == 0:
-            return {"success": False, "message": "Already at first aspect. Use /restart to start over."}
-        
-        # Get previous step
-        prev_step = self.steps[active_idx - 1]
-        
-        # Track what will be cleared (everything from current onward)
-        cleared_aspects = [
-            step.refinement_aspect.aspect_name 
-            for step in self.steps[active_idx:]
-        ]
-        
-        # Truncate session.steps - remove current and all subsequent aspects
-        # They will be regenerated on-demand based on updated answers
-        self.steps = self.steps[:active_idx]
-        
-        # Reopen the previous step
-        prev_step.is_complete = False
-        prev_step.needs_review = False
-        
-        message = f"Moved back to: {prev_step.refinement_aspect.aspect_name}"
-        if cleared_aspects:
-            message += f"\n⚠️  Cleared {len(cleared_aspects)} aspect(s): {', '.join(cleared_aspects)}"
-            message += "\nThey will be regenerated based on your updated answers."
-        
-        return {
-            "success": True,
-            "message": message,
-            "step_index": active_idx - 1,
-            "step": prev_step,
-            "cleared_aspects": cleared_aspects,
-        }
-    
-
-    
-    def _restart(self) -> Dict[str, Any]:
-        """Restart the entire refinement session, clearing all aspects."""
-        # Track what's being cleared
-        cleared_count = len(self.steps)
-        
-        # Truncate session.steps entirely - will regenerate from aspect 1
-        self.steps = []
-        self.synthesis_requested = False
-        
-        return {
-            "success": True,
-            "message": f"Session restarted. All {cleared_count} aspect(s) cleared.",
-        }
-    
-    def _skip_current(self) -> Dict[str, Any]:
-        """Skip the current refinement aspect, clearing all data."""
-        active = self.get_active_step()
-        if not active:
-            return {"success": False, "message": "No active step to skip"}
-        
-        # Clear all data when skipping - no information should be used
-        active.follow_up_history = []
-        active.refinement_aspect_value = None
-        active.is_complete = True
-        active.was_skipped = True
-        active.needs_review = False
-        
-        return {
-            "success": True,
-            "message": f"Skipped: {active.refinement_aspect.aspect_name}.\nNo specifications from this dimension will be provided to dependent refinement dimensions.",
-            "step": active,
-        }
-    
-    def _clear_current(self) -> Dict[str, Any]:
-        """Clear current aspect's answers and restart it."""
-        active = self.get_active_step()
-        if not active:
-            return {"success": False, "message": "No active step to clear"}
-        
-        # Clear all data for current aspect only
-        active.follow_up_history = []
-        active.refinement_aspect_value = None
-        active.is_complete = False
-        active.was_skipped = False
-        active.needs_review = False
-        active.refinement_question = None
-        
-        return {
-            "success": True,
-            "message": f"Cleared: {active.refinement_aspect.aspect_name}. Question will be regenerated.",
-            "step": active,
-            "regenerate_question": True,
-        }
-
-    def _finish_current(self) -> Dict[str, Any]:
-        """Finish the current step, preserving captured responses (if any)."""
-        active = self.get_active_step()
-        if not active:
-            return {"success": False, "message": "No active step to finish"}
-
-        message = f"Completed refinement aspect: {active.refinement_aspect.aspect_name}"
-        if not active.refinement_aspect_value:
-            message += " (no additional details provided)."
-
-        # Important: mark_skipped=False even if no value - user said /done, not /skip
-        # This preserves the distinction for auditing: /done = user decision, /skip = explicit skip
-        return self._finalize_active_step(
-            active,
-            mark_skipped=False,  # User said "done", not "skip" - preserve audit trail
-            success_message=message,
-        )
-
-    def _finalize_active_step(
-        self,
-        active: QueryAspectRefiner,
-        *,
-        mark_skipped: Optional[bool],
-        success_message: str,
-    ) -> Dict[str, Any]:
-        """Mark the provided step complete while preserving history."""
-
-        active.is_complete = True
-        active.needs_review = False
-        if mark_skipped is None:
-            mark_skipped = not bool(active.refinement_aspect_value)
-        active.was_skipped = mark_skipped
-
-        return {
-            "success": True,
-            "message": success_message,
-            "step": active,
-        }
-
-    def _request_synthesis(self) -> Dict[str, Any]:
-        """Request immediate synthesis using currently captured clarifications."""
-        self.synthesis_requested = True
-        return {
-            "success": True,
-            "message": "Generating refined query with current clarifications.",
-            "submit": True,
-        }
-    
-    def _get_status(self) -> Dict[str, Any]:
-        """Get current session status (sequential mode - shows only processed aspects)."""
-        active = self.get_active_step()
-        summary = self.get_step_summary()
-        
-        # Calculate how many aspects remain unprocessed
-        total_aspects = len(self.refinement_framework)
-        processed_count = len(self.steps)
-        remaining_count = total_aspects - processed_count
-        
-        status_lines = [
-            "Session Status:",
-            f"  Processed: {summary['completed']}/{processed_count} complete",
-            f"  Follow-ups asked: {summary['total_follow_ups']}",
-        ]
-        
-        if active:
-            active_idx = self.steps.index(active) + 1
-            status_tag = " (needs review)" if active.needs_review else ""
-            status_lines.append(f"  Current: Step {active_idx} - {active.refinement_aspect.aspect_name}{status_tag}")
-        else:
-            if processed_count == total_aspects:
-                status_lines.append("  Current: All aspects processed")
-            else:
-                status_lines.append(f"  Current: Ready for next aspect ({remaining_count} remaining)")
-        
-        return {
-            "success": True,
-            "message": "\n".join(status_lines),
-            "summary": summary,
-            "active_step": active,
-        }
-    
-    def _list_steps(self) -> Dict[str, Any]:
-        """List processed steps with their status (sequential mode)."""
-        active = self.get_active_step()
-        
-        total_aspects = len(self.refinement_framework)
-        processed_count = len(self.steps)
-        
-        lines = [f"Processed Steps ({processed_count}/{total_aspects} total aspects):"]
-        for i, step in enumerate(self.steps, 1):
-            if step.was_skipped:
-                status = "skipped"
-            elif step.is_complete:
-                status = "completed"
-            elif step == active:
-                status = "active"
-            else:
-                status = "in progress"
-
-            followups = f" ({step.follow_up_count} follow-ups)" if step.follow_up_count > 0 else ""
-            lines.append(f"  {i}. [{status}] {step.refinement_aspect.aspect_name}{followups}")
-        
-        if processed_count < total_aspects:
-            lines.append(f"\n  ... {total_aspects - processed_count} more aspect(s) will be generated on-demand")
-        
-        return {
-            "success": True,
-            "message": "\n".join(lines),
-            "steps": self.steps,
-        }
-    
     def to_dict(self) -> Dict[str, Any]:
         """
         Serializes the session to a dictionary.
@@ -1102,10 +1008,10 @@ class QueryRefinementSession:
                     "refinement_aspect_name": step.refinement_aspect.aspect_name,
                     "refinement_aspect_description": step.refinement_aspect.aspect_description,
                     # Multi-turn conversation
-                    "follow_up_history": step.follow_up_history,
+                    "follow_up_history": step.conversation_history,
                     # Completion status
                     "is_complete": step.is_complete,
-                    "refinement_aspect_value": step.refinement_aspect_value_as_str,
+                    "refinement_aspect_value": step.normalized_value_as_str,
                 }
                 for step in self.steps
             ],
@@ -1116,7 +1022,7 @@ class QueryRefinementSession:
 class QueryRefinementManager:
     async def run_followup_until_clear(
         self,
-        session: QueryRefinementSession,
+        session: RefinementSession,
         aspect_id: Optional[str] = None,
         max_rounds: Optional[int] = None
     ) -> Dict[str, Any]:
@@ -1151,7 +1057,14 @@ class QueryRefinementManager:
         max_followups = max_rounds if max_rounds is not None else step.refinement_aspect.max_follow_ups
 
         if step.is_complete:
-            return self._build_followup_result(step, step.refinement_aspect_value_as_str, rounds)
+            return {
+                "aspect_id": step.refinement_aspect.id,
+                "aspect_name": step.refinement_aspect.aspect_name,
+                "follow_up_history": step.conversation_history,
+                "is_complete": step.is_complete,
+                "final_value": step.normalized_value_as_str,
+                "rounds": rounds,
+            }
 
         while not step.is_complete and rounds < max_followups:
             try:
@@ -1174,7 +1087,7 @@ class QueryRefinementManager:
                 # Log to follow-up history
                 if status['complete']:
                     # Store final question and value in history
-                    last_question = step.refinement_question or step.refinement_aspect.aspect_name
+                    last_question = step.follow_up_question or step.refinement_aspect.aspect_name
                     step.add_follow_up(
                         question=last_question,
                         response=f"[Complete: {result.refinement_aspect_value}]"
@@ -1184,7 +1097,7 @@ class QueryRefinementManager:
                     # Store question for next round
                     # The last user response is already in follow_up_history from CLI/API
                     # Just update refinement_question for next iteration
-                    step.refinement_question = result.next_question
+                    step.follow_up_question = result.next_question
                     
                     if rounds >= max_followups:
                         # Reached max rounds without completion
@@ -1195,7 +1108,7 @@ class QueryRefinementManager:
                 # LLM error - mark as complete with error
                 logger.error(f"LLM error in followup for {step.refinement_aspect.id}: {e}")
                 step.add_follow_up(
-                    question=step.refinement_question or step.refinement_aspect.aspect_name,
+                    question=step.follow_up_question or step.refinement_aspect.aspect_name,
                     response=f"[Validation error: {e}]"
                 )
                 step.is_complete = True
@@ -1215,13 +1128,20 @@ class QueryRefinementManager:
             },
         )
         
-        return self._build_followup_result(step, step.refinement_aspect_value_as_str, rounds)
+        return {
+            "aspect_id": step.refinement_aspect.id,
+            "aspect_name": step.refinement_aspect.aspect_name,
+            "follow_up_history": step.conversation_history,
+            "is_complete": step.is_complete,
+            "final_value": step.normalized_value_as_str,
+            "rounds": rounds,
+        }
 
     def _get_target_step(
         self,
-        session: QueryRefinementSession,
+        session: RefinementSession,
         aspect_id: Optional[str]
-    ) -> QueryAspectRefiner:
+    ) -> AspectRefinementState:
         """Get the target step for follow-up, or last completed if none active."""
         if aspect_id:
             step_lookup = {candidate.refinement_aspect.id: candidate for candidate in session.steps}
@@ -1236,72 +1156,30 @@ class QueryRefinementManager:
                 raise ValueError("No refinement aspect available for follow-up loop")
         return step
 
-    def _build_followup_result(
-        self,
-        step: QueryAspectRefiner,
-        final_value: Optional[str],
-        rounds: int
-    ) -> Dict[str, Any]:
-        """Build result dict for follow-up loop."""
-        return {
-            "aspect_id": step.refinement_aspect.id,
-            "aspect_name": step.refinement_aspect.aspect_name,
-            "follow_up_history": step.follow_up_history,
-            "is_complete": step.is_complete,
-            "final_value": final_value,
-            "rounds": rounds,
-        }
-
      
 
     def __init__(
         self,
         llm_provider: LLMProviderInterface,
-        query_analyzer: QueryAnalyzerInterface,
         tracing_provider: Optional[TracingProviderInterface] = None,
     ) -> None:
         self.llm_provider: LLMProviderInterface = llm_provider
-        self.query_analyzer: QueryAnalyzerInterface = query_analyzer
         self.tracing_provider: TracingProviderInterface = tracing_provider or NoOpTracingProvider()
         self.trace_emitter: TraceEventEmitter = TraceEventEmitter(self.tracing_provider)
+        
         logger.info(
-            "QueryRefinementManager initialized with LLM provider: %s, Query Analyzer: %s, Tracing Provider: %s",
+            "QueryRefinementManager initialized with LLM provider: %s, Tracing Provider: %s",
             llm_provider.__class__.__name__,
-            query_analyzer.__class__.__name__ if query_analyzer else "None",
             self.tracing_provider.__class__.__name__,
-        )
-        self.validation_max_retries: int = 2
-        self.trace_emitter.emit(
-            "manager_initialized",
-            metadata={
-                "llm_provider": llm_provider.__class__.__name__,
-                "query_analyzer": query_analyzer.__class__.__name__ if query_analyzer else "None",
-            }
         )
 
     async def get_analysis_prompts(
         self,
-        session: QueryRefinementSession,
+        session: RefinementSession,
         aspect_id: str,
         mode: Literal['initial', 'followup'] = 'initial'
     ) -> DimensionEvaluationResponse:
-        """
-        Unified method for generating and executing analysis prompts asynchronously.
-        
-        Uses the same prompt template for both initial and follow-up analysis,
-        with only the conversation history section differing based on mode.
-        
-        Args:
-            session: Current refinement session
-            aspect_id: ID of aspect to analyze
-            mode: 'initial' (no conversation history) or 'followup' (with history)
-        
-        Returns:
-            RefinementAnalysisResponse with unified structure
-        
-        Raises:
-            ValueError: If aspect not found or LLM response invalid
-        """
+        """Generate and execute analysis prompts for an aspect."""
         # Get aspect and step
         step = session.get_step_by_aspect_id(aspect_id)
         if not step:
@@ -1309,31 +1187,17 @@ class QueryRefinementManager:
         
         aspect = step.refinement_aspect
         
-        # Build complete unified prompt using aspect's method
+        # Build messages array
         dependency_context = session.get_dependency_context(aspect_id)
-        user_prompt = aspect.build_unified_prompt(
-            original_input=session.original_query,
-            follow_up_history=step.follow_up_history,
-            dependency_context=dependency_context,
-            mode=mode
+        messages = step.get_messages(
+            query=session.original_query,
+            dependency_context=dependency_context
         )
         
-        # Always use GLOBAL_SYSTEM_PROMPT for caching (dimension-specific content goes in user prompt)
-        # DEPRECATED: aspect.system_prompt is ignored to enable prompt caching
-        system_prompt = GLOBAL_SYSTEM_PROMPT
-        
-        # Log prompt sizes for performance diagnostics
-        system_prompt_len = len(system_prompt)
-        user_prompt_len = len(user_prompt)
-        total_chars = system_prompt_len + user_prompt_len
-        estimated_tokens = total_chars // 4  # Rough estimate: ~4 chars per token
-        logger.info(f"Prompt sizes for aspect '{aspect_id}' ({mode}) - System: {system_prompt_len} chars, User: {user_prompt_len} chars, Total: {total_chars} chars (~{estimated_tokens} tokens)")
-        
-        # Call LLM with unified prompt
+        # Call LLM with messages
         response_text, parsed_payload, is_error, error_message = await self._get_llm_response_with_validation(
             aspect=aspect,
-            system_prompt=system_prompt,
-            user_prompt=user_prompt
+            messages=messages
         )
         
         if is_error:
@@ -1344,7 +1208,7 @@ class QueryRefinementManager:
         
         # Add metadata to LLM response
         parsed_payload['context'] = mode
-        parsed_payload['round'] = len(step.follow_up_history) + 1
+        parsed_payload['round'] = len(step.conversation_history) + 1
         
         # Create and validate response (Pydantic validators handle field validation)
         try:
@@ -1356,31 +1220,18 @@ class QueryRefinementManager:
 
     def process_analysis_result(
         self,
-        session: QueryRefinementSession,
+        session: RefinementSession,
         aspect_id: str,
         result: DimensionEvaluationResponse
     ) -> Dict[str, Any]:
-        """
-        Process analysis result and update session step accordingly.
-        
-        If complete: Sets refinement_aspect_value and marks step as complete
-        If incomplete: Sets next refinement question for user to answer
-        
-        Args:
-            session: Current refinement session
-            aspect_id: ID of aspect being analyzed
-            result: Unified analysis response from LLM
-            
-        Returns:
-            Status dict with completion info and next action
-        """
+        """Process analysis result and update session step."""
         step = session.get_step_by_aspect_id(aspect_id)
         if not step:
             raise ValueError(f"No step found for aspect '{aspect_id}'")
         
         if result.is_complete:
             # Refinement complete - store final value
-            step.refinement_aspect_value = result.refinement_aspect_value
+            step.normalized_value = result.refinement_aspect_value
             step.is_complete = True
             
             # Log the assembled value for debugging
@@ -1398,7 +1249,7 @@ class QueryRefinementManager:
             }
         else:
             # Needs follow-up - store question
-            step.refinement_question = result.next_question
+            step.follow_up_question = result.next_question
             step.is_complete = False
             
             return {
@@ -1410,62 +1261,11 @@ class QueryRefinementManager:
                 'round': result.round
             }
 
-    async def initialize(
-        self,
-        original_query: str,
-        refinement_framework: List[RefinementAspect],
-    ) -> QueryRefinementSession:
-        """
-        Initialize a new refinement session by analyzing all aspects.
-        
-        This method orchestrates the session creation process:
-        1. Creates a new session
-        2. Runs sequential analysis of all aspects
-        3. Populates session steps with analysis results
-        
-        Args:
-            original_query: The user's initial query text
-            refinement_framework: List of aspects to refine
-            
-        Returns:
-            Initialized QueryRefinementSession ready for user interaction
-        """
-        with self.tracing_provider.trace_operation("initialize_refinement_session") as trace:
-            if hasattr(trace, 'add_attribute'):
-                trace.add_attribute("original_query", original_query)
-                trace.add_attribute("num_refinement_aspects", len(refinement_framework))
-
-            logger.info("Initializing refinement session for query: %s", original_query)
-            logger.debug("Refinement framework aspects: %s",
-                         [aspect.aspect_name for aspect in refinement_framework])
-            
-            # Create session
-            session = self._create_session(original_query)
-            
-            # Run sequential analysis
-            analysis_results = await self._analyze_aspects_sequential(
-                original_query=original_query,
-                refinement_framework=refinement_framework,
-                session=session,
-            )
-            
-            # Populate session with analysis results
-            aspects_needing_refinement_count = self._populate_session_steps(
-                session=session,
-                refinement_framework=refinement_framework,
-                analysis_results=analysis_results,
-            )
-            
-            # Log summary
-            self._log_session_summary(session, aspects_needing_refinement_count)
-            
-        return session
-
     def initialize_sequential(
         self,
         original_query: str,
         refinement_framework: List[RefinementAspect],
-    ) -> QueryRefinementSession:
+    ) -> RefinementSession:
         """
         Initialize a refinement session without upfront LLM analysis.
         
@@ -1496,15 +1296,15 @@ class QueryRefinementManager:
                          [aspect.aspect_name for aspect in refinement_framework])
             
             # Create session
-            session = self._create_session(original_query)
+            session = RefinementSession(original_query=original_query)
             
             # Add all aspects as steps WITHOUT running analysis
             for aspect in refinement_framework:
                 step = session.add_step(aspect)
                 # Mark as incomplete and ready for refinement
                 step.is_complete = False
-                step.needs_refinement_rationale = None
-                step.refinement_question = None
+                step.reasoning = None
+                step.follow_up_question = None
                 
                 logger.debug(
                     "Added aspect '%s' to session (will refine on-demand)",
@@ -1526,215 +1326,10 @@ class QueryRefinementManager:
             
         return session
 
-    def _create_session(self, original_query: str) -> QueryRefinementSession:
-        """Create a new refinement session."""
-        return QueryRefinementSession(original_query=original_query)
-
-    def _populate_session_steps(
-        self,
-        session: QueryRefinementSession,
-        refinement_framework: List[RefinementAspect],
-        analysis_results: Dict[str, AspectAnalysisResult],
-    ) -> int:
-        """
-        Populate session steps with analysis results.
-        
-        Returns:
-            Count of aspects needing refinement
-        """
-        aspects_needing_refinement_count = 0
-        
-        for aspect in refinement_framework:
-            step = session.add_step(aspect)
-            analysis_result = analysis_results.get(aspect.id)
-            
-            if analysis_result is None:
-                self._handle_failed_analysis(step, aspect)
-                aspects_needing_refinement_count += 1
-                continue
-            
-            # Store analysis results
-            step.needs_refinement_rationale = analysis_result.explanation
-            step.refinement_question = analysis_result.clarifying_question
-            
-            if analysis_result.needs_refinement:
-                # Mark step as needing refinement
-                step.is_complete = False
-                logger.debug("Aspect %s needs refinement: %s", aspect.aspect_name, analysis_result.explanation)
-                aspects_needing_refinement_count += 1
-            else:
-                # Mark step as complete with summary
-                step.is_complete = True
-                summary_text = (
-                    analysis_result.explanation
-                    or aspect.aspect_description
-                    or f"Aspect '{aspect.aspect_name}' is sufficiently specified in the original query."
-                )
-                step.refinement_aspect_value = summary_text.strip()
-                logger.debug("Aspect %s is already clear in original query", aspect.aspect_name)
-        
-        return aspects_needing_refinement_count
-
-    def _handle_failed_analysis(
-        self,
-        step: QueryAspectRefiner,
-        aspect: RefinementAspect,
-    ) -> None:
-        """Handle failed analysis by marking step for refinement."""
-        logger.warning("Analysis failed for aspect %s - marking for refinement", aspect.id)
-        step.is_complete = False
-        step.needs_refinement_rationale = "Analysis could not be completed"
-        step.refinement_question = aspect.aspect_description or f"Please provide details about {aspect.aspect_name}"
-
-    def _log_session_summary(
-        self,
-        session: QueryRefinementSession,
-        aspects_needing_refinement_count: int,
-    ) -> None:
-        """Log session initialization summary."""
-        already_clear_count = len(session.steps) - aspects_needing_refinement_count
-        
-        logger.info(
-            "Session initialized with %d total steps (%d need refinement, %d already clear)",
-            len(session.steps),
-            aspects_needing_refinement_count,
-            already_clear_count,
-        )
-
-        self.trace_emitter.emit(
-            "session_initialized",
-            metadata={
-                "total_steps": len(session.steps),
-                "needs_refinement": aspects_needing_refinement_count,
-                "already_clear": already_clear_count,
-            }
-        )
-
-    async def _analyze_aspects_sequential(
-        self,
-        original_query: str,
-        refinement_framework: List[RefinementAspect],
-        session: QueryRefinementSession,
-    ) -> Dict[str, AspectAnalysisResult]:
-        """
-        Analyze aspects sequentially in dependency order (original behavior).
-        
-        This is the default execution mode and fallback for parallel execution.
-        """
-        results = {}
-        
-        for aspect in refinement_framework:
-            # Get dependency context from previously analyzed aspects
-            dependency_context = session.get_dependency_context(aspect.id)
-            analyzer_context = {
-                dep_id: entry["value"]
-                for dep_id, entry in dependency_context.items()
-            }
-
-            logger.debug(
-                "Analyzing aspect '%s' with dependency context keys: %s",
-                aspect.id,
-                list(dependency_context.keys()) if dependency_context else [],
-            )
-            self.trace_emitter.emit(
-                "aspect_analysis_start",
-                metadata={
-                    "aspect_id": aspect.id,
-                    "depends_on": aspect.depends_on,
-                    "has_dependency_context": bool(dependency_context),
-                }
-            )
-            
-            # Analyze this specific aspect with its dependency context
-            analysis_result = None
-            try:
-                analysis_result = await self.query_analyzer.analyze_aspect_async(
-                    query=original_query,
-                    aspect=aspect,
-                    dependency_context=analyzer_context,
-                    llm_provider=self.llm_provider
-                )
-                results[aspect.id] = analysis_result
-                
-                self.trace_emitter.emit(
-                    "aspect_analysis_complete",
-                    metadata={
-                        "aspect_id": aspect.id,
-                        "needs_refinement": analysis_result.needs_refinement,
-                    }
-                )
-            except Exception as e:
-                logger.error(
-                    "Failed to analyze aspect %s: %s",
-                    aspect.id,
-                    e,
-                    exc_info=True
-                )
-                results[aspect.id] = None
-                
-                self.trace_emitter.emit(
-                    "aspect_analysis_complete",
-                    metadata={
-                        "aspect_id": aspect.id,
-                        "needs_refinement": None,
-                    }
-                )
-        
-        return results
-
-    async def initialize_streaming(
-        self,
-        original_query: str,
-        refinement_framework: List[RefinementAspect],
-    ):
-        """
-        Initialize a new refinement session with streaming results.
-        
-        Note: Currently uses sequential execution (parallel execution removed).
-        Returns all results in a single yield for compatibility.
-        
-        Args:
-            original_query: The user's initial query text
-            refinement_framework: List of aspects to refine
-            
-        Yields:
-            Tuple of (session, level_idx, level_results, metadata, is_final)
-            - session: QueryRefinementSession
-            - level_idx: None (no levels in sequential mode)
-            - level_results: Dict of AspectAnalysisResults
-            - metadata: Execution metadata
-            - is_final: True (single yield)
-        """
-        with self.tracing_provider.trace_operation("initialize_refinement_session_streaming") as trace:
-            if hasattr(trace, 'add_attribute'):
-                trace.add_attribute("original_query", original_query)
-                trace.add_attribute("num_refinement_aspects", len(refinement_framework))
-
-            logger.info("Initializing refinement session (streaming) for query: %s", original_query)
-            logger.debug("Refinement framework aspects: %s",
-                         [aspect.aspect_name for aspect in refinement_framework])
-            
-            # Create session
-            session = self._create_session(original_query)
-            
-            # Use sequential execution
-            analysis_results = await self._analyze_aspects_sequential(
-                original_query=original_query,
-                refinement_framework=refinement_framework,
-                session=session,
-            )
-            aspects_needing_refinement_count = self._populate_session_steps(
-                session=session,
-                refinement_framework=refinement_framework,
-                analysis_results=analysis_results,
-            )
-            self._log_session_summary(session, aspects_needing_refinement_count)
-            yield session, None, analysis_results, {"total_aspects": len(refinement_framework)}, True
-
     def ensure_step_is_ready(
         self,
-        session: QueryRefinementSession,
-        step: QueryAspectRefiner,
+        session: RefinementSession,
+        step: AspectRefinementState,
     ) -> bool:
         aspect_id = step.refinement_aspect.id
         logger.debug("Ensuring readiness for aspect %s", aspect_id)
@@ -1761,15 +1356,15 @@ class QueryRefinementManager:
 
     def _maybe_autocomplete_dependent_step(
         self,
-        session: QueryRefinementSession,
-        step: QueryAspectRefiner,
+        session: RefinementSession,
+        step: AspectRefinementState,
     ) -> bool:
         aspect = step.refinement_aspect
 
         if not aspect.depends_on:
             return False
 
-        if step.follow_up_history:
+        if step.conversation_history:
             # User already supplied input; keep existing flow.
             self.trace_emitter.emit(
                 "dependent_step_has_user_input",
@@ -1792,81 +1387,15 @@ class QueryRefinementManager:
             )
             return False
 
-        analyzer_context = {
-            dep_id: entry["value"] for dep_id, entry in dependency_context.items()
-        }
-
+        # In v2.0, no analyzer - dependencies are handled via sequential processing
         logger.debug(
-            "Re-analyzing dependent aspect '%s' after dependency completion",
+            "Skipping re-analysis for dependent aspect '%s' (sequential mode in v2.0)",
             aspect.id,
         )
-        self.trace_emitter.emit(
-            "dependent_step_reanalysis_start",
-            metadata={
-                "aspect_id": aspect.id,
-                "dependency_keys": list(dependency_context.keys()),
-            },
-        )
+        return False
 
-        analysis_result = self.query_analyzer.analyze_aspect(
-            query=session.original_query,
-            aspect=aspect,
-            dependency_context=analyzer_context,
-            llm_provider=self.llm_provider,
-        )
-
-        step.needs_refinement_rationale = analysis_result.explanation
-        step.refinement_question = analysis_result.clarifying_question
-        step.needs_review = False
-
-        if analysis_result.needs_refinement:
-            step.is_complete = False
-            self.trace_emitter.emit(
-                "dependent_step_requires_followup",
-                metadata={"aspect_id": aspect.id},
-            )
-            return False
-
-        step.is_complete = True
-        step.was_skipped = False
-        summary_text = (
-            analysis_result.explanation
-            or aspect.aspect_description
-            or f"Aspect '{aspect.aspect_name}' is sufficiently specified after refreshed analysis."
-        )
-        # Store as refinement_aspect_value (single source of truth)
-        step.refinement_aspect_value = summary_text.strip()
-
-        logger.debug(
-            "Aspect %s marked complete after refreshed analysis", aspect.id
-        )
-        self.trace_emitter.emit(
-            "dependent_step_autocompleted",
-            metadata={
-                "aspect_id": aspect.id,
-                "summary_present": bool(step.refinement_aspect_value),
-            },
-        )
-
-        return True
-
-    async def process_next_step(self, session: QueryRefinementSession) -> Optional[Dict[str, Any]]:
-        """
-        Process the next incomplete refinement step with exactly ONE LLM interaction.
-
-        Orchestrates:
-        1. Finding next ready step
-        2. Building dependency context
-        3. Calling LLM
-        4. Storing result
-
-        Args:
-            session: The refinement session to process
-
-        Returns:
-            Dict with {"aspect_id", "aspect_name", "question", "response"} when a step was
-            processed, or None if there are no remaining steps.
-        """
+    async def process_next_step(self, session: RefinementSession) -> Optional[Dict[str, Any]]:
+        """Process the next ready refinement step."""
         with self.tracing_provider.trace_operation("process_next_step"):
             # Find next ready step
             step = self._find_next_ready_step(session)
@@ -1879,8 +1408,8 @@ class QueryRefinementManager:
 
     def _find_next_ready_step(
         self,
-        session: QueryRefinementSession
-    ) -> Optional[QueryAspectRefiner]:
+        session: RefinementSession
+    ) -> Optional[AspectRefinementState]:
         """
         Find the next step that is ready to process.
         
@@ -1894,10 +1423,6 @@ class QueryRefinementManager:
 
             if step is None:
                 logger.debug("No active step remaining to process")
-                self.trace_emitter.emit(
-                    "no_eligible_step",
-                    metadata={"session_steps": len(session.steps)}
-                )
                 return None
 
             if self.ensure_step_is_ready(session, step):
@@ -1905,38 +1430,22 @@ class QueryRefinementManager:
 
     async def _execute_step(
         self,
-        session: QueryRefinementSession,
-        step: QueryAspectRefiner
+        session: RefinementSession,
+        step: AspectRefinementState
     ) -> Dict[str, Any]:
-        """
-        Execute a single refinement step: get prompts, call LLM, store result.
-        
-        Returns:
-            Dict with aspect_id, aspect_name, question, response, and error flag.
-        """
+        """Execute a single refinement step."""
         aspect = step.refinement_aspect
         dependency_context = session.get_dependency_context(aspect.id)
         
-        logger.debug("Processing aspect '%s'", aspect.id)
-        self.trace_emitter.emit(
-            "aspect_processing_start",
-            metadata={
-                "aspect_id": aspect.id,
-                "needs_review": step.needs_review,
-                "dependency_count": len(dependency_context),
-            }
-        )
-        
-        # Get prompts and call LLM
-        system_prompt, user_prompt = step.get_prompts(
+        # Get messages array for LLM
+        messages = step.get_messages(
             query=session.original_query,
             dependency_context=dependency_context
         )
         
         response_text, parsed_payload, is_error, error_message = await self._get_llm_response_with_validation(
             aspect=aspect,
-            system_prompt=system_prompt,
-            user_prompt=user_prompt
+            messages=messages
         )
         
         # Handle error or success
@@ -1947,7 +1456,7 @@ class QueryRefinementManager:
 
     def _handle_step_error(
         self,
-        step: QueryAspectRefiner,
+        step: AspectRefinementState,
         aspect: RefinementAspect,
         error_message: Optional[str]
     ) -> Dict[str, Any]:
@@ -1958,7 +1467,7 @@ class QueryRefinementManager:
             Dict with error response.
         """
         failure_response = f"[Validation error: {error_message}]" if error_message else "[Validation error]"
-        question_text = step.refinement_question or aspect.aspect_name
+        question_text = step.follow_up_question or aspect.aspect_name
         
         step.add_follow_up(question=question_text, response=failure_response)
         step.is_complete = True
@@ -1982,7 +1491,7 @@ class QueryRefinementManager:
 
     def _handle_step_success(
         self,
-        step: QueryAspectRefiner,
+        step: AspectRefinementState,
         aspect: RefinementAspect,
         response_text: str,
         parsed_payload: Optional[Dict[str, Any]]
@@ -1993,7 +1502,7 @@ class QueryRefinementManager:
         Returns:
             Dict with successful response.
         """
-        question_text = step.refinement_question or aspect.aspect_name
+        question_text = step.follow_up_question or aspect.aspect_name
         step.add_follow_up(question=question_text, response=response_text)
         step.is_complete = True
         
@@ -2024,13 +1533,21 @@ class QueryRefinementManager:
     async def _get_llm_response_with_validation(
         self,
         aspect: RefinementAspect,
-        system_prompt: str,
-        user_prompt: str,
+        messages: Optional[List[Dict[str, str]]] = None,
+        system_prompt: Optional[str] = None,
+        user_prompt: Optional[str] = None,
     ) -> tuple[str, Optional[Dict[str, Any]], bool, Optional[str]]:
         """
-        Call the LLM asynchronously and enforce structured response validation when required.
+        Call the LLM asynchronously with structured response validation.
         
-        Retries up to validation_max_retries times if validation fails.
+        With structured outputs (response_format), the LLM provider guarantees
+        valid JSON responses, eliminating the need for retry logic.
+        
+        Args:
+            aspect: The refinement aspect being evaluated
+            messages: Structured messages array (preferred)
+            system_prompt: Legacy system prompt (deprecated, use messages)
+            user_prompt: Legacy user prompt (deprecated, use messages)
 
         Returns:
             Tuple of (normalized_response_text, parsed_payload, is_error, error_message)
@@ -2039,134 +1556,102 @@ class QueryRefinementManager:
             "llm_validation_start",
             metadata={
                 "aspect_id": aspect.id,
-                "max_retries": self.validation_max_retries,
             }
         )
 
-        prompt = user_prompt
-        base_prompt = user_prompt
-
-        for attempt in range(self.validation_max_retries + 1):
-            attempt_number = attempt + 1
-            
-            # Call LLM
-            response_text, llm_error = await self._call_llm(
-                aspect=aspect,
-                system_prompt=system_prompt,
-                user_prompt=prompt,
-                attempt_number=attempt_number,
-            )
-            
-            if llm_error:
-                return "", None, True, llm_error
-            
-            # Log raw response for debugging
-            logger.info(
-                "Raw LLM response for aspect '%s': %s",
-                aspect.id,
-                response_text[:500] if response_text else "(empty)"
-            )
-            
-            # Parse and validate structured response
-            validation_result = self._validate_structured_response(
-                aspect=aspect,
-                response_text=response_text,
-                attempt_number=attempt_number,
-            )
-            
-            if validation_result.is_valid:
-                # Ensure we have text to return (should always be true if valid)
-                result_text = validation_result.normalized_text or response_text or ""
-                return result_text, validation_result.parsed_payload, False, None
-            
-            # Retry if attempts remain
-            if attempt < self.validation_max_retries:
-                self.trace_emitter.emit(
-                    "llm_validation_retry",
-                    level="warning",
-                    metadata={
-                        "aspect_id": aspect.id,
-                        "attempt": attempt_number,
-                        "error": validation_result.error_message,
-                    }
-                )
-                # Ensure error_message is not None before passing to augment
-                error_msg = validation_result.error_message or "Validation failed"
-                prompt = self._augment_prompt_for_retry(
-                    base_prompt,
-                    error_msg,
-                    attempt_number,
-                    response_text,
-                )
-                continue
-            
-            # Max retries exhausted
-            self.trace_emitter.emit(
-                "llm_validation_failed",
-                level="error",
-                metadata={
-                    "aspect_id": aspect.id,
-                    "attempt": attempt_number,
-                    "error": validation_result.error_message,
-                }
-            )
-            return response_text, validation_result.parsed_payload, True, validation_result.error_message
-
-        return "", None, True, "Unknown validation failure"
+        # Call LLM with structured outputs
+        response_text, llm_error = await self._call_llm(
+            aspect=aspect,
+            messages=messages,
+            system_prompt=system_prompt,
+            user_prompt=user_prompt,
+            attempt_number=1,
+        )
+        
+        if llm_error:
+            return "", None, True, llm_error
+        
+        # Log raw response for debugging
+        logger.info(
+            "Raw LLM response for aspect '%s': %s",
+            aspect.id,
+            response_text[:500] if response_text else "(empty)"
+        )
+        
+        # Parse and validate structured response
+        validation_result = self._validate_structured_response(
+            aspect=aspect,
+            response_text=response_text,
+            attempt_number=1,
+        )
+        
+        if validation_result.is_valid:
+            result_text = validation_result.normalized_text or response_text or ""
+            return result_text, validation_result.parsed_payload, False, None
+        
+        # Validation failed (should be rare with structured outputs)
+        return response_text, validation_result.parsed_payload, True, validation_result.error_message
 
     async def _call_llm(
         self,
         aspect: RefinementAspect,
-        system_prompt: str,
-        user_prompt: str,
-        attempt_number: int,
+        messages: Optional[List[Dict[str, str]]] = None,
+        system_prompt: Optional[str] = None,
+        user_prompt: Optional[str] = None,
+        attempt_number: int = 1,
     ) -> tuple[str, Optional[str]]:
         """
-        Call the LLM provider asynchronously with the given prompts.
+        Call the LLM provider with structured outputs.
         
+        Args:
+            aspect: The refinement aspect being evaluated
+            messages: Structured messages array (preferred)
+            system_prompt: Legacy system prompt (deprecated, use messages)
+            user_prompt: Legacy user prompt (deprecated, use messages)
+            attempt_number: Attempt number for logging
+            
         Returns:
-            Tuple of (response_text, error_message). error_message is None on success.
+            Tuple of (response_text, error_message)
         """
-        self.trace_emitter.emit(
-            "llm_completion_attempt",
-            metadata={
-                "aspect_id": aspect.id,
-                "attempt": attempt_number,
-            }
-        )
-        self.trace_emitter.emit(
-            "llm_prompt_attempt",
-            metadata={
-                "aspect_id": aspect.id,
-                "attempt": attempt_number,
-                "system_prompt": system_prompt,
-                "user_prompt": user_prompt,
-            },
-        )
-        
-        logger.info(
-            "LLM prompt attempt | aspect=%s | attempt=%d | system_prompt=%s | user_prompt=%s",
-            aspect.id,
-            attempt_number,
-            system_prompt or "",
-            user_prompt,
-        )
-        
         try:
-            # Note: response_format parameter is not used because:
-            # 1. Not all LLM providers support it consistently (especially Claude via LiteLLM)
-            # 2. We handle JSON parsing with markdown stripping as a robust fallback
-            # 3. Prompt engineering + validation works reliably across all models
+            # Use structured outputs for guaranteed valid responses
             import time
             call_start = time.time()
             
-            result = await self.llm_provider.complete_async(
-                system_prompt=system_prompt,
-                user_prompt=user_prompt,
-                cache_system_prompt=True  # System prompts are static per-aspect
-            )
+            # Call LLM with messages or legacy prompts
+            if messages:
+                result = await self.llm_provider.complete_async(
+                    messages=messages,
+                    response_format=DimensionEvaluationResponse,  # ✨ Structured output
+                    cache_system_prompt=True  # System prompts are static per-aspect
+                )
+            else:
+                # Legacy path for backwards compatibility
+                if not system_prompt or not user_prompt:
+                    raise ValueError("Either messages or both system_prompt and user_prompt must be provided")
+                result = await self.llm_provider.complete_async(
+                    system_prompt=system_prompt,
+                    user_prompt=user_prompt,
+                    response_format=DimensionEvaluationResponse,  # ✨ Structured output
+                    cache_system_prompt=True  # System prompts are static per-aspect
+                )
             
             call_duration = (time.time() - call_start) * 1000
+            
+            # Check if response is already parsed (structured output)
+            if isinstance(result.context, DimensionEvaluationResponse):
+                # Success! LLM provider returned structured output
+                logger.info(
+                    "Received structured output for aspect '%s' in %.2fms",
+                    aspect.id,
+                    call_duration
+                )
+                # Convert to dict for downstream processing
+                response_dict = result.context.model_dump()
+                response_text = json.dumps(response_dict)
+                return response_text, None
+            
+            # Fallback: treat as text response
             response_text = (result.context or "").strip()
             
             # Log LLM performance and caching info
@@ -2302,78 +1787,8 @@ class QueryRefinementManager:
             error_message=error_message,
         )
 
-    @staticmethod
-    def _augment_prompt_for_retry(
-        base_prompt: str,
-        error_details: str,
-        attempt_number: int,
-        previous_response: Optional[str] = None,
-    ) -> str:
-        """Append remediation guidance to the original prompt for retry attempts."""
-        guidance_lines = [
-            "\n\n---",
-            f"ATTEMPT {attempt_number}: Your previous response did not satisfy the required JSON schema.",
-            f"Error details: {error_details}",
-            "Respond again with VALID JSON that matches the schema exactly.",
-            "Return ONLY the JSON object. Do not include markdown, code fences, or explanations.",
-        ]
-
-        if previous_response:
-            truncated_previous = previous_response[:400].replace("\n", " ")
-            guidance_lines.append(
-                f"Previous response (truncated): {truncated_previous}"
-            )
-
-        return base_prompt + "\n".join(guidance_lines)
-
-    def build_follow_up_prompts(
-        self,
-        session: QueryRefinementSession,
-        aspect_id: Optional[str] = None,
-        *,
-        include_examples: bool = True,
-    ) -> tuple[str, str]:
-        """Produce system/user prompts for an automated follow-up evaluation.
-
-        The consumer is expected to call this after at least one response has been
-        captured for the target aspect. The user prompt incorporates the fixed
-        follow-up guidance plus the full conversation history for that aspect.
-
-        Args:
-            session: Active refinement session containing the step history.
-            aspect_id: Optional explicit aspect identifier. When omitted, the
-                current active step is used.
-            include_examples: Whether to include examples in the follow-up prompt.
-
-        Returns:
-            Tuple of (system_prompt, user_prompt) ready for an LLM call.
-        """
-
-        step: Optional[QueryAspectRefiner]
-        if aspect_id:
-            step_lookup = {candidate.refinement_aspect.id: candidate for candidate in session.steps}
-            step = step_lookup.get(aspect_id)
-        else:
-            step = session.get_active_step()
-
-        if step is None:
-            raise ValueError("No refinement aspect available for follow-up prompts")
-
-        if not step.follow_up_history:
-            raise ValueError(
-                f"Follow-up prompts require at least one recorded response for aspect '{step.refinement_aspect.id}'."
-            )
-
-        system_prompt = step.get_system_role()
-        user_prompt = step.format_follow_up_prompt_template(
-            original_query=session.original_query,
-            include_examples=include_examples,
-        )
-
-        return system_prompt, user_prompt
-
     def _gather_refinement_details(
-        self, session: QueryRefinementSession
+        self, session: RefinementSession
     ) -> tuple[List[tuple[str, str]], List[tuple[str, str]]]:
         """Collect refinement clarifications and baseline summaries for synthesis.
         
@@ -2388,16 +1803,16 @@ class QueryRefinementManager:
                 continue
             
             # Use refinement_aspect_value if available (single source of truth)
-            if step.refinement_aspect_value is not None:
+            if step.normalized_value is not None:
                 # Convert to string representation
-                if isinstance(step.refinement_aspect_value, (dict, list)):
-                    summary = json.dumps(step.refinement_aspect_value, ensure_ascii=False)
+                if isinstance(step.normalized_value, (dict, list)):
+                    summary = json.dumps(step.normalized_value, ensure_ascii=False)
                 else:
-                    summary = str(step.refinement_aspect_value)
+                    summary = str(step.normalized_value)
                 
                 summary = summary.strip()
                 if summary:
-                    if step.follow_up_history:
+                    if step.conversation_history:
                         # Had follow-ups, so this is a refined/synthesized value
                         clarifications.append((step.refinement_aspect.aspect_name, summary))
                     else:
@@ -2407,7 +1822,7 @@ class QueryRefinementManager:
             
             # Fallback: needs_refinement_rationale (explanation why aspect was clear)
             if step.is_complete:
-                rationale = (step.needs_refinement_rationale or "").strip()
+                rationale = (step.reasoning or "").strip()
                 if rationale:
                     baseline_summaries.append((step.refinement_aspect.aspect_name, rationale))
 
@@ -2415,7 +1830,7 @@ class QueryRefinementManager:
 
     async def synthesize_refined_query(
         self,
-        session: QueryRefinementSession,
+        session: RefinementSession,
         *,
         model: Optional[str] = None,
         temperature: float = 0.2,
@@ -2461,10 +1876,10 @@ class QueryRefinementManager:
         for step in session.steps:
             aspect_id = step.refinement_aspect.id
             # Check for non-empty value (None or empty string are considered "no value")
-            if step.refinement_aspect_value is not None and step.refinement_aspect_value != "":
+            if step.normalized_value is not None and step.normalized_value != "":
                 # Use native value (dict/list/str/etc) - either extracted from original or from user dialogue
-                refinement_aspect_values[aspect_id] = step.refinement_aspect_value
-            elif step.was_skipped or (step.is_complete and not step.refinement_aspect_value):
+                refinement_aspect_values[aspect_id] = step.normalized_value
+            elif step.was_skipped or (step.is_complete and not step.normalized_value):
                 # Skipped explicitly (/skip) or completed without value (/done, or auto-complete without extraction)
                 refinement_aspect_values[aspect_id] = "[SKIPPED]"
             # else: dimension incomplete - omit from synthesis (shouldn't happen for complete sessions)
@@ -2698,33 +2113,7 @@ class QueryRefinementManager:
 
         return result_dict
 
-    def run_full_refinement(self, session: QueryRefinementSession, max_iterations: int = 100) -> QueryRefinementSession:
-        """
-        Run the full refinement session to completion (synchronous, blocking).
-
-        Processes steps one-by-one in the order they appear in the session. Each
-        step receives dependency context computed from previously completed/extracted steps.
-
-        Args:
-            session: The `QueryRefinementSession` to run.
-            max_iterations: Safety cap to avoid infinite loops.
-
-        Returns:
-            The completed (or partially completed if hit cap) session object.
-        """
-        iterations = 0
-        while not session.is_complete() and iterations < max_iterations:
-            processed = self.process_next_step(session)
-            if processed is None:
-                break
-            iterations += 1
-
-        if iterations >= max_iterations:
-            logger.warning("Reached max_iterations=%d while running refinement session", max_iterations)
-
-        return session
-    
-    def get_initialization_summary(self, session: QueryRefinementSession) -> Dict[str, Any]:
+    def get_initialization_summary(self, session: RefinementSession) -> Dict[str, Any]:
         """
         Get a user-friendly summary of the initialization analysis.
 
@@ -2757,10 +2146,10 @@ class QueryRefinementManager:
             
             # Add analysis details for aspects that are incomplete
             if not step.is_complete:
-                if step.needs_refinement_rationale:
-                    aspect_info["reasoning"] = step.needs_refinement_rationale
-                if step.refinement_question:
-                    aspect_info["next_question"] = step.refinement_question
+                if step.reasoning:
+                    aspect_info["reasoning"] = step.reasoning
+                if step.follow_up_question:
+                    aspect_info["next_question"] = step.follow_up_question
             
             if step.is_complete:
                 complete_aspects.append(aspect_info)

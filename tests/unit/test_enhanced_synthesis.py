@@ -10,8 +10,8 @@ Tests verify:
 
 import pytest
 from query_refinement_module.core import (
-    QueryAspectRefiner,
-    QueryRefinementSession,
+    AspectRefinementState,
+    RefinementSession,
     QueryRefinementManager,
 )
 from query_refinement_module.interfaces import (
@@ -134,7 +134,7 @@ class StubQueryAnalyzer(QueryAnalyzerInterface):
 def test_follow_up_prompt_includes_synthesis_instructions():
     """Verify follow-up prompts instruct LLM to synthesize all conversation history."""
     aspect = make_aspect(aspect_id="population", name="Population")
-    refiner = QueryAspectRefiner(refinement_aspect=aspect)
+    refiner = AspectRefinementState(refinement_aspect=aspect)
     
     # Simulate multi-turn conversation
     refiner.add_follow_up("What age group?", "Well, I'm thinking probably adults")
@@ -176,7 +176,7 @@ def test_follow_up_prompt_includes_synthesis_instructions():
 def test_follow_up_prompt_includes_conversation_history():
     """Verify all Q&A pairs are included in follow-up prompts."""
     aspect = make_aspect()
-    refiner = QueryAspectRefiner(refinement_aspect=aspect)
+    refiner = AspectRefinementState(refinement_aspect=aspect)
     
     refiner.add_follow_up("Question 1", "Answer 1")
     refiner.add_follow_up("Question 2", "Answer 2")
@@ -219,7 +219,7 @@ def test_dependency_context_includes_description():
         depends_on=["population"]
     )
     
-    session = QueryRefinementSession(original_query="test query")
+    session = RefinementSession(original_query="test query")
     dep_step = session.add_step(dep_aspect)
     dep_step.add_follow_up("Q", "Adults aged 18-65")
     dep_step.is_complete = True
@@ -244,13 +244,13 @@ def test_dependency_context_prioritizes_refinement_aspect_value():
     """Verify dependency context prioritizes refinement_aspect_value over final_response."""
     dep_aspect = make_aspect(aspect_id="time_period", name="Time Period", description="Time constraints")
     
-    session = QueryRefinementSession(original_query="test")
+    session = RefinementSession(original_query="test")
     dep_step = session.add_step(dep_aspect)
     
     # Simulate follow-up completion with synthesis in refinement_aspect_value
     dep_step.add_follow_up("What timeframe?", "Well, maybe recent studies")
     dep_step.add_follow_up("How recent?", "I guess like 2020 onwards")
-    dep_step.refinement_aspect_value = "Studies published 2020-2025"  # Synthesized value
+    dep_step.normalized_value = "Studies published 2020-2025"  # Synthesized value
     dep_step.is_complete = True
     
     target_aspect = make_aspect(aspect_id="target", depends_on=["time_period"])
@@ -265,12 +265,12 @@ def test_dependency_context_prioritizes_refinement_aspect_value():
 
 def test_dependency_context_fallback_chain():
     """Verify dependency context fallback priority: refinement_aspect_value > final_response > history > clear > skipped."""
-    session = QueryRefinementSession(original_query="original")
+    session = RefinementSession(original_query="original")
     
     # Test Priority 1: refinement_aspect_value
     aspect1 = make_aspect(aspect_id="a1", name="A1", description="D1")
     step1 = session.add_step(aspect1)
-    step1.refinement_aspect_value = "Synthesized value"
+    step1.normalized_value = "Synthesized value"
     step1.is_complete = True
     
     # Test Priority 2: final_response (when no refinement_aspect_value)
@@ -308,7 +308,7 @@ def test_get_prompts_formats_dependency_with_description():
         name="Intervention",
         depends_on=["population", "timeframe"]
     )
-    refiner = QueryAspectRefiner(refinement_aspect=target_aspect)
+    refiner = AspectRefinementState(refinement_aspect=target_aspect)
     
     dependency_context = {
         "population": {
@@ -340,7 +340,7 @@ def test_get_prompts_formats_dependency_with_description():
 def test_get_prompts_handles_missing_description():
     """Verify get_prompts handles missing description gracefully."""
     target_aspect = make_aspect(aspect_id="target", depends_on=["dep"])
-    refiner = QueryAspectRefiner(refinement_aspect=target_aspect)
+    refiner = AspectRefinementState(refinement_aspect=target_aspect)
     
     dependency_context = {
         "dep": {
@@ -373,7 +373,7 @@ async def test_synthesis_prompt_includes_quality_requirements():
     analyzer = StubQueryAnalyzer({})
     manager = QueryRefinementManager(llm_provider=llm, query_analyzer=analyzer)
     
-    session = QueryRefinementSession(original_query="I think maybe adults with diabetes")
+    session = RefinementSession(original_query="I think maybe adults with diabetes")
     step = session.add_step(aspect)
     step.add_follow_up("Q", "Well, probably 18-65 years old")
     step.is_complete = True
@@ -403,18 +403,18 @@ def test_synthesis_uses_refinement_aspect_value_when_available():
     analyzer = StubQueryAnalyzer({})
     manager = QueryRefinementManager(llm_provider=llm, query_analyzer=analyzer)
     
-    session = QueryRefinementSession(original_query="test")
+    session = RefinementSession(original_query="test")
     
     # Step with refinement_aspect_value (synthesized)
     step1 = session.add_step(aspect1)
     step1.add_follow_up("Q1", "Well, I think adults")
     step1.add_follow_up("Q2", "Maybe 18-65")
-    step1.refinement_aspect_value = "Adults aged 18-65"  # Clean synthesized value
+    step1.normalized_value = "Adults aged 18-65"  # Clean synthesized value
     step1.is_complete = True
     
     # Step without follow-ups but with refinement_aspect_value (aspect was clear)
     step2 = session.add_step(aspect2)
-    step2.refinement_aspect_value = "Already clear in query"
+    step2.normalized_value = "Already clear in query"
     step2.is_complete = True
     
     result = manager.synthesize_refined_query(session)
@@ -452,14 +452,14 @@ def test_end_to_end_dependency_with_synthesis():
         allow_follow_up=True
     )
     
-    session = QueryRefinementSession(original_query="diabetes treatment study")
+    session = RefinementSession(original_query="diabetes treatment study")
     
     # Simulate population refinement with multiple follow-ups
     pop_step = session.add_step(population)
     pop_step.add_follow_up("Age group?", "I think adults")
     pop_step.add_follow_up("Specific ages?", "Maybe 18 to 65")
     pop_step.add_follow_up("Conditions?", "Type 2 diabetes obviously")
-    pop_step.refinement_aspect_value = "Adults aged 18-65 with Type 2 diabetes (excluding gestational diabetes)"
+    pop_step.normalized_value = "Adults aged 18-65 with Type 2 diabetes (excluding gestational diabetes)"
     pop_step.is_complete = True
     
     # Add intervention step
@@ -500,14 +500,14 @@ def test_multiple_dependencies_with_descriptions():
         depends_on=["pop", "time"]
     )
     
-    session = QueryRefinementSession(original_query="test")
+    session = RefinementSession(original_query="test")
     
     pop_step = session.add_step(pop)
-    pop_step.refinement_aspect_value = "Adults"
+    pop_step.normalized_value = "Adults"
     pop_step.is_complete = True
     
     time_step = session.add_step(time)
-    time_step.refinement_aspect_value = "2020-2025"
+    time_step.normalized_value = "2020-2025"
     time_step.is_complete = True
     
     outcome_step = session.add_step(outcome)

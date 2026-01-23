@@ -25,7 +25,7 @@ from datetime import timedelta
 import redis
 from redis.exceptions import RedisError, ConnectionError
 
-from query_refinement_module.core import QueryRefinementSession, QueryAspectRefiner
+from query_refinement_module.core import RefinementSession, AspectRefinementState
 from query_refinement_module.schema.model import RefinementAspect
 from query_refinement_module.tracing import get_logger, OperationTimer
 
@@ -108,7 +108,7 @@ class SessionManager:
         """Generate Redis key for a query session."""
         return f"{self.key_prefix}{query_id}"
     
-    def save_session(self, query_id: int, session: QueryRefinementSession, request_id: Optional[str] = None) -> bool:
+    def save_session(self, query_id: int, session: RefinementSession, request_id: Optional[str] = None) -> bool:
         """
         Save a QueryRefinementSession to Redis with comprehensive logging and retry logic.
         
@@ -161,7 +161,7 @@ class SessionManager:
         query_id: int,
         refinement_framework: List[RefinementAspect],
         request_id: Optional[str] = None
-    ) -> Optional[QueryRefinementSession]:
+    ) -> Optional[RefinementSession]:
         """
         Load a QueryRefinementSession from Redis with comprehensive logging.
         
@@ -251,7 +251,7 @@ class SessionManager:
         except RedisError:
             return False
     
-    def _serialize_session(self, session: QueryRefinementSession) -> Dict[str, Any]:
+    def _serialize_session(self, session: RefinementSession) -> Dict[str, Any]:
         """
         Serialize QueryRefinementSession to JSON-compatible dict.
         
@@ -267,7 +267,7 @@ class SessionManager:
             "steps": [self._serialize_step(step) for step in session.steps]
         }
     
-    def _serialize_step(self, step: QueryAspectRefiner) -> Dict[str, Any]:
+    def _serialize_step(self, step: AspectRefinementState) -> Dict[str, Any]:
         """
         Serialize QueryAspectRefiner to JSON-compatible dict.
         
@@ -279,20 +279,20 @@ class SessionManager:
         """
         return {
             "refinement_aspect_id": step.refinement_aspect.id,
-            "follow_up_history": step.follow_up_history,
+            "follow_up_history": step.conversation_history,
             "is_complete": step.is_complete,
             "needs_review": step.needs_review,
             "was_skipped": step.was_skipped,
-            "needs_refinement_rationale": step.needs_refinement_rationale,
-            "refinement_question": step.refinement_question,
-            "refinement_aspect_value": step.refinement_aspect_value
+            "needs_refinement_rationale": step.reasoning,
+            "refinement_question": step.follow_up_question,
+            "refinement_aspect_value": step.normalized_value
         }
     
     def _deserialize_session(
         self,
         data: Dict[str, Any],
         refinement_framework: List[RefinementAspect]
-    ) -> QueryRefinementSession:
+    ) -> RefinementSession:
         """
         Deserialize QueryRefinementSession from dict.
         
@@ -307,7 +307,7 @@ class SessionManager:
         aspect_map = {aspect.id: aspect for aspect in refinement_framework}
         
         # Reconstruct session
-        session = QueryRefinementSession(original_query=data["original_query"])
+        session = RefinementSession(original_query=data["original_query"])
         session.synthesis_requested = data.get("synthesis_requested", False)
         
         # Reconstruct steps
@@ -319,15 +319,15 @@ class SessionManager:
                 logger.warning("Aspect '%s' not found in framework, skipping step", aspect_id)
                 continue
             
-            step = QueryAspectRefiner(
+            step = AspectRefinementState(
                 refinement_aspect=aspect,
-                follow_up_history=step_data.get("follow_up_history", []),
+                conversation_history=step_data.get("follow_up_history", []),
                 is_complete=step_data.get("is_complete", False),
                 needs_review=step_data.get("needs_review", False),
                 was_skipped=step_data.get("was_skipped", False),
-                needs_refinement_rationale=step_data.get("needs_refinement_rationale"),
-                refinement_question=step_data.get("refinement_question"),
-                refinement_aspect_value=step_data.get("refinement_aspect_value")
+                reasoning=step_data.get("needs_refinement_rationale"),
+                follow_up_question=step_data.get("refinement_question"),
+                normalized_value=step_data.get("refinement_aspect_value")
             )
             
             session.steps.append(step)

@@ -7,10 +7,11 @@ import time
 from contextlib import contextmanager
 from datetime import UTC, datetime
 from pathlib import Path
-from typing import Any, Dict, Optional, TYPE_CHECKING
+from typing import Any, Dict, Optional, TYPE_CHECKING, List, Union, Type
 
 if TYPE_CHECKING:
     from .interfaces import RateLimitConfig
+    from pydantic import BaseModel
 
 __all__ = [
     "NoOpTracingProvider",
@@ -540,35 +541,41 @@ class LiteLLMProvider(LLMProviderInterface):
         self._enable_prompt_caching = enable_prompt_caching
         
         # Semaphore to limit concurrent LLM calls (prevent overwhelming server)
-        self._max_concurrent = 50  # Store for logging
-        self._semaphore = asyncio.Semaphore(self._max_concurrent)  # Max 50 concurrent calls
+        self._max_concurrent = 20  # Store for logging
+        self._semaphore = asyncio.Semaphore(self._max_concurrent)  # Max 20 concurrent calls
         
         # Initialize persistent HTTP client for connection pooling (if httpx available)
         self._http_client: Optional[Any] = None
         if httpx is not None:
             self._http_client = httpx.AsyncClient(
                 limits=httpx.Limits(
-                    max_connections=100,      # Increased for 50 concurrent users
-                    max_keepalive_connections=50,  # Increased for 50 concurrent users
+                    max_connections=40,   
+                    max_keepalive_connections=20, 
                     keepalive_expiry=30.0,
                 ),
                 timeout=httpx.Timeout(60.0),
             )
-            logger.debug("Initialized HTTP connection pool for LiteLLM provider (max_connections=100)")
+            logger.debug("Initialized HTTP connection pool for LiteLLM provider (max_connections=40)")
 
     async def complete_async(
         self,
-        user_prompt: str,
+        user_prompt: str = "",
         system_prompt: Optional[str] = None,
         model: Optional[str] = None,
         temperature: float = 0.0,
         max_tokens: Optional[int] = None,
+        messages: Optional[List[Dict[str, str]]] = None,
+        response_format: Optional[Union[Dict[str, Any], Type["BaseModel"]]] = None,
         cache_system_prompt: bool = False,
         **kwargs: Any,
     ) -> LLMCompletionResult:
         """Complete a prompt asynchronously with automatic retry on rate limit errors.
         
         Args:
+            user_prompt: The user prompt (used if messages not provided)
+            system_prompt: System prompt (used if messages not provided)
+            messages: Full conversation history (takes precedence over prompts)
+            response_format: Structured output format (Pydantic model or dict)
             cache_system_prompt: If True and provider supports it, cache the system prompt
                                for reduced token usage and faster responses.
         """
@@ -624,7 +631,8 @@ class LiteLLMProvider(LLMProviderInterface):
             
             try:
                 result = await self._complete_async_internal(
-                    user_prompt, system_prompt, model, temperature, max_tokens, cache_system_prompt, **kwargs
+                    user_prompt, system_prompt, model, temperature, max_tokens, 
+                    cache_system_prompt, messages, response_format, **kwargs
                 )
                 return result
             finally:
@@ -640,12 +648,14 @@ class LiteLLMProvider(LLMProviderInterface):
     
     async def _complete_async_internal(
         self,
-        user_prompt: str,
+        user_prompt: str = "",
         system_prompt: Optional[str] = None,
         model: Optional[str] = None,
         temperature: float = 0.0,
         max_tokens: Optional[int] = None,
         cache_system_prompt: bool = False,
+        messages: Optional[List[Dict[str, str]]] = None,
+        response_format: Optional[Union[Dict[str, Any], Type["BaseModel"]]] = None,
         **kwargs: Any,
     ) -> LLMCompletionResult:
         """Internal completion logic with retry and rate limit handling."""
@@ -658,30 +668,37 @@ class LiteLLMProvider(LLMProviderInterface):
         if not target_model:
             raise ValueError("Model must be supplied either at initialization or call time")
 
-        messages = []
-        if system_prompt:
-            system_message = {"role": "system", "content": system_prompt}
-            # Add cache control if enabled and requested
-            if cache_system_prompt and self._enable_prompt_caching:
-                try:
-                    system_message["cache_control"] = {"type": "ephemeral"}
-                    logger.debug(
-                        "System prompt caching enabled",
-                        extra={
-                            "model": target_model,
-                            "request_id": get_request_id(),
-                            "trace_id": get_trace_id(),
-                        }
-                    )
-                except Exception as e:
-                    # Gracefully handle providers that don't support caching
-                    logger.debug(
-                        "Could not apply prompt caching (provider may not support it): %s",
-                        e,
-                        extra={"model": target_model}
-                    )
-            messages.append(system_message)
-        messages.append({"role": "user", "content": user_prompt})
+        # Build messages array
+        if messages:
+            # Use provided conversation history
+            messages_list = messages.copy()
+        else:
+            # Build from prompts
+            messages_list = []
+            if system_prompt:
+                system_message = {"role": "system", "content": system_prompt}
+                # Add cache control if enabled and requested
+                if cache_system_prompt and self._enable_prompt_caching:
+                    try:
+                        system_message["cache_control"] = {"type": "ephemeral"}
+                        logger.debug(
+                            "System prompt caching enabled",
+                            extra={
+                                "model": target_model,
+                                "request_id": get_request_id(),
+                                "trace_id": get_trace_id(),
+                            }
+                        )
+                    except Exception as e:
+                        # Gracefully handle providers that don't support caching
+                        logger.debug(
+                            "Could not apply prompt caching (provider may not support it): %s",
+                            e,
+                            extra={"model": target_model}
+                        )
+                messages_list.append(system_message)
+            if user_prompt:
+                messages_list.append({"role": "user", "content": user_prompt})
 
         completion_kwargs: Dict[str, Any] = {**self._default_completion_kwargs, **kwargs}
         completion_kwargs.setdefault("temperature", temperature)
@@ -721,7 +738,7 @@ class LiteLLMProvider(LLMProviderInterface):
                 # Use async acompletion 
                 response = await litellm.acompletion(
                     model=target_model,
-                    messages=messages,
+                    messages=messages_list,
                     api_key=self._api_key,
                     api_base=self._api_base,
                     client=self._http_client,  # Use persistent HTTP client if available
@@ -741,7 +758,24 @@ class LiteLLMProvider(LLMProviderInterface):
                         f"Stream setting was: {completion_kwargs.get('stream')}"
                     )
 
-                message = response["choices"][0]["message"].get("content", "")
+                # Check if LiteLLM parsed the response (structured outputs)
+                message_obj = response["choices"][0]["message"]
+                if hasattr(message_obj, "parsed") and message_obj.parsed is not None:
+                    # Structured output was parsed by LiteLLM
+                    message = message_obj.parsed
+                    logger.info(
+                        "Received structured output (parsed by LiteLLM)",
+                        extra={
+                            "model": target_model,
+                            "parsed_type": type(message).__name__,
+                            "request_id": request_id,
+                            "trace_id": trace_id,
+                        }
+                    )
+                else:
+                    # Standard text response
+                    message = message_obj.get("content", "")
+                
                 usage = response.get("usage", {})
                 total_tokens = usage.get("total_tokens") if usage else None
                 
@@ -834,11 +868,13 @@ class LiteLLMProvider(LLMProviderInterface):
 
     def complete(
         self,
-        user_prompt: str,
+        user_prompt: str = "",
         system_prompt: Optional[str] = None,
         model: Optional[str] = None,
         temperature: float = 0.0,
         max_tokens: Optional[int] = None,
+        messages: Optional[List[Dict[str, str]]] = None,
+        response_format: Optional[Union[Dict[str, Any], Type["BaseModel"]]] = None,
         **kwargs: Any,
     ) -> LLMCompletionResult:
         """Complete a prompt with automatic retry on rate limit errors (synchronous wrapper)."""
@@ -851,15 +887,34 @@ class LiteLLMProvider(LLMProviderInterface):
         if not target_model:
             raise ValueError("Model must be supplied either at initialization or call time")
 
-        messages = []
-        if system_prompt:
-            messages.append({"role": "system", "content": system_prompt})
-        messages.append({"role": "user", "content": user_prompt})
+        # Build messages array
+        if messages:
+            # Use provided conversation history
+            messages_list = messages.copy()
+        else:
+            # Build from prompts
+            messages_list = []
+            if system_prompt:
+                messages_list.append({"role": "system", "content": system_prompt})
+            if user_prompt:
+                messages_list.append({"role": "user", "content": user_prompt})
 
         completion_kwargs: Dict[str, Any] = {**self._default_completion_kwargs, **kwargs}
         completion_kwargs.setdefault("temperature", temperature)
         if max_tokens is not None and "max_tokens" not in completion_kwargs:
             completion_kwargs["max_tokens"] = max_tokens
+        
+        # Handle response_format for structured outputs
+        if response_format is not None:
+            try:
+                # Check if it's a Pydantic model
+                from pydantic import BaseModel
+                if isinstance(response_format, type) and issubclass(response_format, BaseModel):
+                    completion_kwargs["response_format"] = response_format
+                elif isinstance(response_format, dict):
+                    completion_kwargs["response_format"] = response_format
+            except ImportError:
+                logger.warning("Pydantic not available, response_format ignored")
         
         # Explicitly disable streaming for non-streaming calls
         completion_kwargs["stream"] = False
@@ -888,7 +943,7 @@ class LiteLLMProvider(LLMProviderInterface):
             try:
                 response = litellm.completion(
                     model=target_model,
-                    messages=messages,
+                    messages=messages_list,
                     api_key=self._api_key,
                     api_base=self._api_base,
                     **completion_kwargs,
@@ -905,7 +960,24 @@ class LiteLLMProvider(LLMProviderInterface):
                         f"Stream setting was: {completion_kwargs.get('stream')}"
                     )
 
-                message = response["choices"][0]["message"].get("content", "")
+                # Check if LiteLLM parsed the response (structured outputs)
+                message_obj = response["choices"][0]["message"]
+                if hasattr(message_obj, "parsed") and message_obj.parsed is not None:
+                    # Structured output was parsed by LiteLLM
+                    message = message_obj.parsed
+                    logger.info(
+                        "Received structured output (parsed by LiteLLM)",
+                        extra={
+                            "model": target_model,
+                            "parsed_type": type(message).__name__,
+                            "request_id": request_id,
+                            "trace_id": trace_id,
+                        }
+                    )
+                else:
+                    # Standard text response
+                    message = message_obj.get("content", "")
+                
                 usage = response.get("usage", {})
                 total_tokens = usage.get("total_tokens") if usage else None
                 

@@ -108,7 +108,7 @@ async def test_initialize_stores_initial_summary(monkeypatch, tmp_path):
     session = await manager.initialize("Original question", registry.get_framework("demo"))
 
     step = session.steps[0]
-    assert step.refinement_aspect_value == "This aspect is already clear"
+    assert step.normalized_value == "This aspect is already clear"
 
     synthesis = await manager.synthesize_refined_query(session)
     assert synthesis["refined_query"] == "Refined Query"
