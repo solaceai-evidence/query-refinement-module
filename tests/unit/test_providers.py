@@ -102,12 +102,15 @@ def test_inmemory_session_storage_crud():
 
 
 def test_redis_session_storage_requires_dependency(monkeypatch):
-    monkeypatch.setattr(providers, "redis", None)
+    import query_refinement_module.providers.storage as storage_module
+    monkeypatch.setattr(storage_module, "redis", None)
     with pytest.raises(RuntimeError):
         RedisSessionStorage(client=object())
 
 
 def test_redis_session_storage_basic_operations(monkeypatch):
+    import query_refinement_module.providers.storage as storage_module
+    
     class StubRedisModule:
         pass
 
@@ -127,7 +130,7 @@ def test_redis_session_storage_basic_operations(monkeypatch):
         def exists(self, key):
             return key in self.store
 
-    monkeypatch.setattr(providers, "redis", StubRedisModule())
+    monkeypatch.setattr(storage_module, "redis", StubRedisModule())
     client = StubClient()
     storage = RedisSessionStorage(client, namespace="ns")
 
@@ -147,12 +150,15 @@ def test_redis_session_storage_basic_operations(monkeypatch):
 
 
 def test_litellm_provider_requires_dependency(monkeypatch):
-    monkeypatch.setattr(providers, "litellm", None)
+    import query_refinement_module.providers.llm as llm_module
+    monkeypatch.setattr(llm_module, "litellm", None)
     with pytest.raises(RuntimeError):
         LiteLLMProvider(default_model="demo")
 
 
 def test_litellm_provider_completion_and_model_info(monkeypatch):
+    import query_refinement_module.providers.llm as llm_module
+    
     class StubLiteLLM:
         def __init__(self):
             self.calls = []
@@ -169,7 +175,7 @@ def test_litellm_provider_completion_and_model_info(monkeypatch):
             return {"model": model, "cost": 0.01}
 
     stub = StubLiteLLM()
-    monkeypatch.setattr(providers, "litellm", stub)
+    monkeypatch.setattr(llm_module, "litellm", stub)
 
     provider = LiteLLMProvider(
         default_model="default",

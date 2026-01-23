@@ -22,7 +22,7 @@ class MockLiteLLMError(Exception):
 @pytest.fixture
 def mock_litellm_module():
     """Mock the litellm module."""
-    with patch('query_refinement_module.providers.litellm') as mock:
+    with patch('query_refinement_module.providers.llm.litellm') as mock:
         yield mock
 
 
@@ -41,7 +41,7 @@ def test_provider_retries_on_rate_limit_error(mock_litellm_module):
         }
     ]
     
-    with patch('time.sleep'):  # Don't actually sleep in tests
+    with patch('query_refinement_module.providers.llm.time.sleep'):  # Don't actually sleep in tests
         result = provider.complete("Test prompt")
     
     assert result.context == "Success"
@@ -58,7 +58,7 @@ def test_provider_raises_rate_limit_exceeded_after_max_retries(mock_litellm_modu
         status_code=429
     )
     
-    with patch('time.sleep'):
+    with patch('query_refinement_module.providers.llm.time.sleep'):
         with pytest.raises(RateLimitExceeded) as exc_info:
             provider.complete("Test prompt")
     
@@ -103,7 +103,7 @@ def test_provider_uses_exponential_backoff_when_no_retry_after(mock_litellm_modu
     def mock_sleep(duration):
         sleep_calls.append(duration)
     
-    with patch('time.sleep', side_effect=mock_sleep):
+    with patch('query_refinement_module.providers.llm.time.sleep', side_effect=mock_sleep):
         provider.complete("Test prompt")
     
     # Should use exponential backoff: 1.0, 2.0
@@ -259,7 +259,7 @@ def test_provider_logs_retry_attempts(mock_litellm_module, caplog):
         }
     ]
     
-    with patch('time.sleep'):
+    with patch('query_refinement_module.providers.llm.time.sleep'):
         provider.complete("Test prompt")
     
     # Check that retry was logged
