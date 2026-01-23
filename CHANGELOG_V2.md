@@ -1,9 +1,9 @@
-# Query Refinement Module v2.0.0 - Breaking Changes
+# Query Refinement Module v2.0.0 - Breaking Changes & Architecture Improvements
 
 ## Overview
-Version 2.0.0 is a major release that removes all deprecated code and simplifies the architecture for production use.
+Version 2.0.0 is a major release that removes all deprecated code, improves modularity through file extraction, and simplifies the architecture for production use.
 
-## 🔴 BREAKING CHANGES
+## 🔴 BREAKING CHANGES (Phase 1: Deprecated Code Removal)
 
 ### 1. Removed Deprecated Analyzer Module
 **Deleted Files:**
@@ -121,8 +121,30 @@ session = manager.initialize_sequential(query, framework)  # NEW
 | core.py (initialize + helpers)         | 190           |
 
 **File Size Reductions:**
-- `core.py`: 2,426 → 2,164 lines (-11%)
+- `core.py`: 2,426 → 2,164 lines (-11%, Phase 1)
+- `core.py`: 2,164 → 1,386 lines (-36%, Phase 2) - **Final: 1,386 lines**
 - `interfaces.py`: 591 → 494 lines (-16%)
+
+## 📦 Phase 2: Architecture Refactoring (File Extraction)
+
+**New File Created:**
+- `query_refinement_module/session_models.py` (~770 lines)
+
+**Classes Extracted from core.py:**
+- `AspectRefinementState` - Single aspect refinement state tracking
+- `RefinementSession` - Overall session state and management
+
+**Benefits:**
+1. **Improved Modularity:** Session state logic separated from orchestration
+2. **Reduced Complexity:** core.py reduced from 2,164 → 1,386 lines (-36%)
+3. **Better Maintainability:** Clear separation of concerns
+4. **Easier Testing:** Session models can be tested independently
+5. **Target Achieved:** core.py now **under 1,500 lines** (was 2,426)
+
+**Migration Impact:** None - Backward compatible
+- All imports work via `__init__.py` re-exports
+- Existing code continues to work: `from query_refinement_module import RefinementSession, AspectRefinementState`
+- Internal imports updated to use `session_models`
 
 ## 🎯 Benefits
 

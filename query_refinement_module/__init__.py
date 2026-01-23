@@ -33,7 +33,8 @@ The module is organized into several layers:
 
 __version__ = "2.0.0"
 
-from .core import QueryRefinementManager, RefinementSession
+from .core import QueryRefinementManager
+from .session_models import AspectRefinementState, RefinementSession
 from .providers import (
     FileTracingProvider,
     InMemorySessionStorage,
