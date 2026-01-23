@@ -7,7 +7,7 @@ This model captures comprehensive metadata about each refinement step, including
 - Status flags and error information
 - Timing information for performance monitoring
 """
-from sqlalchemy import Column, Integer, Text, DateTime, ForeignKey, Float, Boolean, JSON
+from sqlalchemy import Column, Integer, Text, DateTime, ForeignKey, Float, JSON
 from sqlalchemy.orm import relationship
 import datetime
 from .user import Base

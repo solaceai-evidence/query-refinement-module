@@ -10,8 +10,6 @@ from query_refinement_module.db.session import get_db
 from query_refinement_module.db.crud import create_user, get_user_by_username, get_user_by_email, verify_user_password
 from query_refinement_module.api.schemas import UserCreate, UserResponse, Token
 from query_refinement_module.api.auth import (
-    get_password_hash,
-    verify_password,
     create_access_token,
     get_current_user,
 )

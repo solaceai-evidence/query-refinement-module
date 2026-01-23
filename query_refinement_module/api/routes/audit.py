@@ -11,7 +11,7 @@ Provides endpoints for:
 from fastapi import APIRouter, Depends, HTTPException, status, Query, Request
 from fastapi.responses import StreamingResponse
 from sqlalchemy.orm import Session
-from sqlalchemy import and_, or_
+from sqlalchemy import and_
 from typing import List, Optional
 from datetime import datetime, timedelta
 import csv

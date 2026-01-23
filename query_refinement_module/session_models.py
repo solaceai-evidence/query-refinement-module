@@ -364,8 +364,6 @@ class AspectRefinementState:
     def format_follow_up_prompt_template(
         self,
         original_query: str,
-        *,
-        include_examples: bool = True,
     ) -> str:
         """Build a follow-up analysis prompt with explicit context history guidance.
 
@@ -376,7 +374,6 @@ class AspectRefinementState:
 
         Args:
             original_query: The initial user query for the session.
-            include_examples: Whether to include the aspect's examples section.
 
         Returns:
             Formatted prompt string ready for an LLM follow-up call.

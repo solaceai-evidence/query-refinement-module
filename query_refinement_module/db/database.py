@@ -67,7 +67,7 @@ if is_postgresql:
     
     # Log connection pool events for monitoring
     @event.listens_for(engine, "connect")
-    def receive_connect(dbapi_conn, connection_record):
+    def receive_connect(dbapi_conn, _connection_record):
         """Log successful database connections."""
         logger.debug(
             "Database connection established",
@@ -75,7 +75,7 @@ if is_postgresql:
         )
     
     @event.listens_for(engine, "checkout")
-    def receive_checkout(dbapi_conn, connection_record, connection_proxy):
+    def receive_checkout(dbapi_conn, _connection_record, _connection_proxy):
         """Log connection checkouts from pool."""
         logger.debug(
             "Connection checked out from pool",
@@ -83,7 +83,7 @@ if is_postgresql:
         )
     
     @event.listens_for(engine, "checkin")
-    def receive_checkin(dbapi_conn, connection_record):
+    def receive_checkin(dbapi_conn, _connection_record):
         """Log connection returned to pool."""
         logger.debug(
             "Connection returned to pool",
@@ -106,7 +106,7 @@ else:
 # Tracks query start time, duration, and correlates with request_id
 # These listeners work for both PostgreSQL and SQLite
 @event.listens_for(Engine, "before_cursor_execute")
-def before_cursor_execute(conn, cursor, statement, parameters, context, executemany):
+def before_cursor_execute(conn, cursor, statement, _parameters, context, executemany):
     """Log SQL query execution start with request context."""
     context._query_start_time = time.time()
     
@@ -130,7 +130,7 @@ def before_cursor_execute(conn, cursor, statement, parameters, context, executem
     )
 
 @event.listens_for(Engine, "after_cursor_execute")
-def after_cursor_execute(conn, cursor, statement, parameters, context, executemany):
+def after_cursor_execute(conn, cursor, statement, _parameters, context, executemany):
     """Log SQL query completion with duration and performance metrics."""
     # Calculate query duration
     duration = time.time() - context._query_start_time

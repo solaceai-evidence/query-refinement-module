@@ -308,14 +308,14 @@ class OperationTimer:
         self.logger.info(f"Starting: {self.operation_name}")
         return self
     
-    def __exit__(self, exc_type, exc_val, exc_tb):
+    def __exit__(self, exc_type, exc_val, _exc_tb):
         """
         Stop timing and log duration.
         
         Args:
             exc_type: Exception type if raised
             exc_val: Exception value if raised
-            exc_tb: Exception traceback if raised
+            _exc_tb: Exception traceback if raised (unused)
         """
         import time
         self.duration = time.time() - self.start_time

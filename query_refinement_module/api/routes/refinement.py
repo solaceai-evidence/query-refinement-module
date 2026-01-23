@@ -29,10 +29,6 @@ from query_refinement_module.db.crud import (
     create_refinement_step,
     get_query_refinement_steps,
     create_followup,
-    create_refinement_step_metadata,
-    update_refinement_step_metadata,
-    get_refinement_step_metadata,
-    get_query_metadata_summary,
 )
 from query_refinement_module.api.auth import get_current_user
 from query_refinement_module.api.dependencies import get_refinement_manager, get_session_manager
@@ -44,7 +40,7 @@ from query_refinement_module.core import (
     parse_user_command,
     UserCommand,
 )
-from query_refinement_module.tracing import generate_request_id, get_logger, OperationTimer, set_request_id, clear_request_id
+from query_refinement_module.tracing import generate_request_id, get_logger, set_request_id
 
 from pydantic import BaseModel, Field, field_validator
 

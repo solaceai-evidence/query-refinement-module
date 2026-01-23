@@ -27,7 +27,7 @@ from redis.exceptions import RedisError, ConnectionError
 
 from query_refinement_module.core import RefinementSession, AspectRefinementState
 from query_refinement_module.schema.model import RefinementAspect
-from query_refinement_module.tracing import get_logger, OperationTimer
+from query_refinement_module.tracing import get_logger
 
 # Module logger - use get_logger() in methods for request context
 logger = logging.getLogger(__name__)
