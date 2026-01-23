@@ -43,7 +43,6 @@ def build_manager(
 
     return QueryRefinementManager(
         llm_provider=provider,
-        query_analyzer=None,  # Use initialize_sequential() instead
         tracing_provider=tracer,
     )
 

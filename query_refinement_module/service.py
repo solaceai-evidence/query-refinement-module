@@ -43,7 +43,7 @@ def build_manager_from_env(
 
     return QueryRefinementManager(
         llm_provider=provider,
-        query_analyzer=None,  # Use initialize_sequential() instead
+
         tracing_provider=tracing_provider,
     )
 

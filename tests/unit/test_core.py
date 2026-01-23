@@ -16,10 +16,8 @@ from query_refinement_module.core import (
     parse_user_command,
 )
 from query_refinement_module.interfaces import (
-    AspectAnalysisResult,
     LLMCompletionResult,
     LLMProviderInterface,
-    QueryAnalyzerInterface,
     TracingProviderInterface,
 )
 from query_refinement_module.schema import RefinementAspect
@@ -115,31 +113,6 @@ class StubLLMProvider(LLMProviderInterface):
 
     def get_model_info(self, model: str) -> Dict[str, Any]:  # pragma: no cover - unused
         return {}
-
-
-class StubQueryAnalyzer(QueryAnalyzerInterface):
-    def __init__(self, results: Dict[str, Any]):
-        self.results = results
-        self.calls: List[Dict[str, Any]] = []
-
-    def analyze_aspect(
-        self,
-        query: str,
-        aspect: RefinementAspect,
-        dependency_context: Optional[Dict[str, str]] = None,
-        llm_provider: Optional[LLMProviderInterface] = None,
-    ) -> AspectAnalysisResult:
-        self.calls.append(
-            {
-                "query": query,
-                "aspect_id": aspect.id,
-                "dependency_context": dependency_context,
-            }
-        )
-        result = self.results[aspect.id]
-        if callable(result):
-            return result(dependency_context or {})
-        return result
 
 
 @dataclass
@@ -476,37 +449,14 @@ def test_session_request_synthesis_and_to_dict():
 # QueryRefinementManager: initialization and step processing
 # ---------------------------------------------------------------------------
 
-def build_manager(responses: Iterable[Any], analysis_results: Dict[str, AspectAnalysisResult]) -> QueryRefinementManager:
+def build_manager(responses: Iterable[Any]) -> QueryRefinementManager:
+    """Build a manager with stub LLM provider for testing.
+    
+    Note: v2.0+ no longer supports query_analyzer parameter.
+    """
     llm = StubLLMProvider(responses)
-    analyzer = StubQueryAnalyzer(analysis_results)
     tracing = StubTracingProvider()
-    return QueryRefinementManager(llm_provider=llm, query_analyzer=analyzer, tracing_provider=tracing)
-
-
-@pytest.mark.asyncio
-async def test_manager_initialize_applies_dependency_context():
-    aspect_a = make_aspect(aspect_id="a", name="Aspect A")
-    aspect_b = make_aspect(aspect_id="b", name="Aspect B", depends_on=["a"])
-
-    manager = build_manager(
-        responses=[],
-        analysis_results={
-            "a": AspectAnalysisResult(needs_refinement=False, explanation="Clear"),
-            "b": AspectAnalysisResult(needs_refinement=True, explanation="Missing detail", clarifying_question="Q2"),
-        },
-    )
-
-    session = await manager.initialize("Original query", [aspect_a, aspect_b])
-
-    assert len(session.steps) == 2
-    first, second = session.steps
-    assert first.is_complete and first.normalized_value == "Clear"
-    assert not second.is_complete
-
-    # Dependency context for aspect B should include Aspect A value from original query (clear)
-    ctx = session.get_dependency_context("b")
-    # Updated: Now uses initial_summary directly instead of wrapping in "is clear" message
-    assert ctx["a"]["value"] == "Clear"
+    return QueryRefinementManager(llm_provider=llm, tracing_provider=tracing)
 
 
 def test_skipped_aspects_excluded_from_dependency_context():
@@ -531,47 +481,6 @@ def test_skipped_aspects_excluded_from_dependency_context():
     assert len(ctx) == 0
 
 
-def test_ensure_step_is_ready_autocompletes_dependent_aspect():
-    aspect_a = make_aspect(aspect_id="a")
-    aspect_b = make_aspect(aspect_id="b", depends_on=["a"])
-
-    def analyze_b(context: Dict[str, Any]) -> AspectAnalysisResult:
-        if "a" not in context:
-            return AspectAnalysisResult(
-                needs_refinement=True,
-                explanation="Missing population",
-                clarifying_question="Provide population",
-            )
-        return AspectAnalysisResult(
-            needs_refinement=False,
-            explanation="Population context already specifies details",
-        )
-
-    manager = build_manager(
-        responses=[],
-        analysis_results={
-            "a": AspectAnalysisResult(needs_refinement=False, explanation="Population covered"),
-            "b": analyze_b,
-        },
-    )
-
-    session = RefinementSession(original_query="query")
-    step_a = session.add_step(aspect_a)
-    step_b = session.add_step(aspect_b)
-
-    step_a.is_complete = True
-    step_a.normalized_value = "Population captured in original query"
-
-    step_b.is_complete = False
-    step_b.follow_up_question = "Need population"
-
-    ready = manager.ensure_step_is_ready(session, step_b)
-
-    assert not ready  # auto-resolved, no prompt needed
-    assert step_b.is_complete
-    assert "already" in (step_b.normalized_value or "").lower()
-
-
 def test_dependency_context_uses_latest_follow_up_response():
     aspect_a = make_aspect(aspect_id="population")
     aspect_b = make_aspect(aspect_id="intervention", depends_on=["population"])
@@ -589,7 +498,7 @@ def test_dependency_context_uses_latest_follow_up_response():
 
 @pytest.mark.asyncio
 async def test_process_next_step_returns_none_when_no_pending():
-    manager = build_manager(responses=[], analysis_results={})
+    manager = build_manager(responses=[])
     session = RefinementSession(original_query="query")
 
     assert await manager.process_next_step(session) is None
@@ -605,7 +514,7 @@ async def test_process_next_step_records_follow_up_without_schema():
         "refinement_aspect_value": "Synthesized answer",
         "demo": "Synthesized answer"  # Dynamic value field
     })
-    manager = build_manager(responses=[json_response, json_response, json_response], analysis_results={})
+    manager = build_manager(responses=[json_response, json_response, json_response])
     session = RefinementSession(original_query="query")
     step = session.add_step(aspect)
     step.follow_up_question = "Question?"
@@ -639,7 +548,7 @@ async def test_process_next_step_enforces_json_validation():
             "confidence": 0.9
         })
     ]
-    manager = build_manager(responses=responses, analysis_results={})
+    manager = build_manager(responses=responses)
     session = RefinementSession(original_query="query")
     step = session.add_step(aspect)
     step.follow_up_question = "Question?"
@@ -660,7 +569,7 @@ async def test_process_next_step_returns_error_after_failed_validation():
         response_format={"additional_fields": {"score": "float"}}
     )
     responses = ["not json", "still not json", "invalid again"]
-    manager = build_manager(responses=responses, analysis_results={})
+    manager = build_manager(responses=responses)
     session = RefinementSession(original_query="query")
     step = session.add_step(aspect)
     step.follow_up_question = "Question?"
@@ -680,7 +589,7 @@ def test_augment_prompt_for_retry_appends_guidance():
 
 
 def test_build_follow_up_prompts_requires_history():
-    manager = build_manager(responses=[], analysis_results={})
+    manager = build_manager(responses=[])
     session = RefinementSession(original_query="query")
     step = session.add_step(make_aspect())
 
@@ -694,7 +603,7 @@ def test_build_follow_up_prompts_requires_history():
 
 
 def test_gather_refinement_details_compiles_lists():
-    manager = build_manager(responses=[], analysis_results={})
+    manager = build_manager(responses=[])
     session = RefinementSession(original_query="query")
 
     aspect1 = make_aspect(aspect_id="a", name="A")
@@ -715,7 +624,7 @@ def test_gather_refinement_details_compiles_lists():
 
 @pytest.mark.asyncio
 async def test_synthesize_refined_query_without_clarifications():
-    manager = build_manager(responses=[], analysis_results={})
+    manager = build_manager(responses=[])
     session = RefinementSession(original_query="original")
 
     result = await manager.synthesize_refined_query(session)
@@ -727,7 +636,7 @@ async def test_synthesize_refined_query_without_clarifications():
 async def test_synthesize_refined_query_with_clarifications():
     aspect = make_aspect(aspect_id="a", name="Population")
     llm_response = "Refined query"
-    manager = build_manager(responses=[llm_response], analysis_results={})
+    manager = build_manager(responses=[llm_response])
     session = RefinementSession(original_query="original query")
     step = session.add_step(aspect)
     step.add_follow_up("Q", "Adults 18-65")
@@ -751,7 +660,7 @@ async def test_run_full_refinement_processes_steps():
         "refinement_aspect_value": "answer",
         "demo": "answer"
     })
-    manager = build_manager(responses=[json_response], analysis_results={})
+    manager = build_manager(responses=[json_response])
     session = RefinementSession(original_query="query")
     step = session.add_step(aspect)
     step.follow_up_question = "Q"
@@ -760,27 +669,3 @@ async def test_run_full_refinement_processes_steps():
     # This may not work as expected - we'll process manually instead
     result = await manager.process_next_step(session)
     assert step.is_complete
-
-
-@pytest.mark.asyncio
-async def test_get_initialization_summary_orders_results():
-    aspect_a = make_aspect(aspect_id="a", name="A")
-    aspect_b = make_aspect(aspect_id="b", name="B")
-
-    manager = build_manager(
-        responses=[],
-        analysis_results={
-            "a": AspectAnalysisResult(needs_refinement=False, explanation="Clear"),
-            "b": AspectAnalysisResult(needs_refinement=True, explanation="Need more", clarifying_question="Q"),
-        },
-    )
-
-    session = await manager.initialize("query", [aspect_a, aspect_b])
-    summary = manager.get_initialization_summary(session)
-
-    assert summary["total_aspects"] == 2
-    assert summary["incomplete_count"] == 1
-    assert summary["complete_count"] == 1
-    is_complete_statuses = [aspect_info["is_complete"] for aspect_info in summary["aspects"]]
-    assert is_complete_statuses.count(False) == 1
-    assert any("next_question" in info for info in summary["aspects"] if not info["is_complete"])

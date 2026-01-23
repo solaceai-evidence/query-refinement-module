@@ -15,10 +15,8 @@ from query_refinement_module.core import (
     QueryRefinementManager,
 )
 from query_refinement_module.interfaces import (
-    AspectAnalysisResult,
     LLMCompletionResult,
     LLMProviderInterface,
-    QueryAnalyzerInterface,
 )
 from query_refinement_module.schema import RefinementAspect
 from typing import Any, Dict, Iterable, List, Optional
@@ -94,37 +92,6 @@ class StubLLMProvider(LLMProviderInterface):
 
     def get_model_info(self, model: str) -> Dict[str, Any]:
         return {}
-
-
-class StubQueryAnalyzer(QueryAnalyzerInterface):
-    def __init__(self, results: Dict[str, AspectAnalysisResult]):
-        self._results = results
-
-    def analyze_aspect(
-        self,
-        query: str,
-        aspect: RefinementAspect,
-        dependency_context: Optional[Dict[str, str]] = None,
-        llm_provider: Optional[LLMProviderInterface] = None,
-    ) -> AspectAnalysisResult:
-        return self._results.get(
-            aspect.id,
-            AspectAnalysisResult(
-                needs_refinement=True,
-                explanation="Default",
-                clarifying_question="Question?"
-            )
-        )
-    
-    async def analyze_aspect_async(
-        self,
-        query: str,
-        aspect: RefinementAspect,
-        dependency_context: Optional[Dict[str, str]] = None,
-        llm_provider: Optional[LLMProviderInterface] = None,
-    ) -> AspectAnalysisResult:
-        """Async version delegates to sync analyze_aspect()"""
-        return self.analyze_aspect(query, aspect, dependency_context, llm_provider)
 
 
 # ---------------------------------------------------------------------------
@@ -370,8 +337,7 @@ async def test_synthesis_prompt_includes_quality_requirements():
     """Verify synthesize_refined_query includes enhanced quality instructions."""
     aspect = make_aspect(aspect_id="pop", name="Population")
     llm = StubLLMProvider(responses=["Refined output"])
-    analyzer = StubQueryAnalyzer({})
-    manager = QueryRefinementManager(llm_provider=llm, query_analyzer=analyzer)
+    manager = QueryRefinementManager(llm_provider=llm)
     
     session = RefinementSession(original_query="I think maybe adults with diabetes")
     step = session.add_step(aspect)
@@ -400,8 +366,7 @@ def test_synthesis_uses_refinement_aspect_value_when_available():
     aspect2 = make_aspect(aspect_id="a2", name="Aspect 2")
     
     llm = StubLLMProvider(responses=["Final refined query"])
-    analyzer = StubQueryAnalyzer({})
-    manager = QueryRefinementManager(llm_provider=llm, query_analyzer=analyzer)
+    manager = QueryRefinementManager(llm_provider=llm)
     
     session = RefinementSession(original_query="test")
     

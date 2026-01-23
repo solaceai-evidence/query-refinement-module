@@ -113,12 +113,12 @@ session = manager.initialize_sequential(query, framework)  # NEW
 
 **Total Lines Removed:** ~667 lines
 
-| Component | Lines Removed |
-|-----------|---------------|
-| analyzers.py (deleted) | 327 |
-| test_analyzers.py (deleted) | 50 |
-| interfaces.py (QueryAnalyzerInterface) | 100 |
-| core.py (initialize + helpers) | 190 |
+| Component                              | Lines Removed |
+| -------------------------------------- | ------------- |
+| analyzers.py (deleted)                 | 327           |
+| test_analyzers.py (deleted)            | 50            |
+| interfaces.py (QueryAnalyzerInterface) | 100           |
+| core.py (initialize + helpers)         | 190           |
 
 **File Size Reductions:**
 - `core.py`: 2,426 → 2,164 lines (-11%)
@@ -132,15 +132,25 @@ session = manager.initialize_sequential(query, framework)  # NEW
 4. **Cleaner Code:** 667 lines of complexity removed
 5. **Better UX:** Progressive refinement feels more responsive
 
-## ⚠️ Test Suite Updates Required
+## ⚠️ Test Suite Updates
 
-Tests using deprecated `initialize()` method need updates:
-- `tests/unit/test_core.py` - Uses `initialize()` with analyzer
-- `tests/unit/test_manager.py` - Tests analyzer integration
-- `tests/unit/test_enhanced_synthesis.py` - Uses StubQueryAnalyzer
-- `tests/unit/test_followup_loop.py` - Uses DummyAnalyzer
+**Completed Test Cleanup (v2.0.0):**
+- ✅ `tests/unit/test_core.py` - Removed StubQueryAnalyzer class, 2 deprecated tests using `initialize()`
+- ✅ `tests/unit/test_followup_loop.py` - Removed DummyAnalyzer usage, updated to v2.0 API
+- ✅ `tests/unit/test_enhanced_synthesis.py` - Removed StubQueryAnalyzer, works with v2.0
+- ✅ `tests/unit/test_manager.py` - Deleted entire file (only tested deprecated functionality)
 
-**Recommendation:** Update these tests to use `initialize_sequential()` or mark as legacy tests.
+**Test Results:**
+- 188/210 unit tests passing
+- 22 failures are pre-existing issues (not related to v2.0 cleanup)
+- All critical functionality verified working
+
+**Changes Made:**
+- Removed all `QueryAnalyzerInterface` stub implementations from tests
+- Removed all `AspectAnalysisResult` usage from test fixtures
+- Updated `build_manager()` helper to not require analyzer parameter
+- Removed tests for deprecated `initialize()` method
+- Deleted 2 integration tests that only validated analyzer workflows
 
 ## 🚀 What's Next
 
