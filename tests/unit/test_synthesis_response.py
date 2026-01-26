@@ -65,7 +65,7 @@ class TestSynthesisResponse:
         response = QueryRefinementResponse(**self._base_payload())
 
         assert response.synthesized_statement == "diabetes in adults"
-        assert response.detail_values == {"population": "adults", "condition": "diabetes"}
+        assert response.refined_dimensions == {"population": "adults", "condition": "diabetes"}
         assert response.search_filters.publication_years == ""
 
     def test_valid_response_with_all_fields(self):
@@ -145,8 +145,8 @@ class TestSynthesisResponse:
         )
         response = QueryRefinementResponse(**payload)
 
-        assert response.detail_values["outcome"] == "[SKIPPED]"
-        assert response.detail_values["intervention"] == "[CLEAR_IN_ORIGINAL]"
+        assert response.refined_dimensions["outcome"] == "[SKIPPED]"
+        assert response.refined_dimensions["intervention"] == "[CLEAR_IN_ORIGINAL]"
 
     def test_model_allows_updates(self):
         """Test model configuration allows field updates."""

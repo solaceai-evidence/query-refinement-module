@@ -1132,7 +1132,7 @@ class QueryRefinementManager:
         aspects = [step.refinement_aspect for step in session.steps]
         prompt_builder = SynthesisPromptBuilder()
         
-        user_prompt = prompt_builder.build_synthesis_prompt(
+        user_prompt = prompt_builder.get_synthesis_prompt(
             original_input=session.original_query,
             aspectID_value_mapping=refinement_aspect_values,
             aspect_list=aspects,
@@ -1241,8 +1241,8 @@ class QueryRefinementManager:
                 metadata={
                     "has_structured_response": True,
                     "response_length": len(refined_query),
-                    "has_detail_values": bool(synthesis_response.detail_values),
-                    "detail_values_count": len(synthesis_response.detail_values) if synthesis_response.detail_values else 0,
+                    "has_detail_values": bool(synthesis_response.refined_dimensions),
+                    "detail_values_count": len(synthesis_response.refined_dimensions) if synthesis_response.refined_dimensions else 0,
                 }
             )
         except json.JSONDecodeError as parse_error:
@@ -1328,7 +1328,7 @@ class QueryRefinementManager:
         
         # Include structured response fields if available
         if synthesis_response:
-            result_dict["detail_values"] = synthesis_response.detail_values
+            result_dict["detail_values"] = synthesis_response.refined_dimensions
             result_dict["search_optimized"] = synthesis_response.search_optimized
             result_dict["search_filters"] = synthesis_response.search_filters
             result_dict["terminology"] = synthesis_response.terminology

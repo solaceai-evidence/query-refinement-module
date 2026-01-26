@@ -1,23 +1,31 @@
 """
-Schema module for query refinement.
-
-This module provides:
-- RefinementAspect: Core data model for refinement aspects
-- Dependency validation and topological sorting
-- Framework registry for loading custom schemas from YAML
-
-Usage:
-    from schema import RefinementAspect, get_framework, list_frameworks
-    
-    # Get a custom framework
-    pico = get_framework("pico_clinical")
-    
-    # List available frameworks
-    frameworks = list_frameworks()
+Query refinement framework with Pydantic models and Jinja2 templates.
 """
 
-from .model import RefinementAspect
-from .dependencies import validate_dependencies, sort_aspects_by_dependencies
+# Core models
+from .models import (
+    RefinementDimension,
+    UserContext,
+    CompletedDimension,
+    ExamplesCollection,
+    ResponseFormat,
+)
+
+# Response models
+from .response import (
+    DimensionEvaluationResponse,
+    QueryRefinementResponse,
+    QueryRefinementResponse,  # Backward compatibility
+)
+
+# Loaders
+from .loaders import (
+    load_dimension_from_yaml,
+    load_user_context_from_yaml,
+    load_dimensions_from_directory,
+)
+
+# Registry
 from .registry import (
     list_frameworks,
     get_framework,
@@ -26,23 +34,62 @@ from .registry import (
     get_last_load_error,
     FrameworkLoadError,
 )
-from .response import DimensionEvaluationResponse, QueryRefinementResponse
-from .synthesis import SynthesisPromptBuilder
+
+# Dependencies
+from .dependencies import (
+    validate_dependencies,
+    sort_dimensions_by_dependencies,
+)
+
+# Prompt builders
+from .prompt_builder import (
+    PromptBuilder,
+    create_dimension_prompt,
+    create_synthesis_prompt as create_synthesis_prompt_new,
+)
+
+# Synthesis
+from .synthesis import (
+    SynthesisPromptBuilder,
+    create_synthesis_prompt,
+    validate_synthesis_response,
+)
+
+__version__ = "2.0.0"
 
 __all__ = [
-    # Core model
-    "RefinementAspect",
+    # Models
+    "RefinementDimension",
+    "UserContext",
+    "CompletedDimension",
+    "ExamplesCollection",
+    "ResponseFormat",
+    
+    # Response models
     "DimensionEvaluationResponse",
     "QueryRefinementResponse",
-    "SynthesisPromptBuilder",
-    # Dependency utility
-    "sort_aspects_by_dependencies",
-    "validate_dependencies",
-    # Registry functions
+    "QueryRefinementResponse",
+    
+    # Loaders
+    "load_dimension_from_yaml",
+    "load_user_context_from_yaml",
+    "load_dimensions_from_directory",
+    
+    # Registry
     "list_frameworks",
     "get_framework",
     "describe_framework",
     "reload_from_env",
     "get_last_load_error",
     "FrameworkLoadError",
+    
+    # Dependencies
+    "validate_dependencies",
+    "sort_dimensions_by_dependencies",
+    
+    # Prompt builders
+    "PromptBuilder",
+    "create_dimension_prompt",
+    "create_synthesis_prompt",
+    "validate_synthesis_response",
 ]

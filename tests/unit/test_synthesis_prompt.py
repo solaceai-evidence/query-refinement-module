@@ -49,7 +49,7 @@ class TestSynthesisPromptBuilder:
     def test_build_synthesis_prompt_basic(self, sample_aspects, refinement_values):
         """Test basic synthesis prompt building."""
         builder = SynthesisPromptBuilder()
-        prompt = builder.build_synthesis_prompt(
+        prompt = builder.get_synthesis_prompt(
             original_input="diabetes treatment outcomes",
             aspectID_value_mapping=refinement_values,
             aspect_list=sample_aspects,
@@ -69,7 +69,7 @@ class TestSynthesisPromptBuilder:
     def test_aspects_section_excludes_skipped(self, sample_aspects, refinement_values):
         """Test that [SKIPPED] aspects are included with a marker."""
         builder = SynthesisPromptBuilder()
-        prompt = builder.build_synthesis_prompt(
+        prompt = builder.get_synthesis_prompt(
             original_input="test query",
             aspectID_value_mapping=refinement_values,
             aspect_list=sample_aspects,
@@ -95,7 +95,7 @@ class TestSynthesisPromptBuilder:
         }
 
         builder = SynthesisPromptBuilder()
-        prompt = builder.build_synthesis_prompt(
+        prompt = builder.get_synthesis_prompt(
             original_input="test query",
             aspectID_value_mapping=refinement_values,
             aspect_list=sample_aspects,
@@ -107,7 +107,7 @@ class TestSynthesisPromptBuilder:
     def test_output_format_includes_required_fields(self, sample_aspects, refinement_values):
         """Test that output format includes all required fields."""
         builder = SynthesisPromptBuilder()
-        prompt = builder.build_synthesis_prompt(
+        prompt = builder.get_synthesis_prompt(
             original_input="test query",
             aspectID_value_mapping=refinement_values,
             aspect_list=sample_aspects,
@@ -125,7 +125,7 @@ class TestSynthesisPromptBuilder:
     def test_empty_refinements(self, sample_aspects):
         """Test with no refinement values."""
         builder = SynthesisPromptBuilder()
-        prompt = builder.build_synthesis_prompt(
+        prompt = builder.get_synthesis_prompt(
             original_input="test query",
             aspectID_value_mapping={},
             aspect_list=sample_aspects,
@@ -139,7 +139,7 @@ class TestSynthesisPromptBuilder:
     def test_quality_requirements_included(self, sample_aspects, refinement_values):
         """Test that quality requirements are included in prompt."""
         builder = SynthesisPromptBuilder()
-        prompt = builder.build_synthesis_prompt(
+        prompt = builder.get_synthesis_prompt(
             original_input="test query",
             aspectID_value_mapping=refinement_values,
             aspect_list=sample_aspects,

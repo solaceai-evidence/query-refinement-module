@@ -95,7 +95,7 @@ def print_synthesis_prompt(aspects: list[RefinementAspect], query: str):
     print(builder.get_system_prompt())
     
     print("\n[USER PROMPT]\n")
-    synthesis_prompt = builder.build_synthesis_prompt(
+    synthesis_prompt = builder.get_synthesis_prompt(
         original_input=query,
         aspectID_value_mapping=refinement_aspect_values,
         aspect_list=aspects
