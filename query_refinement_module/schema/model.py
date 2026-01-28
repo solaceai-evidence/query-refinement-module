@@ -164,12 +164,19 @@ class RefinementAspect:
         allow_follow_up: Whether follow-up questions are allowed (legacy - user commands preferred)
         max_follow_ups: Safety limit for CLI batch mode only (web API ignores this - user controls pace)
         metadata: Additional metadata for extensibility
+        user_context: User context from framework (populated by registry loader)
+        response_strategies: Strategies for responding to different situations (new in v2)
     """
     id: str
     aspect_name: str
     aspect_description: str
     # developer prompt - should focus on analysis logic, not response format (REQUIRED)
-    evaluation_instructions: str
+    # Note: accepts both "evaluation_instructions" (old) and "evaluation_criteria" (new) from YAML
+    evaluation_instructions: str = ""
+    evaluation_criteria: str = ""  # New name, will be merged into evaluation_instructions
+    
+    # Response strategies for different situations (new in v2 schema)
+    response_strategies: Optional[str] = None
     
     # DEPRECATED: Custom system prompts break LLM prompt caching (system prompt must be static)
     # All dimension-specific content should go in evaluation_instructions, examples, and aspect_description
@@ -199,6 +206,9 @@ class RefinementAspect:
     # Optional metadata for extensibility
     # e.g., domain, priority, confidence score, etc.
     metadata: Dict[str, Any] = field(default_factory=dict)
+    
+    # User context from framework (populated by registry loader)
+    user_context: Optional[Dict[str, Any]] = None
 
     # Base schema fields for unified response format (used by user prompt)
     BASE_SCHEMA_FIELDS = {
@@ -220,12 +230,25 @@ class RefinementAspect:
 
     def __post_init__(self):
         """Validate schema structure at load time."""
-        # 1. Validate value_field_type
-        # 2. Validate response_format structure (if provided)
+        # Handle new "evaluation_criteria" field name (merge into evaluation_instructions)
+        if self.evaluation_criteria and not self.evaluation_instructions:
+            # Use new field name if provided and old one is not
+            object.__setattr__(self, 'evaluation_instructions', self.evaluation_criteria)
+        elif self.evaluation_criteria and self.evaluation_instructions:
+            # Both provided - combine them
+            combined = f"{self.evaluation_instructions}\n\n{self.evaluation_criteria}"
+            object.__setattr__(self, 'evaluation_instructions', combined)
+        
+        # Append response_strategies to evaluation_instructions if provided
+        if self.response_strategies:
+            combined = f"{self.evaluation_instructions}\n\n## Response Strategies\n\n{self.response_strategies}"
+            object.__setattr__(self, 'evaluation_instructions', combined)
+        
+        # Validate response_format structure (if provided)
         if self.response_format:
             self._validate_response_format_structure()
         
-        # 3. Validate examples structure (if provided)
+        # Validate examples structure (if provided)
         if self.examples:
             self._validate_examples_structure()
     

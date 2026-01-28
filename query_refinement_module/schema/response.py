@@ -30,7 +30,7 @@ class DimensionEvaluationResponse(BaseModel):
         description="Brief explanation of why the dimension is/isn't complete"
     )
     
-    aspect_value: Optional[str] = Field(
+    refinement_aspect_value: Optional[str] = Field(
         default=None,
         description="Assembled value using user's exact words (REQUIRED if is_complete=True)"
     )
@@ -57,15 +57,15 @@ class DimensionEvaluationResponse(BaseModel):
         validate_assignment=True
     )
     
-    @field_validator('aspect_value')
+    @field_validator('refinement_aspect_value')
     @classmethod
     def validate_value_when_complete(cls, v, info):
-        """Ensure aspect_value provided when is_complete=True."""
+        """Ensure refinement_aspect_value provided when is_complete=True."""
         data = info.data
         is_complete = data.get('is_complete', False)
         if is_complete and not v:
             raise ValueError(
-                "aspect_value is required when is_complete=True. "
+                "refinement_aspect_value is required when is_complete=True. "
                 "Must extract or assemble the dimension's value."
             )
         return v

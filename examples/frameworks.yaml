@@ -146,16 +146,16 @@ mph_dissertation:
        - Causation implied when design won't support it
        - Misaligned with stated domain
     response_strategies: |
-       - If no focus present: "You've identified [topic]. What specifically do you want to investigate or understand about it? For example: 
-          - [1-2 examples if interventions exist for topic]
-          - [1-2 examples if risk factors focus fits topic]
-          - [1-2 examples if exploratory fits topic]
-          - [1-2 examples if health services/systems focus fits topic]
-          Suggest frameworks (PICO/SPIDER/ECLIPSE) if helpful, but don't require them.
-       - If too vague: "What specifically about [vague element] do you want to examine? For instance: [list 3-4 specific investigative angles that fits the topic]"
-       - If solution-focused: "That's an important goal. For research, let's reframe as: what do we need to understand about [topic]? Such as: [list 3-4 investigative angles that fits the topic]" 
-        - If multiple inquiries: "You've raised several questions: [list them]. For an MPH dissertation, it's best to focus on one main inquiry. Which interests you most: [example based on topics with primary focus and how they relate]?"
-        - If causation language without design: "I notice your research focus seems to be about [topic Y], but earlier you identified [topic X] as your domain. Are these meant to be related, or have we shifted topics? If topics shifted, consider revisiting your research domain to ensure alignment"
+      - If no focus present: "You've identified [topic]. What specifically do you want to investigate or understand about it? For example: 
+         - [1-2 examples if interventions exist for topic]
+         - [1-2 examples if risk factors focus fits topic]
+         - [1-2 examples if exploratory fits topic]
+         - [1-2 examples if health services/systems focus fits topic]
+         Suggest frameworks (PICO/SPIDER/ECLIPSE) if helpful, but don't require them.
+      - If too vague: "What specifically about [vague element] do you want to examine? For instance: [list 3-4 specific investigative angles that fits the topic]"
+      - If solution-focused: "That's an important goal. For research, let's reframe as: what do we need to understand about [topic]? Such as: [list 3-4 investigative angles that fits the topic]" 
+       - If multiple inquiries: "You've raised several questions: [list them]. For an MPH dissertation, it's best to focus on one main inquiry. Which interests you most: [example based on topics with primary focus and how they relate]?"
+       - If causation language without design: "I notice your research focus seems to be about [topic Y], but earlier you identified [topic X] as your domain. Are these meant to be related, or have we shifted topics? If topics shifted, consider revisiting your research domain to ensure alignment"
     examples:
       clear:
         - statement:
@@ -177,7 +177,7 @@ mph_dissertation:
         - statement:
             exploring barriers to physical activity among adolescents in low-income
             urban communities
-        - rationale: Specific behavior (physical activity), clear investigative direction (barriers), appropriate exploratory approach, defined population
+          rationale: Specific behavior (physical activity), clear investigative direction (barriers), appropriate exploratory approach, defined population
       needs_refinement:
         - statement: childhood obesity
           issue: Topic only; no investigative direction specified
@@ -362,7 +362,7 @@ mph_dissertation:
     aspect_name: study design
     aspect_description: the methodological approach and temporal scope of the research
     depends_on:
-      - research_focus
+      - mph_research_focus
       - population_demographics
       - intervention_exposure
     evaluation_criteria: '### What you''re evaluating:
@@ -802,7 +802,7 @@ mph_dissertation:
     aspect_name: MPH data sources and access
     aspect_description: the data sources the student plans to use and their access to them
     depends_on:
-      - research_focus
+      - mph_research_focus
       - population_demographics
       - study_design
     evaluation_criteria: |
@@ -811,7 +811,7 @@ mph_dissertation:
     aspect_name: MPH sampling strategy and sample size
     aspect_description: the sampling approach and planned sample size for data collection
     depends_on:
-      - research_focus
+      - mph_research_focus
       - population_demographics
       - study_design
     evaluation_criteria: |
