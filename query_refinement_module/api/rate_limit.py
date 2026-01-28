@@ -4,7 +4,8 @@ Simple rate limiting middleware for the API.
 import time
 from collections import defaultdict
 from typing import Callable
-from fastapi import Request, HTTPException, status
+from fastapi import Request, status
+from fastapi.responses import JSONResponse
 from starlette.middleware.base import BaseHTTPMiddleware
 
 
@@ -75,9 +76,9 @@ class RateLimitMiddleware(BaseHTTPMiddleware):
         allowed, retry_after = self.rate_limiter.is_allowed(identifier)
         
         if not allowed:
-            return HTTPException(
+            return JSONResponse(
                 status_code=status.HTTP_429_TOO_MANY_REQUESTS,
-                detail=f"Rate limit exceeded. Try again in {retry_after} seconds.",
+                content={"detail": f"Rate limit exceeded. Try again in {retry_after} seconds."},
                 headers={"Retry-After": str(retry_after)}
             )
         

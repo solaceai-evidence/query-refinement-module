@@ -4,7 +4,7 @@ FastAPI application configuration and settings.
 from functools import lru_cache
 from typing import List, Optional
 
-from pydantic import Field
+from pydantic import Field, model_validator
 from pydantic_settings import BaseSettings, SettingsConfigDict
 
 
@@ -37,6 +37,16 @@ class Settings(BaseSettings):
     
     # Security
     secret_key: str = Field(default="your-secret-key-change-this-in-production")
+    
+    @model_validator(mode='after')
+    def validate_secret_key_in_production(self) -> 'Settings':
+        """Ensure SECRET_KEY is not the default in production."""
+        if self.environment == "production" and self.secret_key == "your-secret-key-change-this-in-production":
+            raise ValueError(
+                "SECRET_KEY must be set to a secure value in production. "
+                "Generate one with: python -c \"import secrets; print(secrets.token_urlsafe(32))\""
+            )
+        return self
     algorithm: str = "HS256"
     access_token_expire_minutes: int = 480  # 8 hours (increased from 30 minutes)
     

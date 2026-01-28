@@ -90,54 +90,8 @@ pico_advanced:
       Details the treatment, procedure, or exposure being studied
       including specific agents, dosing, duration, frequency, and delivery method
     depends_on:
-      - population_demographic
-      - geographic_location
-      - population_clinical_profile
-    system_prompt:
-      "You are a research advisor helping users refine their research topics
-      by asking focused clarifying questions.
-
-
-      Your Job:
-
-      Users provide research interests (questions, statements, aims, or paragraphs).
-      Clarify aspect: **{self.aspect_name}**, with definition: **{self.aspect_description}**.
-      Focus ONLY on this aspect—ignore other research elements.
-
-
-      How to Engage:
-
-      1. **Acknowledge first**: Recognize what's already clear before requesting clarification.
-
-      2. **One element at a time**: Address 1-2 unclear points per turn.
-
-      3. **Mirror their language**: Use their terminology; avoid jargon unless it adds
-      needed precision.
-
-      4. **Give examples**: Offer 2-4 concrete, aspect-specific examples they can adapt.
-
-      5. **Explain why**: Briefly note how this clarification strengthens their research
-      input and improves their search.
-
-
-      When to Stop:
-
-      This aspect is sufficiently refined when the user's statement is specific, unambiguous,
-      and actionable for evidence synthesis.
-
-
-      Boundaries:
-
-      - You clarify research descriptions, not search literature or write proposals.
-
-      - Stay within your assigned refinement aspect.
-
-      - Keep developing clarity, not fixing problems.
-
-
-      Tone: Supportive and collaborative. Be efficient—don't over-explain.
-
-      "
+      - population
+      - clinical_condition
     evaluation_criteria:
       "### Objective\n Analyze whether the intervention is sufficiently\
       \ detailed for study replication\n\n### Assess clarity and completeness across\
@@ -469,7 +423,7 @@ pico_advanced:
       and methodological approach. Helps determine feasibility and appropriate statistical
       methods.
     depends_on:
-      - population_demographic
+      - population
       - intervention_specification
       - comparison_group
       - primary_outcomes
@@ -559,6 +513,8 @@ pico_advanced:
   - id: clinical_condition
     aspect_name: Health Condition and Clinical Context
     aspect_description: Specifies the primary health condition or disease, including disease stage, severity, and relevant comorbidities. Defines clinical eligibility criteria and baseline clinical characteristics of the target population.
+    depends_on:
+      - population
     evaluation_criteria: |
       ### Task
       Evaluate if health condition specification enables accurate patient identification, appropriate treatment selection, and valid outcome interpretation.
@@ -607,18 +563,22 @@ pico_advanced:
           missing: Specific cancer type (e.g., breast, lung, colorectal) and disease stage (I-IV)
           example_question: "What specific type of cancer (e.g., breast, lung, colorectal) and disease stage (I-IV) are you focusing on?"
       partial:
-        - statement: Women over 40 with cardiovascular disease
-          has: Gender (women) and minimum age (40)
-          missing: ethnicity (if CVD disparities relevant),setting (geographic/clinical context)
-          example_question: Is there an upper age limit? Are you focusing on specific ethnic groups given CVD disparities?
+        - statement: Study in high-risk cardiovascular patients
+          has: primary condition (cardiovascular disease)
+          missing: "'High-risk' is subjective - needs risk score, comorbidities, or other specific criteria"
+          example_question: "What defines 'high-risk'? (e.g., Framingham score, specific risk factors, prior events, comorbidities)"
+        - statement: Outcomes in hypertensive patients with diabetes
+          has: primary condition (hypertension), comorbidity (diabetes)
+          missing: "Blood pressure range and Hypertension severity not specified, Diabetes type not specified"
+          example_question: "Specify hypertension severity (stage 1 or 2), Blood pressure range (e.g., 140-159/90-99 mmHg), and diabetes type (Type 1 or Type 2) to clarify treatment approach"
       vague_ambiguous:
-        - statement: Treatment for diabetic patients
-          issue: primary condition clinically ambiguous
-          missing: diabetes type (Type 1 vs Type 2 vs gestational)
+        - statement: Treatment in patients with refractory disease
+          issue: "'refractory disease' to what?"
+          missing: primary condition vague/unspecified
+          example_question: "Which conditions/diseases are you looking at? Is it pertinent to also include what treatments the disease is refractory to?"
+        - statement: treatment for diabetic patients
+          issue: ambiguous diabetes type (Type 1 vs Type 2 vs gestational)
           example_question: "What type of diabetes? (Type 1, Type 2, gestational)"
-        - statement: Intervention in patients with heart problems
-          issue: ambiguous setting and ethnicity/race
-          example_question: "Specify what dimensions of diversity matter (ethnic, socioeconomic, geographic)?"
-        - statement: Study in representative population sample
-          issue: "'Representative' is context-dependent - representative of what population?"
-          example_question: What population should this sample represent? Please specify demographic characteristics that define representativeness, including age, sex/gender, ethnicity/race, and setting.
+        - statement: intervention in patients with heart problems
+          issue: "‘Heart problems’ is vague - could mean coronary artery disease, heart failure, arrhythmias, etc."
+          example_question: "What specific heart condition are you referring to? (e.g., coronary artery disease, heart failure, arrhythmias) And are you interested in a specific level of severity or stage?"

@@ -681,7 +681,8 @@ async def submit_answer(
     # If session not in Redis, reconstruct from database (fallback)
     if not session:
         logger.warning("Session not found in Redis for query_id=%d, reconstructing from database", query_id)
-        session = await manager.initialize(
+        session = await asyncio.to_thread(
+            manager.initialize_sequential,
             db_query.original_query,
             framework,
         )
@@ -970,7 +971,8 @@ async def get_refinement_status(
     # Fallback: Reconstruct from database if Redis miss
     if not session:
         logger.warning(f"Session not found in Redis for query_id={query_id}, reconstructing from database")
-        session = await manager.initialize(
+        session = await asyncio.to_thread(
+            manager.initialize_sequential,
             db_query.original_query,
             framework,
         )
@@ -1074,7 +1076,8 @@ async def synthesize_refined_query(
     # If session not in Redis, reconstruct from database (fallback)
     if not session:
         logger.warning("Session not found in Redis for query_id=%d, reconstructing from database", request.query_id)
-        session = await manager.initialize(
+        session = await asyncio.to_thread(
+            manager.initialize_sequential,
             db_query.original_query,
             framework,
         )

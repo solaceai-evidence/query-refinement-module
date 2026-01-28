@@ -3,8 +3,8 @@ Feedback model for collecting user feedback on queries and results.
 """
 from sqlalchemy import Column, Integer, Text, DateTime, ForeignKey
 from sqlalchemy.orm import relationship
-import datetime
-from .user import Base
+from .user import Base, _utcnow
+
 
 class Feedback(Base):
     __tablename__ = "feedback"
@@ -14,7 +14,7 @@ class Feedback(Base):
     query_id = Column(Integer, ForeignKey("queries.id"), nullable=True)
     rating = Column(Integer, nullable=True)
     comments = Column(Text, nullable=True)
-    created_at = Column(DateTime, default=datetime.datetime.utcnow)
+    created_at = Column(DateTime, default=_utcnow)
 
     user = relationship("User", backref="feedback")
     query = relationship("Query", backref="feedback")

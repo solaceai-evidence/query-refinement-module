@@ -3,8 +3,8 @@ FollowUpHistory model for storing follow-up questions and answers for each refin
 """
 from sqlalchemy import Column, Integer, Text, DateTime, ForeignKey
 from sqlalchemy.orm import relationship
-import datetime
-from .user import Base
+from .user import Base, _utcnow
+
 
 class FollowUpHistory(Base):
     __tablename__ = "followup_history"
@@ -13,7 +13,7 @@ class FollowUpHistory(Base):
     refinement_step_id = Column(Integer, ForeignKey("refinement_steps.id"), nullable=False)
     question = Column(Text, nullable=False)
     answer = Column(Text, nullable=True)
-    created_at = Column(DateTime, default=datetime.datetime.utcnow)
+    created_at = Column(DateTime, default=_utcnow)
 
     refinement_step = relationship("RefinementStep", back_populates="followup_history")
 

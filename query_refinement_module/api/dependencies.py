@@ -14,7 +14,7 @@ from query_refinement_module.rate_limiter import (
 )
 from query_refinement_module.interfaces import RateLimitConfig
 from .config import get_settings
-from .session_manager import SessionManager
+from .session_manager import SessionManager, InMemorySessionManager
 
 
 # Load frameworks from environment on module import
@@ -66,8 +66,12 @@ def get_session_manager() -> SessionManager:
         return manager
     except Exception as e:
         import logging
-        logging.error("Failed to initialize SessionManager with Redis: %s", e)
-        logging.warning("Session persistence disabled - sessions will be reconstructed on each request")
-        # Return a dummy manager that always returns None
-        # In production, you might want to implement an in-memory fallback
-        raise
+        logging.warning(
+            "Redis unavailable (%s). Using in-memory session storage. "
+            "Sessions will NOT persist across server restarts.",
+            e
+        )
+        # Return an in-memory fallback manager
+        return InMemorySessionManager(
+            session_ttl_seconds=settings.session_ttl_seconds
+        )

@@ -370,3 +370,84 @@ class SessionManager:
         except RedisError as e:
             logger.error("Failed to clear sessions: %s", e)
             return 0
+
+
+class InMemorySessionManager:
+    """
+    In-memory fallback session manager when Redis is unavailable.
+    
+    WARNING: Sessions will be lost on server restart. Use Redis in production.
+    """
+    
+    def __init__(self, session_ttl_seconds: int = 3600):
+        self._sessions: Dict[int, Dict[str, Any]] = {}
+        self._timestamps: Dict[int, float] = {}
+        self.session_ttl = session_ttl_seconds
+        logger.warning(
+            "InMemorySessionManager initialized. Sessions will NOT persist across server restarts."
+        )
+    
+    def _cleanup_expired(self):
+        """Remove expired sessions."""
+        now = time.time()
+        expired = [
+            qid for qid, ts in self._timestamps.items()
+            if now - ts > self.session_ttl
+        ]
+        for qid in expired:
+            self._sessions.pop(qid, None)
+            self._timestamps.pop(qid, None)
+    
+    def save_session(self, query_id: int, session: RefinementSession, request_id: Optional[str] = None) -> bool:
+        """Save session to memory."""
+        self._cleanup_expired()
+        try:
+            # Use same serialization as Redis manager
+            serialized = SessionManager._serialize_session(None, session)
+            self._sessions[query_id] = serialized
+            self._timestamps[query_id] = time.time()
+            logger.debug(f"Saved session {query_id} to memory (steps={len(session.steps)})")
+            return True
+        except Exception as e:
+            logger.error(f"Failed to save session {query_id} to memory: {e}")
+            return False
+    
+    def load_session(
+        self,
+        query_id: int,
+        refinement_framework: List[RefinementAspect],
+        request_id: Optional[str] = None
+    ) -> Optional[RefinementSession]:
+        """Load session from memory."""
+        self._cleanup_expired()
+        serialized = self._sessions.get(query_id)
+        if not serialized:
+            return None
+        try:
+            # Use same deserialization as Redis manager
+            return SessionManager._deserialize_session(None, serialized, refinement_framework)
+        except Exception as e:
+            logger.error(f"Failed to deserialize session {query_id}: {e}")
+            return None
+    
+    def delete_session(self, query_id: int, request_id: Optional[str] = None) -> bool:
+        """Delete session from memory."""
+        self._sessions.pop(query_id, None)
+        self._timestamps.pop(query_id, None)
+        return True
+    
+    def get_session_stats(self) -> Dict[str, Any]:
+        """Get session statistics."""
+        self._cleanup_expired()
+        return {
+            "total_sessions": len(self._sessions),
+            "backend": "memory",
+            "warning": "Sessions will not persist across server restarts"
+        }
+    
+    def clear_all_sessions(self) -> int:
+        """Clear all sessions."""
+        count = len(self._sessions)
+        self._sessions.clear()
+        self._timestamps.clear()
+        return count

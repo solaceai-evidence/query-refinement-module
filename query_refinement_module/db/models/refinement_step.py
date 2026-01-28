@@ -3,9 +3,7 @@ RefinementStep model for storing each step in the query refinement pipeline.
 """
 from sqlalchemy import Column, Integer, Text, DateTime, ForeignKey
 from sqlalchemy.orm import relationship
-import datetime
-from .user import Base
-
+from .user import Base, _utcnow
 
 
 class RefinementStep(Base):
@@ -14,7 +12,7 @@ class RefinementStep(Base):
     id = Column(Integer, primary_key=True, autoincrement=True)
     query_id = Column(Integer, ForeignKey("queries.id"), nullable=False)
     aspect_name = Column(Text, nullable=False)
-    created_at = Column(DateTime, default=datetime.datetime.utcnow)
+    created_at = Column(DateTime, default=_utcnow)
 
     query = relationship("Query", backref="refinement_steps")
     followup_history = relationship("FollowUpHistory", back_populates="refinement_step", cascade="all, delete-orphan")
