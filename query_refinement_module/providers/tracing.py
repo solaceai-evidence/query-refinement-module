@@ -4,7 +4,6 @@ Tracing provider implementations.
 Extracted from providers.py as part of v2.0.0 Phase 4 refactoring.
 """
 import json
-import logging
 import threading
 from contextlib import contextmanager
 from datetime import UTC, datetime
@@ -13,11 +12,9 @@ from typing import Any, Dict, Optional
 
 from ..interfaces import TracingProviderInterface
 
-logger = logging.getLogger(__name__)
-
 
 class TraceEventEmitter:
-    """Helper that safely emits events and metrics through a tracing provider implementation."""
+    """Helper that safely emits events and metrics through a tracing provider."""
 
     def __init__(self, tracing_provider: Optional[TracingProviderInterface]) -> None:
         self._provider = tracing_provider
@@ -28,28 +25,13 @@ class TraceEventEmitter:
         level: str = "info",
         metadata: Optional[Dict[str, Any]] = None,
     ) -> None:
-        provider = self._provider
-
-        if not provider:
+        """Emit a trace event. Silently fails if provider is None or disabled."""
+        if not self._provider or not self._provider.is_enabled():
             return
-
-        if not hasattr(provider, "log_event") or not hasattr(provider, "is_enabled"):
-            logger.debug(
-                "Tracing provider %s does not support event logging",
-                type(provider).__name__,
-            )
-            return
-
         try:
-            if provider.is_enabled():
-                provider.log_event(event_name, level=level, metadata=metadata)
+            self._provider.log_event(event_name, level=level, metadata=metadata)
         except Exception:  # pragma: no cover - tracing must not break core logic
-            logger.debug(
-                "Tracing provider %s failed to log event '%s'",
-                type(provider).__name__,
-                event_name,
-                exc_info=True,
-            )
+            pass
     
     def metric(
         self,
@@ -58,25 +40,13 @@ class TraceEventEmitter:
         unit: str = "",
         metadata: Optional[Dict[str, Any]] = None
     ) -> None:
-        """Emit a metric through the tracing provider."""
-        provider = self._provider
-        
-        if not provider:
+        """Emit a metric. Silently fails if provider is None or disabled."""
+        if not self._provider or not self._provider.is_enabled():
             return
-        
-        if not hasattr(provider, "log_metric") or not hasattr(provider, "is_enabled"):
-            return  # Provider doesn't support metrics, silently skip
-        
         try:
-            if provider.is_enabled():
-                provider.log_metric(metric_name, value, unit=unit, metadata=metadata)
+            self._provider.log_metric(metric_name, value, unit=unit, metadata=metadata)
         except Exception:  # pragma: no cover - metrics must not break core logic
-            logger.debug(
-                "Tracing provider %s failed to log metric '%s'",
-                type(provider).__name__,
-                metric_name,
-                exc_info=True,
-            )
+            pass
 
 
 class NoOpTracingProvider(TracingProviderInterface):

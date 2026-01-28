@@ -92,69 +92,12 @@ class LiteLLMProvider(LLMProviderInterface):
             cache_system_prompt: If True and provider supports it, cache the system prompt
                                for reduced token usage and faster responses.
         """
-        request_id = get_request_id() or "-"
-        trace_id = get_trace_id() or "-"
-        
-        # Log semaphore queue depth before acquiring
-        queue_depth = self._semaphore._value  # Available permits
-        max_concurrent = self._max_concurrent  # Total permits
-        waiting = max_concurrent - queue_depth  # Estimated waiting tasks
-        
-        logger.info(
-            "Attempting to acquire LLM semaphore",
-            extra={
-                "request_id": request_id,
-                "trace_id": trace_id,
-                "semaphore_available": queue_depth,
-                "semaphore_max": max_concurrent,
-                "estimated_waiting": waiting,
-            },
-        )
-        
-        # Track wait time for semaphore acquisition
-        wait_start = time.time()
-        
         # Apply semaphore to limit concurrent calls
         async with self._semaphore:
-            wait_time_ms = (time.time() - wait_start) * 1000
-            
-            # Log acquisition with wait time if significant
-            if wait_time_ms > 100:  # Log if waited more than 100ms
-                logger.info(
-                    "Acquired LLM semaphore after wait",
-                    extra={
-                        "request_id": request_id,
-                        "trace_id": trace_id,
-                        "wait_time_ms": round(wait_time_ms, 2),
-                        "semaphore_available_after": self._semaphore._value,
-                    },
-                )
-            else:
-                logger.debug(
-                    "Acquired LLM semaphore immediately",
-                    extra={
-                        "request_id": request_id,
-                        "trace_id": trace_id,
-                        "semaphore_available_after": self._semaphore._value,
-                    },
-                )
-            
-            try:
-                result = await self._complete_async_internal(
-                    user_prompt, system_prompt, model, temperature, max_tokens, 
-                    cache_system_prompt, messages, response_format, **kwargs
-                )
-                return result
-            finally:
-                # Log semaphore release
-                logger.debug(
-                    "Released LLM semaphore",
-                    extra={
-                        "request_id": request_id,
-                        "trace_id": trace_id,
-                        "semaphore_available_after_release": self._semaphore._value + 1,
-                    },
-                )
+            return await self._complete_async_internal(
+                user_prompt, system_prompt, model, temperature, max_tokens, 
+                cache_system_prompt, messages, response_format, **kwargs
+            )
     
     async def _complete_async_internal(
         self,

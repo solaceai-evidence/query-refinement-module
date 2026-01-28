@@ -20,14 +20,9 @@ from query_refinement_module.logging_utils import configure_file_logging
 
 
 def test_trace_event_emitter_ignores_missing_provider():
+    """TraceEventEmitter handles None provider gracefully."""
     emitter = TraceEventEmitter(None)
-    emitter.emit("event")
-
-    class Incomplete:
-        pass
-
-    emitter = TraceEventEmitter(Incomplete())
-    emitter.emit("event")
+    emitter.emit("event")  # Should not raise
 
 
 def test_trace_event_emitter_logs_when_enabled():

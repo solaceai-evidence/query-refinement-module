@@ -343,19 +343,20 @@ def mark_refinement_step_user_ended_early(
 
 
 # ==========================================
-# FollowUpHistory CRUD Operations (DEPRECATED)
+# FollowUpHistory CRUD Operations (Audit Trail)
 # ==========================================
-# Note: These functions are kept for backward compatibility but should not be
-# used for new code. We no longer persist conversation history - only final values.
+# Note: These functions persist the conversation history for audit/research purposes.
+# The session state doesn't keep conversation history (only final values), but we
+# record each Q&A exchange in the database for traceability and evaluation.
 
 def create_followup(
     db: Session, refinement_step_id: int, question: str, answer: Optional[str] = None
 ) -> FollowUpHistory:
     """
-    Create a new follow-up history entry.
+    Create a new follow-up history entry for audit trail.
     
-    DEPRECATED: Use update_refinement_step_final_value instead.
-    Conversation history is no longer persisted - only final values.
+    Records each question-answer exchange for research evaluation purposes.
+    Session state stores only final values; this provides full conversation log.
     """
     followup = FollowUpHistory(
         refinement_step_id=refinement_step_id, question=question, answer=answer
@@ -368,9 +369,7 @@ def create_followup(
 
 def update_followup_answer(db: Session, followup_id: int, answer: str) -> Optional[FollowUpHistory]:
     """
-    Update the answer for a follow-up question.
-    
-    DEPRECATED: Use update_refinement_step_final_value instead.
+    Update the answer for a follow-up question (audit trail).
     """
     followup = db.query(FollowUpHistory).filter(FollowUpHistory.id == followup_id).first()
     if followup:
@@ -382,9 +381,9 @@ def update_followup_answer(db: Session, followup_id: int, answer: str) -> Option
 
 def get_step_followups(db: Session, refinement_step_id: int) -> List[FollowUpHistory]:
     """
-    Retrieve all follow-up history for a refinement step.
+    Retrieve all follow-up history for a refinement step (audit trail).
     
-    DEPRECATED: We no longer persist conversation history.
+    Used for reviewing conversation history and research analysis.
     """
     return (
         db.query(FollowUpHistory)

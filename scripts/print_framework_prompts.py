@@ -2,7 +2,7 @@ import sys
 from pathlib import Path
 import yaml
 
-from query_refinement_module.schema.model import RefinementAspect
+from query_refinement_module.schema import RefinementAspect
 from query_refinement_module.schema.synthesis import SynthesisPromptBuilder
 
 

@@ -4,7 +4,7 @@ from query_refinement_module.core import (
     is_user_command,
     parse_user_command,
 )
-from query_refinement_module.schema.model import RefinementAspect
+from query_refinement_module.schema import RefinementAspect
 
 
 def _make_session(aspect_id: str = "aspect_a") -> RefinementSession:

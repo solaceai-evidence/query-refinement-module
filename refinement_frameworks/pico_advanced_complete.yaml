@@ -245,33 +245,69 @@ pico_advanced:
             your context? (e.g., specific drugs, specific guidelines)
   - id: primary_outcomes
     name: Primary Outcomes
-    description: Specifies the main outcomes of interest including measurement
-      methods, timepoints, and clinical significance thresholds.
+    description: Specifies the main outcomes of interest.
     depends_on:
       - intervention_specification
       - population_clinical_profile
-    
     evaluator: |
       ### TASK
-      Evaluate if primary outcomes are sufficiently specified for measurement and interpretation.
+      Evaluate if outcomes are adequately specified to enable measurement, reproducibility, and comparison. 
 
       ### CRITICAL REQUIREMENTS
       At least ONE primary outcome MUST be specified. If absent, reject and prompt.
 
-      ### OUTCOME SPECIFICITY VALIDATION
-      Outcomes must include:
-      - Specific outcome measure (e.g., all-cause mortality, HbA1c levels, quality of life)
-      - Measurement method/instrument (e.g., lab test, validated questionnaire)
-      - Timepoint(s) for assessment (e.g., 6 months, 1 year post-intervention)
-      - Clinical significance threshold (if applicable, e.g., HbA1c reduction ≥0.5%)
-
+      ### OUTCOME TYPES
+      - Clinical Outcomes: Mortality, morbidity, disease progression, treatment response.
+      - Surrogate/Biomarker Outcomes: Laboratory values, imaging markers, biological indicators predictive of clinical outcomes.
+      - Patient-Reported Outcomes (PROs): Symptoms, quality of life, functional status, patient-perceived benefit.
+      - Functional Outcomes: Physical function, activities of daily living, return to work, mobility.
+      - Safety/Adverse Events: Serious adverse events, treatment-related harm, tolerability.
       Reject if outcomes are vague/general (e.g., "treatment effectiveness", "improved health") without specifics.
 
-      ### CLARIFYING QUESTIONS
-      If any elements are missing or vague, prompt with targeted questions to elicit necessary details.
+      ### ELEMENT REQUIREMENTS
+
+      #### Outcome Type - CRITICAL
+
+      At least one outcome type must be specified (clinical, surrogate, PRO, functional, or safety). Reject if absent.
+
+      #### Measurement Method - CONDITIONAL
+
+      Required if outcome type requires specific measurement. Include specific instruments, scales, laboratory tests, imaging modalities, or validated questionnaires. Optional if outcome is self-evident or clearly defined (e.g., "mortality" requires no instrument specification).
+
+      #### Timepoint(s) -  CONDITIONAL
+      Required if timing materially affects interpretation. Include when outcome measured, follow-up duration, and multiple assessment points if relevant. Optional if single measurement or timepoint is clinically obvious.
+
+      ### TIMEPOINT VALIDATION
+      If timepoint is critical to interpretation, validate:
+
+      Single timepoint acceptable if: acute intervention with immediate outcome OR chronic condition with standard follow-up window.
+
+      Multiple timepoints required if: intervention effect evolves over time OR sustained efficacy is question.
+
+      Follow-up duration specified → ACCEPT.
+
+      Vague timing (e.g., "after treatment," "at endpoint") → if clinically ambiguous → PROMPT for specific timepoint.
+
+      Outcome must be clearly operationalized.
+
+      Example 1: Outcome "quality of life" → Reject (vague). Accept: "quality of life measured by SF-36 questionnaire".
+
+      Example 2: Outcome "mortality" → Accept (self-evident). Accept: "all-cause mortality at 6 months".
+
+      Example 3: Outcome "blood pressure reduction" → Accept (clear). Accept: "systolic blood pressure reduction at 8 weeks" (more specific).
+
+      Vague outcomes (pain, improvement, benefit) require instrument specification or threshold definition.
+    response_strategy: |
+      1. Parse input for outcome mention
+      2. If absent → REJECT + PROMPT for outcome specification
+      3. Identify outcome type (clinical/surrogate/PRO/functional/safety)
+      4. Determine if measurement method required → if required AND absent or vague → PROMPT for method specification
+      5. Determine if timepoint required → if required AND absent or vague → PROMPT for timepoint specification
+      6. Validate outcome operationalization (not vague) → if vague → PROMPT for definition or instrument
+      7. If outcome present, adequately specified, with appropriate method and timepoint → ACCEPT
     examples:
       clear:
-        - statement: Effect of intervention on all-cause mortality at 5 years
+        - statement: Effect of intervention on all-cause mortality at 5 years or more
           rationale: Specific outcome (all-cause mortality), clear timepoint (5 years)
         - statement:
             Change in HbA1c from baseline to 6 months, with target reduction

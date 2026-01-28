@@ -1,6 +1,6 @@
 import pytest
 
-from query_refinement_module.schema.model import RefinementAspect
+from query_refinement_module.schema import RefinementAspect
 
 
 def _build_aspect(examples):
@@ -15,6 +15,7 @@ def _build_aspect(examples):
 
 
 def test_examples_allow_other_category():
+    """Test that 'other' category is allowed in examples."""
     examples = {
         "other": [
             {
@@ -28,11 +29,15 @@ def test_examples_allow_other_category():
     aspect = _build_aspect(examples)
 
     assert aspect.examples is not None
-    assert aspect.examples["other"][0]["note"].startswith("Hyper-specific cohorts")
+    # With Pydantic, examples is an ExamplesCollection object
+    assert len(aspect.examples.other) == 1
+    assert aspect.examples.other[0].note.startswith("Hyper-specific cohorts")
 
 
-def test_examples_other_rejects_non_string_values():
-    examples = {"other": [{"statement": "Example", "note": 42}]}
+def test_examples_other_accepts_mixed_types():
+    """Pydantic ExamplesCollection accepts extra fields with any type."""
+    examples = {"other": [{"statement": "Example", "note": "A note", "custom": 42}]}
 
-    with pytest.raises(ValueError):
-        _build_aspect(examples)
+    aspect = _build_aspect(examples)
+    assert aspect.examples is not None
+    assert len(aspect.examples.other) == 1

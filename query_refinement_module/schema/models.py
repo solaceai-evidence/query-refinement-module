@@ -287,13 +287,12 @@ class RefinementDimension(BaseModel):
         return self.depends_on
 
     # =========================================================================
-    # Schema fields for response validation (matches old dataclass)
+    # Schema fields for response validation (matches DimensionEvaluationResponse)
     # =========================================================================
     
     BASE_SCHEMA_FIELDS: ClassVar[Dict[str, str]] = {
         "is_complete": "boolean",
         "reasoning": "string",
-        "confidence": "float",
         "refinement_aspect_value": "string",
         "next_question": "string"
     }
@@ -301,7 +300,6 @@ class RefinementDimension(BaseModel):
     BASE_FIELD_DESCRIPTIONS: ClassVar[Dict[str, str]] = {
         "is_complete": "Whether the dimension has been sufficiently clarified",
         "reasoning": "Brief explanation of the assessment",
-        "confidence": "Confidence level (0.0-1.0)",
         "refinement_aspect_value": "The extracted/refined value when complete, null otherwise",
         "next_question": "Follow-up question when incomplete, null otherwise"
     }
