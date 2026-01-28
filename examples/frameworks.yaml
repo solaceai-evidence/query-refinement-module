@@ -36,9 +36,9 @@ mph_dissertation:
       - No domain identified (just methods or settings)
 
       ### Context dependencies
-      -**specialization fit**: "Epidemiology students → lean toward disease/risk factor topics; Health policy students → lean toward systems/policy topics"
-      -**LMIC:** "For global health students focusing on LMICs, accept domains where grey literature predominates"
-      -**emerging topics:** "For cutting-edge areas (digital health, climate change), accept broader scopes if justified (ensure foundational literature exists)"
+      - **specialization fit**: "Epidemiology students → lean toward disease/risk factor topics; Health policy students → lean toward systems/policy topics"
+      - **LMIC:** "For global health students focusing on LMICs, accept domains where grey literature predominates"
+      - **emerging topics:** "For cutting-edge areas (digital health, climate change), accept broader scopes if justified (ensure foundational literature exists)"
     response_strategies:
       - If too broad: "[Domain] covers a lot of ground. Which specific health issue interests you? For example: [list 3-4 specific topics within that domain]"
       - If vague: "Can you specify which health issue or topic you want to focus on? Such as: [list 3-4 concrete health topics]"
@@ -145,20 +145,17 @@ mph_dissertation:
        - Multiple unrelated inquiries bundled together
        - Causation implied when design won't support it
        - Misaligned with stated domain
-
-
-       ### RESPONSE STRATEGIES
-       -**If no focus present:** "You've identified [topic]. What specifically do you want to investigate or understand about it? For example: 
-       - [1-2 examples if interventions exist for topic]
-       - [1-2 examples if risk factors focus fits topic]
-       - [1-2 examples if exploratory fits topic]
-       - [1-2 examples if health services/systems focus fits topic]"
-        Suggest frameworks (PICO/SPIDER/ECLIPSE) if helpful, but don't require them.
-       -**If too vague:** "What specifically about [vague element] do you want to examine? For instance: [list 3-4 specific investigative angles that fits the topic]"
-       -**If solution-focused:** "That's an important goal. For research, let's reframe
-       as: what do we need to understand about [topic]? Such as: [list 3-4 investigative angles that fits the topic]" 
-        -**If multiple inquiries:** "You've raised several questions: [list them]. For an MPH dissertation, it's best to focus on one main inquiry. Which interests you most: [example based on topics with primary focus and how they relate]?"
-        -**If causation language without design:** "I notice your research focus seems to be about [topic Y], but earlier you identified [topic X] as your domain. Are these meant to be related, or have we shifted topics? If topics shifted, consider revisiting your research domain to ensure alignment"
+    response_strategies: |
+       - If no focus present: "You've identified [topic]. What specifically do you want to investigate or understand about it? For example: 
+          - [1-2 examples if interventions exist for topic]
+          - [1-2 examples if risk factors focus fits topic]
+          - [1-2 examples if exploratory fits topic]
+          - [1-2 examples if health services/systems focus fits topic]
+          Suggest frameworks (PICO/SPIDER/ECLIPSE) if helpful, but don't require them.
+       - If too vague: "What specifically about [vague element] do you want to examine? For instance: [list 3-4 specific investigative angles that fits the topic]"
+       - If solution-focused: "That's an important goal. For research, let's reframe as: what do we need to understand about [topic]? Such as: [list 3-4 investigative angles that fits the topic]" 
+        - If multiple inquiries: "You've raised several questions: [list them]. For an MPH dissertation, it's best to focus on one main inquiry. Which interests you most: [example based on topics with primary focus and how they relate]?"
+        - If causation language without design: "I notice your research focus seems to be about [topic Y], but earlier you identified [topic X] as your domain. Are these meant to be related, or have we shifted topics? If topics shifted, consider revisiting your research domain to ensure alignment"
     examples:
       clear:
         - statement:

@@ -1,59 +1,36 @@
 pico_advanced:
-- id: population_demographic
-  aspect_name: Population Demographic
-  aspect_description: Defines the target population's basic demographic characteristics
-    including age range, gender, ethnicity, but excluding geographic scope and clinical
-    setting
-  system_prompt: 'You are a research advisor helping users refine their research topics
-    by asking focused clarifying questions.
+- user_context:
+    user_type: "MPH student"
+    context: "Early-stage dissertation conceptualization. MPH Student is exploring potential research topics for their Master of Public Health capstone/dissertation. They need help refining vague ideas into researchable questions with appropriate scope for a 6-12 month project."
+    tone: "educational" # (educational, professional, pragmatic)
+    complexity: "intermediate" # (novice, intermediate, advanced, expert)
+    examples_from: "public health"
+    constraints:
+      - "Timeline: 6-12 months for completion"
+      - "Resources: Limited to publicly available data, literature review, or small-scale surveys"
+      - "Skills: Basic epidemiology/statistics, literature review, possibly qualitative methods"
+      - "Access: Typically no Institutional Review Board (IRB) approval for human subjects until proposal stage"
+    pitfalls:
+      - "Scope too broad for Master's project"
+      - "Proposing complex interventions without implementation feasibility"
+      - "Focusing on rare diseases with limited literature"
+      - "Missing population or outcome specificity"
+      - "Overly ambitious data collection plans"
+      - "Confusing descriptive vs. analytical epidemiology"
+      - "Not considering health equity dimensions"
+- id: population
+  aspect_name: Population 
+  aspect_description: Statistical characteristics of a group of people, including age range, gender, race/ethnicity, and geographic location that form the foundation for all other PICO dimensions
+  evaluation_criteria: |
+    ### Purpose Check
+    Population
 
-
-    Your Job:
-
-    Users provide research interests (questions, statements, aims, or paragraphs).
-    Clarify aspect: **{self.aspect_name}**, with definition: **{self.aspect_description}**.
-    Focus ONLY on this aspect—ignore other research elements.
-
-
-    How to Engage:
-
-    1. **Acknowledge first**: Recognize what''s already clear before requesting clarification.
-
-    2. **One element at a time**: Address 1-2 unclear points per turn.
-
-    3. **Mirror their language**: Use their terminology; avoid jargon unless it adds
-    needed precision.
-
-    4. **Give examples**: Offer 2-4 concrete, aspect-specific examples they can adapt.
-
-    5. **Explain why**: Briefly note how this clarification strengthens their research
-    input and improves their search.
-
-
-    When to Stop:
-
-    This aspect is sufficiently refined when the user''s statement is specific, unambiguous,
-    and actionable for evidence synthesis.
-
-
-    Boundaries:
-
-    - You clarify research descriptions, not search literature or write proposals.
-
-    - Stay within your assigned refinement aspect.
-
-    - Keep developing clarity, not fixing problems.
-
-
-    Tone: Supportive and collaborative. Be efficient—don''t over-explain.
-
-    '
-  evaluation_instructions: "### Objective:\nEvaluate whether the population demographic\
-    \ specification is clearly and specifically defined for:\n1. Study replication\n\
-    2. Results generalization\n3. Ethical review requirements\n\n### Evaluation Criteria:\n\
-    \     Assess clarity and completeness across: \n     - Age (explicit range or\
-    \ threshold)\n     - Sex / gender (specified or all-inclusive)\n     - Ethnicity\
-    \ (when relevant)\n"
+    Asses whether the following demographic elements are specified when relevant to the user's input:
+      1. Age: specific range or category or life stage (e.g., pediatric, elderly)
+      2. Gender: Male, female, non-binary, etc.
+      3. Race/Ethnicity: Specific groups such as African American, Hispanic, Asian, etc.
+      4. Geographic Location: Urban, rural, specific countries or regions
+    ### 
   examples:
     clear:
     - statement: Efficacy of metformin in adults aged 40-65 with BMI > 30
@@ -163,7 +140,7 @@ pico_advanced:
     Tone: Supportive and collaborative. Be efficient—don''t over-explain.
 
     '
-  evaluation_instructions: "### Objective:\n  Determine whether the geographic location\
+  evaluation_criteria: "### Objective:\n  Determine whether the geographic location\
     \ and setting are sufficiently specified to support:\n    - replication\n    -\
     \ generalization\n    - feasibility\n\n### Considerations\n  1. Country/Region/City:\
     \ Is a specific place named (e.g., \"Spain\", \"New York City\", \"West Africa\"\
@@ -262,7 +239,7 @@ pico_advanced:
     Tone: Supportive and collaborative. Be efficient—don''t over-explain.
 
     '
-  evaluation_instructions: "### Objective\n  Evaluate whether the clinical profile\
+  evaluation_criteria: "### Objective\n  Evaluate whether the clinical profile\
     \ and health status specification enables:\n    - Accurate patient identification\
     \ and recruitment\n    - Appropriate treatment selection\n    - Valid outcome\
     \ interpretation\n\n### Clinical Profile Dimensions\n  1. Primary Condition/Diagnosis\n\
@@ -381,7 +358,7 @@ pico_advanced:
     Tone: Supportive and collaborative. Be efficient—don''t over-explain.
 
     '
-  evaluation_instructions: "### Objective\n Analyze whether the intervention is sufficiently\
+  evaluation_criteria: "### Objective\n Analyze whether the intervention is sufficiently\
     \ detailed for study replication\n\n### Assess clarity and completeness across\
     \ the following Intervention Dimensions\n 1. Intervention Type\n    - Pharmacological\
     \ (drug, biologic)\n    - Procedural (surgery, device)\n    - Behavioral (therapy,\
@@ -497,7 +474,7 @@ pico_advanced:
     Tone: Supportive and collaborative. Be efficient—don''t over-explain.
 
     '
-  evaluation_instructions: "### Objective\n  Analyze whether an appropriate comparison/control\
+  evaluation_criteria: "### Objective\n  Analyze whether an appropriate comparison/control\
     \ group is specified.\n  Key Questions:\n  - Is a comparator mentioned?\n  - Is\
     \ the comparator appropriate for the research question?\n  - Is the comparator\
     \ as well-defined as the intervention?\n  - Are ethical considerations addressed\
@@ -600,7 +577,7 @@ pico_advanced:
     Tone: Supportive and collaborative. Be efficient—don''t over-explain.
 
     '
-  evaluation_instructions: "### What you are evaluating:\n  Analyze whether primary\
+  evaluation_criteria: "### What you are evaluating:\n  Analyze whether primary\
     \ outcomes are adequately specified.\n\n### Outcome Dimensions\n  1. Outcome Type:\n\
     \    - Clinical outcomes (mortality, morbidity)\n    - Surrogate/biomarker outcomes\n\
     \    - Patient-reported outcomes (PROs)\n    - Functional outcomes\n    - Safety/adverse\
@@ -715,7 +692,7 @@ pico_advanced:
     Tone: Supportive and collaborative. Be efficient—don''t over-explain.
 
     '
-  evaluation_instructions: "### What you are evaluating:\nAssess whether the study\
+  evaluation_criteria: "### What you are evaluating:\nAssess whether the study\
     \ design and methodological context are sufficiently specified\n\n### Design Dimensions\n\
     \n1. Study Type\n  - RCT (parallel, crossover, cluster)\n  - Observational (cohort,\
     \ case-control)\n  - Systematic review/meta-analysis\n  - Pragmatic trial\n\n\
