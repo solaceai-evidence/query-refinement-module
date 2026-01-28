@@ -9,8 +9,13 @@ This model captures comprehensive metadata about each refinement step, including
 """
 from sqlalchemy import Column, Integer, Text, DateTime, ForeignKey, Float, JSON
 from sqlalchemy.orm import relationship
-import datetime
+from datetime import datetime, timezone
 from .user import Base
+
+
+def _utcnow():
+    """Return current UTC time (timezone-aware)."""
+    return datetime.now(timezone.utc)
 
 
 class RefinementStepMetadata(Base):
@@ -93,12 +98,12 @@ class RefinementStepMetadata(Base):
     additional_metadata = Column(JSON, nullable=True)
     
     # Timestamps
-    created_at = Column(DateTime, nullable=False, default=datetime.datetime.utcnow)
+    created_at = Column(DateTime, nullable=False, default=_utcnow)
     updated_at = Column(
         DateTime, 
         nullable=False, 
-        default=datetime.datetime.utcnow,
-        onupdate=datetime.datetime.utcnow  # Auto-update on modification
+        default=_utcnow,
+        onupdate=_utcnow  # Auto-update on modification
     )
 
     # Relationship to RefinementStep

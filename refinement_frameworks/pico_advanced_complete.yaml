@@ -214,17 +214,17 @@ pico_advanced:
         - statement:
             New anticoagulant compared to warfarin (standard care) in atrial
             fibrillation
-          rationale: Novel treatment vs established standard of care explicitly stated
+          rationale: Novel treatment (New anticoagulant) vs established standard of care (warfarin)
         - statement:
             High-intensity statins vs moderate-intensity statins in secondary
             prevention
-          rationale: Head-to-head comparison of two active dose strategies
+          rationale: clear comparator (High-intensity statins vs moderate-intensity statins)
       needs_refinement:
         - statement: Effects of new drug on blood pressure
           issue: No comparison group mentioned
           missing: Comparator specification
           example_question:
-            What will you compare the new drug against? (e.g., placebo,
+            What will you compare the new drug against? (e.g., any other treatmentplacebo,
             current standard treatment, another active drug)
         - statement: Study of surgical intervention
           issue: No comparison - surgery vs what?
@@ -232,19 +232,6 @@ pico_advanced:
           example_question:
             What is the comparison? (e.g., surgery vs medical management,
             surgery vs observation, one surgical technique vs another)
-      partial:
-        - statement: Cognitive therapy vs usual care in depression
-          has: Intervention (cognitive therapy) and comparison type (usual care)
-          missing: "'Usual care' not defined - varies by setting and provider"
-          example_question:
-            Can you specify what 'usual care' includes in your setting?
-            (e.g., medications only, supportive counseling, monitoring frequency)
-        - statement: New treatment compared to current options
-          has: Comparison concept mentioned
-          missing: Specific comparator not identified
-          example_question:
-            What specific current treatment(s) will serve as the comparator?
-            (e.g., specific drug names, specific procedures)
       vague_ambiguous:
         - statement: Drug A versus control in hypertension
           issue: "'Control' could mean placebo, standard care, or no treatment"

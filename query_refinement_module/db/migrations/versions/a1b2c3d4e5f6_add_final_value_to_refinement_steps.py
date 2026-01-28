@@ -9,7 +9,7 @@ Per-session storage (queries):
 - synthesized_statement, refined_dimensions, search_optimized, etc.
 
 Revision ID: a1b2c3d4e5f6
-Revises: 12b1487a2bbe
+Revises: 39dbbd8d025d
 Create Date: 2026-01-28 16:00:00.000000
 
 """
@@ -21,7 +21,7 @@ import sqlalchemy as sa
 
 # revision identifiers, used by Alembic.
 revision: str = 'a1b2c3d4e5f6'
-down_revision: Union[str, None] = '12b1487a2bbe'
+down_revision: Union[str, None] = '39dbbd8d025d'
 branch_labels: Union[str, Sequence[str], None] = None
 depends_on: Union[str, Sequence[str], None] = None
 

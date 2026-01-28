@@ -5,12 +5,17 @@ Captures JavaScript errors, console logs, user actions, and performance metrics
 from the frontend application for debugging and monitoring.
 """
 
-from datetime import datetime, timedelta
+from datetime import datetime, timezone, timedelta
 from typing import Optional
 from sqlalchemy import Column, Integer, String, DateTime, Text, JSON, ForeignKey, Index
 from sqlalchemy.orm import relationship
 
 from query_refinement_module.db.database import Base
+
+
+def _utcnow():
+    """Return current UTC time (timezone-aware)."""
+    return datetime.now(timezone.utc)
 
 
 class FrontendLogLevel:
@@ -53,7 +58,7 @@ class FrontendLog(Base):
     id = Column(Integer, primary_key=True, index=True)
     
     # Timing
-    timestamp = Column(DateTime, nullable=False, index=True, default=datetime.utcnow)
+    timestamp = Column(DateTime, nullable=False, index=True, default=_utcnow)
     client_timestamp = Column(DateTime, nullable=True)  # Browser's timestamp
     
     # Log classification
