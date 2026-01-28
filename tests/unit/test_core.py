@@ -66,11 +66,13 @@ class StubLLMProvider(LLMProviderInterface):
 
     def complete(
         self,
-        user_prompt: str,
+        user_prompt: str = "",
         system_prompt: Optional[str] = None,
         model: Optional[str] = None,
         temperature: float = 0.0,
         max_tokens: Optional[int] = None,
+        messages: Optional[List[Dict[str, str]]] = None,
+        response_format: Optional[Any] = None,
         **kwargs,
     ) -> LLMCompletionResult:
         self.calls.append(
@@ -80,6 +82,8 @@ class StubLLMProvider(LLMProviderInterface):
                 "model": model,
                 "temperature": temperature,
                 "max_tokens": max_tokens,
+                "messages": messages,
+                "response_format": response_format,
                 "kwargs": kwargs,
             }
         )
@@ -94,11 +98,13 @@ class StubLLMProvider(LLMProviderInterface):
 
     async def complete_async(
         self,
-        user_prompt: str,
+        user_prompt: str = "",
         system_prompt: Optional[str] = None,
         model: Optional[str] = None,
         temperature: float = 0.0,
         max_tokens: Optional[int] = None,
+        messages: Optional[List[Dict[str, str]]] = None,
+        response_format: Optional[Any] = None,
         **kwargs,
     ) -> LLMCompletionResult:
         # Reuse the sync implementation for testing
@@ -108,6 +114,8 @@ class StubLLMProvider(LLMProviderInterface):
             model=model,
             temperature=temperature,
             max_tokens=max_tokens,
+            messages=messages,
+            response_format=response_format,
             **kwargs,
         )
 
@@ -390,18 +398,21 @@ def test_session_skip_and_finish_behaviour():
     session = RefinementSession(original_query="query")
     step = session.add_step(aspect)
 
-    skip_result = session._skip_current()
+    # Use handle_command with proper CommandResult instead of internal method
+    skip_result = session.handle_command(CommandResult(command=UserCommand.SKIP))
     assert skip_result["success"]
     assert step.was_skipped
 
-    finish_without_value = session._finish_current()
+    # Finish without value on skipped step should fail
+    finish_without_value = session.handle_command(CommandResult(command=UserCommand.DONE))
     assert finish_without_value["success"] is False
     assert step.was_skipped
 
+    # Create new session for finish test
     finish_session = RefinementSession(original_query="query")
     finish_step = finish_session.add_step(make_aspect())
     finish_step.add_follow_up("Q", "A")
-    finish = finish_session._finish_current()
+    finish = finish_session.handle_command(CommandResult(command=UserCommand.DONE))
     assert finish["success"]
     assert finish_step.is_complete
 
@@ -409,34 +420,34 @@ def test_session_skip_and_finish_behaviour():
 def test_session_back_restart_status_and_list():
     single_session = RefinementSession(original_query="query")
     single_session.add_step(make_aspect())
-    back_fail = single_session._go_back()
+    back_fail = single_session.handle_command(CommandResult(command=UserCommand.BACK))
     assert not back_fail["success"]
 
     session, _, step_b = build_session_with_steps()
     step_b.add_follow_up("Q", "A")
 
-    back_success = session._go_back()
+    back_success = session.handle_command(CommandResult(command=UserCommand.BACK))
     assert back_success["success"]
     assert back_success["step_index"] == 0
     # step_b is removed from session (truncated), not just history cleared
     assert len(session.steps) == 1
     assert session.steps[0].refinement_aspect.id == "a"
 
-    status = session._get_status()
+    status = session.handle_command(CommandResult(command=UserCommand.STATUS))
     assert "Session Status" in status["message"]
     assert status["summary"]["total_steps"] == 1  # step_b was truncated
 
-    step_list = session._list_steps()
+    step_list = session.handle_command(CommandResult(command=UserCommand.STEPS))
     assert "Processed Steps" in step_list["message"]
 
-    restart = session._restart()
+    restart = session.handle_command(CommandResult(command=UserCommand.RESTART))
     assert restart["success"]
     assert all(not step.conversation_history for step in session.steps)
 
 
 def test_session_request_synthesis_and_to_dict():
     session, step_a, step_b = build_session_with_steps()
-    synth = session._request_synthesis()
+    synth = session.handle_command(CommandResult(command=UserCommand.SUBMIT))
     assert session.synthesis_requested
     assert synth["submit"]
 
@@ -507,11 +518,13 @@ async def test_process_next_step_returns_none_when_no_pending():
 @pytest.mark.asyncio
 async def test_process_next_step_records_follow_up_without_schema():
     aspect = make_aspect()
-    # Updated: Include dynamic value field (aspect.id = "demo") with new response format
+    # Updated: Include all required fields (is_complete, reasoning, confidence, refinement_aspect_value)
     json_response = json.dumps({
         "is_complete": True,
         "reasoning": "Answer", 
+        "confidence": 0.95,
         "refinement_aspect_value": "Synthesized answer",
+        "next_question": None,
         "demo": "Synthesized answer"  # Dynamic value field
     })
     manager = build_manager(responses=[json_response, json_response, json_response])
@@ -531,21 +544,22 @@ async def test_process_next_step_records_follow_up_without_schema():
 
 @pytest.mark.asyncio
 async def test_process_next_step_enforces_json_validation():
+    """Test that invalid JSON responses result in error (v2.0 uses structured outputs, no retry)."""
     aspect = make_aspect(
         response_format={
             "additional_fields": {"confidence": "float"},
             "field_descriptions": {"confidence": "Confidence"},
         }
     )
-    # First response invalid JSON, second valid (including dynamic value field and all required fields)
+    # Valid JSON response with all required fields
     responses = [
-        "not json", 
         json.dumps({
             "is_complete": True,
-            "reasoning": "ok", 
-            "refinement_aspect_value": "value",  # Dynamic value field renamed
-            "demo": "value",  # Dynamic value field for aspect.id
-            "confidence": 0.9
+            "reasoning": "ok",
+            "confidence": 0.9,
+            "refinement_aspect_value": "value",
+            "next_question": None,
+            "demo": "value"  # Dynamic value field for aspect.id
         })
     ]
     manager = build_manager(responses=responses)
@@ -558,9 +572,6 @@ async def test_process_next_step_enforces_json_validation():
     assert not result["error"]
     assert "structured_payload" in result
     assert result["structured_payload"]["confidence"] == 0.9
-    # Ensure prompt was augmented
-    augmented_prompt = manager.llm_provider.calls[1]["user_prompt"]
-    assert "ATTEMPT 1" in augmented_prompt
 
 
 @pytest.mark.asyncio
@@ -581,6 +592,7 @@ async def test_process_next_step_returns_error_after_failed_validation():
     assert step.is_complete
 
 
+@pytest.mark.skip(reason="Method _augment_prompt_for_retry removed in v2.0 - internal implementation changed")
 def test_augment_prompt_for_retry_appends_guidance():
     prompt = QueryRefinementManager._augment_prompt_for_retry("base", "not json", 1, "previous")
     assert "ATTEMPT 1" in prompt
@@ -588,6 +600,7 @@ def test_augment_prompt_for_retry_appends_guidance():
     assert "previous" in prompt
 
 
+@pytest.mark.skip(reason="Method build_follow_up_prompts removed in v2.0 - internal implementation changed")
 def test_build_follow_up_prompts_requires_history():
     manager = build_manager(responses=[])
     session = RefinementSession(original_query="query")
@@ -635,7 +648,49 @@ async def test_synthesize_refined_query_without_clarifications():
 @pytest.mark.asyncio
 async def test_synthesize_refined_query_with_clarifications():
     aspect = make_aspect(aspect_id="a", name="Population")
-    llm_response = "Refined query"
+    # Synthesis expects JSON with all required QueryRefinementResponse fields
+    llm_response = json.dumps({
+        "synthesized_statement": "Refined query for adults 18-65",
+        "refined_dimensions": {"population": "Adults 18-65"},
+        "search_optimized": {
+            "semantic": "adults 18-65 health outcomes",
+            "keyword": {
+                "structured": "adults AND (18-65)",
+                "phrases": ["adults 18-65"],
+                "terms": {"required": ["adults"], "optional": [], "excluded": []}
+            },
+            "grey_literature": {
+                "broad_concepts": [],
+                "organizational_terms": [],
+                "geographic_variants": []
+            }
+        },
+        "search_filters": {
+            "publication_years": "",
+            "venues": "",
+            "authors": [],
+            "publication_types": [],
+            "fields_of_study": ""
+        },
+        "terminology": {
+            "primary_terms": ["adults"],
+            "synonyms": {},
+            "domain_specific": [],
+            "colloquial": []
+        },
+        "metadata": {
+            "temporal": None,
+            "geographic": None,
+            "source_types": [],
+            "other": {}
+        },
+        "processing_log": {
+            "preserved": [],
+            "normalized": [],
+            "integrated": [],
+            "expanded": []
+        }
+    })
     manager = build_manager(responses=[llm_response])
     session = RefinementSession(original_query="original query")
     step = session.add_step(aspect)
@@ -644,7 +699,7 @@ async def test_synthesize_refined_query_with_clarifications():
 
     result = await manager.synthesize_refined_query(session)
     assert result["used_llm"]
-    assert result["refined_query"] == "Refined query"
+    assert result["refined_query"] == "Refined query for adults 18-65"
     call = manager.llm_provider.calls[0]
     assert "original query" in call["user_prompt"].lower()
     assert "Adults 18-65" in call["user_prompt"]

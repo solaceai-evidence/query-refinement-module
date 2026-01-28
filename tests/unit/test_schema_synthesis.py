@@ -146,10 +146,44 @@ class TestSynthesisResponseValidation:
         """Test valid synthesis response passes validation."""
         response = {
             "synthesized_statement": "A refined research question",
-            "dimensions": {"population": "adults"},
+            "refined_dimensions": {"population": "adults"},
             "search_optimized": {
                 "semantic": "semantic query",
-                "keyword": {"structured": "query", "phrases": [], "terms": {}},
+                "keyword": {
+                    "structured": "query",
+                    "phrases": [],
+                    "terms": {"required": [], "optional": [], "excluded": []},
+                },
+                "grey_literature": {
+                    "broad_concepts": [],
+                    "organizational_terms": [],
+                    "geographic_variants": [],
+                },
+            },
+            "search_filters": {
+                "publication_years": "",
+                "venues": "",
+                "authors": [],
+                "publication_types": [],
+                "fields_of_study": "",
+            },
+            "terminology": {
+                "primary_terms": [],
+                "synonyms": {},
+                "domain_specific": [],
+                "colloquial": [],
+            },
+            "metadata": {
+                "temporal": None,
+                "geographic": None,
+                "source_types": [],
+                "other": {},
+            },
+            "processing_log": {
+                "preserved": [],
+                "normalized": [],
+                "integrated": [],
+                "expanded": [],
             },
         }
         

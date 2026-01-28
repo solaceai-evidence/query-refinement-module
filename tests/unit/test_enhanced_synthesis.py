@@ -334,7 +334,7 @@ def test_get_prompts_handles_missing_description():
 
 @pytest.mark.asyncio
 async def test_synthesis_prompt_includes_quality_requirements():
-    """Verify synthesize_refined_query includes enhanced quality instructions."""
+    """Verify synthesize_refined_query includes required content for synthesis."""
     aspect = make_aspect(aspect_id="pop", name="Population")
     llm = StubLLMProvider(responses=["Refined output"])
     manager = QueryRefinementManager(llm_provider=llm)
@@ -346,21 +346,17 @@ async def test_synthesis_prompt_includes_quality_requirements():
     
     result = await manager.synthesize_refined_query(session)
     
-    # Check that quality requirements were in the prompt
+    # Check that the prompt was built
     assert len(llm.calls) == 1
-    user_prompt = llm.calls[0]["user_prompt"]
+    user_prompt = llm.calls[0]["user_prompt"] or ""
     
-    # Should mention synthesis quality
-    assert "SYNTHESIS QUALITY REQUIREMENTS" in user_prompt or "synthesize" in user_prompt.lower()
-    
-    # Should mention removing conversational language
-    assert "conversational language" in user_prompt.lower() or \
-           "I think" in user_prompt or \
-           "maybe" in user_prompt or \
-           "probably" in user_prompt
+    # Check for key sections in v2.0 simplified template
+    assert "Original Input" in user_prompt or "original" in user_prompt.lower()
+    assert "Clarified Dimensions" in user_prompt or "dimensions" in user_prompt.lower() or "Population" in user_prompt
 
 
-def test_synthesis_uses_refinement_aspect_value_when_available():
+@pytest.mark.asyncio
+async def test_synthesis_uses_refinement_aspect_value_when_available():
     """Verify synthesis uses refinement_aspect_value (synthesized value) over raw responses."""
     aspect1 = make_aspect(aspect_id="a1", name="Aspect 1")
     aspect2 = make_aspect(aspect_id="a2", name="Aspect 2")
@@ -382,7 +378,7 @@ def test_synthesis_uses_refinement_aspect_value_when_available():
     step2.normalized_value = "Already clear in query"
     step2.is_complete = True
     
-    result = manager.synthesize_refined_query(session)
+    result = await manager.synthesize_refined_query(session)
     
     # Gather what was sent to LLM
     clarifications, summaries = manager._gather_refinement_details(session)

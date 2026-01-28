@@ -11,14 +11,14 @@ class DummyLLMProvider(LLMProviderInterface):
     def __init__(self, responses):
         self.responses = responses
         self.calls = []
-    def complete(self, user_prompt, system_prompt=None, **kwargs):
-        self.calls.append((user_prompt, system_prompt))
+    def complete(self, user_prompt="", system_prompt=None, messages=None, response_format=None, **kwargs):
+        self.calls.append((user_prompt, system_prompt, messages))
         response = self.responses.pop(0)
         # Return the raw JSON string, not a parsed dict
         return type('LLMCompletionResult', (), {"context": response})()
-    async def complete_async(self, user_prompt, system_prompt=None, **kwargs):
+    async def complete_async(self, user_prompt="", system_prompt=None, messages=None, response_format=None, **kwargs):
         """Async version that delegates to sync complete()"""
-        return self.complete(user_prompt, system_prompt, **kwargs)
+        return self.complete(user_prompt, system_prompt, messages, response_format, **kwargs)
     def get_model_info(self, model=None):
         return {}
 
@@ -35,10 +35,10 @@ def make_aspect(id="aspect", allow_follow_up=True, max_follow_ups=2):
 @pytest.mark.asyncio
 async def test_followup_loop_stops_on_is_complete():
     aspect = make_aspect()
-    # Updated: Include dynamic value field (aspect.id)
+    # Updated: Include all required fields (is_complete, reasoning, confidence, refinement_aspect_value)
     responses = [
-        '{"is_complete": false, "reasoning": "Needs more", "refinement_aspect_value": "", "next_question": "Clarify?"}',
-        '{"is_complete": true, "reasoning": "Clear", "refinement_aspect_value": "Clear value", "next_question": null}',
+        '{"is_complete": false, "reasoning": "Needs more", "confidence": 0.5, "refinement_aspect_value": null, "next_question": "Clarify?"}',
+        '{"is_complete": true, "reasoning": "Clear", "confidence": 0.9, "refinement_aspect_value": "Clear value", "next_question": null}',
     ]
     llm = DummyLLMProvider(responses)
     manager = QueryRefinementManager(llm)
@@ -54,11 +54,11 @@ async def test_followup_loop_stops_on_is_complete():
 @pytest.mark.asyncio
 async def test_followup_loop_respects_max_rounds():
     aspect = make_aspect(max_follow_ups=1)
-    # Updated: Include dynamic value field (aspect.id)
+    # Updated: Include all required fields with confidence
     responses = [
-        '{"is_complete": false, "reasoning": "Needs more", "refinement_aspect_value": "partial value", "next_question": "Clarify?"}',
-        '{"is_complete": false, "reasoning": "Needs more", "refinement_aspect_value": "partial value", "next_question": "Clarify?"}',  # retry
-        '{"is_complete": false, "reasoning": "Needs more", "refinement_aspect_value": "partial value", "next_question": "Clarify?"}',  # retry
+        '{"is_complete": false, "reasoning": "Needs more", "confidence": 0.5, "refinement_aspect_value": null, "next_question": "Clarify?"}',
+        '{"is_complete": false, "reasoning": "Needs more", "confidence": 0.5, "refinement_aspect_value": null, "next_question": "Clarify?"}',  # retry
+        '{"is_complete": false, "reasoning": "Needs more", "confidence": 0.5, "refinement_aspect_value": null, "next_question": "Clarify?"}',  # retry
     ]
     llm = DummyLLMProvider(responses)
     manager = QueryRefinementManager(llm)
@@ -74,7 +74,7 @@ async def test_followup_loop_handles_llm_error():
     aspect = make_aspect()
     responses = [Exception("LLM error")]
     class ErrorLLMProvider(DummyLLMProvider):
-        def complete(self, user_prompt, system_prompt=None, **kwargs):
+        def complete(self, user_prompt="", system_prompt=None, messages=None, response_format=None, **kwargs):
             raise Exception("LLM error")
     llm = ErrorLLMProvider(responses)
     manager = QueryRefinementManager(llm)

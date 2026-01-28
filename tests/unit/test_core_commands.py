@@ -99,12 +99,14 @@ def test_handle_command_skip_marks_step_complete():
 
 
 def test_handle_command_done_without_response_fails():
+    """Test that /done without a response marks as complete (v2.0 behavior)."""
     session = _make_session()
     payload = session.handle_command(parse_user_command("/done"))
 
     assert payload["success"] is True
     assert "no additional details provided" in payload["message"].lower()
-    assert session.steps[0].was_skipped is True
+    # In v2.0, /done without response marks as complete but not skipped
+    assert session.steps[0].is_complete is True
 
 
 def test_handle_command_done_with_response_marks_complete():

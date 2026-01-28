@@ -5,14 +5,17 @@ This module provides utilities for validating and ordering refinement aspects
 based on their dependencies using Python's built-in graphlib.
 """
 
-from typing import List
+from typing import List, Union
 from graphlib import TopologicalSorter, CycleError
-from .model import RefinementAspect
 
-__all__ = ["sort_aspects_by_dependencies"]
+# Import from models for Pydantic model support
+# Keep backward compatibility with both RefinementDimension and RefinementAspect
+from .models import RefinementDimension, RefinementAspect
+
+__all__ = ["sort_aspects_by_dependencies", "validate_dependencies"]
 
 
-def validate_dependencies(refinement_framework: List[RefinementAspect]) -> None:
+def validate_dependencies(refinement_framework: List[Union[RefinementDimension, RefinementAspect]]) -> None:
     """
     Validate refinement aspect dependencies for a refinement framework.
     
@@ -37,7 +40,7 @@ def validate_dependencies(refinement_framework: List[RefinementAspect]) -> None:
                 )
 
 
-def sort_aspects_by_dependencies(refinement_framework: List[RefinementAspect]) -> List[RefinementAspect]:
+def sort_aspects_by_dependencies(refinement_framework: List[Union[RefinementDimension, RefinementAspect]]) -> List[Union[RefinementDimension, RefinementAspect]]:
     """
     Sort refinement aspects by their dependencies using topological sort.
     

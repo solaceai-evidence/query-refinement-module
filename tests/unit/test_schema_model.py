@@ -132,10 +132,15 @@ def test_get_evaluation_instructions_prompt_includes_examples_and_format():
 
 
 def test_get_prompts_returns_system_and_user_prompts():
-    aspect = make_aspect(system_prompt="Be concise.")
-    system_prompt, user_prompt = aspect.get_prompts("Query text")
+    """Test that get_prompts returns global system prompt and user prompt."""
+    aspect = make_aspect(system_prompt="Be concise.")  # Custom system prompt is now deprecated
+    import warnings
+    with warnings.catch_warnings():
+        warnings.simplefilter("ignore", DeprecationWarning)
+        system_prompt, user_prompt = aspect.get_prompts("Query text")
 
-    assert system_prompt == "Be concise."
+    # System prompt should be the global system prompt (custom is deprecated)
+    assert "Research Query Refinement" in system_prompt
     assert "Query text" in user_prompt
 
 

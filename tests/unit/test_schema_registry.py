@@ -17,7 +17,8 @@ from query_refinement_module.schema.registry import (
     get_last_load_error,
     FrameworkLoadError,
 )
-from query_refinement_module.schema.model import RefinementAspect
+# Import from models (Pydantic) since registry now uses Pydantic models
+from query_refinement_module.schema.models import RefinementAspect, RefinementDimension
 
 
 # =============================================================================
@@ -116,11 +117,11 @@ class TestFrameworkLoading:
         assert aspect_one.id == "aspect_one"
         assert aspect_one.aspect_name == "First Aspect"
         
-        # Check user_context is propagated
+        # Check user_context is propagated (now a Pydantic UserContext model)
         assert aspect_one.user_context is not None
-        assert aspect_one.user_context["user_type"] == "Test User"
-        assert aspect_one.user_context["tone"] == "professional"
-        assert "Constraint 1" in aspect_one.user_context["constraints"]
+        assert aspect_one.user_context.user_type == "Test User"
+        assert aspect_one.user_context.tone == "professional"
+        assert "Constraint 1" in aspect_one.user_context.constraints
     
     def test_load_legacy_framework(self, temp_legacy_file, monkeypatch):
         """Test loading legacy framework without user_context."""
@@ -238,13 +239,14 @@ class TestUserContextParsing:
         frameworks = _load_frameworks(raise_on_error=True)
         ctx = frameworks["test_framework"][0].user_context
         
-        assert ctx["user_type"] == "Test User"
-        assert ctx["context"] == "Testing context"
-        assert ctx["tone"] == "professional"
-        assert ctx["complexity"] == "intermediate"
-        assert ctx["examples_from"] == "testing"
-        assert len(ctx["constraints"]) == 2
-        assert len(ctx["pitfalls"]) == 1
+        # Access via attribute since user_context is now a Pydantic model
+        assert ctx.user_type == "Test User"
+        assert ctx.context == "Testing context"
+        assert ctx.tone == "professional"
+        assert ctx.complexity == "intermediate"
+        assert ctx.examples_from == "testing"
+        assert len(ctx.constraints) == 2
+        assert len(ctx.pitfalls) == 1
     
     def test_user_context_propagated_to_all_aspects(self, temp_framework_file, monkeypatch):
         """Test user_context is attached to all aspects in framework."""
@@ -255,4 +257,4 @@ class TestUserContextParsing:
         
         for aspect in aspects:
             assert aspect.user_context is not None
-            assert aspect.user_context["user_type"] == "Test User"
+            assert aspect.user_context.user_type == "Test User"

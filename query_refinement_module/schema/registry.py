@@ -18,7 +18,8 @@ from dotenv import load_dotenv
 # Load environment variables from .env file
 load_dotenv()
 
-from .model import RefinementAspect
+# Use Pydantic model (with backward compat alias)
+from .models import RefinementDimension, RefinementAspect, UserContext
 from .dependencies import sort_aspects_by_dependencies
 
 logger = logging.getLogger(__name__)
@@ -167,15 +168,18 @@ def _load_frameworks(*, raise_on_error: bool = False) -> Dict[str, List[Refineme
         return {}
 
 
-def reload_from_env() -> Dict[str, List[RefinementAspect]]:
+def reload_from_env(*, raise_on_error: bool = False) -> Dict[str, List[RefinementAspect]]:
     """
     Reload frameworks from environment path, updating the module cache.
+    
+    Args:
+        raise_on_error: If True, raise FrameworkLoadError on failures
     
     Returns:
         Dict mapping framework names to lists of RefinementAspect objects
     """
     global _FRAMEWORKS
-    _FRAMEWORKS = _load_frameworks(raise_on_error=False)
+    _FRAMEWORKS = _load_frameworks(raise_on_error=raise_on_error)
     return _FRAMEWORKS
 
 

@@ -15,7 +15,7 @@ class TestSynthesisResponse:
     def _base_payload(self):
         return {
             "synthesized_statement": "diabetes in adults",
-            "detail_values": {"population": "adults", "condition": "diabetes"},
+            "refined_dimensions": {"population": "adults", "condition": "diabetes"},
             "search_optimized": {
                 "semantic": "Semantic search query for diabetes in adults",
                 "keyword": {
@@ -72,7 +72,7 @@ class TestSynthesisResponse:
         """Test creation with all optional fields."""
         payload = self._base_payload()
         payload["synthesized_statement"] = "diabetes treatment in adults"
-        payload["detail_values"].update(
+        payload["refined_dimensions"].update(
             {
                 "intervention": "metformin",
                 "outcome": "glycemic control",
@@ -105,25 +105,25 @@ class TestSynthesisResponse:
         errors = exc_info.value.errors()
         assert any(e["loc"] == ("synthesized_statement",) for e in errors)
 
-    def test_missing_required_field_detail_values(self):
-        """Test validation fails without detail_values."""
+    def test_missing_required_field_refined_dimensions(self):
+        """Test validation fails without refined_dimensions."""
         with pytest.raises(ValidationError) as exc_info:
             payload = self._base_payload()
-            payload.pop("detail_values")
+            payload.pop("refined_dimensions")
             QueryRefinementResponse(**payload)
         
         errors = exc_info.value.errors()
-        assert any(e["loc"] == ("detail_values",) for e in errors)
+        assert any(e["loc"] == ("refined_dimensions",) for e in errors)
 
-    def test_detail_values_must_be_dict(self):
-        """Test detail_values must be a dictionary."""
+    def test_refined_dimensions_must_be_dict(self):
+        """Test refined_dimensions must be a dictionary."""
         with pytest.raises(ValidationError) as exc_info:
             payload = self._base_payload()
-            payload["detail_values"] = "not a dict"
+            payload["refined_dimensions"] = "not a dict"
             QueryRefinementResponse(**payload)
         
         errors = exc_info.value.errors()
-        assert any("detail_values" in str(e["loc"]) for e in errors)
+        assert any("refined_dimensions" in str(e["loc"]) for e in errors)
 
     def test_default_empty_values(self):
         """Test default values for optional fields."""
@@ -134,10 +134,10 @@ class TestSynthesisResponse:
         assert response.search_filters.authors == []
         assert response.search_filters.fields_of_study == ""
 
-    def test_detail_values_with_special_values(self):
-        """Test detail_values can contain special markers."""
+    def test_refined_dimensions_with_special_values(self):
+        """Test refined_dimensions can contain special markers."""
         payload = self._base_payload()
-        payload["detail_values"].update(
+        payload["refined_dimensions"].update(
             {
                 "outcome": "[SKIPPED]",
                 "intervention": "[CLEAR_IN_ORIGINAL]",

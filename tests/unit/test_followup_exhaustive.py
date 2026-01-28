@@ -39,7 +39,7 @@ def test_followup_with_null_response():
 @pytest.mark.asyncio
 async def test_followup_manager_edge_cases():
     aspect = make_aspect(allow_follow_up=True)
-    manager = QueryRefinementManager(llm_provider=None, query_analyzer=None)
+    manager = QueryRefinementManager(llm_provider=None)  # query_analyzer removed in v2.0
     session = RefinementSession(original_query="query")
     step = session.add_step(aspect)
     step.is_complete = True

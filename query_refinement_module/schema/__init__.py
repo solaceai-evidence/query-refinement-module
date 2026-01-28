@@ -2,8 +2,19 @@
 Query refinement framework with Pydantic models and Jinja2 templates.
 """
 
-# Core model (dataclass-based for now)
-from .model import RefinementAspect
+# Pydantic models (new - preferred)
+from .models import (
+    RefinementDimension,
+    RefinementAspect,  # Alias for backward compatibility
+    UserContext,
+    CompletedDimension,
+    ExamplesCollection,
+    ClearExample,
+    NeedsRefinementExample,
+    PartialExample,
+    AmbiguousExample,
+    OtherExample,
+)
 
 # Response models
 from .response import (
@@ -33,17 +44,41 @@ from .synthesis import (
     validate_synthesis_response,
 )
 
-# NOTE: The following are not yet implemented (Phase 2):
-# - .models (Pydantic models: RefinementDimension, UserContext, etc.)
-# - .loaders (YAML loaders for new Pydantic models)
-# - .prompt_builder (Jinja2 prompt builder with Pydantic models)
-# These will be implemented after current system is stabilized.
+# Prompt builder
+from .prompt_builder import (
+    PromptBuilder,
+    render_template,
+    create_dimension_prompt,
+    create_synthesis_prompt,
+    get_prompt_builder,
+)
+
+# Templates
+from .templates import (
+    GLOBAL_SYSTEM_PROMPT,
+    SYNTHESIS_TEMPLATE,
+    DIMENSION_REFINEMENT_TEMPLATE,
+    EXAMPLES_SECTION_TEMPLATE,
+    INITIAL_USER_INPUT_TEMPLATE,
+    FOLLOW_USER_INPUT_TEMPLATE,
+    USER_CONTEXT_PROFILE_TEMPLATE,
+    DIMENSIONS_CLARIFIED_AND_DEPENDENCIES_TEMPLATE,
+)
 
 __version__ = "2.0.0"
 
 __all__ = [
-    # Core model
-    "RefinementAspect",
+    # Pydantic models
+    "RefinementDimension",
+    "RefinementAspect",  # Alias
+    "UserContext",
+    "CompletedDimension",
+    "ExamplesCollection",
+    "ClearExample",
+    "NeedsRefinementExample",
+    "PartialExample",
+    "AmbiguousExample",
+    "OtherExample",
     
     # Response models
     "DimensionEvaluationResponse",
@@ -64,4 +99,21 @@ __all__ = [
     # Synthesis
     "SynthesisPromptBuilder",
     "validate_synthesis_response",
+    
+    # Prompt builder
+    "PromptBuilder",
+    "render_template",
+    "create_dimension_prompt",
+    "create_synthesis_prompt",
+    "get_prompt_builder",
+    
+    # Templates
+    "GLOBAL_SYSTEM_PROMPT",
+    "SYNTHESIS_TEMPLATE",
+    "DIMENSION_REFINEMENT_TEMPLATE",
+    "EXAMPLES_SECTION_TEMPLATE",
+    "INITIAL_USER_INPUT_TEMPLATE",
+    "FOLLOW_USER_INPUT_TEMPLATE",
+    "USER_CONTEXT_PROFILE_TEMPLATE",
+    "DIMENSIONS_CLARIFIED_AND_DEPENDENCIES_TEMPLATE",
 ]

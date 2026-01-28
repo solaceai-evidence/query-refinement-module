@@ -19,6 +19,7 @@ class StubSettings:
 
 
 def test_build_manager_constructs_components(monkeypatch):
+    """Test build_manager creates provider and manager with correct settings."""
     created = {}
 
     monkeypatch.setattr(cli.LLMSettings, "from_env", classmethod(lambda cls: StubSettings()))
@@ -27,27 +28,19 @@ def test_build_manager_constructs_components(monkeypatch):
         def __init__(self, **kwargs):
             created["provider_kwargs"] = kwargs
 
-    class FakeAnalyzer:
-        def __init__(self, provider, **kwargs):
-            created["analyzer_provider"] = provider
-            created["analyzer_kwargs"] = kwargs
-
     monkeypatch.setattr(cli, "LiteLLMProvider", FakeProvider)
-    monkeypatch.setattr(cli, "LLMQueryAnalyzer", FakeAnalyzer)
     monkeypatch.setattr(cli, "ConsoleTracing", lambda: "tracer")
 
     manager = cli.build_manager(enable_tracing=True)
 
     assert created["provider_kwargs"] == {"default_model": "demo"}
-    assert created["analyzer_kwargs"] == {"temperature": 0.1}
-    assert created["analyzer_provider"] is manager.llm_provider
+    assert isinstance(manager.llm_provider, FakeProvider)
     assert manager.tracing_provider == "tracer"
 
 
 def test_build_manager_without_tracing(monkeypatch):
     monkeypatch.setattr(cli.LLMSettings, "from_env", classmethod(lambda cls: StubSettings()))
     monkeypatch.setattr(cli, "LiteLLMProvider", lambda **_: "provider")
-    monkeypatch.setattr(cli, "LLMQueryAnalyzer", lambda provider, **__: (provider, {}))
 
     manager = cli.build_manager(enable_tracing=False)
 
@@ -60,12 +53,7 @@ def test_build_manager_with_trace_dir(monkeypatch, tmp_path):
     class DummyProvider:
         pass
 
-    class DummyAnalyzer:
-        def __init__(self, provider, **kwargs):
-            self.provider = provider
-
     monkeypatch.setattr(cli, "LiteLLMProvider", lambda **_: DummyProvider())
-    monkeypatch.setattr(cli, "LLMQueryAnalyzer", DummyAnalyzer)
 
     root_logger = logging.getLogger()
     original_handlers = list(root_logger.handlers)

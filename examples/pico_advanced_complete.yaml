@@ -22,12 +22,12 @@ pico_advanced:
     aspect_name: Population
     aspect_description: Statistical characteristics of a group of people, including age range, gender, race/ethnicity, and geographic location that form the foundation for all other PICO dimensions
     evaluation_criteria: |
+      ### Task
       Evaluate if these demographic elements are specified when relevant:
-      - Age (range, category, life stage)
-      - Sex/gender  (male, female, non-binary, specific identities)
-      - Ethnicity/race (specific groups, diverse populations)
-      - Setting (urban, rural, clinical, community)
-      - Geographic location (country, region)
+      - Age (range, category, life stage such as pediatric, postmenopausal, etc.)
+      - Sex/gender  (male, female, non-binary, specific identities, all-inclusive)
+      - Ethnicity/race (specific groups, diverse populations, all-inclusive)
+      - Setting (urban, rural, clinical, community, school-based, geographic location)
 
       MINIMUM REQUIREMENT: At least one demographic MAY be specified. Zero is acceptable.
 
@@ -59,322 +59,33 @@ pico_advanced:
       4. If gaps exist AND optional: silently accept with standardized elements (where applicable)
     examples:
       clear:
-        - statement: Efficacy of metformin in adults aged 40-65 with BMI > 30
-          rationale:
-            Age range precisely defined (40-65), specific population characteristic
-            (BMI > 30)
-        - statement: Postmenopausal women aged 50-70 in urban clinical settings
-          rationale: Age (50-70), gender (women), life stage (postmenopausal)
-        - statement:
-            African American males aged 18-45 with hypertension in community
-            health centers
-          rationale:
-            "Complete population demographic profile: ethnicity, gender, age
-            range"
+        - statement: Efficacy of metformin in adults aged 40-65 with type 2 diabetes
+          rationale: Age (40-65) specified, with all-inclusive gender (adults) and ethnicity and setting
+        - statement: Postmenopausal women under 65 in urban clinical settings
+          rationale: clearly described age (postmenopausal under 65), gender (women), setting (urban clinical)
+        - statement: Black males aged 18-45 with hypertension in community health centers
+          rationale: clearly defined age (18-45), gender (males), ethnicity (Black), setting (community health centers)
       needs_refinement:
-        - statement: Does exercise reduce depression in adults?
-          issue: "'Adults' is too broad - could range from 18 to 100+ years"
-          missing: Specific age range, gender considerations, geographic scope
-          example_question:
-            "What age range are you targeting? For example: young adults
-            (18-35), middle-aged (36-64), or older adults (65+)?"
-        - statement: Study on diabetes management in elderly patients
-          issue: "'Elderly' is ambiguous - definitions vary from 60+ to 80+"
-          missing: Precise age threshold, gender, setting
-          example_question:
-            What specific age threshold defines 'elderly' for your study?
-            (e.g., 65+, 70+, 75+)
-        - statement: Treatment outcomes in minority populations
-          issue: "'Minority populations' is vague and could mean multiple groups"
-          missing: Specific ethnic/racial groups, age, gender
-          example_question:
-            Which specific population groups are you focusing on? (e.g.,
-            Hispanic/Latino, African American, Asian, Native American)
+        - statement: The effect of exercise on depression
+          issue: Zero demographics specified; too broad
+          missing: Age, gender at minimum
+          example_question: "You are including all ages, genders, ethnicities, and settings. Is that correct or do you want to limit to you have any specific age range, sex/gender, setting, and/or ethnicity/race?"
       partial:
         - statement: Women over 40 with cardiovascular disease
           has: Gender (women) and minimum age (40)
-          missing:
-            Upper age limit, ethnicity (if CVD disparities relevant), geographic
-            setting
-          example_question:
-            Is there an upper age limit? Are you focusing on specific
-            ethnic groups given CVD disparities?
-        - statement: Pediatric patients in tertiary care hospitals
-          has: Age category (pediatric) and setting (tertiary care)
-          missing:
-            Specific age range within pediatrics (neonates, infants, children,
-            adolescents?)
-          example_question:
-            What age range within pediatrics? (0-1 year, 1-12 years, 12-18
-            years, or all pediatric ages)
-      other:
-        - statement:
-            Mindfulness program outcomes for exactly 40-year-old women diagnosed
-            with postpartum depression within the last month
-          note:
-            Extremely narrow demographic qualifiers can cause the literature search
-            to miss closely related evidence (e.g., 35-45).
-          guidance:
-            Confirm whether the researcher is open to a broader age band or postpartum
-            window before locking the filters.
-          example_question:
-            Should we expand the age or postpartum interval to capture
-            more applicable studies?
+          missing: ethnicity (if CVD disparities relevant),setting (geographic/clinical context)
+          example_question: Is there an upper age limit? Are you focusing on specific ethnic groups given CVD disparities?
       vague_ambiguous:
+        - statement: Treatment outcomes in minority populations aged 65 and older in tertiary care hospitals
+          issue: "'Minority populations' is vague and could mean multiple groups"
+          missing: precise ethnicity/race or setting; maybe gender as well
+          example_question: "Which specific population groups are you focusing on? (e.g., Hispanic/Latino, African American, Asian, Native American). Do you have any specifications regarding gender or geographic location?"
         - statement: Middle-aged adults in diverse communities
-          issue: Both 'middle-aged' (typically 40-65 but varies) and 'diverse' are ambiguous
-          example_question:
-            "Can you specify: 1) Exact age range for 'middle-aged',
-            and 2) What dimensions of diversity matter (ethnic, socioeconomic, geographic)?"
+          issue: ambiguous setting and ethnicity/race
+          example_question: "Specify what dimensions of diversity matter (ethnic, socioeconomic, geographic)?"
         - statement: Study in representative population sample
           issue: "'Representative' is context-dependent - representative of what population?"
-          example_question:
-            What population should this sample represent? Please specify
-            demographic characteristics that define representativeness.
-  - id: geographic_location
-    aspect_name: Geographic Location & Setting
-    aspect_description:
-      "Captures the geographic context referenced in a clinical research
-      query country, region, city, healthcare setting, and recruitment environment.
-      Precise location details clarify generalizability and feasibility
-
-      "
-    system_prompt:
-      "You are a research advisor helping users refine their research topics
-      by asking focused clarifying questions.
-
-
-      Your Job:
-
-      Users provide research interests (questions, statements, aims, or paragraphs).
-      Clarify aspect: **{self.aspect_name}**, with definition: **{self.aspect_description}**.
-      Focus ONLY on this aspect—ignore other research elements.
-
-
-      How to Engage:
-
-      1. **Acknowledge first**: Recognize what's already clear before requesting clarification.
-
-      2. **One element at a time**: Address 1-2 unclear points per turn.
-
-      3. **Mirror their language**: Use their terminology; avoid jargon unless it adds
-      needed precision.
-
-      4. **Give examples**: Offer 2-4 concrete, aspect-specific examples they can adapt.
-
-      5. **Explain why**: Briefly note how this clarification strengthens their research
-      input and improves their search.
-
-
-      When to Stop:
-
-      This aspect is sufficiently refined when the user's statement is specific, unambiguous,
-      and actionable for evidence synthesis.
-
-
-      Boundaries:
-
-      - You clarify research descriptions, not search literature or write proposals.
-
-      - Stay within your assigned refinement aspect.
-
-      - Keep developing clarity, not fixing problems.
-
-
-      Tone: Supportive and collaborative. Be efficient—don't over-explain.
-
-      "
-    evaluation_criteria:
-      "### Objective:\n  Determine whether the geographic location\
-      \ and setting are sufficiently specified to support:\n    - replication\n    -\
-      \ generalization\n    - feasibility\n\n### Considerations\n  1. Country/Region/City:\
-      \ Is a specific place named (e.g., \"Spain\", \"New York City\", \"West Africa\"\
-      )?\n  2. Healthcare Setting: Is the care context defined (e.g., \"tertiary hospital\"\
-      , \"community clinic\", \"home-based care\")?\n  3. Recruitment Context: Is the\
-      \ population tied to a clear study context (e.g., \"urban academic centers\",\
-      \ \"rural outreach programs\")?\n"
-    examples:
-      clear:
-        - statement: Hypertension management in rural community health districts in India
-          rationale:
-            Country (India), setting (district health services), and scope are
-            explicit.
-        - statement: Diabetes outcomes monitored at tertiary care centers across São Paulo
-          rationale:
-            City (São Paulo) and facility type (tertiary centers) are clearly
-            defined.
-        - statement: Asthma prevalence studies conducted in city hospitals in Nairobi
-          rationale: City (Nairobi) and care setting (city hospitals) anchor the location.
-      needs_refinement:
-        - statement: Cancer treatment in local hospitals
-          issue: "'Local hospitals' lacks any location reference"
-          missing: City, region, or country identifiers.
-          example_question:
-            Which city, region, or country do the 'local hospitals' refer
-            to?
-        - statement: Global trial enrolling patients from multiple continents
-          issue: Continents alone are too broad for planning.
-          missing: Specific countries, regions, or sites.
-          example_question: Which countries or regions will the trial cover?
-      partial:
-        - statement: Outcomes tracked in hospitals in Europe
-          has: Region (Europe) and setting (hospitals).
-          missing: hospital typology
-          note: Europe is broad; confirm whether that level of granularity is acceptable.
-          example_question:
-            Is Europe specific enough for your study, or can you point
-            to a country/city and hospital type?
-        - statement: Diabetes care delivered through clinics
-          has: Care setting (clinics).
-          missing: Geographic location of those clinics.
-          example_question: Where are these clinics located (country, region, or city)?
-      vague_ambiguous:
-        - statement: Treatment studies in representative settings
-          issue: "'Representative' has no geographic anchor."
-          example_question:
-            Which specific settings (cities, regions, or countries) are
-            considered representative?
-        - statement: Research in diverse communities
-          issue: "'Diverse communities' lacks locational detail."
-          example_question: Which communities and locations define 'diverse' in this context?
-  - id: population_clinical_profile
-    aspect_name: Clinical Profile & Health Status
-    aspect_description:
-      Specifies the primary health condition, disease stage, severity,
-      comorbidities, and relevant medical history. Critical for defining study eligibility
-      and expected treatment responses.
-    depends_on:
-      - population_demographic
-      - geographic_location
-    system_prompt:
-      "You are a research advisor helping users refine their research topics
-      by asking focused clarifying questions.
-
-
-      Your Job:
-
-      Users provide research interests (questions, statements, aims, or paragraphs).
-      Clarify aspect: **{self.aspect_name}**, with definition: **{self.aspect_description}**.
-      Focus ONLY on this aspect—ignore other research elements.
-
-
-      How to Engage:
-
-      1. **Acknowledge first**: Recognize what's already clear before requesting clarification.
-
-      2. **One element at a time**: Address 1-2 unclear points per turn.
-
-      3. **Mirror their language**: Use their terminology; avoid jargon unless it adds
-      needed precision.
-
-      4. **Give examples**: Offer 2-4 concrete, aspect-specific examples they can adapt.
-
-      5. **Explain why**: Briefly note how this clarification strengthens their research
-      input and improves their search.
-
-
-      When to Stop:
-
-      This aspect is sufficiently refined when the user's statement is specific, unambiguous,
-      and actionable for evidence synthesis.
-
-
-      Boundaries:
-
-      - You clarify research descriptions, not search literature or write proposals.
-
-      - Stay within your assigned refinement aspect.
-
-      - Keep developing clarity, not fixing problems.
-
-
-      Tone: Supportive and collaborative. Be efficient—don't over-explain.
-
-      "
-    evaluation_criteria:
-      "### Objective\n  Evaluate whether the clinical profile\
-      \ and health status specification enables:\n    - Accurate patient identification\
-      \ and recruitment\n    - Appropriate treatment selection\n    - Valid outcome\
-      \ interpretation\n\n### Clinical Profile Dimensions\n  1. Primary Condition/Diagnosis\n\
-      \    - Is the main health condition clearly identified?\n    - Is it specific\
-      \ enough? (e.g., \"Type 2 diabetes\" vs \"diabetes\")\n  2. Disease Stage/Phase\n\
-      \    - Is staging mentioned when relevant?\n    - Examples: early-stage, advanced,\
-      \ acute, chronic, remission\n  3. Severity Level\n    - Is severity specified?\n\
-      \    - Examples: mild, moderate, severe,\n  4. Comorbidities\n    - Are concurrent\
-      \ conditions mentioned?\n    - Are exclusions for contraindicated comorbidities\
-      \ specified?\n  5. Treatment History\n    - Is prior treatment status mentioned?\n\
-      \    - Examples: treatment-naive, refractory, previously treated\n  6. Diagnostic\
-      \ Criteria\n    - Are diagnostic standards mentioned?\n    - Examples: ICD codes,\
-      \ clinical guidelines, biomarker thresholds\n"
-    examples:
-      clear:
-        - statement:
-            Efficacy of SGLT2 inhibitors in Type 2 diabetes patients with HbA1c
-            7.5-10%, treatment-naive
-          rationale:
-            Specific condition (Type 2 diabetes), severity marker (HbA1c 7.5-10%),
-            treatment history (naive)
-        - statement:
-            Outcomes of immunotherapy in stage IIIB non-small cell lung cancer,
-            ECOG performance status 0-1
-          rationale:
-            Precise diagnosis, stage (IIIB), cancer type (NSCLC), functional
-            status (ECOG 0-1)
-        - statement:
-            Management of acute severe asthma exacerbations requiring emergency
-            department care
-          rationale:
-            Condition (asthma), phase (acute), severity (severe), setting context
-            (ED care required)
-      needs_refinement:
-        - statement: Treatment for diabetic patients
-          issue:
-            Diabetes type not specified - Type 1, Type 2, gestational, MODY, etc.
-            have different treatments
-          missing: Disease type, severity, duration, complications
-          example_question:
-            What type of diabetes? (Type 1, Type 2, gestational) And what
-            level of glycemic control? (e.g., HbA1c range)
-        - statement: Study on cancer treatment outcomes
-          issue: No cancer type, stage, or histology specified
-          missing: Cancer type, stage, grade, molecular markers
-          example_question:
-            Which cancer type and stage are you studying? Are there specific
-            histological or molecular characteristics?
-        - statement: Intervention in patients with heart problems
-          issue:
-            "'Heart problems' is far too vague - hundreds of cardiac conditions
-            exist"
-          missing: Specific cardiac diagnosis, severity, functional class
-          example_question:
-            What specific cardiac condition? (e.g., heart failure, coronary
-            artery disease, arrhythmia) And what severity?
-      partial:
-        - statement: Effects of statins in patients with moderate hyperlipidemia
-          has: Condition (hyperlipidemia) and severity (moderate)
-          missing:
-            Specific lipid ranges defining 'moderate', comorbidities, prior treatment
-            attempts
-          example_question:
-            What LDL or total cholesterol range defines 'moderate' for
-            your study? Any relevant comorbidities or prior statin use?
-        - statement: Study in hypertensive patients with diabetes
-          has: Two conditions specified (hypertension, diabetes)
-          missing: BP range, diabetes type, severity of both conditions, other comorbidities
-          example_question:
-            What BP range defines hypertension in your study? What type
-            and control level of diabetes?
-      vague_ambiguous:
-        - statement: Treatment in patients with refractory disease
-          issue: "'Refractory' to which treatments? How many prior treatment failures?"
-          example_question:
-            Refractory to which specific treatments? How many prior treatment
-            lines? What defines 'refractory' in your protocol?
-        - statement: Study in high-risk cardiovascular patients
-          issue: "'High-risk' is subjective - needs risk score or specific criteria"
-          example_question:
-            What defines 'high-risk'? (e.g., Framingham score, specific
-            risk factors, prior events)
+          example_question: What population should this sample represent? Please specify demographic characteristics that define representativeness, including age, sex/gender, ethnicity/race, and setting.
   - id: intervention_specification
     aspect_name: Intervention Specification
     aspect_description:
@@ -847,3 +558,43 @@ pico_advanced:
           example_question:
             What is your target sample size? Study duration? Single-center
             or multi-center?
+  - id: clinical_condition
+    aspect_name: Health Condition and Clinical Context
+    aspect_description: Specifies the primary health condition or disease, including disease stage, severity, and relevant comorbidities. Defines clinical eligibility criteria and baseline clinical characteristics of the target population.
+    evaluation_criteria: |
+      ### Task
+      Evaluate if health condition specification enables accurate patient identification, appropriate treatment selection, and valid outcome interpretation.
+
+      **CRITICAL REQUIREMENT**:
+      Primary condition/diagnosis MUST be specified. If absent, reject and prompt.
+
+      ### CONDITION SPECIFICITY VALIDATION
+      Condition is acceptable if:
+
+      Clinically unambiguous (single primary treatment pathway) OR
+      Specific enough to avoid disambiguation (e.g., "Type 2 diabetes" acceptable; "diabetes" requires type specification if ambiguous)
+
+      Reject only if multiple treatment pathways exist requiring clarification.
+
+      ### CONDITIONAL ELEMENTS
+      - Disease Stage - Required IF clinically meaningful for prognosis or treatment selection (e.g., cancer staging, CKD stages, heart failure classification). Optional otherwise.
+
+      - Severity - Required IF severity materially affects treatment choice (e.g., depression mild/moderate/severe, asthma control levels). Optional for conditions where severity is not treatment-determining.
+
+      - Comorbidities - Include ONLY if comorbidity satisfies at least 1 criterion:
+        - Affects treatment feasibility (contraindication, drug interaction, organ function)
+        - Affects outcome interpretation (confounding variable)
+        - Explicitly defines inclusion/exclusion criteria
+        - Modifies disease prognosis in this specific context
+      Reject comorbidities with no link to primary condition or intervention (e.g., cancer + hypertension without specified interaction).
+
+      - Treatment History & Diagnostic Criteria - Optional enhancements; accept if absent.
+         - Is prior treatment status mentioned? (e.g., treatment-naive, refractory, maintenance therapy)
+         - Are diagnostic criteria specified? (e.g., ICD codes, clinical guidelines, biomarker thresholds)
+    response_strategy: |
+      1. Parse input for named condition
+      2. If absent → REJECT + PROMPT for condition
+      3. If present, assess specificity → if ambiguous → PROMPT for disambiguation
+      4. Determine stage/severity relevance via clinical context → if relevant AND absent → PROMPT
+      5. Validate comorbidities for clinical rationale → if stated without rationale → PROMPT
+      6. If all required elements present and valid → ACCEPT

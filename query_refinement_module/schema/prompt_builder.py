@@ -1,51 +1,414 @@
 """
-Prompt builder using Jinja2 templates and Pydantic models.
+Jinja2-based prompt builder for query refinement.
 
-Separates data validation (Pydantic) from presentation (Jinja2).
+This module provides a clean interface for rendering prompts
+using Jinja2 templates and Pydantic models.
 """
 
-from typing import Dict, List, Optional
-from jinja2 import Environment, Template
+from typing import List, Dict, Any, Optional
+from jinja2 import Environment, BaseLoader, select_autoescape
 import logging
 
 from .models import (
     RefinementDimension,
-    UserContext,
     CompletedDimension,
-    ExamplesCollection
+    UserContext,
+    ExamplesCollection,
 )
 from .templates import (
-    DIMENSION_REFINEMENT_TEMPLATE,
+    GLOBAL_SYSTEM_PROMPT,
     SYNTHESIS_TEMPLATE,
-    EXAMPLES_SECTION_TEMPLATE
+    DIMENSION_REFINEMENT_TEMPLATE,
+    EXAMPLES_SECTION_TEMPLATE,
+    INITIAL_USER_INPUT_TEMPLATE,
+    FOLLOW_USER_INPUT_TEMPLATE,
+    USER_CONTEXT_PROFILE_TEMPLATE,
+    DIMENSIONS_CLARIFIED_AND_DEPENDENCIES_TEMPLATE,
 )
 
+
 logger = logging.getLogger(__name__)
+
+__all__ = [
+    "PromptBuilder",
+    "render_template",
+    "create_dimension_prompt",
+    "create_synthesis_prompt",
+    "get_prompt_builder",
+]
+
+
+# =============================================================================
+# Jinja2 Environment Setup
+# =============================================================================
+
+def _create_jinja_env() -> Environment:
+    """Create a Jinja2 environment with appropriate settings."""
+    env = Environment(
+        loader=BaseLoader(),
+        autoescape=select_autoescape(default=False),
+        trim_blocks=True,
+        lstrip_blocks=True,
+        keep_trailing_newline=True,
+    )
+    return env
+
+
+_jinja_env = _create_jinja_env()
+
+
+def render_template(template_string: str, **context) -> str:
+    """
+    Render a Jinja2 template string with the given context.
+    
+    Args:
+        template_string: The Jinja2 template to render
+        **context: Template variables
+        
+    Returns:
+        Rendered template string
+    """
+    template = _jinja_env.from_string(template_string)
+    return template.render(**context)
 
 
 class PromptBuilder:
     """
-    Builds prompts from Pydantic models using Jinja2 templates.
+    Builds prompts for the query refinement system using Jinja2 templates.
     
-    Handles:
-    - Template rendering with type-safe data
-    - Examples formatting
-    - Dependency context building
-    - Schema generation for output format
+    Provides methods to generate:
+    - System prompts (global + dimension-specific)
+    - User context sections
+    - Dimension evaluation prompts
+    - Synthesis prompts
+    - User input prompts (initial and follow-up)
     """
     
     def __init__(self):
-        """Initialize Jinja2 environment."""
-        self.env = Environment(
-            trim_blocks=True,
-            lstrip_blocks=True,
-            keep_trailing_newline=False
-        )
+        """Initialize the prompt builder with Jinja2 environment."""
+        self._env = _jinja_env
         
-        # Precompile templates
-        self.dimension_template = self.env.from_string(DIMENSION_REFINEMENT_TEMPLATE)
-        self.synthesis_template = self.env.from_string(SYNTHESIS_TEMPLATE)
-        self.examples_template = self.env.from_string(EXAMPLES_SECTION_TEMPLATE)
+        # Precompile templates for performance
+        self._dimension_template = self._env.from_string(DIMENSION_REFINEMENT_TEMPLATE)
+        self._synthesis_template = self._env.from_string(SYNTHESIS_TEMPLATE)
+        self._examples_template = self._env.from_string(EXAMPLES_SECTION_TEMPLATE)
+        self._user_context_template = self._env.from_string(USER_CONTEXT_PROFILE_TEMPLATE)
+        self._dependencies_template = self._env.from_string(DIMENSIONS_CLARIFIED_AND_DEPENDENCIES_TEMPLATE)
+        self._initial_input_template = self._env.from_string(INITIAL_USER_INPUT_TEMPLATE)
+        self._follow_up_template = self._env.from_string(FOLLOW_USER_INPUT_TEMPLATE)
+    
+    # =========================================================================
+    # Global System Prompt
+    # =========================================================================
+    
+    def get_global_system_prompt(self) -> str:
+        """
+        Get the global system prompt.
+        
+        Returns:
+            The global system directive string
+        """
+        return GLOBAL_SYSTEM_PROMPT.strip()
+    
+    # =========================================================================
+    # User Context Section
+    # =========================================================================
+    
+    def render_user_context(self, user_context: UserContext) -> str:
+        """
+        Render the user context adaptation profile.
+        
+        Args:
+            user_context: The user context to render
+            
+        Returns:
+            Rendered user context section
+        """
+        # Convert Pydantic model to dict for template
+        if hasattr(user_context, 'model_dump'):
+            ctx_dict = user_context.model_dump()
+        elif hasattr(user_context, '__dict__'):
+            ctx_dict = vars(user_context)
+        else:
+            ctx_dict = dict(user_context)
+        return self._user_context_template.render(user_context=ctx_dict)
+    
+    # =========================================================================
+    # Completed Dimensions & Dependencies
+    # =========================================================================
+    
+    def render_completed_dimensions(
+        self,
+        completed_dimensions: List[CompletedDimension],
+        dependencies: Optional[List[RefinementDimension]] = None
+    ) -> str:
+        """
+        Render the completed dimensions and dependencies section.
+        
+        Args:
+            completed_dimensions: List of already-completed dimensions
+            dependencies: List of dimensions this dimension depends on
+            
+        Returns:
+            Rendered section showing clarified dimensions and dependencies
+        """
+        # Convert to dicts for template
+        completed_dicts = []
+        for dim in completed_dimensions:
+            if hasattr(dim, 'model_dump'):
+                completed_dicts.append(dim.model_dump())
+            elif hasattr(dim, '__dict__'):
+                completed_dicts.append(vars(dim))
+            else:
+                completed_dicts.append(dict(dim))
+        
+        dep_dicts = None
+        if dependencies:
+            dep_dicts = [
+                {"name": dep.aspect_name, "id": dep.id}
+                for dep in dependencies
+            ]
+        
+        return self._dependencies_template.render(
+            completed_dimensions=completed_dicts,
+            dependencies=dep_dicts
+        )
+    
+    # =========================================================================
+    # Dimension Refinement Prompt
+    # =========================================================================
+    
+    def render_dimension_prompt(
+        self,
+        dimension: RefinementDimension,
+        include_examples: bool = True
+    ) -> str:
+        """
+        Render the dimension evaluation criteria prompt.
+        
+        Args:
+            dimension: The dimension to render
+            include_examples: Whether to include examples section
+            
+        Returns:
+            Rendered dimension evaluation criteria
+        """
+        # Prepare examples if present and requested
+        examples_dict = None
+        has_examples = False
+        if include_examples and dimension.examples:
+            if hasattr(dimension.examples, 'model_dump'):
+                examples_dict = dimension.examples.model_dump()
+            elif hasattr(dimension.examples, '__dict__'):
+                examples_dict = vars(dimension.examples)
+            else:
+                examples_dict = dict(dimension.examples)
+            has_examples = dimension.has_examples()
+        
+        return self._dimension_template.render(
+            aspect_name=dimension.aspect_name,
+            aspect_description=dimension.aspect_description,
+            evaluation_criteria=dimension.get_evaluation_content(),
+            response_strategy=dimension.response_strategies,
+            examples=examples_dict,
+            examples_section=has_examples
+        )
+    
+    def render_examples_section(self, examples: ExamplesCollection) -> str:
+        """
+        Render just the examples section.
+        
+        Args:
+            examples: The examples collection to render
+            
+        Returns:
+            Rendered examples section
+        """
+        if hasattr(examples, 'model_dump'):
+            examples_dict = examples.model_dump()
+        elif hasattr(examples, '__dict__'):
+            examples_dict = vars(examples)
+        else:
+            examples_dict = dict(examples)
+        return self._examples_template.render(examples=examples_dict)
+    
+    # =========================================================================
+    # User Input Prompts
+    # =========================================================================
+    
+    def render_initial_input(self, original_input: str) -> str:
+        """
+        Render the initial user input prompt (no conversation history).
+        
+        Args:
+            original_input: The user's original research query
+            
+        Returns:
+            Rendered initial input prompt
+        """
+        return self._initial_input_template.render(original_input=original_input)
+    
+    def render_follow_up_input(
+        self,
+        conversation_history: List[Dict[str, str]],
+        latest_question: str,
+        latest_answer: str
+    ) -> str:
+        """
+        Render the follow-up user input prompt (with conversation history).
+        
+        Args:
+            conversation_history: List of {question: str, answer: str} dicts
+            latest_question: The most recent question asked
+            latest_answer: The user's latest response
+            
+        Returns:
+            Rendered follow-up input prompt
+        """
+        return self._follow_up_template.render(
+            conversation_history=conversation_history,
+            latest_question=latest_question,
+            latest_answer=latest_answer
+        )
+    
+    # =========================================================================
+    # Synthesis Prompt
+    # =========================================================================
+    
+    def get_synthesis_system_prompt(self) -> str:
+        """
+        Get the synthesis system prompt.
+        
+        Returns:
+            The synthesis template string
+        """
+        return SYNTHESIS_TEMPLATE.strip()
+    
+    def render_synthesis_original_input(self, original_input: str) -> str:
+        """
+        Render the original input message for synthesis.
+        
+        Args:
+            original_input: The user's original research query
+            
+        Returns:
+            Formatted original input for synthesis
+        """
+        return f"## Original Input\n\n{original_input}"
+    
+    def render_synthesis_dimensions(
+        self,
+        dimensions: Dict[str, str],
+        dimension_list: List[RefinementDimension]
+    ) -> str:
+        """
+        Render the clarified dimensions for synthesis.
+        
+        Args:
+            dimensions: Dict mapping dimension ID to assembled value
+            dimension_list: List of dimension definitions
+            
+        Returns:
+            Formatted dimensions for synthesis
+        """
+        # Build ID -> dimension mapping
+        dim_map = {d.id: d for d in dimension_list}
+        
+        lines = ["## Clarified Dimensions\n"]
+        for dim_id, value in dimensions.items():
+            dim = dim_map.get(dim_id)
+            if dim:
+                # [SKIPPED] if None or empty
+                display_value = value if value else "[SKIPPED]"
+                lines.append(f"**{dim.aspect_name}** ({dim.aspect_description}): {display_value}")
+            else:
+                display_value = value if value else "[SKIPPED]"
+                lines.append(f"**{dim_id}**: {display_value}")
+        
+        return "\n".join(lines)
+    
+    # =========================================================================
+    # Combined System Prompt Builder
+    # =========================================================================
+    
+    def build_refinement_system_prompt(
+        self,
+        dimension: RefinementDimension,
+        user_context: Optional[UserContext] = None,
+        completed_dimensions: Optional[List[CompletedDimension]] = None,
+        dependencies: Optional[List[RefinementDimension]] = None
+    ) -> str:
+        """
+        Build the complete system prompt for dimension refinement.
+        
+        Combines:
+        1. Global system prompt
+        2. User context adaptation
+        3. Completed dimensions & dependencies
+        4. Dimension evaluation criteria
+        
+        Args:
+            dimension: The dimension being refined
+            user_context: User adaptation profile (uses dimension's if not provided)
+            completed_dimensions: Already completed dimensions
+            dependencies: Dimensions this one depends on
+            
+        Returns:
+            Complete system prompt string
+        """
+        parts = []
+        
+        # 1. Global system prompt
+        parts.append(self.get_global_system_prompt())
+        
+        # 2. User context (from dimension or provided)
+        ctx = user_context or dimension.user_context
+        if ctx:
+            parts.append(self.render_user_context(ctx))
+        
+        # 3. Completed dimensions & dependencies
+        if completed_dimensions or dependencies:
+            parts.append(self.render_completed_dimensions(
+                completed_dimensions or [],
+                dependencies
+            ))
+        
+        # 4. Dimension evaluation criteria
+        parts.append(self.render_dimension_prompt(dimension))
+        
+        return "\n\n".join(parts)
+    
+    def build_synthesis_messages(
+        self,
+        original_input: str,
+        dimensions: Dict[str, str],
+        dimension_list: List[RefinementDimension]
+    ) -> List[Dict[str, str]]:
+        """
+        Build the complete message list for synthesis.
+        
+        Returns a list of messages ready for LLM API:
+        1. System prompt (synthesis template)
+        2. Original input
+        3. Clarified dimensions
+        
+        Args:
+            original_input: The user's original research query
+            dimensions: Dict mapping dimension ID to assembled value
+            dimension_list: List of dimension definitions
+            
+        Returns:
+            List of {role: str, content: str} message dicts
+        """
+        return [
+            {"role": "system", "content": self.get_synthesis_system_prompt()},
+            {"role": "user", "content": self.render_synthesis_original_input(original_input)},
+            {"role": "user", "content": self.render_synthesis_dimensions(dimensions, dimension_list)},
+        ]
+    
+    # =========================================================================
+    # Legacy Methods (for backward compatibility)
+    # =========================================================================
     
     def build_dimension_refinement_prompt(
         self,
@@ -56,7 +419,7 @@ class PromptBuilder:
         dependency_values: Dict[str, str]
     ) -> str:
         """
-        Build dimension refinement prompt.
+        Build dimension refinement prompt (legacy method).
         
         Args:
             dimension: Dimension to refine
@@ -68,49 +431,23 @@ class PromptBuilder:
         Returns:
             Complete prompt string ready for LLM
         """
-        # Format evaluation instructions with user input
-        evaluation_instructions = self._format_evaluation_instructions(
-            dimension.evaluation_instructions,
-            original_input
-        )
-        
-        # Build examples section if available
-        examples_section = ""
-        if dimension.has_examples:
-            examples_section = self.examples_template.render(
-                examples=dimension.examples
-            )
-        
-        # Build dependencies list with reasons
+        # Find dependency dimensions
         dependencies = []
-        if dimension.has_dependencies:
+        if dimension.depends_on:
             for dep_id in dimension.depends_on:
-                # Find the completed dimension
                 dep_dim = next(
                     (d for d in completed_dimensions if d.id == dep_id),
                     None
                 )
                 if dep_dim:
-                    dependencies.append({
-                        'name': dep_dim.name,
-                        'assembled_value': dep_dim.assembled_value,
-                        'reason': f"Required for {dimension.aspect_name.lower()}"
-                    })
+                    # Create a mock dimension for the template
+                    dependencies.append(type('Dep', (), {'aspect_name': dep_dim.name, 'id': dep_dim.id})())
         
-        # Get complete schema and descriptions
-        schema = dimension.get_complete_schema()
-        descriptions = dimension.get_complete_descriptions()
-        
-        # Render template
-        return self.dimension_template.render(
+        return self.build_refinement_system_prompt(
             dimension=dimension,
             user_context=user_context,
             completed_dimensions=completed_dimensions,
-            dependencies=dependencies,
-            evaluation_instructions=evaluation_instructions,
-            examples_section=examples_section,
-            schema=schema,
-            descriptions=descriptions
+            dependencies=dependencies if dependencies else None
         )
     
     def build_synthesis_prompt(
@@ -121,7 +458,7 @@ class PromptBuilder:
         synthesis_purpose: str = "literature search and methodology design"
     ) -> str:
         """
-        Build synthesis prompt.
+        Build synthesis prompt (legacy method).
         
         Args:
             all_dimensions: All completed dimensions
@@ -132,33 +469,31 @@ class PromptBuilder:
         Returns:
             Complete synthesis prompt
         """
-        return self.synthesis_template.render(
-            all_dimensions=all_dimensions,
-            original_input=original_input,
-            user_context=user_context,
-            synthesis_purpose=synthesis_purpose
-        )
-    
-    def _format_evaluation_instructions(
-        self,
-        instructions: str,
-        original_input: str
-    ) -> str:
-        """
-        Format evaluation instructions with user input.
+        # Convert completed dimensions to dict format
+        dimensions = {d.id: d.assembled_value for d in all_dimensions}
         
-        Handles {input}, {statement}, {query} placeholders.
-        """
-        return instructions.format(
-            input=original_input,
-            statement=original_input,
-            query=original_input
+        # Build messages and combine
+        messages = self.build_synthesis_messages(
+            original_input=original_input,
+            dimensions=dimensions,
+            dimension_list=[]  # Empty since we don't have full dimension definitions
         )
+        
+        return "\n\n".join(m["content"] for m in messages)
 
 
-# ============================================================================
-# Convenience Functions
-# ============================================================================
+# =============================================================================
+# Default Instance & Convenience Functions
+# =============================================================================
+
+# Create a default instance for convenience
+_default_builder = PromptBuilder()
+
+
+def get_prompt_builder() -> PromptBuilder:
+    """Get the default prompt builder instance."""
+    return _default_builder
+
 
 def create_dimension_prompt(
     dimension: RefinementDimension,
@@ -180,8 +515,7 @@ def create_dimension_prompt(
     Returns:
         Formatted prompt string
     """
-    builder = PromptBuilder()
-    return builder.build_dimension_refinement_prompt(
+    return _default_builder.build_dimension_refinement_prompt(
         dimension=dimension,
         user_context=user_context,
         original_input=original_input,
@@ -208,17 +542,9 @@ def create_synthesis_prompt(
     Returns:
         Formatted synthesis prompt
     """
-    builder = PromptBuilder()
-    return builder.build_synthesis_prompt(
+    return _default_builder.build_synthesis_prompt(
         all_dimensions=all_dimensions,
         original_input=original_input,
         user_context=user_context,
         synthesis_purpose=synthesis_purpose
     )
-
-
-__all__ = [
-    "PromptBuilder",
-    "create_dimension_prompt",
-    "create_synthesis_prompt",
-]

@@ -55,16 +55,12 @@ class TestSynthesisPromptBuilder:
             aspect_list=sample_aspects,
         )
 
-        # Check prompt includes key sections
-        assert "ORIGINAL INPUT" in prompt
+        # Check prompt includes key sections (using new template format)
+        assert "Original Input" in prompt
         assert "diabetes treatment outcomes" in prompt
-        assert "CLARIFIED DETAILS" in prompt
+        assert "Clarified Dimensions" in prompt
         assert "Target Population" in prompt
         assert "adults with diabetes" in prompt
-        assert "OUTPUT STRUCTURE" in prompt
-        assert "OUTPUT FORMAT" in prompt
-        assert "synthesized_statement" in prompt
-        assert "detail_values" in prompt
 
     def test_aspects_section_excludes_skipped(self, sample_aspects, refinement_values):
         """Test that [SKIPPED] aspects are included with a marker."""
@@ -82,9 +78,8 @@ class TestSynthesisPromptBuilder:
         assert "metformin therapy" in prompt
 
         # Outcome should be marked as skipped in aspects section
-        aspects_section = prompt.split("OUTPUT FORMAT")[0]
-        assert "Outcome" in aspects_section
-        assert "[SKIPPED]" in aspects_section
+        assert "Outcome" in prompt
+        assert "[SKIPPED]" in prompt
 
     def test_aspects_section_handles_clear_in_original(self, sample_aspects):
         """Test that [CLEAR_IN_ORIGINAL] aspects are included with a marker."""
@@ -105,7 +100,7 @@ class TestSynthesisPromptBuilder:
         assert "[CLEAR_IN_ORIGINAL]" in prompt
 
     def test_output_format_includes_required_fields(self, sample_aspects, refinement_values):
-        """Test that output format includes all required fields."""
+        """Test that output format includes required dimensions."""
         builder = SynthesisPromptBuilder()
         prompt = builder.get_synthesis_prompt(
             original_input="test query",
@@ -113,14 +108,10 @@ class TestSynthesisPromptBuilder:
             aspect_list=sample_aspects,
         )
 
-        # Check all required fields are present
-        assert '"synthesized_statement"' in prompt
-        assert '"detail_values"' in prompt
-        assert '"search_optimized"' in prompt
-        assert '"search_filters"' in prompt
-        assert '"terminology"' in prompt
-        assert '"metadata"' in prompt
-        assert '"processing_log"' in prompt
+        # Check all aspects are present in the prompt
+        assert "Target Population" in prompt
+        assert "Intervention" in prompt
+        assert "Outcome" in prompt
 
     def test_empty_refinements(self, sample_aspects):
         """Test with no refinement values."""
@@ -131,13 +122,13 @@ class TestSynthesisPromptBuilder:
             aspect_list=sample_aspects,
         )
 
-        # Should still build valid prompt
-        assert "ORIGINAL INPUT" in prompt
+        # Should still build valid prompt with [NOT SET] markers
+        assert "Original Input" in prompt
         assert "test query" in prompt
-        assert "OUTPUT FORMAT" in prompt
+        assert "[NOT SET]" in prompt
 
     def test_quality_requirements_included(self, sample_aspects, refinement_values):
-        """Test that quality requirements are included in prompt."""
+        """Test that prompt contains dimension information for quality synthesis."""
         builder = SynthesisPromptBuilder()
         prompt = builder.get_synthesis_prompt(
             original_input="test query",
@@ -145,18 +136,12 @@ class TestSynthesisPromptBuilder:
             aspect_list=sample_aspects,
         )
 
-        # Check for quality guidance
-        quality_markers = [
-            "preserve",
-            "combine",
-            "natural",
-            "specific",
-            "clear",
-        ]
-        
-        # At least some quality guidance should be present
-        found_markers = sum(1 for marker in quality_markers if marker.lower() in prompt.lower())
-        assert found_markers >= 2, "Quality requirements should be present in prompt"
+        # Check that the prompt contains structured dimension information
+        # that enables quality synthesis
+        assert "Clarified Dimensions" in prompt
+        assert "Target Population" in prompt
+        assert "Intervention" in prompt
+        assert "Outcome" in prompt
 
     def test_get_system_prompt(self):
         """Test system prompt retrieval."""

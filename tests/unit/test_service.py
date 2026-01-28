@@ -30,15 +30,15 @@ def immediate_to_thread(monkeypatch):
 
 
 def test_build_manager_from_env_uses_settings(monkeypatch):
+    """Test build_manager_from_env uses settings for provider."""
     provider_kwargs = {"default_model": "m"}
-    analyzer_kwargs = {"temperature": 0.2}
 
     class StubSettings:
         def as_provider_kwargs(self):
             return provider_kwargs
 
         def as_analyzer_kwargs(self):
-            return analyzer_kwargs
+            return {"temperature": 0.2}
 
     monkeypatch.setattr(service.LLMSettings, "from_env", classmethod(lambda cls: StubSettings()))
 
@@ -48,19 +48,12 @@ def test_build_manager_from_env_uses_settings(monkeypatch):
         def __init__(self, **kwargs):
             created["provider"] = kwargs
 
-    class StubAnalyzer:
-        def __init__(self, provider, **kwargs):
-            created["analyzer_provider"] = provider
-            created["analyzer"] = kwargs
-
     monkeypatch.setattr(service, "LiteLLMProvider", StubProvider)
-    monkeypatch.setattr(service, "LLMQueryAnalyzer", StubAnalyzer)
 
     manager = service.build_manager_from_env()
 
     assert created["provider"] == provider_kwargs
-    assert created["analyzer"] == analyzer_kwargs
-    assert created["analyzer_provider"] is manager.llm_provider
+    assert isinstance(manager.llm_provider, StubProvider)
     assert manager.tracing_provider.__class__.__name__ == "NoOpTracingProvider"
 
 
@@ -78,13 +71,12 @@ def test_build_manager_from_env_accepts_explicit_settings(monkeypatch):
             return {"temperature": 0.3}
 
     monkeypatch.setattr(service, "LiteLLMProvider", lambda **_: "provider")
-    monkeypatch.setattr(service, "LLMQueryAnalyzer", lambda provider, **__: (provider, {}))
 
     tracing = object()
     settings = StubSettings()
     manager = service.build_manager_from_env(settings=settings, tracing_provider=tracing)
 
-    assert settings.called == ["provider", "analyzer"]
+    assert "provider" in settings.called
     assert manager.tracing_provider is tracing
 
 
@@ -210,12 +202,13 @@ class ResponseStep:
             id="aspect", 
             description="desc",
             aspect_description="desc",
-            get_refinement_instructions_prompt=lambda *, statement: f"Analyze {statement}"
+            get_evaluation_instructions_prompt=lambda *, statement: f"Analyze {statement}"
         )
         self.analysis_reason = "reason"
         self.follow_up_history: List[Dict[str, str]] = []
         self.is_complete = False
         self.needs_review = False
+        self.follow_up_question = "What is your target?"  # Required for submit_user_message
 
     def add_follow_up(self, question, response):
         self.follow_up_history.append({"question": question, "response": response})
@@ -320,7 +313,7 @@ def test_build_next_prompt_prefers_suggested_question():
             self.aspect_description = "desc"
             self.description = "desc"  # Legacy support
 
-        def get_refinement_instructions_prompt(self, *, statement):
+        def get_evaluation_instructions_prompt(self, *, statement):
             return "Prompt"
 
     class Session:
@@ -329,17 +322,12 @@ def test_build_next_prompt_prefers_suggested_question():
 
         def get_active_step(self):
             step = types.SimpleNamespace(
-                analysis_suggested_question="Ask",
+                follow_up_question="Ask",  # Use follow_up_question instead of analysis_suggested_question
                 refinement_question="Ask",
                 refinement_aspect=Aspect(),
-                analysis_reason="why",
+                reasoning="why",  # Use reasoning instead of analysis_reason
                 needs_refinement_rationale="why",
             )
-            step.refinement_aspect = Aspect()
-            step.analysis_suggested_question = "Ask"
-            step.refinement_question = "Ask"
-            step.analysis_reason = "why"
-            step.needs_refinement_rationale = "why"
             return step
 
         def get_dependency_context(self, aspect_id):
@@ -378,10 +366,10 @@ def test_build_next_prompt_uses_prompt_and_description():
             else:
                 aspect = Aspect(raises=True)
             step = types.SimpleNamespace(
-                analysis_suggested_question=None,
+                follow_up_question=None,  # Required attribute
                 refinement_question=None,
                 refinement_aspect=aspect,
-                analysis_reason=None,
+                reasoning=None,  # Required attribute
                 needs_refinement_rationale=None,
             )
             return step
