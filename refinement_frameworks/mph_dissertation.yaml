@@ -19,9 +19,9 @@ mph_dissertation:
       - "Confusing descriptive vs. analytical epidemiology"
       - "Not considering health equity dimensions"
   - id: mph_research_domain
-    aspect_name: "MPH research domain"
-    aspect_description: the public health topic or health issue under investigation
-    evaluation_criteria: |
+    name: "MPH research domain"
+    description: the public health topic or health issue under investigation
+    evaluator: |
       ### STRONG domain
       - Specific health issue or public health topic identified
       - Appropriately scoped for dissertation research (not entire fields like "epidemiology" or hyper-niche like "medication errors in one hospital ward")
@@ -110,11 +110,11 @@ mph_dissertation:
           example_question: |
             You've identified three related but distinctconditions. For an MPH dissertation, focus deeply on one primary issue. Which interests you most: obesity, Type 2 diabetes, or CVD? Or are you interested in chronic disease prevention broadly (which encompasses all three)? That could work as a focused topic if you are looking at shared risk factors (diet, physical activity, etc.) or integrated prevention approaches"
   - id: mph_research_focus
-    aspect_name: "MPH research focus"
-    aspect_description: "what the student specifically wants to investigate, examine, or understand about their topic"
+    name: "MPH research focus"
+    description: "what the student specifically wants to investigate, examine, or understand about their topic"
     depends_on:
       - mph_research_domain
-    evaluation_criteria: |
+    evaluator: |
       ## YOUR GOAL
       You are helping MPH students develop a clear investigative direction - moving from "I'm interested in X" to "I want to understand/examine/investigate [specific aspect] about X".
 
@@ -232,12 +232,12 @@ mph_dissertation:
             - barriers to implementing nutrition education in schools
             - how school food environment affects children's dietary choices?"
   - id: population_demographics
-    aspect_name: population demographics
-    aspect_description: who is being studied and in what context or location
+    name: population demographics
+    description: who is being studied and in what context or location
     depends_on:
       - mph_research_domain
       - mph_research_focus
-    evaluation_criteria: '
+    evaluator: '
       ## WHAT YOU ARE EVALUATING:
 
       You''re helping MPH students define WHO they''re studying and WHERE/IN WHAT CONTEXT. This grounds abstract research questions in specific, real-world populations and settings.
@@ -359,13 +359,13 @@ mph_dissertation:
             Which is your primary interest: children, working-age adults, or elderly populations?
             Or are you specifically interested in comparing across age groups?. Different age groups have different health issues, behaviors, service needs, and appropiate methodsand contexts, so focusing deeply on one allows, deeper, more focused research"
   - id: study_design
-    aspect_name: study design
-    aspect_description: the methodological approach and temporal scope of the research
+    name: study design
+    description: the methodological approach and temporal scope of the research
     depends_on:
       - mph_research_focus
       - population_demographics
       - intervention_exposure
-    evaluation_criteria: '### What you''re evaluating:
+    evaluator: '### What you''re evaluating:
 
       Is the study design clearly specified and appropriate? Is the timeframe indicated?
 
@@ -523,11 +523,10 @@ mph_dissertation:
             in areas with/without intervention X (quasi-experimental)? These are more
             feasible while still addressing your interest."
   - id: outcomes_interest
-    aspect_name: outcomes of interest
-    aspect_description:
-      what will be measured, observed, or understood as results of
+    name: outcomes of interest
+    description: what will be measured, observed, or understood as results of
       the research
-    evaluation_criteria: '### What you''re evaluating:
+    evaluator: '### What you''re evaluating:
 
       Are the statements/results of interest clearly specified and measurable?
 
@@ -679,11 +678,11 @@ mph_dissertation:
             For example, if examining a nutrition intervention: BMI, dietary intake, and
             nutrition knowledge?"
   - id: intervention_exposure
-    aspect_name: "intervention/exposure"
-    aspect_description: the intervention being evaluated or exposure being examined (only applicable for certain research types)
+    name: "intervention/exposure"
+    description: the intervention being evaluated or exposure being examined (only applicable for certain research types)
     depends_on:
       - mph_research_focus
-    evaluation_criteria: '### When this aspect applies:
+    evaluator: '### When this aspect applies:
 
       - Research focus involves evaluating an intervention''s effectiveness
 
@@ -799,21 +798,21 @@ mph_dissertation:
           issue: Not applicable
           rationale: This is exploratory research on barriers, not evaluating interventions or exposures
   - id: mph_data_source
-    aspect_name: MPH data sources and access
-    aspect_description: the data sources the student plans to use and their access to them
+    name: MPH data sources and access
+    description: the data sources the student plans to use and their access to them
     depends_on:
       - mph_research_focus
       - population_demographics
       - study_design
-    evaluation_criteria: |
+    evaluator: |
       ### What you''re evaluating:
   - id: mph_sampling_strategy
-    aspect_name: MPH sampling strategy and sample size
-    aspect_description: the sampling approach and planned sample size for data collection
+    name: MPH sampling strategy and sample size
+    description: the sampling approach and planned sample size for data collection
     depends_on:
       - mph_research_focus
       - population_demographics
       - study_design
-    evaluation_criteria: |
+    evaluator: |
       ### What you''re evaluating:
       Is the sampling strategy clearly defined and appropriate for the study design and population?

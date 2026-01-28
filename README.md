@@ -1,311 +1,164 @@
-# query-refinement-module
+# Query Refinement Module
 
-Standalone query refinement engine for orchestrating multi-step, refinement-framework–driven conversations. Framework definitions live in YAML so this package stays reusable across Solace-AI and external deployments.
-
-## Installation
-
-```bash
-pip install query-refinement-module
-```
+A conversational query refinement engine that guides users through structured clarification dialogues. Uses LLM-powered analysis to refine research queries across configurable dimensions (e.g., PICO framework for medical research).
 
 ## Features
 
-- Dependency-aware refinement across user-defined refinement aspects
-- YAML frameworks loaded via `REFINEMENT_FRAMEWORK_PATH`
-- Structured-response validation with automated retries
-- Built-in follow-up history, summaries, and conversation exports
-- Tracing hooks through `TraceEventEmitter` and providers
-- Session storage adapters (in-memory, Redis) for quick persistence choices
-- Local CLI wired to the same LLM/analyzer stack as remote deployments
-- Parallel execution with automatic rate limiting and dependency resolution
-- Concurrent session storage with built-in race condition protection
+- **Framework-driven refinement**: YAML-defined dimensions with dependencies
+- **Conversational flow**: Multi-turn Q&A with follow-up questions
+- **User commands**: `/skip`, `/done`, `/back`, `/status` for navigation
+- **Structured outputs**: LLM responses validated via Pydantic models
+- **Search optimization**: Generates semantic, keyword, and grey literature variants
+- **Session persistence**: SQLite/PostgreSQL with Redis caching
 
 ## Quick Start
 
-1. Install and configure the project:
+### Prerequisites
 
-  ```bash
-  poetry install
-  cp .env_example .env
-  ```
+- Python 3.12+
+- Poetry
+- Node.js 20+ (for frontend)
 
-1. Edit `.env` with your refinement framework path and LLM settings (see [LLM Configuration](#llm-configuration)).
-1. Inspect available frameworks and launch the CLI:
-
-  ```bash
-  poetry run query-refine --list-frameworks
-  poetry run query-refine --framework pico_advanced
-  ```
-
-For programmatic use, build the manager from the environment-driven helpers so the CLI and service share the same configuration:
-
-```python
-from query_refinement_module import build_manager_from_env, registry
-
-framework = registry.get_framework("pico_advanced")
-manager = build_manager_from_env()
-
-session = manager.initialize(
-    original_query="Evaluate whether low-dose aspirin helps prevent recurrent myocardial infarction.",
-    refinement_framework=framework,
-)
-print(manager.get_initialization_summary(session))
-```
-
-## Custom Refinement Frameworks
-
-Refinement frameworks are required and must be defined in a YAML file. Set the `REFINEMENT_FRAMEWORK_PATH` environment variable to point to your framework file:
+### 1. Backend Setup
 
 ```bash
-export REFINEMENT_FRAMEWORK_PATH=/path/to/your/custom_schemas.yaml
+# Install dependencies
+poetry install
+
+# Create .env from example
+cp .env.example .env
+# Edit .env with your API key:
+#   QUERY_REFINEMENT_LLM_API_KEY=your-key-here
+
+# Run database migrations
+poetry run alembic upgrade head
+
+# Start backend
+poetry run uvicorn query_refinement_module.api.main:app --reload
 ```
+
+Backend available at: http://localhost:8000 (API docs at /docs)
+
+### 2. Frontend Setup
+
+```bash
+cd frontend
+npm install
+npm run dev
+```
+
+Frontend available at: http://localhost:5173
+
+### 3. Use the Application
+
+1. Register/login at http://localhost:5173
+2. Select a refinement framework
+3. Enter your research query
+4. Answer clarifying questions
+5. Export refined query
+
+## CLI Usage
+
+```bash
+# List available frameworks
+poetry run query-refine --list-frameworks
+
+# Start interactive session
+poetry run query-refine --framework pico_advanced
+```
+
+### Commands During Session
+
+| Command   | Purpose                        |
+| --------- | ------------------------------ |
+| `/back`   | Return to previous step        |
+| `/skip`   | Skip current dimension         |
+| `/done`   | Accept current answer, move on |
+| `/status` | Show progress summary          |
+| `/submit` | Generate final refined query   |
+| `/help`   | Show all commands              |
+
+## Configuration
+
+Key environment variables (see `.env.example`):
+
+```bash
+# LLM Settings
+QUERY_REFINEMENT_LLM_MODEL=gpt-4o-mini
+QUERY_REFINEMENT_LLM_API_KEY=your-api-key
+
+# Database
+DATABASE_URL=sqlite:///query_refinement.db
+
+# Session Security
+SECRET_KEY=change-this-in-production
+```
+
+## Custom Frameworks
+
+Define frameworks in YAML:
 
 ```yaml
 my_framework:
-  - id: dimension_id
-    aspect_name: Dimension Name
-    aspect_description: What this dimension refines
+  - id: population
+    aspect_name: Population
+    aspect_description: Who is being studied
     refinement_instructions: |
       Analyze the research input: {input}
-      Focus on the considerations relevant to this dimension.
+      Identify the target population.
     allow_follow_up: true
     max_follow_ups: 2
 ```
 
-Then load it via the registry:
+Set path: `export REFINEMENT_FRAMEWORK_PATH=/path/to/frameworks.yaml`
 
-```python
-from query_refinement_module.schema import registry
-
-framework = registry.get_framework("my_framework")
-```
-
-### Requirements
-
-- `pip install pyyaml`
-- Set the `REFINEMENT_FRAMEWORK_PATH` environment variable
-
-See [docs/custom_schemas.md](docs/custom_schemas.md) for guidance on authoring refinement frameworks.
-
-## Usage
-
-### Environment Setup
+## Docker Deployment
 
 ```bash
-# Set the path to your refinement framework file
-export REFINEMENT_FRAMEWORK_PATH=/path/to/your/custom_frameworks.yaml
+# Production deployment
+docker-compose -f docker-compose.fullstack.yml up -d
 
-# Or add to your .env file
-echo "REFINEMENT_FRAMEWORK_PATH=/path/to/custom_frameworks.yaml" >> .env
-```
-
-### List Available Frameworks
-
-```python
-from query_refinement_module.schema import registry
-
-print(registry.list_frameworks())  # ['my_framework', 'legal_research', ...]
-summary = registry.describe_framework("my_framework")
-print(summary["name"], summary["num_dimensions"])
-```
-
-### Using Different Frameworks
-
-Define multiple frameworks in your YAML file:
-
-```yaml
-# custom_frameworks.yaml
-medical_pico_advanced:
-  - id: population
-    name: Population
-    # ... dimensions ...
-
-legal_research:
-  - id: jurisdiction
-    name: Jurisdiction
-    # ... dimensions ...
-
-business_analysis:
-  - id: market
-    name: Market Scope
-    # ... dimensions ...
-```
-
-Then use them:
-
-```python
-from query_refinement_module.schema import registry
-
-pico_advanced = registry.get_framework("medical_pico_advanced")
-legal = registry.get_framework("legal_research")
-business = registry.get_framework("business_analysis")
+# Run migrations
+docker-compose exec backend alembic upgrade head
 ```
 
 ## Testing
 
-The project uses a structured testing approach with three test categories:
-
 ```bash
-# Run all tests
-poetry run pytest tests/
+# All tests
+poetry run pytest
 
-# Unit tests (fast, isolated)
+# Unit tests only
 poetry run pytest tests/unit/
 
-# Integration tests (database, workflows)
-poetry run pytest tests/integration/
-
-# API tests (requires running server)
-cd tests/api && ./run_api_tests.sh
+# With coverage
+poetry run pytest --cov=query_refinement_module
 ```
 
-See [tests/README.md](tests/README.md) for complete testing guidelines, examples, and CI/CD setup.
+## Project Structure
+
+```
+query_refinement_module/   # Main package
+├── api/                   # FastAPI routes and middleware
+├── db/                    # SQLAlchemy models and migrations
+├── schema/                # Pydantic models and framework loading
+├── providers/             # LLM provider abstraction
+└── core.py                # Session management logic
+
+frontend/                  # Vue.js web application
+refinement_frameworks/     # YAML framework definitions
+tests/                     # Unit, integration, and API tests
+docs/                      # Additional documentation
+```
 
 ## Documentation
 
-- [docs/custom_schemas.md](docs/custom_schemas.md) — authoring and loading refinement frameworks
-- [docs/response_format_guide.md](docs/response_format_guide.md) — enforcing structured output
-- [docs/examples_field_reference.md](docs/examples_field_reference.md) — managing few-shot examples
-- [docs/dependencies.md](docs/dependencies.md) — handling aspect ordering and validation
-- [docs/api_integration_guide.md](docs/api_integration_guide.md) — wiring providers, analyzers, and tracing
-- [docs/user_commands.md](docs/user_commands.md) — interactive command reference
-- [docs/api_service.md](docs/api_service.md) — REST API documentation (see also [API_README.md](API_README.md))
-- [docs/parallel_execution.md](docs/parallel_execution.md) — parallel processing and rate limiting configuration
-- [examples/](examples/) — sample frameworks and YAML snippets
+- [docs/api_integration_guide.md](docs/api_integration_guide.md) - API usage guide
+- [docs/custom_schemas.md](docs/custom_schemas.md) - Creating frameworks
+- [docs/user_commands.md](docs/user_commands.md) - Command reference
+- [docs/database_migrations.md](docs/database_migrations.md) - DB migrations
+- [docs/production_deployment.md](docs/production_deployment.md) - Production setup
 
-## Session Storage Options
+## License
 
-```python
-from query_refinement_module import (
-  QueryRefinementService,
-  InMemorySessionStorage,
-  RedisSessionStorage,
-)
-```
-
-- `InMemorySessionStorage`: ideal for unit tests or single-process deployments.
-- `RedisSessionStorage`: requires `redis` (Python library) and a running Redis instance.
-
-Spin up Redis quickly with Docker:
-
-```bash
-docker run --name refinement-redis -p 6379:6379 -d redis:7-alpine
-```
-
-Then configure the service:
-
-```python
-import redis
-
-redis_client = redis.Redis(host="localhost", port=6379)
-storage = RedisSessionStorage(redis_client)
-service = QueryRefinementService(manager, storage)
-```
-
-When Redis is unavailable, substitute `InMemorySessionStorage()`, understanding sessions reset on process restart.
-
-## CLI Playground
-
-Explore the refinement flow locally without wiring an API:
-
-```bash
-poetry run query-refine --list-frameworks                   # Inspect available schemas
-poetry run query-refine --framework pico_advanced  # Launch interactive session
-```
-
-Set `REFINEMENT_FRAMEWORK_PATH` (or populate it in your `.env`) before running so the CLI can load your YAML definitions. During a session you can use commands such as `/help`, `/status`, `/back`, and `/goto 2` to navigate. If you want to stop early and synthesize with the clarifications gathered so far, issue `/submit` (or `/end`).
-
-When every aspect is processed the CLI prints the full conversation along with a synthesized refined query that merges the original question with any clarifications you provided.
-
-### LLM Configuration
-
-The CLI and API service now read the same environment-driven configuration via `LLMSettings`. Declare the following variables (see `.env_example` for defaults):
-
-- `QUERY_REFINEMENT_LLM_MODEL` (required model id understood by litellm)
-- `QUERY_REFINEMENT_LLM_API_KEY`
-- `QUERY_REFINEMENT_LLM_API_BASE`
-- `QUERY_REFINEMENT_LLM_TEMPERATURE`
-- `QUERY_REFINEMENT_LLM_MAX_TOKENS`
-- `QUERY_REFINEMENT_LLM_COMPLETION_KWARGS` (JSON object for extra kwargs)
-
-Provider-specific secrets such as `OPENAI_API_KEY` or `ANTHROPIC_API_KEY` remain supported by [litellm](https://github.com/BerriAI/litellm). Once the environment is configured, simply run:
-
-```bash
-poetry run query-refine --framework pico_advanced
-```
-
-No additional model flags are required—the CLI automatically reuses the configured LLM stack.
-
-## Parallel Execution
-
-The system supports parallel processing of independent refinement aspects to improve performance when analyzing queries with multiple dimensions. Parallel execution automatically respects dependency relationships and includes built-in rate limiting to prevent exceeding API quotas.
-
-### CLI Parallel Mode
-
-Enable parallel execution in the CLI using command-line flags or environment variables:
-
-```bash
-# Enable parallel execution with command-line flag
-poetry run query-refine --framework pico_advanced --parallel
-
-# Disable parallel execution (default is sequential)
-poetry run query-refine --framework pico_advanced --no-parallel
-
-# Set default mode via environment variable
-export QUERY_REFINEMENT_PARALLEL_MODE=true
-poetry run query-refine --framework pico_advanced
-```
-
-When parallel mode is enabled, the CLI displays the configuration at startup:
-
-```text
-[Parallel Mode] max_concurrent=8, rate_limiter=enabled
-```
-
-### API Parallel Configuration
-
-The API service supports parallel execution through environment configuration. Set the following variables in your `.env` file:
-
-```bash
-# Enable parallel execution for API requests
-PARALLEL_EXECUTION_ENABLED=true
-
-# Configure concurrency limits
-PARALLEL_MAX_CONCURRENT=8
-
-# Configure rate limiting
-RATE_LIMIT_REQUESTS_PER_MINUTE=60
-RATE_LIMIT_TOKENS_PER_MINUTE=90000
-RATE_LIMIT_MAX_CONCURRENT_REQUESTS=10
-```
-
-### How It Works
-
-Parallel execution analyzes the dependency relationships between refinement aspects and processes them in levels:
-
-1. **Level 0**: All aspects with no dependencies are processed simultaneously
-2. **Level 1**: Aspects that depend only on Level 0 aspects are processed after Level 0 completes
-3. **Level N**: Each subsequent level waits for all previous levels to complete
-
-This approach ensures that aspects always have access to the information they depend on while maximizing parallelism where possible.
-
-### Rate Limiting
-
-The system includes automatic rate limiting to prevent exceeding API provider quotas:
-
-- **Request limits**: Controls the maximum number of API calls per minute
-- **Token limits**: Tracks token usage to stay within monthly or per-minute quotas
-- **Concurrent limits**: Prevents too many simultaneous requests
-- **Automatic retry**: Failed requests are automatically retried with exponential backoff
-
-Rate limits are enforced at the global level by default, ensuring that all requests across all sessions respect the configured limits.
-
-### Benefits
-
-- **Faster processing**: Independent aspects are analyzed simultaneously
-- **Automatic optimization**: The system determines the optimal execution order
-- **Safe concurrent access**: Built-in protection against race conditions in session storage
-- **Graceful degradation**: If circular dependencies are detected, the system falls back to sequential processing
-
-For detailed configuration options and troubleshooting, see [docs/parallel_execution.md](docs/parallel_execution.md).
-
+See [LICENSE](LICENSE) file.

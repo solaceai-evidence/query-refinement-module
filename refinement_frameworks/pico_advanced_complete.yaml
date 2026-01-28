@@ -18,9 +18,9 @@ pico_advanced:
         - "Not pre-specifying subgroup analyses or sensitivity analyses"
         - "Conflating different review types (scoping vs. systematic vs. rapid)"
   - id: population
-    aspect_name: Population
-    aspect_description: Statistical characteristics of a group of people, including age range, gender, race/ethnicity, and geographic location that form the foundation for all other PICO dimensions
-    evaluation_criteria: |
+    name: Population
+    description: Statistical characteristics of a group of people, including age range, gender, race/ethnicity, and geographic location that form the foundation for all other PICO dimensions
+    evaluator: |
       ### Task
       Evaluate if these demographic elements are specified when relevant:
       - Age (range, category, life stage such as pediatric, postmenopausal, etc.)
@@ -85,160 +85,128 @@ pico_advanced:
           issue: "'Representative' is context-dependent - representative of what population?"
           example_question: What population should this sample represent? Please specify demographic characteristics that define representativeness, including age, sex/gender, ethnicity/race, and setting.
   - id: intervention_specification
-    aspect_name: Intervention Specification
-    aspect_description:
-      Details the treatment, procedure, or exposure being studied
-      including specific agents, dosing, duration, frequency, and delivery method
+    name: Intervention Specification
+    description:
+      Specifies the treatment, procedure, behavioral protocol, or diagnostic test being studied,
+      including intervention type, specific agent/method, dosing, duration, delivery method, and route.
+      Details sufficient for study replication and outcome interpretation.
     depends_on:
       - population
       - clinical_condition
-    evaluation_criteria:
-      "### Objective\n Analyze whether the intervention is sufficiently\
-      \ detailed for study replication\n\n### Assess clarity and completeness across\
-      \ the following Intervention Dimensions\n 1. Intervention Type\n    - Pharmacological\
-      \ (drug, biologic)\n    - Procedural (surgery, device)\n    - Behavioral (therapy,\
-      \ lifestyle)\n    - Diagnostic (test, screening)\n 2. Specific Agent/Method\n\
-      \   - Generic/brand name for drugs\n   - Specific procedure or technique\n   -\
-      \ Defined behavioral protocol\n 3. Dosing/Intensity (if applicable)\n   - Dose\
-      \ amount and units\n   - Frequency (daily, weekly)\n   - Timing (morning, with\
-      \ meals)\n 4. Duration\n   - Treatment length\n   - Follow-up period\n 5. Delivery\
-      \ Method\n   - Route (oral, IV, subcutaneous)\n   - Setting (inpatient, outpatient,\
-      \ home)\n   - Provider type\n 6. Adjunct Treatments\n   - Concurrent therapies\n\
-      \   - Background medications\n   - Supportive care protocols\n"
+    evaluator: |
+      ### TASK
+      Evaluate if intervention specification is sufficiently detailed for study replication.
+
+      ### CRITICAL REQUIREMENTS
+      Intervention type AND specific agent/method MUST be specified. If either is absent, reject and prompt.
+
+      ### ELEMENT REQUIREMENTS
+
+      #### Intervention Type - CRITICAL
+      Must specify category: Pharmacological, Procedural, Behavioral, or Diagnostic. Reject if absent.
+
+      #### Specific Agent/Method - CRITICAL
+      Must name specific drug/procedure/protocol/test. Generic or brand name, defined technique, or protocol required. Vague specifications (e.g., "statin therapy" without agent name) require clarification.
+
+      #### Dosing/Intensity - CONDITIONAL
+      Required if intervention is dose-dependent. Include dose amount, units, frequency, and timing. Optional for non-dose-dependent interventions (behavioral, diagnostic, or single-administration procedures).
+
+      #### Duration - CONDITIONAL
+      Required if duration materially affects outcome (most pharmacological and behavioral interventions). Optional if intervention is single-administration or duration clinically irrelevant.
+
+      #### Delivery Method - CONDITIONAL
+      Required if delivery affects outcomes (route, setting, or provider type clinically meaningful). Include route (oral, IV, subcutaneous), setting (inpatient, outpatient, home), and provider type if clinically relevant.
+
+      #### Adjunct Treatments - OPTIONAL
+      Accept if absent. Include if concurrent therapies, background medications, or supportive care protocols specified.
+    response_strategy: |
+      1. Parse input for intervention type (pharmacological/procedural/behavioral/diagnostic)
+      2. If absent → REJECT + PROMPT for intervention type
+      3. Parse input for specific agent/method
+      4. If absent or vague → REJECT + PROMPT for agent/method specification
+      5. Determine dosing requirement (dose-dependent interventions) → if required AND absent → PROMPT
+      6. Determine duration requirement (outcome timeline dependent) → if required AND absent → PROMPT
+      7. Assess delivery method clarity (clinical relevance dependent) → if relevant AND absent → PROMPT
+      8. If all critical and required conditional elements present and specific → ACCEPT
     examples:
       clear:
-        - statement:
-            Metformin 1000mg twice daily for 6 months vs placebo in newly diagnosed
-            Type 2 diabetes
-          rationale:
-            Drug (metformin), dose (1000mg), frequency (twice daily), duration
-            (6 months), comparison (placebo)
-        - statement:
-            Laparoscopic Roux-en-Y gastric bypass performed by experienced bariatric
-            surgeons
-          rationale:
-            Specific surgical technique (laparoscopic Roux-en-Y), provider qualification
-            (experienced bariatric surgeons)
-        - statement:
-            Cognitive Behavioral Therapy, 12 weekly 60-minute sessions delivered
-            by licensed clinical psychologists
-          rationale:
-            Therapy type (CBT), frequency (weekly), duration (12 sessions), session
-            length (60 min), provider (licensed psychologists)
-      needs_refinement:
-        - statement: Effects of medication on blood pressure
-          issue: No medication specified, no dosing information
-          missing: Drug name, dose, frequency, duration, route
-          example_question:
-            Which medication are you studying? Please specify the drug
-            name, dose, frequency, and treatment duration.
-        - statement: Study on surgery outcomes
-          issue: Type of surgery not specified
-          missing: Surgical procedure, approach (open vs laparoscopic), setting
-          example_question:
-            What specific surgical procedure? What surgical approach?
-            (e.g., open, laparoscopic, robotic)
+        - statement: Metformin vs placebo in newly diagnosed Type 2 diabetes over 6 months.
+          rationale: Inferred intervention type (Pharmacological), Drug (metformin), duration (6 months), and comparison (placebo) well specified.
+        - statement: Laparoscopic Roux-en-Y gastric bypass compared to other techniques
+          rationale: Specific intervention type (surgical technique, inferred) and method (laparoscopic Roux-en-Y)
+        - statement: Cognitive Behavioral Therapy delivered by licensed clinical psychologists
+          rationale: Inferred intervention type (nonpharmacological), method (CBT), provider (licensed psychologists)
+        - statement: Atorvastatin treatment for hyperlipidemia
+          has: Inferred intervention type (Pharmacological), Drug name (atorvastatin), indication (hyperlipidemia)
+      partial:
         - statement: Exercise intervention for weight loss
-          issue: Exercise type, intensity, frequency, duration all unspecified
-          missing:
-            Exercise modality, intensity level, frequency, session duration, total
-            program length
+          has: intervention type (exercise)
+          missing: exercise modality, intensity level, frequency, session duration unspecified
           example_question:
             What type of exercise? (aerobic, resistance, both) What intensity,
-            frequency, and program duration?
-      partial:
-        - statement: Atorvastatin treatment for hyperlipidemia
-          has: Drug name (atorvastatin), indication (hyperlipidemia)
-          missing: Dose, frequency, treatment duration, titration protocol
+            frequency, and exercise modality?
+        - statement: Effects of medication on blood pressure
+          has: intervention type (Pharmacological)
+          missing: Drug name (optional dose, frequency, duration, route)
           example_question:
-            What dose of atorvastatin? (10mg, 20mg, 40mg, 80mg) What frequency
-            and treatment duration?
-        - statement: Physical therapy twice weekly for knee osteoarthritis
-          has: Intervention type (physical therapy), frequency (twice weekly), condition
-          missing:
-            Specific PT protocol, session duration, total treatment length, therapy
-            components
-          example_question:
-            What specific PT protocol? How long are sessions? What is
-            the total treatment duration?
+            Which medication are you studying? Please specify the drug
+            name, dose, frequency, and treatment duration if applicable.
       vague_ambiguous:
-        - statement: High-dose vitamin D supplementation
-          issue:
-            "'High-dose' is relative - could be 2,000 IU or 50,000 IU depending
-            on context"
-          example_question:
-            What specific dose of vitamin D? (e.g., 2,000 IU daily, 50,000
-            IU weekly)
         - statement: Intensive glycemic control in diabetes
-          issue: "'Intensive' is subjective - needs target HbA1c or glucose range"
-          example_question:
-            What target defines 'intensive control'? (e.g., HbA1c <6.5%,
-            fasting glucose 80-110 mg/dL)
+          issue: " Intervention type is clear (glycemic control); 'Intensive' is subjective - it could be specified as a regimen or target"
+          missing: Specific regimen or glycemic targets
+          example_question: "Are you interested in a specific intervention and regimen or a target that defines 'intensive control'?"
   - id: comparison_group
-    aspect_name: Comparison/Control Group
-    aspect_description:
-      "Defines what the intervention is compared against: placebo,
-      standard care, alternative treatment, or no treatment. Critical for establishing
-      causality"
+    name: Comparison/Control Group
+    description: "Specifies what the intervention is compared against: placebo, standard care, alternative treatment, or no treatment. Critical for establishing causality and determining intervention efficacy or effectiveness."
     depends_on:
       - intervention_specification
-    system_prompt:
-      "You are a research advisor helping users refine their research topics
-      by asking focused clarifying questions.
+    evaluator: |
+      ### TASK
+      Evaluate if an appropriate comparison/control group is specified that enables causality assessment. Comparator must be suitable for the research question and as well-defined as the intervention.
 
+      ### CRITICAL REQUIREMENT
+      At least ONE comparator MUST be specified. If absent, reject and prompt.
 
-      Your Job:
+      ### COMPARATOR TYPES
 
-      Users provide research interests (questions, statements, aims, or paragraphs).
-      Clarify aspect: **{self.aspect_name}**, with definition: **{self.aspect_description}**.
-      Focus ONLY on this aspect—ignore other research elements.
+      - Placebo Control: Inert substance or sham procedure. Examples: inactive pill, sham surgery, mock device.
 
+      - Standard Care/Treatment: Current guideline-recommended or usual care. Examples: evidence-based protocol, standard-of-care treatment.
 
-      How to Engage:
+      - Alternative Active Treatment: Different agent, dose, or intervention. Examples: different drug, lower dose, alternative technique.
 
-      1. **Acknowledge first**: Recognize what's already clear before requesting clarification.
+      - No Treatment: Watchful waiting, natural history, untreated control. Examples: observation only, deferred treatment, dose comparison.
 
-      2. **One element at a time**: Address 1-2 unclear points per turn.
+      ### APPROPRIATENESS VALIDATION
+      Research question type determines acceptable comparators:
 
-      3. **Mirror their language**: Use their terminology; avoid jargon unless it adds
-      needed precision.
+      - Efficacy (intervention vs. nothing) → Acceptable: Placebo, no treatment. Unacceptable: Standard care (if standard exists).
 
-      4. **Give examples**: Offer 2-4 concrete, aspect-specific examples they can adapt.
+      - Effectiveness (intervention vs. current practice) → Acceptable: Standard care, usual care. Unacceptable: Placebo (if standard exists).
 
-      5. **Explain why**: Briefly note how this clarification strengthens their research
-      input and improves their search.
+      - Superiority (intervention A vs. B) → Acceptable: Alternative active treatment, standard care. Unacceptable: Placebo (unless ethically justified).
 
+      - Non-inferiority (intervention A ≥ B) → Acceptable: Standard care, active comparator. Unacceptable: Placebo.
 
-      When to Stop:
+      Reject if comparator is unethical, inappropriate to research question, or unjustifiable when effective treatment exists.
 
-      This aspect is sufficiently refined when the user's statement is specific, unambiguous,
-      and actionable for evidence synthesis.
+      ### SPECIFICITY & DETAIL VALIDATION
+      Comparator detail must match intervention detail level.
 
+      Example 1: Intervention "atorvastatin 40 mg daily" → Accept: "placebo matching atorvastatin formulation" OR "rosuvastatin 20 mg daily". Reject: "placebo" (insufficient detail).
 
-      Boundaries:
+      Example 2: Intervention "cognitive behavioral therapy, 12 weekly sessions" → Accept: "standard therapy, 12 sessions" OR "no treatment". Reject: "alternative treatment" (requires specificity).
 
-      - You clarify research descriptions, not search literature or write proposals.
+      ### ETHICAL VALIDATION FOR NO-TREATMENT CONTROLS
 
-      - Stay within your assigned refinement aspect.
+      No-treatment controls require ethical justification IF effective treatment exists:
 
-      - Keep developing clarity, not fixing problems.
+      Accept if: condition is self-limiting OR no proven effective treatment exists.
 
+      Require justification if: established effective treatment exists and withholding causes harm.
 
-      Tone: Supportive and collaborative. Be efficient—don't over-explain.
-
-      "
-    evaluation_criteria:
-      "### Objective\n  Analyze whether an appropriate comparison/control\
-      \ group is specified.\n  Key Questions:\n  - Is a comparator mentioned?\n  - Is\
-      \ the comparator appropriate for the research question?\n  - Is the comparator\
-      \ as well-defined as the intervention?\n  - Are ethical considerations addressed\
-      \ (especially for no-treatment controls)?\n\n### Comparison Types\n  1. Placebo\
-      \ Control\n    - Inert substance/sham procedure\n    - Blinding considerations\n\
-      \  2. Standard Care/Treatment\n    - Current guideline-recommended treatment\n\
-      \    - Usual care protocols\n  3. Alternative Active Treatment\n    - Different\
-      \ drug/dose/intervention\n    - Head-to-head comparison\n  4. No Treatment\n \
-      \   - Watchful waiting\n    - Natural history observation\n  5. Dose Comparison\n\
-      \    - Different doses of same intervention\n"
+      Flag if: vulnerable populations (children, severe illness) with no-treatment control without strong justification.
     examples:
       clear:
         - statement: Metformin vs placebo in prediabetic adults
@@ -289,9 +257,8 @@ pico_advanced:
             What specific treatment(s) constitute 'standard therapy' in
             your context? (e.g., specific drugs, specific guidelines)
   - id: primary_outcomes
-    aspect_name: Primary Outcomes
-    aspect_description:
-      Specifies the main outcomes of interest including measurement
+    name: Primary Outcomes
+    description: Specifies the main outcomes of interest including measurement
       methods, timepoints, and clinical significance thresholds.
     depends_on:
       - intervention_specification
@@ -304,7 +271,7 @@ pico_advanced:
       Your Job:
 
       Users provide research interests (questions, statements, aims, or paragraphs).
-      Clarify aspect: **{self.aspect_name}**, with definition: **{self.aspect_description}**.
+      Clarify aspect: **{self.name}**, with definition: **{self.description}**.
       Focus ONLY on this aspect—ignore other research elements.
 
 
@@ -341,8 +308,7 @@ pico_advanced:
       Tone: Supportive and collaborative. Be efficient—don't over-explain.
 
       "
-    evaluation_criteria:
-      "### What you are evaluating:\n  Analyze whether primary\
+    evaluator: "### What you are evaluating:\n  Analyze whether primary\
       \ outcomes are adequately specified.\n\n### Outcome Dimensions\n  1. Outcome Type:\n\
       \    - Clinical outcomes (mortality, morbidity)\n    - Surrogate/biomarker outcomes\n\
       \    - Patient-reported outcomes (PROs)\n    - Functional outcomes\n    - Safety/adverse\
@@ -417,8 +383,8 @@ pico_advanced:
             Which specific symptoms? How will you measure them? What defines
             a clinically meaningful improvement?
   - id: study_design_context
-    aspect_name: Study Design & Methodological Context
-    aspect_description:
+    name: Study Design & Methodological Context
+    description:
       Clarifies the intended study design, setting, sample size considerations,
       and methodological approach. Helps determine feasibility and appropriate statistical
       methods.
@@ -435,7 +401,7 @@ pico_advanced:
       Your Job:
 
       Users provide research interests (questions, statements, aims, or paragraphs).
-      Clarify aspect: **{self.aspect_name}**, with definition: **{self.aspect_description}**.
+      Clarify aspect: **{self.name}**, with definition: **{self.description}**.
       Focus ONLY on this aspect—ignore other research elements.
 
 
@@ -472,8 +438,7 @@ pico_advanced:
       Tone: Supportive and collaborative. Be efficient—don't over-explain.
 
       "
-    evaluation_criteria:
-      "### What you are evaluating:\nAssess whether the study\
+    evaluator: "### What you are evaluating:\nAssess whether the study\
       \ design and methodological context are sufficiently specified\n\n### Design Dimensions\n\
       \n1. Study Type\n  - RCT (parallel, crossover, cluster)\n  - Observational (cohort,\
       \ case-control)\n  - Systematic review/meta-analysis\n  - Pragmatic trial\n\n\
@@ -511,11 +476,11 @@ pico_advanced:
             What is your target sample size? Study duration? Single-center
             or multi-center?
   - id: clinical_condition
-    aspect_name: Health Condition and Clinical Context
-    aspect_description: Specifies the primary health condition or disease, including disease stage, severity, and relevant comorbidities. Defines clinical eligibility criteria and baseline clinical characteristics of the target population.
+    name: Health Condition and Clinical Context
+    description: Specifies the primary health condition or disease, including disease stage, severity, and relevant comorbidities. Defines clinical eligibility criteria and baseline clinical characteristics of the target population.
     depends_on:
       - population
-    evaluation_criteria: |
+    evaluator: |
       ### Task
       Evaluate if health condition specification enables accurate patient identification, appropriate treatment selection, and valid outcome interpretation.
 

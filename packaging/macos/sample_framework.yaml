@@ -1,7 +1,0 @@
-example_framework:
-- id: example-aspect
-  question: What is your example input?
-  dependencies: []
-  category: general
-  aspect_name: Example Aspect
-  aspect_description: Sample prompt dimension to satisfy build-time validation.

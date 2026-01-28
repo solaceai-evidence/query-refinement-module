@@ -2,7 +2,7 @@
 Pydantic schemas for request/response validation.
 """
 from pydantic import BaseModel, ConfigDict, EmailStr, Field, field_validator
-from typing import Optional, List
+from typing import Any, Dict, Optional, List
 from datetime import datetime
 import re
 
@@ -138,15 +138,25 @@ class QueryUpdate(BaseModel):
 
 
 class QueryResponse(BaseModel):
-    """Schema for query in responses."""
+    """Schema for query in responses - includes full QueryRefinementResponse fields."""
     model_config = ConfigDict(from_attributes=True)
     
     id: int
     session_id: int
     original_query: str
-    refined_query: Optional[str] = None
+    refined_query: Optional[str] = None  # Deprecated - use synthesized_statement
     created_at: datetime
     updated_at: datetime
+    completed_at: Optional[datetime] = None
+    
+    # QueryRefinementResponse fields (stored for evaluation)
+    synthesized_statement: Optional[str] = None
+    refined_dimensions: Optional[Dict[str, Any]] = None
+    search_optimized: Optional[Dict[str, Any]] = None
+    search_filters: Optional[Dict[str, Any]] = None
+    terminology: Optional[Dict[str, Any]] = None
+    response_metadata: Optional[Dict[str, Any]] = None
+    processing_log: Optional[Dict[str, Any]] = None
 
 
 # ==========================================
@@ -160,12 +170,25 @@ class RefinementStepCreate(BaseModel):
 
 
 class RefinementStepResponse(BaseModel):
-    """Schema for refinement step in responses."""
+    """Schema for refinement step in responses.
+    
+    Fields from LLM (DimensionEvaluationResponse):
+    - final_value: refinement_aspect_value from LLM
+    - is_complete: from LLM response
+    
+    Evaluation-only fields (user behavior tracking):
+    - was_skipped: User used /skip command
+    - user_ended_early: User used /done before LLM marked complete
+    """
     model_config = ConfigDict(from_attributes=True)
     
     id: int
     query_id: int
     aspect_name: str
+    final_value: Optional[str] = None  # From LLM: refinement_aspect_value
+    is_complete: bool = False          # From LLM: is_complete
+    was_skipped: bool = False          # Evaluation-only: /skip command
+    user_ended_early: bool = False     # Evaluation-only: /done before LLM complete
     created_at: datetime
 
 

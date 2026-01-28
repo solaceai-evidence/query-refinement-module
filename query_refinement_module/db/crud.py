@@ -177,6 +177,74 @@ def get_session_queries(db: Session, session_id: int) -> List[Query]:
     return db.query(Query).filter(Query.session_id == session_id).all()
 
 
+def save_query_refinement_response(
+    db: Session,
+    query_id: int,
+    response: Dict[str, Any],
+) -> Optional[Query]:
+    """
+    Save the complete QueryRefinementResponse to the Query table.
+    
+    Called when session is complete to persist all response fields
+    for evaluation purposes.
+    
+    Args:
+        db: Database session
+        query_id: ID of the query
+        response: Dict containing QueryRefinementResponse fields:
+            - synthesized_statement: str
+            - refined_dimensions: Dict[str, str]
+            - search_optimized: Dict (semantic, keyword, grey_literature)
+            - search_filters: Dict (publication_years, venues, etc.)
+            - terminology: Dict (primary_terms, synonyms, etc.)
+            - metadata: Dict (temporal, geographic, source_types, other)
+            - processing_log: Dict (preserved, normalized, integrated, expanded)
+        
+    Returns:
+        Updated Query or None if not found
+    """
+    from datetime import datetime, timezone
+    
+    query = get_query(db, query_id)
+    if query:
+        # Set completion timestamp
+        query.completed_at = datetime.now(timezone.utc)
+        
+        # Store synthesized statement
+        if 'synthesized_statement' in response:
+            query.synthesized_statement = response['synthesized_statement']
+            # Also update legacy refined_query field
+            query.refined_query = response['synthesized_statement']
+        
+        # Store dimension values
+        if 'refined_dimensions' in response:
+            query.refined_dimensions = response['refined_dimensions']
+        
+        # Store search optimization
+        if 'search_optimized' in response:
+            query.search_optimized = response['search_optimized']
+        
+        # Store search filters
+        if 'search_filters' in response:
+            query.search_filters = response['search_filters']
+        
+        # Store terminology
+        if 'terminology' in response:
+            query.terminology = response['terminology']
+        
+        # Store metadata (named response_metadata in DB to avoid conflict)
+        if 'metadata' in response:
+            query.response_metadata = response['metadata']
+        
+        # Store processing log
+        if 'processing_log' in response:
+            query.processing_log = response['processing_log']
+        
+        db.commit()
+        db.refresh(query)
+    return query
+
+
 # ==========================================
 # RefinementStep CRUD Operations
 # ==========================================
@@ -195,19 +263,100 @@ def get_refinement_step(db: Session, step_id: int) -> Optional[RefinementStep]:
     return db.query(RefinementStep).filter(RefinementStep.id == step_id).first()
 
 
+def get_refinement_step_by_aspect(db: Session, query_id: int, aspect_name: str) -> Optional[RefinementStep]:
+    """Retrieve a refinement step by query ID and aspect name."""
+    return db.query(RefinementStep).filter(
+        RefinementStep.query_id == query_id,
+        RefinementStep.aspect_name == aspect_name
+    ).first()
+
+
 def get_query_refinement_steps(db: Session, query_id: int) -> List[RefinementStep]:
     """Retrieve all refinement steps for a query."""
     return db.query(RefinementStep).filter(RefinementStep.query_id == query_id).all()
 
 
+def update_refinement_step_final_value(
+    db: Session,
+    step_id: int,
+    final_value: str,
+    is_complete: bool = True,
+    was_skipped: bool = False,
+    user_ended_early: bool = False,
+) -> Optional[RefinementStep]:
+    """
+    Update the final refined value for a refinement step.
+    
+    This is the ONLY value persisted for each dimension - no conversation history.
+    
+    Args:
+        db: Database session
+        step_id: ID of the refinement step
+        final_value: The final refined value to store
+        is_complete: Whether refinement is complete (default: True)
+        was_skipped: Whether user skipped this aspect (default: False)
+        user_ended_early: Whether user used /done before LLM marked complete (evaluation)
+        
+    Returns:
+        Updated RefinementStep or None if not found
+    """
+    step = get_refinement_step(db, step_id)
+    if step:
+        step.final_value = final_value
+        step.is_complete = is_complete
+        step.was_skipped = was_skipped
+        step.user_ended_early = user_ended_early
+        db.commit()
+        db.refresh(step)
+    return step
+
+
+def mark_refinement_step_skipped(db: Session, step_id: int) -> Optional[RefinementStep]:
+    """Mark a refinement step as skipped by user."""
+    return update_refinement_step_final_value(
+        db, step_id, final_value=None, is_complete=False, was_skipped=True
+    )
+
+
+def mark_refinement_step_user_ended_early(
+    db: Session,
+    step_id: int,
+    final_value: Optional[str] = None,
+) -> Optional[RefinementStep]:
+    """
+    Mark a refinement step as completed early by user (/done command).
+    
+    This is for evaluation: tracks when user was satisfied before LLM.
+    
+    Args:
+        db: Database session
+        step_id: ID of the refinement step
+        final_value: The value captured so far (may be partial)
+        
+    Returns:
+        Updated RefinementStep or None if not found
+    """
+    return update_refinement_step_final_value(
+        db, step_id, final_value=final_value, is_complete=True, 
+        was_skipped=False, user_ended_early=True
+    )
+
+
 # ==========================================
-# FollowUpHistory CRUD Operations
+# FollowUpHistory CRUD Operations (DEPRECATED)
 # ==========================================
+# Note: These functions are kept for backward compatibility but should not be
+# used for new code. We no longer persist conversation history - only final values.
 
 def create_followup(
     db: Session, refinement_step_id: int, question: str, answer: Optional[str] = None
 ) -> FollowUpHistory:
-    """Create a new follow-up history entry."""
+    """
+    Create a new follow-up history entry.
+    
+    DEPRECATED: Use update_refinement_step_final_value instead.
+    Conversation history is no longer persisted - only final values.
+    """
     followup = FollowUpHistory(
         refinement_step_id=refinement_step_id, question=question, answer=answer
     )
@@ -218,7 +367,11 @@ def create_followup(
 
 
 def update_followup_answer(db: Session, followup_id: int, answer: str) -> Optional[FollowUpHistory]:
-    """Update the answer for a follow-up question."""
+    """
+    Update the answer for a follow-up question.
+    
+    DEPRECATED: Use update_refinement_step_final_value instead.
+    """
     followup = db.query(FollowUpHistory).filter(FollowUpHistory.id == followup_id).first()
     if followup:
         followup.answer = answer
@@ -228,7 +381,11 @@ def update_followup_answer(db: Session, followup_id: int, answer: str) -> Option
 
 
 def get_step_followups(db: Session, refinement_step_id: int) -> List[FollowUpHistory]:
-    """Retrieve all follow-up history for a refinement step."""
+    """
+    Retrieve all follow-up history for a refinement step.
+    
+    DEPRECATED: We no longer persist conversation history.
+    """
     return (
         db.query(FollowUpHistory)
         .filter(FollowUpHistory.refinement_step_id == refinement_step_id)
