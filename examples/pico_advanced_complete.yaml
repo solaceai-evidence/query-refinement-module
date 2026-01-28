@@ -1,23 +1,22 @@
 pico_advanced:
   - user_context:
-      user_type: "MPH student"
-      context: "Early-stage dissertation conceptualization. MPH Student is exploring potential research topics for their Master of Public Health capstone/dissertation. They need help refining vague ideas into researchable questions with appropriate scope for a 6-12 month project."
-      tone: "educational" # (educational, professional, pragmatic)
-      complexity: "intermediate" # (novice, intermediate, advanced, expert)
+      user_type: "Systematic reviewer"
+      context: "Protocol development for systematic review or meta-analysis. Researcher is formulating a research question for a comprehensive evidence synthesis, requiring precise PICO/SPIDER/ECLIPSE framework specification for protocol registration and publication-quality review."
+      tone: "professional" # (educational, professional, pragmatic)
+      complexity: "expert" # (novice, intermediate, advanced, expert)
       examples_from: "public health"
       constraints:
-        - "Timeline: 6-12 months for completion"
-        - "Resources: Limited to publicly available data, literature review, or small-scale surveys"
-        - "Skills: Basic epidemiology/statistics, literature review, possibly qualitative methods"
-        - "Access: Typically no Institutional Review Board (IRB) approval for human subjects until proposal stage"
+        - "Timeline: 12-24+ months for completion including screening, extraction, analysis"
+        - "Resources: Database access (PubMed, Embase, CINAHL, etc.), protocol registration (PROSPERO), institutional support"
+        - "Skills: Advanced search strategies, risk of bias assessment, meta-analysis methods, GRADE framework"
+        - "Standards: PRISMA reporting, Cochrane methodology, protocol peer review requirements"
       pitfalls:
-        - "Scope too broad for Master's project"
-        - "Proposing complex interventions without implementation feasibility"
-        - "Focusing on rare diseases with limited literature"
-        - "Missing population or outcome specificity"
-        - "Overly ambitious data collection plans"
-        - "Confusing descriptive vs. analytical epidemiology"
-        - "Not considering health equity dimensions"
+        - "Question too broad resulting in unmanageable screening burden (>10,000 records)"
+        - "Overly narrow eligibility criteria yielding insufficient studies for synthesis"
+        - "Poorly defined outcomes leading to heterogeneous measurement approaches"
+        - "Inadequate specification of comparison groups or control conditions"
+        - "Not pre-specifying subgroup analyses or sensitivity analyses"
+        - "Conflating different review types (scoping vs. systematic vs. rapid)"
   - id: population
     aspect_name: Population
     aspect_description: Statistical characteristics of a group of people, including age range, gender, race/ethnicity, and geographic location that form the foundation for all other PICO dimensions
@@ -51,7 +50,6 @@ pico_advanced:
       2. If matches standard exactly → use "category (range)" (e.g., "kids" → "children (2-12 years)")
       3. If overly broad AND age-critical → request clarification (e.g., "growth hormone in adults" → ask young vs older)
       4. If overly broad AND age-NOT-critical → accept (e.g., "adults with diabetes" → accept "adults (18-64y)")
-
     response_strategy: |
       1. Evaluate demographic presence: parse user input for age, gender, ethnicity, setting, location
       2. Apply context-based validation first (determines necessity)
@@ -570,10 +568,7 @@ pico_advanced:
 
       ### CONDITION SPECIFICITY VALIDATION
       Condition is acceptable if:
-
-      Clinically unambiguous (single primary treatment pathway) OR
-      Specific enough to avoid disambiguation (e.g., "Type 2 diabetes" acceptable; "diabetes" requires type specification if ambiguous)
-
+      - Clinically unambiguous (single primary treatment pathway) OR Specific enough to avoid disambiguation (e.g., "Type 2 diabetes" acceptable; "diabetes" requires type specification if ambiguous)
       Reject only if multiple treatment pathways exist requiring clarification.
 
       ### CONDITIONAL ELEMENTS
@@ -598,3 +593,32 @@ pico_advanced:
       4. Determine stage/severity relevance via clinical context → if relevant AND absent → PROMPT
       5. Validate comorbidities for clinical rationale → if stated without rationale → PROMPT
       6. If all required elements present and valid → ACCEPT
+    examples:
+      clear:
+        - statement: "Efficacy of SGLT2 inhibitors in Type 2 diabetes patients"
+          rationale: primary condition (Type 2 diabetes) specified unambiguously
+        - statement: "Management of acute severe asthma exacerbations requiring emergency department care."
+          rationale: All critical elements present and appropiately specified. Primary condition (asthma), disease stage (acute exacerbations), severity level (severe), diagnostic criteria  and setting/context implicit (requires emergency department level of care)
+        - statement: "Effects of statins in patients with moderate hyperlipidemia."
+          rationale: primary condition (hyperlipidemia), severity level (moderate)
+      needs_refinement:
+        - statement: Outcomes of cancer treatment
+          issue: Unspecified primary condition type/site
+          missing: Specific cancer type (e.g., breast, lung, colorectal) and disease stage (I-IV)
+          example_question: "What specific type of cancer (e.g., breast, lung, colorectal) and disease stage (I-IV) are you focusing on?"
+      partial:
+        - statement: Women over 40 with cardiovascular disease
+          has: Gender (women) and minimum age (40)
+          missing: ethnicity (if CVD disparities relevant),setting (geographic/clinical context)
+          example_question: Is there an upper age limit? Are you focusing on specific ethnic groups given CVD disparities?
+      vague_ambiguous:
+        - statement: Treatment for diabetic patients
+          issue: primary condition clinically ambiguous
+          missing: diabetes type (Type 1 vs Type 2 vs gestational)
+          example_question: "What type of diabetes? (Type 1, Type 2, gestational)"
+        - statement: Intervention in patients with heart problems
+          issue: ambiguous setting and ethnicity/race
+          example_question: "Specify what dimensions of diversity matter (ethnic, socioeconomic, geographic)?"
+        - statement: Study in representative population sample
+          issue: "'Representative' is context-dependent - representative of what population?"
+          example_question: What population should this sample represent? Please specify demographic characteristics that define representativeness, including age, sex/gender, ethnicity/race, and setting.

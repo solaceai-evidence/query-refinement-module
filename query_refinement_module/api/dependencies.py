@@ -31,7 +31,7 @@ def get_refinement_manager() -> QueryRefinementManager:
     
     This dependency provides a configured manager with:
     - LiteLLM provider for LLM completions
-    - No query analyzer (deprecated - uses initialize_sequential)
+    - Uses initialize_sequential for analysis (analyzer deprecated)
     """
     # Get LLM settings from environment
     llm_settings = LLMSettings.from_env(require_model=False)
@@ -39,16 +39,9 @@ def get_refinement_manager() -> QueryRefinementManager:
     # Initialize LLM provider
     llm_provider = LiteLLMProvider(**llm_settings.as_provider_kwargs())
     
-    # Analyzer is deprecated - don't create one
-    # query_analyzer = LLMQueryAnalyzer(
-    #     llm_provider=llm_provider,
-    #     **llm_settings.as_analyzer_kwargs()
-    # )
-    
-    # Create manager without analyzer (use initialize_sequential)
+    # Create manager (analyzer removed in v2.0 - uses initialize_sequential)
     manager = QueryRefinementManager(
-        llm_provider=llm_provider,
-        query_analyzer=None  # Use initialize_sequential() instead
+        llm_provider=llm_provider
     )
     
     return manager

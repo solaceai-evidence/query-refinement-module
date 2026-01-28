@@ -136,8 +136,8 @@ def end_query_session(db: Session, session_id: int) -> Optional[QuerySession]:
     """Mark a query session as ended."""
     session = get_query_session(db, session_id)
     if session:
-        from datetime import datetime
-        session.ended_at = datetime.utcnow()
+        from datetime import datetime, timezone
+        session.ended_at = datetime.now(timezone.utc)
         session.status = "completed"
         db.commit()
         db.refresh(session)

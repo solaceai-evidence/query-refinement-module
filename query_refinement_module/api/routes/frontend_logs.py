@@ -5,7 +5,7 @@ Endpoints for receiving and querying frontend logs from browser applications.
 Integrates with Phase 2 distributed tracing and Phase 3 audit system.
 """
 
-from datetime import datetime, timedelta
+from datetime import datetime, timedelta, timezone
 from typing import List, Optional
 from fastapi import APIRouter, Depends, HTTPException, status, Request
 from pydantic import BaseModel, Field
@@ -73,11 +73,7 @@ class FrontendLogEntry(BaseModel):
 
 class FrontendLogBatch(BaseModel):
     """Batch of frontend logs."""
-    logs: List[FrontendLogEntry] = Field(..., description="Up to 100 logs per batch")
-    
-    class Config:
-        # Validate list has max 100 items
-        max_items = 100
+    logs: List[FrontendLogEntry] = Field(..., max_length=100, description="Up to 100 logs per batch")
 
 
 class FrontendLogResponse(BaseModel):
@@ -149,7 +145,7 @@ def submit_frontend_logs(
         
         # Create frontend log
         frontend_log = FrontendLog(
-            timestamp=datetime.utcnow(),
+            timestamp=datetime.now(timezone.utc),
             client_timestamp=log_entry.timestamp,
             level=log_entry.level,
             log_type=log_entry.log_type,
@@ -304,7 +300,7 @@ def get_frontend_log_stats(
     if days < 1 or days > 365:
         days = 7
     
-    start_date = datetime.utcnow() - timedelta(days=days)
+    start_date = datetime.now(timezone.utc) - timedelta(days=days)
     
     # Base query for user's logs in date range
     base_query = db.query(FrontendLog).filter(
@@ -354,7 +350,7 @@ def get_frontend_log_stats(
         unique_errors=unique_errors,
         date_range={
             "start": start_date.isoformat(),
-            "end": datetime.utcnow().isoformat()
+            "end": datetime.now(timezone.utc).isoformat()
         }
     )
 
@@ -380,7 +376,7 @@ def get_frontend_errors(
     if days < 1 or days > 365:
         days = 7
     
-    start_date = datetime.utcnow() - timedelta(days=days)
+    start_date = datetime.now(timezone.utc) - timedelta(days=days)
     
     # Query errors grouped by error_name and error_file
     errors = db.query(

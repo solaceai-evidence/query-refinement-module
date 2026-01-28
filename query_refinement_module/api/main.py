@@ -8,6 +8,7 @@ Features:
 - Rate limiting middleware
 """
 import logging
+from contextlib import asynccontextmanager
 from dotenv import load_dotenv
 from fastapi import FastAPI, Request
 from fastapi.middleware.cors import CORSMiddleware
@@ -36,13 +37,53 @@ from query_refinement_module.api.exceptions import QueryRefinementException
 from query_refinement_module.api.rate_limit import RateLimitMiddleware
 from query_refinement_module.logging.middleware import RequestLoggingMiddleware
 
-# Initialize FastAPI app
+
+@asynccontextmanager
+async def lifespan(app: FastAPI):
+    """
+    Application lifespan context manager for startup/shutdown tasks.
+    
+    Note: Database schema should be managed via Alembic migrations.
+    Run 'alembic upgrade head' before starting the server.
+    """
+    # Startup
+    logger.info(
+        "Application starting",
+        extra={
+            "context": {
+                "environment": settings.environment,
+                "version": settings.app_version,
+                "database": settings.database_url.split('@')[-1] if '@' in settings.database_url else 'sqlite',
+                "pool_size": settings.db_pool_size,
+                "max_overflow": settings.db_max_overflow,
+            }
+        }
+    )
+    logger.info(
+        "Service configuration",
+        extra={
+            "context": {
+                "cors_origins": settings.allowed_origins,
+                "log_level": settings.log_level,
+                "log_format": settings.log_format,
+            }
+        }
+    )
+    
+    yield  # Application runs here
+    
+    # Shutdown (cleanup tasks go here if needed)
+    logger.info("Application shutting down")
+
+
+# Initialize FastAPI app with lifespan handler
 app = FastAPI(
     title=settings.app_name,
     version=settings.app_version,
     description="AI-powered query refinement API for scientific literature search",
     docs_url="/docs",
     redoc_url="/redoc",
+    lifespan=lifespan,
 )
 
 # Add request logging middleware (first, so it wraps everything)
@@ -190,35 +231,3 @@ app.include_router(feedback.router, prefix="/api")
 app.include_router(refinement.router, prefix="/api")
 app.include_router(audit.router, prefix="/api")
 app.include_router(frontend_logs.router, prefix="/api")
-
-
-@app.on_event("startup")
-def on_startup():
-    """
-    Application startup tasks with enhanced logging.
-    
-    Note: Database schema should be managed via Alembic migrations.
-    Run 'alembic upgrade head' before starting the server.
-    """
-    logger.info(
-        "Application starting",
-        extra={
-            "context": {
-                "environment": settings.environment,
-                "version": settings.app_version,
-                "database": settings.database_url.split('@')[-1] if '@' in settings.database_url else 'sqlite',
-                "pool_size": settings.db_pool_size,
-                "max_overflow": settings.db_max_overflow,
-            }
-        }
-    )
-    logger.info(
-        "Service configuration",
-        extra={
-            "context": {
-                "cors_origins": settings.allowed_origins,
-                "log_level": settings.log_level,
-                "log_format": settings.log_format,
-            }
-        }
-    )

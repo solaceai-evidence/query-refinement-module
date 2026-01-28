@@ -13,7 +13,7 @@ from fastapi.responses import StreamingResponse
 from sqlalchemy.orm import Session
 from sqlalchemy import and_
 from typing import List, Optional
-from datetime import datetime, timedelta
+from datetime import datetime, timedelta, timezone
 import csv
 import io
 import json
@@ -22,7 +22,7 @@ from query_refinement_module.db.session import get_db
 from query_refinement_module.db.models.audit_log import AuditLog, AuditEventType, AuditSeverity
 from query_refinement_module.api.auth import get_current_user
 from query_refinement_module.audit import audit_service
-from pydantic import BaseModel, Field
+from pydantic import BaseModel, ConfigDict, Field
 
 
 router = APIRouter(prefix="/audit", tags=["Audit Logs"])
@@ -34,6 +34,8 @@ router = APIRouter(prefix="/audit", tags=["Audit Logs"])
 
 class AuditLogResponse(BaseModel):
     """Audit log entry response schema."""
+    model_config = ConfigDict(from_attributes=True)
+    
     id: int
     event_type: str
     severity: str
@@ -51,9 +53,6 @@ class AuditLogResponse(BaseModel):
     status: Optional[str] = None
     details: Optional[dict] = None
     error_message: Optional[str] = None
-    
-    class Config:
-        from_attributes = True
 
 
 class AuditLogsResponse(BaseModel):
@@ -204,7 +203,7 @@ def get_audit_stats(
     
     Returns event counts by type, severity, and time period.
     """
-    start_date = datetime.utcnow() - timedelta(days=days)
+    start_date = datetime.now(timezone.utc) - timedelta(days=days)
     
     # Query user's audit logs
     logs = db.query(AuditLog).filter(
@@ -247,7 +246,7 @@ def get_audit_stats(
         unique_users=unique_users,
         date_range={
             "start": start_date.isoformat(),
-            "end": datetime.utcnow().isoformat()
+            "end": datetime.now(timezone.utc).isoformat()
         }
     )
 
@@ -395,7 +394,7 @@ def export_logs_csv(
         iter([output.getvalue()]),
         media_type="text/csv",
         headers={
-            "Content-Disposition": f"attachment; filename=audit_logs_{datetime.utcnow().strftime('%Y%m%d_%H%M%S')}.csv"
+            "Content-Disposition": f"attachment; filename=audit_logs_{datetime.now(timezone.utc).strftime('%Y%m%d_%H%M%S')}.csv"
         }
     )
 
@@ -431,7 +430,7 @@ def export_logs_json(
     logs_data = [log.to_dict() for log in logs]
     
     export_data = {
-        "export_date": datetime.utcnow().isoformat(),
+        "export_date": datetime.now(timezone.utc).isoformat(),
         "user_id": current_user.id,
         "username": current_user.username,
         "total_records": len(logs),
@@ -466,7 +465,7 @@ def export_logs_json(
         iter([json_str]),
         media_type="application/json",
         headers={
-            "Content-Disposition": f"attachment; filename=audit_logs_{datetime.utcnow().strftime('%Y%m%d_%H%M%S')}.json"
+            "Content-Disposition": f"attachment; filename=audit_logs_{datetime.now(timezone.utc).strftime('%Y%m%d_%H%M%S')}.json"
         }
     )
 
@@ -484,7 +483,7 @@ def cleanup_expired_logs(
     This is typically run as a scheduled job, but can be manually triggered.
     """
     # Find expired logs for current user
-    now = datetime.utcnow()
+    now = datetime.now(timezone.utc)
     expired_logs = db.query(AuditLog).filter(
         and_(
             AuditLog.user_id == current_user.id,

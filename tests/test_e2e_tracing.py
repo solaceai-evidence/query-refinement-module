@@ -109,7 +109,7 @@ class TestEndToEndTracing:
         finally:
             clear_request_id()
     
-    @patch('query_refinement_module.providers.litellm')
+    @patch('query_refinement_module.providers.llm.litellm')
     def test_llm_call_includes_request_id(self, mock_litellm):
         """Test that LLM API calls include request_id in metadata."""
         from query_refinement_module.providers import LiteLLMProvider

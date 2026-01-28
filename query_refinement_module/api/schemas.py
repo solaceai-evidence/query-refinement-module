@@ -1,7 +1,7 @@
 """
 Pydantic schemas for request/response validation.
 """
-from pydantic import BaseModel, EmailStr, Field, field_validator
+from pydantic import BaseModel, ConfigDict, EmailStr, Field, field_validator
 from typing import Optional, List
 from datetime import datetime
 import re
@@ -69,14 +69,13 @@ class UserCreate(BaseModel):
 
 class UserResponse(BaseModel):
     """Schema for user data in responses."""
+    model_config = ConfigDict(from_attributes=True)
+    
     id: int
     username: str
     email: Optional[str] = None
     name: Optional[str] = None
     created_at: datetime
-    
-    class Config:
-        from_attributes = True
 
 
 class Token(BaseModel):
@@ -101,14 +100,13 @@ class QuerySessionCreate(BaseModel):
 
 class QuerySessionResponse(BaseModel):
     """Schema for query session in responses."""
+    model_config = ConfigDict(from_attributes=True)
+    
     id: int
     user_id: int
     started_at: datetime
     ended_at: Optional[datetime] = None
     status: str
-    
-    class Config:
-        from_attributes = True
 
 
 # ==========================================
@@ -141,15 +139,14 @@ class QueryUpdate(BaseModel):
 
 class QueryResponse(BaseModel):
     """Schema for query in responses."""
+    model_config = ConfigDict(from_attributes=True)
+    
     id: int
     session_id: int
     original_query: str
     refined_query: Optional[str] = None
     created_at: datetime
     updated_at: datetime
-    
-    class Config:
-        from_attributes = True
 
 
 # ==========================================
@@ -164,13 +161,12 @@ class RefinementStepCreate(BaseModel):
 
 class RefinementStepResponse(BaseModel):
     """Schema for refinement step in responses."""
+    model_config = ConfigDict(from_attributes=True)
+    
     id: int
     query_id: int
     aspect_name: str
     created_at: datetime
-    
-    class Config:
-        from_attributes = True
 
 
 # ==========================================
@@ -191,14 +187,13 @@ class FollowUpUpdate(BaseModel):
 
 class FollowUpResponse(BaseModel):
     """Schema for follow-up in responses."""
+    model_config = ConfigDict(from_attributes=True)
+    
     id: int
     refinement_step_id: int
     question: str
     answer: Optional[str] = None
     created_at: datetime
-    
-    class Config:
-        from_attributes = True
 
 
 # ==========================================
@@ -222,12 +217,11 @@ class FeedbackCreate(BaseModel):
 
 class FeedbackResponse(BaseModel):
     """Schema for feedback in responses."""
+    model_config = ConfigDict(from_attributes=True)
+    
     id: int
     user_id: int
     query_id: Optional[int] = None
     rating: Optional[int] = None
     comments: Optional[str] = None
     created_at: datetime
-    
-    class Config:
-        from_attributes = True

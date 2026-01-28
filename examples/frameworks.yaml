@@ -816,3 +816,628 @@ mph_dissertation:
       - study_design
     evaluation_criteria: |
       ### What you''re evaluating:
+      Is the sampling strategy clearly defined and appropriate for the study design and population?
+pico_advanced:
+  - user_context:
+      user_type: "Systematic reviewer"
+      context: "Protocol development for systematic review or meta-analysis. Researcher is formulating a research question for a comprehensive evidence synthesis, requiring precise PICO/SPIDER/ECLIPSE framework specification for protocol registration and publication-quality review."
+      tone: "professional" # (educational, professional, pragmatic)
+      complexity: "expert" # (novice, intermediate, advanced, expert)
+      examples_from: "public health"
+      constraints:
+        - "Timeline: 12-24+ months for completion including screening, extraction, analysis"
+        - "Resources: Database access (PubMed, Embase, CINAHL, etc.), protocol registration (PROSPERO), institutional support"
+        - "Skills: Advanced search strategies, risk of bias assessment, meta-analysis methods, GRADE framework"
+        - "Standards: PRISMA reporting, Cochrane methodology, protocol peer review requirements"
+      pitfalls:
+        - "Question too broad resulting in unmanageable screening burden (>10,000 records)"
+        - "Overly narrow eligibility criteria yielding insufficient studies for synthesis"
+        - "Poorly defined outcomes leading to heterogeneous measurement approaches"
+        - "Inadequate specification of comparison groups or control conditions"
+        - "Not pre-specifying subgroup analyses or sensitivity analyses"
+        - "Conflating different review types (scoping vs. systematic vs. rapid)"
+  - id: population
+    aspect_name: Population
+    aspect_description: Statistical characteristics of a group of people, including age range, gender, race/ethnicity, and geographic location that form the foundation for all other PICO dimensions
+    evaluation_criteria: |
+      ### Task
+      Evaluate if these demographic elements are specified when relevant:
+      - Age (range, category, life stage such as pediatric, postmenopausal, etc.)
+      - Sex/gender  (male, female, non-binary, specific identities, all-inclusive)
+      - Ethnicity/race (specific groups, diverse populations, all-inclusive)
+      - Setting (urban, rural, clinical, community, school-based, geographic location)
+
+      MINIMUM REQUIREMENT: At least one demographic MAY be specified. Zero is acceptable.
+
+      IF no demographics specified:
+      Ask: "You are including all ages, genders, ethnicities, and settings. Confirm this is intended or specify target population."
+
+      CONTEXT-BASED VALIDATION:
+      - Universal interventions (e.g., kidney disease treatment) → accept general population
+      - Geography/culture-dependent interventions (e.g., dietary factors) → require setting specification
+      - Age-dependent conditions (e.g., OCD diagnosis/treatment) → require age specification
+
+      ANTI-OVER-REFINEMENT RULES:
+      - DO NOT request ethnicity/gender/subpopulation narrowing UNLESS query explicitly addresses health disparities or population-specific outcomes
+      - ACCEPT general terms ("young adults", "urban communities") without pushing for specificity
+
+      AGE STANDARDIZATION:
+      Standard categories: Neonates (0-28d), Infants (0-2y), Children (2-12y), Adolescents (13-17y), Adults (18-64y), Young adults (18-39y), Middle-aged (40-64y), Older adults (65+y)
+
+      Apply these rules:
+      1. If user range deviates ±5y from standard boundary → prepend "approximately" (e.g., "4-10y" → "approximately 4-10 years")
+      2. If matches standard exactly → use "category (range)" (e.g., "kids" → "children (2-12 years)")
+      3. If overly broad AND age-critical → request clarification (e.g., "growth hormone in adults" → ask young vs older)
+      4. If overly broad AND age-NOT-critical → accept (e.g., "adults with diabetes" → accept "adults (18-64y)")
+    response_strategy: |
+      1. Evaluate demographic presence: parse user input for age, gender, ethnicity, setting, location
+      2. Apply context-based validation first (determines necessity)
+      3. If gaps exist AND required: emit conversational prompt
+      4. If gaps exist AND optional: silently accept with standardized elements (where applicable)
+    examples:
+      clear:
+        - statement: Efficacy of metformin in adults aged 40-65 with type 2 diabetes
+          rationale: Age (40-65) specified, with all-inclusive gender (adults) and ethnicity and setting
+        - statement: Postmenopausal women under 65 in urban clinical settings
+          rationale: clearly described age (postmenopausal under 65), gender (women), setting (urban clinical)
+        - statement: Black males aged 18-45 with hypertension in community health centers
+          rationale: clearly defined age (18-45), gender (males), ethnicity (Black), setting (community health centers)
+      needs_refinement:
+        - statement: The effect of exercise on depression
+          issue: Zero demographics specified; too broad
+          missing: Age, gender at minimum
+          example_question: "You are including all ages, genders, ethnicities, and settings. Is that correct or do you want to limit to you have any specific age range, sex/gender, setting, and/or ethnicity/race?"
+      partial:
+        - statement: Women over 40 with cardiovascular disease
+          has: Gender (women) and minimum age (40)
+          missing: ethnicity (if CVD disparities relevant),setting (geographic/clinical context)
+          example_question: Is there an upper age limit? Are you focusing on specific ethnic groups given CVD disparities?
+      vague_ambiguous:
+        - statement: Treatment outcomes in minority populations aged 65 and older in tertiary care hospitals
+          issue: "'Minority populations' is vague and could mean multiple groups"
+          missing: precise ethnicity/race or setting; maybe gender as well
+          example_question: "Which specific population groups are you focusing on? (e.g., Hispanic/Latino, African American, Asian, Native American). Do you have any specifications regarding gender or geographic location?"
+        - statement: Middle-aged adults in diverse communities
+          issue: ambiguous setting and ethnicity/race
+          example_question: "Specify what dimensions of diversity matter (ethnic, socioeconomic, geographic)?"
+        - statement: Study in representative population sample
+          issue: "'Representative' is context-dependent - representative of what population?"
+          example_question: What population should this sample represent? Please specify demographic characteristics that define representativeness, including age, sex/gender, ethnicity/race, and setting.
+  - id: intervention_specification
+    aspect_name: Intervention Specification
+    aspect_description:
+      Details the treatment, procedure, or exposure being studied
+      including specific agents, dosing, duration, frequency, and delivery method
+    depends_on:
+      - population_demographic
+      - geographic_location
+      - population_clinical_profile
+    system_prompt:
+      "You are a research advisor helping users refine their research topics
+      by asking focused clarifying questions.
+
+
+      Your Job:
+
+      Users provide research interests (questions, statements, aims, or paragraphs).
+      Clarify aspect: **{self.aspect_name}**, with definition: **{self.aspect_description}**.
+      Focus ONLY on this aspect—ignore other research elements.
+
+
+      How to Engage:
+
+      1. **Acknowledge first**: Recognize what's already clear before requesting clarification.
+
+      2. **One element at a time**: Address 1-2 unclear points per turn.
+
+      3. **Mirror their language**: Use their terminology; avoid jargon unless it adds
+      needed precision.
+
+      4. **Give examples**: Offer 2-4 concrete, aspect-specific examples they can adapt.
+
+      5. **Explain why**: Briefly note how this clarification strengthens their research
+      input and improves their search.
+
+
+      When to Stop:
+
+      This aspect is sufficiently refined when the user's statement is specific, unambiguous,
+      and actionable for evidence synthesis.
+
+
+      Boundaries:
+
+      - You clarify research descriptions, not search literature or write proposals.
+
+      - Stay within your assigned refinement aspect.
+
+      - Keep developing clarity, not fixing problems.
+
+
+      Tone: Supportive and collaborative. Be efficient—don't over-explain.
+
+      "
+    evaluation_criteria:
+      "### Objective\n Analyze whether the intervention is sufficiently\
+      \ detailed for study replication\n\n### Assess clarity and completeness across\
+      \ the following Intervention Dimensions\n 1. Intervention Type\n    - Pharmacological\
+      \ (drug, biologic)\n    - Procedural (surgery, device)\n    - Behavioral (therapy,\
+      \ lifestyle)\n    - Diagnostic (test, screening)\n 2. Specific Agent/Method\n\
+      \   - Generic/brand name for drugs\n   - Specific procedure or technique\n   -\
+      \ Defined behavioral protocol\n 3. Dosing/Intensity (if applicable)\n   - Dose\
+      \ amount and units\n   - Frequency (daily, weekly)\n   - Timing (morning, with\
+      \ meals)\n 4. Duration\n   - Treatment length\n   - Follow-up period\n 5. Delivery\
+      \ Method\n   - Route (oral, IV, subcutaneous)\n   - Setting (inpatient, outpatient,\
+      \ home)\n   - Provider type\n 6. Adjunct Treatments\n   - Concurrent therapies\n\
+      \   - Background medications\n   - Supportive care protocols\n"
+    examples:
+      clear:
+        - statement:
+            Metformin 1000mg twice daily for 6 months vs placebo in newly diagnosed
+            Type 2 diabetes
+          rationale:
+            Drug (metformin), dose (1000mg), frequency (twice daily), duration
+            (6 months), comparison (placebo)
+        - statement:
+            Laparoscopic Roux-en-Y gastric bypass performed by experienced bariatric
+            surgeons
+          rationale:
+            Specific surgical technique (laparoscopic Roux-en-Y), provider qualification
+            (experienced bariatric surgeons)
+        - statement:
+            Cognitive Behavioral Therapy, 12 weekly 60-minute sessions delivered
+            by licensed clinical psychologists
+          rationale:
+            Therapy type (CBT), frequency (weekly), duration (12 sessions), session
+            length (60 min), provider (licensed psychologists)
+      needs_refinement:
+        - statement: Effects of medication on blood pressure
+          issue: No medication specified, no dosing information
+          missing: Drug name, dose, frequency, duration, route
+          example_question:
+            Which medication are you studying? Please specify the drug
+            name, dose, frequency, and treatment duration.
+        - statement: Study on surgery outcomes
+          issue: Type of surgery not specified
+          missing: Surgical procedure, approach (open vs laparoscopic), setting
+          example_question:
+            What specific surgical procedure? What surgical approach?
+            (e.g., open, laparoscopic, robotic)
+        - statement: Exercise intervention for weight loss
+          issue: Exercise type, intensity, frequency, duration all unspecified
+          missing:
+            Exercise modality, intensity level, frequency, session duration, total
+            program length
+          example_question:
+            What type of exercise? (aerobic, resistance, both) What intensity,
+            frequency, and program duration?
+      partial:
+        - statement: Atorvastatin treatment for hyperlipidemia
+          has: Drug name (atorvastatin), indication (hyperlipidemia)
+          missing: Dose, frequency, treatment duration, titration protocol
+          example_question:
+            What dose of atorvastatin? (10mg, 20mg, 40mg, 80mg) What frequency
+            and treatment duration?
+        - statement: Physical therapy twice weekly for knee osteoarthritis
+          has: Intervention type (physical therapy), frequency (twice weekly), condition
+          missing:
+            Specific PT protocol, session duration, total treatment length, therapy
+            components
+          example_question:
+            What specific PT protocol? How long are sessions? What is
+            the total treatment duration?
+      vague_ambiguous:
+        - statement: High-dose vitamin D supplementation
+          issue:
+            "'High-dose' is relative - could be 2,000 IU or 50,000 IU depending
+            on context"
+          example_question:
+            What specific dose of vitamin D? (e.g., 2,000 IU daily, 50,000
+            IU weekly)
+        - statement: Intensive glycemic control in diabetes
+          issue: "'Intensive' is subjective - needs target HbA1c or glucose range"
+          example_question:
+            What target defines 'intensive control'? (e.g., HbA1c <6.5%,
+            fasting glucose 80-110 mg/dL)
+  - id: comparison_group
+    aspect_name: Comparison/Control Group
+    aspect_description:
+      "Defines what the intervention is compared against: placebo,
+      standard care, alternative treatment, or no treatment. Critical for establishing
+      causality"
+    depends_on:
+      - intervention_specification
+    system_prompt:
+      "You are a research advisor helping users refine their research topics
+      by asking focused clarifying questions.
+
+
+      Your Job:
+
+      Users provide research interests (questions, statements, aims, or paragraphs).
+      Clarify aspect: **{self.aspect_name}**, with definition: **{self.aspect_description}**.
+      Focus ONLY on this aspect—ignore other research elements.
+
+
+      How to Engage:
+
+      1. **Acknowledge first**: Recognize what's already clear before requesting clarification.
+
+      2. **One element at a time**: Address 1-2 unclear points per turn.
+
+      3. **Mirror their language**: Use their terminology; avoid jargon unless it adds
+      needed precision.
+
+      4. **Give examples**: Offer 2-4 concrete, aspect-specific examples they can adapt.
+
+      5. **Explain why**: Briefly note how this clarification strengthens their research
+      input and improves their search.
+
+
+      When to Stop:
+
+      This aspect is sufficiently refined when the user's statement is specific, unambiguous,
+      and actionable for evidence synthesis.
+
+
+      Boundaries:
+
+      - You clarify research descriptions, not search literature or write proposals.
+
+      - Stay within your assigned refinement aspect.
+
+      - Keep developing clarity, not fixing problems.
+
+
+      Tone: Supportive and collaborative. Be efficient—don't over-explain.
+
+      "
+    evaluation_criteria:
+      "### Objective\n  Analyze whether an appropriate comparison/control\
+      \ group is specified.\n  Key Questions:\n  - Is a comparator mentioned?\n  - Is\
+      \ the comparator appropriate for the research question?\n  - Is the comparator\
+      \ as well-defined as the intervention?\n  - Are ethical considerations addressed\
+      \ (especially for no-treatment controls)?\n\n### Comparison Types\n  1. Placebo\
+      \ Control\n    - Inert substance/sham procedure\n    - Blinding considerations\n\
+      \  2. Standard Care/Treatment\n    - Current guideline-recommended treatment\n\
+      \    - Usual care protocols\n  3. Alternative Active Treatment\n    - Different\
+      \ drug/dose/intervention\n    - Head-to-head comparison\n  4. No Treatment\n \
+      \   - Watchful waiting\n    - Natural history observation\n  5. Dose Comparison\n\
+      \    - Different doses of same intervention\n"
+    examples:
+      clear:
+        - statement: Metformin vs placebo in prediabetic adults
+          rationale: Clear active intervention (metformin) vs inert control (placebo)
+        - statement:
+            New anticoagulant compared to warfarin (standard care) in atrial
+            fibrillation
+          rationale: Novel treatment vs established standard of care explicitly stated
+        - statement:
+            High-intensity statins vs moderate-intensity statins in secondary
+            prevention
+          rationale: Head-to-head comparison of two active dose strategies
+      needs_refinement:
+        - statement: Effects of new drug on blood pressure
+          issue: No comparison group mentioned
+          missing: Comparator specification
+          example_question:
+            What will you compare the new drug against? (e.g., placebo,
+            current standard treatment, another active drug)
+        - statement: Study of surgical intervention
+          issue: No comparison - surgery vs what?
+          missing: Control/comparison group
+          example_question:
+            What is the comparison? (e.g., surgery vs medical management,
+            surgery vs observation, one surgical technique vs another)
+      partial:
+        - statement: Cognitive therapy vs usual care in depression
+          has: Intervention (cognitive therapy) and comparison type (usual care)
+          missing: "'Usual care' not defined - varies by setting and provider"
+          example_question:
+            Can you specify what 'usual care' includes in your setting?
+            (e.g., medications only, supportive counseling, monitoring frequency)
+        - statement: New treatment compared to current options
+          has: Comparison concept mentioned
+          missing: Specific comparator not identified
+          example_question:
+            What specific current treatment(s) will serve as the comparator?
+            (e.g., specific drug names, specific procedures)
+      vague_ambiguous:
+        - statement: Drug A versus control in hypertension
+          issue: "'Control' could mean placebo, standard care, or no treatment"
+          example_question:
+            What does 'control' mean in your study? (placebo, standard
+            antihypertensive therapy, or no treatment)
+        - statement: Intervention vs standard therapy
+          issue: "'Standard therapy' varies by geography, guidelines, and time period"
+          example_question:
+            What specific treatment(s) constitute 'standard therapy' in
+            your context? (e.g., specific drugs, specific guidelines)
+  - id: primary_outcomes
+    aspect_name: Primary Outcomes
+    aspect_description:
+      Specifies the main outcomes of interest including measurement
+      methods, timepoints, and clinical significance thresholds.
+    depends_on:
+      - intervention_specification
+      - population_clinical_profile
+    system_prompt:
+      "You are a research advisor helping users refine their research topics
+      by asking focused clarifying questions.
+
+
+      Your Job:
+
+      Users provide research interests (questions, statements, aims, or paragraphs).
+      Clarify aspect: **{self.aspect_name}**, with definition: **{self.aspect_description}**.
+      Focus ONLY on this aspect—ignore other research elements.
+
+
+      How to Engage:
+
+      1. **Acknowledge first**: Recognize what's already clear before requesting clarification.
+
+      2. **One element at a time**: Address 1-2 unclear points per turn.
+
+      3. **Mirror their language**: Use their terminology; avoid jargon unless it adds
+      needed precision.
+
+      4. **Give examples**: Offer 2-4 concrete, aspect-specific examples they can adapt.
+
+      5. **Explain why**: Briefly note how this clarification strengthens their research
+      input and improves their search.
+
+
+      When to Stop:
+
+      This aspect is sufficiently refined when the user's statement is specific, unambiguous,
+      and actionable for evidence synthesis.
+
+
+      Boundaries:
+
+      - You clarify research descriptions, not search literature or write proposals.
+
+      - Stay within your assigned refinement aspect.
+
+      - Keep developing clarity, not fixing problems.
+
+
+      Tone: Supportive and collaborative. Be efficient—don't over-explain.
+
+      "
+    evaluation_criteria:
+      "### What you are evaluating:\n  Analyze whether primary\
+      \ outcomes are adequately specified.\n\n### Outcome Dimensions\n  1. Outcome Type:\n\
+      \    - Clinical outcomes (mortality, morbidity)\n    - Surrogate/biomarker outcomes\n\
+      \    - Patient-reported outcomes (PROs)\n    - Functional outcomes\n    - Safety/adverse\
+      \ events\n\n  2. Measurement Method:\n    - Specific instruments/scales\n    -\
+      \ Laboratory tests\n    - Imaging modalities\n    - Validated questionnaires\n\
+      \n  3. Timepoint(s):\n    - When outcomes measured\n    - Follow-up duration\n\
+      \    - Multiple assessment points\n\n  4. Clinical Significance:\n    - Minimal\
+      \ clinically important difference (MCID)\n    - Target effect size\n    - Superiority\
+      \ vs non-inferiority\n\n  5. Primary vs Secondary:\n    - Is primary outcome identified?\n\
+      \    - Are secondary outcomes distinguished?\n"
+    examples:
+      clear:
+        - statement: Effect of intervention on all-cause mortality at 5 years
+          rationale: Specific outcome (all-cause mortality), clear timepoint (5 years)
+        - statement:
+            Change in HbA1c from baseline to 6 months, with target reduction
+            ≥0.5%
+          rationale:
+            Specific biomarker (HbA1c), timeframe (baseline to 6 months), clinical
+            significance threshold (≥0.5%)
+        - statement: Quality of life measured by SF-36 at 3, 6, and 12 months post-intervention
+          rationale:
+            Specific validated instrument (SF-36), multiple timepoints (3, 6,
+            12 months)
+      needs_refinement:
+        - statement: Study on treatment effectiveness
+          issue: "'Effectiveness' not defined - needs specific measurable outcome"
+          missing: Specific outcome measure, measurement method, timepoint
+          example_question:
+            How will you measure effectiveness? (e.g., specific clinical
+            outcomes, biomarkers, patient-reported measures)
+        - statement: Research on improving patient outcomes
+          issue: "'Outcomes' is vague - could mean dozens of different measures"
+          missing: Specific outcome(s), measurement tools, assessment timing
+          example_question:
+            What specific outcome(s) will you measure? When will they
+            be assessed?
+        - statement: Trial measuring quality of life improvement
+          issue: QOL mentioned but no instrument specified
+          missing: QOL instrument, measurement timepoints, MCID
+          example_question:
+            Which quality of life instrument will you use? (e.g., SF-36,
+            EQ-5D, disease-specific) When will you assess it?
+      partial:
+        - statement: Effect on blood pressure reduction
+          has: General outcome category (blood pressure)
+          missing:
+            Specific BP parameter (systolic, diastolic, mean arterial), target
+            reduction,measurement protocol, timepoint
+          example_question:
+            Which BP parameter? (systolic, diastolic, or both) What measurement
+            protocol? When will it be assessed?
+        - statement: Change in depression scores using validated scales
+          has: Outcome type (depression), mentions validation
+          missing: Specific scale, timepoints, MCID
+          example_question:
+            Which depression scale? (PHQ-9, Beck Depression Inventory,
+            HAM-D) At what timepoints? What change is clinically meaningful?
+      vague_ambiguous:
+        - statement: Study on long-term outcomes of surgery
+          issue:
+            "'Long-term' is relative (could be 1 year or 10 years), 'outcomes'
+            unspecified"
+          example_question:
+            What is the follow-up duration? What specific outcomes will
+            you measure? (e.g., survival, complications, functional status)
+        - statement: Research on significant improvement in symptoms
+          issue:
+            "'Significant' (statistical vs clinical?) and 'symptoms' (which ones?)
+            both vague"
+          example_question:
+            Which specific symptoms? How will you measure them? What defines
+            a clinically meaningful improvement?
+  - id: study_design_context
+    aspect_name: Study Design & Methodological Context
+    aspect_description:
+      Clarifies the intended study design, setting, sample size considerations,
+      and methodological approach. Helps determine feasibility and appropriate statistical
+      methods.
+    depends_on:
+      - population_demographic
+      - intervention_specification
+      - comparison_group
+      - primary_outcomes
+    system_prompt:
+      "You are a research advisor helping users refine their research topics
+      by asking focused clarifying questions.
+
+
+      Your Job:
+
+      Users provide research interests (questions, statements, aims, or paragraphs).
+      Clarify aspect: **{self.aspect_name}**, with definition: **{self.aspect_description}**.
+      Focus ONLY on this aspect—ignore other research elements.
+
+
+      How to Engage:
+
+      1. **Acknowledge first**: Recognize what's already clear before requesting clarification.
+
+      2. **One element at a time**: Address 1-2 unclear points per turn.
+
+      3. **Mirror their language**: Use their terminology; avoid jargon unless it adds
+      needed precision.
+
+      4. **Give examples**: Offer 2-4 concrete, aspect-specific examples they can adapt.
+
+      5. **Explain why**: Briefly note how this clarification strengthens their research
+      input and improves their search.
+
+
+      When to Stop:
+
+      This aspect is sufficiently refined when the user's statement is specific, unambiguous,
+      and actionable for evidence synthesis.
+
+
+      Boundaries:
+
+      - You clarify research descriptions, not search literature or write proposals.
+
+      - Stay within your assigned refinement aspect.
+
+      - Keep developing clarity, not fixing problems.
+
+
+      Tone: Supportive and collaborative. Be efficient—don't over-explain.
+
+      "
+    evaluation_criteria:
+      "### What you are evaluating:\nAssess whether the study\
+      \ design and methodological context are sufficiently specified\n\n### Design Dimensions\n\
+      \n1. Study Type\n  - RCT (parallel, crossover, cluster)\n  - Observational (cohort,\
+      \ case-control)\n  - Systematic review/meta-analysis\n  - Pragmatic trial\n\n\
+      2. Setting\n  - Healthcare setting type\n  - Geographic scope\n  - Single-center\
+      \ vs multi-center\n\n3. Sample Size\n  - Target enrollment\n  - Sample size rationale\n\
+      \  - Power considerations\n\n4. Duration\n  - Study timeline\n  - Recruitment\
+      \ period\n  - Follow-up length\n\n5. Special Considerations\n  - Blinding/masking\n\
+      \  - Randomization method\n  - Statistical approach\n  - Interim analyses\n"
+    examples:
+      clear:
+        - statement:
+            Multicenter RCT of drug A vs placebo in 500 patients with 12-month
+            follow-up
+          rationale:
+            Study type (RCT), setting (multicenter), sample size (500), duration
+            (12 months) all specified
+        - statement:
+            Double-blind placebo-controlled parallel-group trial across 20 US
+            academic medical centers
+          rationale:
+            Design details (double-blind, placebo-controlled, parallel), setting
+            (20 academic centers, US location)
+      needs_refinement:
+        - statement: Study comparing two treatments
+          issue: Study design not specified
+          missing: Study type, setting, duration
+          example_question:
+            What study design? (e.g., randomized controlled trial, observational
+            cohort, systematic review)
+      partial:
+        - statement: RCT comparing interventions in hospital setting
+          has: Study type (RCT), general setting (hospital)
+          missing: Sample size, duration, specific hospital type, blinding approach
+          example_question:
+            What is your target sample size? Study duration? Single-center
+            or multi-center?
+  - id: clinical_condition
+    aspect_name: Health Condition and Clinical Context
+    aspect_description: Specifies the primary health condition or disease, including disease stage, severity, and relevant comorbidities. Defines clinical eligibility criteria and baseline clinical characteristics of the target population.
+    evaluation_criteria: |
+      ### Task
+      Evaluate if health condition specification enables accurate patient identification, appropriate treatment selection, and valid outcome interpretation.
+
+      **CRITICAL REQUIREMENT**:
+      Primary condition/diagnosis MUST be specified. If absent, reject and prompt.
+
+      ### CONDITION SPECIFICITY VALIDATION
+      Condition is acceptable if:
+      - Clinically unambiguous (single primary treatment pathway) OR Specific enough to avoid disambiguation (e.g., "Type 2 diabetes" acceptable; "diabetes" requires type specification if ambiguous)
+      Reject only if multiple treatment pathways exist requiring clarification.
+
+      ### CONDITIONAL ELEMENTS
+      - Disease Stage - Required IF clinically meaningful for prognosis or treatment selection (e.g., cancer staging, CKD stages, heart failure classification). Optional otherwise.
+
+      - Severity - Required IF severity materially affects treatment choice (e.g., depression mild/moderate/severe, asthma control levels). Optional for conditions where severity is not treatment-determining.
+
+      - Comorbidities - Include ONLY if comorbidity satisfies at least 1 criterion:
+        - Affects treatment feasibility (contraindication, drug interaction, organ function)
+        - Affects outcome interpretation (confounding variable)
+        - Explicitly defines inclusion/exclusion criteria
+        - Modifies disease prognosis in this specific context
+      Reject comorbidities with no link to primary condition or intervention (e.g., cancer + hypertension without specified interaction).
+
+      - Treatment History & Diagnostic Criteria - Optional enhancements; accept if absent.
+         - Is prior treatment status mentioned? (e.g., treatment-naive, refractory, maintenance therapy)
+         - Are diagnostic criteria specified? (e.g., ICD codes, clinical guidelines, biomarker thresholds)
+    response_strategy: |
+      1. Parse input for named condition
+      2. If absent → REJECT + PROMPT for condition
+      3. If present, assess specificity → if ambiguous → PROMPT for disambiguation
+      4. Determine stage/severity relevance via clinical context → if relevant AND absent → PROMPT
+      5. Validate comorbidities for clinical rationale → if stated without rationale → PROMPT
+      6. If all required elements present and valid → ACCEPT
+    examples:
+      clear:
+        - statement: "Efficacy of SGLT2 inhibitors in Type 2 diabetes patients"
+          rationale: primary condition (Type 2 diabetes) specified unambiguously
+        - statement: "Management of acute severe asthma exacerbations requiring emergency department care."
+          rationale: All critical elements present and appropiately specified. Primary condition (asthma), disease stage (acute exacerbations), severity level (severe), diagnostic criteria  and setting/context implicit (requires emergency department level of care)
+        - statement: "Effects of statins in patients with moderate hyperlipidemia."
+          rationale: primary condition (hyperlipidemia), severity level (moderate)
+      needs_refinement:
+        - statement: Outcomes of cancer treatment
+          issue: Unspecified primary condition type/site
+          missing: Specific cancer type (e.g., breast, lung, colorectal) and disease stage (I-IV)
+          example_question: "What specific type of cancer (e.g., breast, lung, colorectal) and disease stage (I-IV) are you focusing on?"
+      partial:
+        - statement: Women over 40 with cardiovascular disease
+          has: Gender (women) and minimum age (40)
+          missing: ethnicity (if CVD disparities relevant),setting (geographic/clinical context)
+          example_question: Is there an upper age limit? Are you focusing on specific ethnic groups given CVD disparities?
+      vague_ambiguous:
+        - statement: Treatment for diabetic patients
+          issue: primary condition clinically ambiguous
+          missing: diabetes type (Type 1 vs Type 2 vs gestational)
+          example_question: "What type of diabetes? (Type 1, Type 2, gestational)"
+        - statement: Intervention in patients with heart problems
+          issue: ambiguous setting and ethnicity/race
+          example_question: "Specify what dimensions of diversity matter (ethnic, socioeconomic, geographic)?"
+        - statement: Study in representative population sample
+          issue: "'Representative' is context-dependent - representative of what population?"
+          example_question: What population should this sample represent? Please specify demographic characteristics that define representativeness, including age, sex/gender, ethnicity/race, and setting.
