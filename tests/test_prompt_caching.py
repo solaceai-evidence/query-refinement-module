@@ -21,7 +21,7 @@ async def test_prompt_caching_enabled_adds_cache_control():
         "id": "test-id"
     }
     
-    with patch('query_refinement_module.providers.litellm') as mock_litellm:
+    with patch('query_refinement_module.providers.llm.litellm') as mock_litellm:
         mock_litellm.acompletion = AsyncMock(return_value=mock_response)
         
         result = await provider.complete_async(
@@ -57,7 +57,7 @@ async def test_prompt_caching_disabled_no_cache_control():
         "id": "test-id"
     }
     
-    with patch('query_refinement_module.providers.litellm') as mock_litellm:
+    with patch('query_refinement_module.providers.llm.litellm') as mock_litellm:
         mock_litellm.acompletion = AsyncMock(return_value=mock_response)
         
         result = await provider.complete_async(
@@ -92,7 +92,7 @@ async def test_prompt_caching_not_requested():
         "id": "test-id"
     }
     
-    with patch('query_refinement_module.providers.litellm') as mock_litellm:
+    with patch('query_refinement_module.providers.llm.litellm') as mock_litellm:
         mock_litellm.acompletion = AsyncMock(return_value=mock_response)
         
         result = await provider.complete_async(
@@ -127,7 +127,7 @@ async def test_prompt_caching_without_system_prompt():
         "id": "test-id"
     }
     
-    with patch('query_refinement_module.providers.litellm') as mock_litellm:
+    with patch('query_refinement_module.providers.llm.litellm') as mock_litellm:
         mock_litellm.acompletion = AsyncMock(return_value=mock_response)
         
         result = await provider.complete_async(

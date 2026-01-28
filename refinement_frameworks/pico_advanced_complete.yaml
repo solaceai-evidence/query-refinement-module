@@ -233,7 +233,7 @@ pico_advanced:
             What is the comparison? (e.g., surgery vs medical management,
             surgery vs observation, one surgical technique vs another)
       vague_ambiguous:
-        - statement: Drug A versus control in hypertension
+        - statement: ACE inhibitors versus control in hypertension
           issue: "'Control' could mean placebo, standard care, or no treatment"
           example_question:
             What does 'control' mean in your study? (placebo, standard
@@ -250,62 +250,25 @@ pico_advanced:
     depends_on:
       - intervention_specification
       - population_clinical_profile
-    system_prompt:
-      "You are a research advisor helping users refine their research topics
-      by asking focused clarifying questions.
+    
+    evaluator: |
+      ### TASK
+      Evaluate if primary outcomes are sufficiently specified for measurement and interpretation.
 
+      ### CRITICAL REQUIREMENTS
+      At least ONE primary outcome MUST be specified. If absent, reject and prompt.
 
-      Your Job:
+      ### OUTCOME SPECIFICITY VALIDATION
+      Outcomes must include:
+      - Specific outcome measure (e.g., all-cause mortality, HbA1c levels, quality of life)
+      - Measurement method/instrument (e.g., lab test, validated questionnaire)
+      - Timepoint(s) for assessment (e.g., 6 months, 1 year post-intervention)
+      - Clinical significance threshold (if applicable, e.g., HbA1c reduction ≥0.5%)
 
-      Users provide research interests (questions, statements, aims, or paragraphs).
-      Clarify aspect: **{self.name}**, with definition: **{self.description}**.
-      Focus ONLY on this aspect—ignore other research elements.
+      Reject if outcomes are vague/general (e.g., "treatment effectiveness", "improved health") without specifics.
 
-
-      How to Engage:
-
-      1. **Acknowledge first**: Recognize what's already clear before requesting clarification.
-
-      2. **One element at a time**: Address 1-2 unclear points per turn.
-
-      3. **Mirror their language**: Use their terminology; avoid jargon unless it adds
-      needed precision.
-
-      4. **Give examples**: Offer 2-4 concrete, aspect-specific examples they can adapt.
-
-      5. **Explain why**: Briefly note how this clarification strengthens their research
-      input and improves their search.
-
-
-      When to Stop:
-
-      This aspect is sufficiently refined when the user's statement is specific, unambiguous,
-      and actionable for evidence synthesis.
-
-
-      Boundaries:
-
-      - You clarify research descriptions, not search literature or write proposals.
-
-      - Stay within your assigned refinement aspect.
-
-      - Keep developing clarity, not fixing problems.
-
-
-      Tone: Supportive and collaborative. Be efficient—don't over-explain.
-
-      "
-    evaluator: "### What you are evaluating:\n  Analyze whether primary\
-      \ outcomes are adequately specified.\n\n### Outcome Dimensions\n  1. Outcome Type:\n\
-      \    - Clinical outcomes (mortality, morbidity)\n    - Surrogate/biomarker outcomes\n\
-      \    - Patient-reported outcomes (PROs)\n    - Functional outcomes\n    - Safety/adverse\
-      \ events\n\n  2. Measurement Method:\n    - Specific instruments/scales\n    -\
-      \ Laboratory tests\n    - Imaging modalities\n    - Validated questionnaires\n\
-      \n  3. Timepoint(s):\n    - When outcomes measured\n    - Follow-up duration\n\
-      \    - Multiple assessment points\n\n  4. Clinical Significance:\n    - Minimal\
-      \ clinically important difference (MCID)\n    - Target effect size\n    - Superiority\
-      \ vs non-inferiority\n\n  5. Primary vs Secondary:\n    - Is primary outcome identified?\n\
-      \    - Are secondary outcomes distinguished?\n"
+      ### CLARIFYING QUESTIONS
+      If any elements are missing or vague, prompt with targeted questions to elicit necessary details.
     examples:
       clear:
         - statement: Effect of intervention on all-cause mortality at 5 years
