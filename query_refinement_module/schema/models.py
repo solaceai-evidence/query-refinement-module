@@ -181,21 +181,42 @@ class RefinementDimension(BaseModel):
     
     Replaces the dataclass-based RefinementAspect with a Pydantic model
     for better validation, serialization, and type safety.
+    
+    Field aliases:
+        - name → aspect_name (YAML uses 'name')
+        - description → aspect_description (YAML uses 'description')
+        - evaluator → evaluation_instructions (YAML uses 'evaluator')
+        - response_strategy → response_strategies (YAML uses singular)
     """
     model_config = ConfigDict(
         extra="allow",
         validate_assignment=True,
+        populate_by_name=True,  # Allow both alias and field name
     )
     
     # Required fields
     id: str = Field(description="Unique identifier for this dimension")
-    aspect_name: str = Field(description="Human-readable dimension name")
-    aspect_description: str = Field(description="Brief description of what this dimension refines")
+    aspect_name: str = Field(
+        description="Human-readable dimension name",
+        validation_alias="name"
+    )
+    aspect_description: str = Field(
+        description="Brief description of what this dimension refines",
+        validation_alias="description"
+    )
     
-    # Evaluation content (accepts both old and new field names)
-    evaluation_instructions: str = Field(default="", description="Legacy field name")
+    # Evaluation content (accepts YAML field names as aliases)
+    evaluation_instructions: str = Field(
+        default="", 
+        description="Instructions for evaluating this dimension",
+        validation_alias="evaluator"
+    )
     evaluation_criteria: str = Field(default="", description="Criteria for evaluating this dimension")
-    response_strategies: Optional[str] = Field(default=None, description="Strategies for responding")
+    response_strategies: Optional[str] = Field(
+        default=None, 
+        description="Strategies for responding",
+        validation_alias="response_strategy"
+    )
     
     # Examples for few-shot learning
     examples: Optional[ExamplesCollection] = Field(default=None, description="Few-shot examples")

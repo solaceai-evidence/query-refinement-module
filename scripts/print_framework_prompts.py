@@ -1,3 +1,19 @@
+"""
+Print framework prompts for review.
+
+This script loads a YAML framework definition and prints the prompts that would be
+generated for each dimension, making it easy to review and share with colleagues.
+
+Usage:
+    python scripts/print_framework_prompts.py <framework_yaml> <framework_name> [options]
+
+Options:
+    --query <text>       Custom query (default: realistic sample based on framework)
+    --aspect <id>        Show only specific aspect by ID
+    --summary            Show compact summary instead of full prompts
+    --followup           Also show follow-up mode example  
+    --synthesis          Show synthesis (final) prompt with mock refinements
+"""
 import sys
 from pathlib import Path
 import yaml
@@ -6,12 +22,45 @@ from query_refinement_module.schema import RefinementAspect
 from query_refinement_module.schema.synthesis import SynthesisPromptBuilder
 
 
-def load_framework(yaml_path: Path, framework_name: str) -> list[RefinementAspect]:
+# Sample queries for different framework types
+SAMPLE_QUERIES = {
+    "pico_advanced": "What is the effectiveness of cognitive behavioral therapy compared to pharmacotherapy for treating anxiety disorders in adults?",
+    "mph_dissertation": "I want to examine factors associated with childhood obesity in urban school districts",
+    "default": "What interventions are effective for improving health outcomes in the target population?"
+}
+
+
+def load_framework(yaml_path: Path, framework_name: str) -> tuple[list[RefinementAspect], dict | None]:
+    """
+    Load a framework from YAML, handling the user_context pattern.
+    
+    Returns:
+        tuple: (list of RefinementAspect, user_context dict or None)
+    """
     document = yaml.safe_load(yaml_path.read_text())
     framework_def = document.get(framework_name)
     if not framework_def:
-        raise ValueError(f"Framework '{framework_name}' not found in {yaml_path}")
-    return [RefinementAspect(**aspect) for aspect in framework_def]
+        available = list(document.keys())
+        raise ValueError(f"Framework '{framework_name}' not found in {yaml_path}. Available: {available}")
+    
+    # Handle user_context as first item (matches registry.py logic)
+    user_context = None
+    aspect_items = framework_def
+    
+    if framework_def and isinstance(framework_def[0], dict) and "user_context" in framework_def[0]:
+        # Extract user_context fields (all keys except "user_context" itself)
+        first_item = framework_def[0]
+        user_context = {k: v for k, v in first_item.items() if k != "user_context"}
+        aspect_items = framework_def[1:]  # Remaining items are aspects
+    
+    # Attach user_context to each aspect if present
+    aspects = []
+    for item in aspect_items:
+        if user_context:
+            item = {**item, 'user_context': user_context}
+        aspects.append(RefinementAspect(**item))
+    
+    return aspects, user_context
 
 
 def print_full_unified_prompt(aspect: RefinementAspect, query: str, show_followup: bool = False):
@@ -60,7 +109,9 @@ def print_summary(aspect: RefinementAspect):
     if aspect.depends_on:
         print(f"  Dependencies: {', '.join(aspect.depends_on)}")
     if aspect.examples:
-        example_counts = {k: len(v) for k, v in aspect.examples.items()}
+        # ExamplesCollection is a Pydantic model, use model_dump() to get dict
+        examples_dict = aspect.examples.model_dump(exclude_none=True)
+        example_counts = {k: len(v) for k, v in examples_dict.items() if isinstance(v, list)}
         print(f"  Examples: {example_counts}")
     print()
 
@@ -112,16 +163,16 @@ def main():
     if len(sys.argv) < 3:
         print("Usage: python print_framework_prompts.py <framework_yaml> <framework_name> [options]")
         print("\nOptions:")
-        print("  --query <text>       Custom query (default: 'sample research query')")
+        print("  --query <text>       Custom query (default: realistic sample based on framework)")
         print("  --aspect <id>        Show only specific aspect by ID")
         print("  --summary            Show compact summary instead of full prompts")
         print("  --followup           Also show follow-up mode example")
         print("  --synthesis          Show synthesis (final) prompt with mock refinements")
         print("\nExamples:")
-        print("  python scripts/print_framework_prompts.py examples/pico_advanced_complete.yaml pico_advanced")
-        print("  python scripts/print_framework_prompts.py examples/mph_dissertation.yaml mph_dissertation --aspect population")
-        print("  python scripts/print_framework_prompts.py examples/pico_advanced_complete.yaml pico_advanced --query 'diabetes treatment' --followup")
-        print("  python scripts/print_framework_prompts.py examples/pico_advanced_complete.yaml pico_advanced --synthesis")
+        print("  python scripts/print_framework_prompts.py refinement_frameworks/pico_advanced_complete.yaml pico_advanced")
+        print("  python scripts/print_framework_prompts.py refinement_frameworks/mph_dissertation.yaml mph_dissertation --aspect population")
+        print("  python scripts/print_framework_prompts.py refinement_frameworks/pico_advanced_complete.yaml pico_advanced --followup")
+        print("  python scripts/print_framework_prompts.py refinement_frameworks/pico_advanced_complete.yaml pico_advanced --synthesis")
         raise SystemExit(1)
 
     yaml_path = Path(sys.argv[1])
@@ -129,7 +180,7 @@ def main():
     
     # Parse options
     args = sys.argv[3:]
-    query = "sample research query"
+    query = None  # Will use sample query if not specified
     aspect_filter = None
     show_summary = False
     show_followup = False
@@ -156,7 +207,11 @@ def main():
             print(f"Unknown option: {args[i]}")
             raise SystemExit(1)
 
-    aspects = load_framework(yaml_path, framework_name)
+    aspects, user_context = load_framework(yaml_path, framework_name)
+    
+    # Use framework-appropriate sample query if not specified
+    if query is None:
+        query = SAMPLE_QUERIES.get(framework_name, SAMPLE_QUERIES["default"])
     
     # Filter by aspect ID if specified
     if aspect_filter:
@@ -165,27 +220,35 @@ def main():
             print(f"❌ Aspect '{aspect_filter}' not found in framework '{framework_name}'")
             raise SystemExit(1)
 
+    # Print header
     print(f"\n{'=' * 80}")
-    print(f"Framework: {framework_name}")
-    print(f"Source: {yaml_path}")
-    print(f"Query: {query}")
-    print(f"Total Aspects: {len(aspects)}")
-    if aspect_filter:
-        aspects = [a for a in aspects if a.id == aspect_filter]
-        if not aspects:
-            print(f"Error: Aspect '{aspect_filter}' not found in framework '{framework_name}'")
-            raise SystemExit(1)
-
-    print(f"{'=' * 80}")
     print(f"FRAMEWORK: {framework_name}")
     print(f"SOURCE: {yaml_path}")
-    print(f"QUERY: {query}")
     print(f"ASPECTS: {len(aspects)}")
+    print(f"QUERY: {query}")
     print('=' * 80)
+    
+    # Print user_context if present
+    if user_context:
+        print("\n[USER CONTEXT]")
+        print(f"  User Type: {user_context.get('user_type', 'Not specified')}")
+        print(f"  Context: {user_context.get('context', 'Not specified')}")
+        print(f"  Tone: {user_context.get('tone', 'Not specified')}")
+        print(f"  Complexity: {user_context.get('complexity', 'Not specified')}")
+        print(f"  Examples From: {user_context.get('examples_from', 'Not specified')}")
+        if 'constraints' in user_context:
+            print(f"  Constraints:")
+            for c in user_context['constraints']:
+                print(f"    - {c}")
+        if 'pitfalls' in user_context:
+            print(f"  Pitfalls:")
+            for p in user_context['pitfalls']:
+                print(f"    - {p}")
 
     if show_synthesis:
         print_synthesis_prompt(aspects, query)
     elif show_summary:
+        print()
         for aspect in aspects:
             print_summary(aspect)
     else:

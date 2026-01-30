@@ -145,6 +145,50 @@ def end_query_session(db: Session, session_id: int) -> Optional[QuerySession]:
 
 
 # ==========================================
+# Ownership Verification Helpers
+# ==========================================
+
+def verify_step_ownership(db: Session, step_id: int, user_id: int) -> Optional[RefinementStep]:
+    """
+    Verify that a refinement step belongs to a user via the chain:
+    RefinementStep → Query → QuerySession → User
+    
+    Returns the step if ownership is verified, None otherwise.
+    """
+    step = db.query(RefinementStep).filter(RefinementStep.id == step_id).first()
+    if not step:
+        return None
+    
+    query = db.query(Query).filter(Query.id == step.query_id).first()
+    if not query:
+        return None
+    
+    session = db.query(QuerySession).filter(QuerySession.id == query.session_id).first()
+    if not session or session.user_id != user_id:
+        return None
+    
+    return step
+
+
+def verify_followup_ownership(db: Session, followup_id: int, user_id: int) -> Optional[FollowUpHistory]:
+    """
+    Verify that a followup belongs to a user via the chain:
+    FollowUpHistory → RefinementStep → Query → QuerySession → User
+    
+    Returns the followup if ownership is verified, None otherwise.
+    """
+    followup = db.query(FollowUpHistory).filter(FollowUpHistory.id == followup_id).first()
+    if not followup:
+        return None
+    
+    step = verify_step_ownership(db, followup.refinement_step_id, user_id)
+    if not step:
+        return None
+    
+    return followup
+
+
+# ==========================================
 # Query CRUD Operations
 # ==========================================
 

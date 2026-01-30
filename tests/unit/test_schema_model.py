@@ -102,9 +102,10 @@ def test_default_system_prompt_uses_name_and_description():
     aspect = make_aspect()
     prompt = aspect.get_system_role()
 
-    assert "Demo Aspect" in prompt or "refinement specialist" in prompt
-    assert "Demo description" in prompt or "Tracks demo behaviour" in prompt or "refinement specialist" in prompt
-    assert "focused question" in prompt or "structured JSON" in prompt
+    # The global system prompt should contain core directives
+    assert "refinement specialist" in prompt or "Research Query Refinement" in prompt
+    assert "Dimension" in prompt or "dimension" in prompt
+    assert "complete" in prompt.lower()  # Quality gates mention completeness
 
 
 def test_get_evaluation_instructions_prompt_includes_examples_and_format():

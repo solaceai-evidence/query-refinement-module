@@ -440,8 +440,8 @@ class PromptBuilder:
                     None
                 )
                 if dep_dim:
-                    # Create a mock dimension for the template
-                    dependencies.append(type('Dep', (), {'aspect_name': dep_dim.name, 'id': dep_dim.id})())
+                    # Create a mock dimension for the template (uses 'name' to match template)
+                    dependencies.append(type('Dep', (), {'name': dep_dim.name, 'id': dep_dim.id})())
         
         return self.build_refinement_system_prompt(
             dimension=dimension,

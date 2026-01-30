@@ -109,10 +109,10 @@ app.add_middleware(
     max_age=settings.cors_max_age,
 )
 
-# Configure rate limiting (60 requests per minute)
+# Configure rate limiting from settings
 app.add_middleware(
     RateLimitMiddleware,
-    requests_per_minute=60,
+    requests_per_minute=settings.llm_rate_limit_rpm,
     exempt_paths=["/docs", "/redoc", "/openapi.json", "/health", "/"]
 )
 

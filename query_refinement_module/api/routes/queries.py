@@ -20,6 +20,8 @@ from query_refinement_module.db.crud import (
     create_followup,
     update_followup_answer,
     get_step_followups,
+    verify_step_ownership,
+    verify_followup_ownership,
 )
 from query_refinement_module.api.schemas import (
     QuerySessionResponse,
@@ -309,7 +311,14 @@ def create_followup_entry(
     """
     Create a new follow-up entry for a refinement step.
     """
-    # Note: For production, add proper ownership verification through the chain
+    # Verify ownership: step → query → session → user
+    step = verify_step_ownership(db, followup_data.refinement_step_id, current_user.id)
+    if not step:
+        raise HTTPException(
+            status_code=status.HTTP_404_NOT_FOUND, 
+            detail="Refinement step not found or access denied"
+        )
+    
     followup = create_followup(
         db,
         refinement_step_id=followup_data.refinement_step_id,
@@ -329,9 +338,15 @@ def update_followup(
     """
     Update a follow-up answer.
     """
+    # Verify ownership: followup → step → query → session → user
+    existing = verify_followup_ownership(db, followup_id, current_user.id)
+    if not existing:
+        raise HTTPException(
+            status_code=status.HTTP_404_NOT_FOUND, 
+            detail="Follow-up not found or access denied"
+        )
+    
     followup = update_followup_answer(db, followup_id=followup_id, answer=followup_update.answer)
-    if not followup:
-        raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Follow-up not found")
     return followup
 
 
@@ -344,5 +359,13 @@ def list_step_followups(
     """
     List all follow-up entries for a refinement step.
     """
+    # Verify ownership: step → query → session → user
+    step = verify_step_ownership(db, step_id, current_user.id)
+    if not step:
+        raise HTTPException(
+            status_code=status.HTTP_404_NOT_FOUND, 
+            detail="Refinement step not found or access denied"
+        )
+    
     followups = get_step_followups(db, refinement_step_id=step_id)
     return followups
