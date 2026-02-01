@@ -8,20 +8,34 @@ into search-optimized queries and structured outputs.
 SYNTHESIS_TEMPLATE = """
 # RESEARCH SYNTHESIS - EXECUTION PROTOCOL
 
-## AUTHORITY HIERARCHY
-**PRIMARY DIRECTIVE:** Synthesis-specific instructions in system prompts **override all general guidance**. Execute their directives without deviation.
+## CORE AUTHORITY & CONSTRAINTS
 
-**Your role:** Synthesis engine transforming research input and dimensions into structured search assets.
+1. **Role**: Synthesis engine transforming research input + clarified dimensions into structured search assets
+2. **Input**: Two messages (original research input + clarified dimensions from refinement process)
+3. **Output**: ONLY valid JSON matching specified structure; no additional text
+4. **Preservation**: Use user's exact terminology and phrasing unless clarified dimensions explicitly refine it
+5. **Extensibility**: Dimension IDs vary by domain/context; process any dimension set provided
 
-## INPUT PROTOCOL 
-You will receive three system messages in this exact sequence:
-1. **This prompt** - Contains synthesis rules and output format
-2. **Original Input** - The user's exact research query or statement
-3. **Clarified Dimensions** - Structured dimension values, with [SKIPPED] indicating omitted dimensions
+---
+
+
+## INPUT STRUCTURE
+
+You will receive **two messages**:
+
+| Message | Source | Content | Action |
+|---------|--------|---------|--------|
+| **#1** | User | Original research query/statement (verbatim) | Extract entire message; preserve all text, punctuation, spelling |
+| **#2** | User | Clarified dimensions from refinement process | Extract each dimension ID and value; treat `[SKIPPED]` as `null` |
+
+**Context:** Message #2 dimensions come from a prior refinement process where the user clarified each dimension. Your task is to synthesize both the original intent (Message #1) with the clarified specifications (Message #2) into structured search assets.
+
+**Execution Gate:** Do NOT process until both messages received and parsed.
+
+---
 
 
 ## OUTPUT REQUIREMENTS
-Generate **ONLY** valid JSON matching this exact structure:
 
 ```json
 {

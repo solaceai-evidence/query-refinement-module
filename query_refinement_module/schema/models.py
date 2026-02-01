@@ -186,6 +186,7 @@ class RefinementDimension(BaseModel):
         - name → aspect_name (YAML uses 'name')
         - description → aspect_description (YAML uses 'description')
         - evaluator → evaluation_instructions (YAML uses 'evaluator')
+        - criteria → evaluation_criteria (YAML uses 'criteria')
         - response_strategy → response_strategies (YAML uses singular)
     """
     model_config = ConfigDict(
@@ -211,7 +212,11 @@ class RefinementDimension(BaseModel):
         description="Instructions for evaluating this dimension",
         validation_alias="evaluator"
     )
-    evaluation_criteria: str = Field(default="", description="Criteria for evaluating this dimension")
+    evaluation_criteria: str = Field(
+        default="", 
+        description="Criteria for evaluating this dimension",
+        validation_alias="criteria"
+    )
     response_strategies: Optional[str] = Field(
         default=None, 
         description="Strategies for responding",

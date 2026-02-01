@@ -212,10 +212,10 @@ class AspectRefinementState:
         Build messages array for LLM API (multi-turn dialogue representation).
         
         Constructs structured messages with:
-        1. System message: Global platform instructions
-        2. System message: Current dimension name, description, evaluation criteria
-        3. System message: Previously completed dimensions (for context)
-        4. System message: Dependency specifications (dimensions this one depends on)
+        1. System message: Global platform instructions [CACHED]
+        2. System message: User context adaptation profile [CACHED]
+        3. System message: Previously completed dimensions and dependencies
+        4. System message: Current dimension specification
         5. User message: Original query to analyze
         6. Conversation history: Alternating assistant/user messages
         
@@ -227,27 +227,28 @@ class AspectRefinementState:
         Returns:
             List of message dicts with 'role' and 'content' keys
         """
+        from query_refinement_module.schema.prompt_builder import PromptBuilder
+        
         messages = []
+        builder = PromptBuilder()
         
-        # 1. System message: Global platform instructions
+        # 1. System message: Global platform instructions [CACHED]
         messages.append({
             'role': 'system',
-            'content': GLOBAL_SYSTEM_PROMPT
+            'content': GLOBAL_SYSTEM_PROMPT,
+            '_cache': True  # Mark for caching
         })
         
-        # 2. System message: Current dimension specification
-        dimension_spec = "\n".join([
-            f"# Current Dimension: {self.refinement_aspect.aspect_name}",
-            f"\n**Description:** {self.refinement_aspect.aspect_description}",
-            f"\n## Evaluation Criteria\n",
-            self.refinement_aspect.evaluation_instructions
-        ])
-        messages.append({
-            'role': 'system',
-            'content': dimension_spec
-        })
+        # 2. System message: User context adaptation profile [CACHED]
+        if self.refinement_aspect.user_context:
+            user_context_content = builder.render_user_context(self.refinement_aspect.user_context)
+            messages.append({
+                'role': 'system',
+                'content': user_context_content,
+                '_cache': True  # Mark for caching
+            })
         
-        # 3. System message: Previously completed dimensions (for context)
+        # 3. System message: Previously completed dimensions and dependencies
         if dependency_context:
             completed_dims = []
             for dep_id, entry in dependency_context.items():
@@ -262,45 +263,56 @@ class AspectRefinementState:
                         completed_dims.append(f"**{dep_name}**: {dep_value}")
             
             if completed_dims:
-                context_message = "\n".join([
+                # Also include dependency specifications if this dimension depends on them
+                dependency_specs = []
+                if self.refinement_aspect.depends_on:
+                    for dep_id in self.refinement_aspect.depends_on:
+                        entry = dependency_context.get(dep_id)
+                        if entry and entry.get("value"):
+                            dep_name = entry.get("name") or dep_id.replace("_", " ").title()
+                            dep_desc = entry.get("description", "")
+                            dep_value = entry["value"]
+                            
+                            if dep_desc:
+                                dependency_specs.append(f"**{dep_name}** ({dep_desc}): {dep_value}")
+                            else:
+                                dependency_specs.append(f"**{dep_name}**: {dep_value}")
+                
+                context_parts = [
                     "# Previously Completed Dimensions",
                     "\nThe following dimensions have been refined and clarified:",
                     "",
                     *completed_dims
-                ])
+                ]
+                
+                if dependency_specs:
+                    context_parts.extend([
+                        "",
+                        "# Dependencies for Current Dimension",
+                        "\nWhen evaluating the current dimension, you MUST take into account:",
+                        "",
+                        *dependency_specs,
+                        "",
+                        "Use these as authoritative constraints when analyzing the user's input."
+                    ])
+                
+                context_message = "\n".join(context_parts)
                 messages.append({
                     'role': 'system',
                     'content': context_message
                 })
         
-        # 4. System message: Dependency specifications (what this dimension must consider)
-        if self.refinement_aspect.depends_on and dependency_context:
-            dependency_specs = []
-            for dep_id in self.refinement_aspect.depends_on:
-                entry = dependency_context.get(dep_id)
-                if entry and entry.get("value"):
-                    dep_name = entry.get("name") or dep_id.replace("_", " ").title()
-                    dep_desc = entry.get("description", "")
-                    dep_value = entry["value"]
-                    
-                    if dep_desc:
-                        dependency_specs.append(f"**{dep_name}** ({dep_desc}): {dep_value}")
-                    else:
-                        dependency_specs.append(f"**{dep_name}**: {dep_value}")
-            
-            if dependency_specs:
-                depends_message = "\n".join([
-                    "# Dimensions This Evaluation Must Consider",
-                    "\nWhen evaluating the current dimension, you MUST take into account:",
-                    "",
-                    *dependency_specs,
-                    "",
-                    "Use these as authoritative constraints when analyzing the user's input."
-                ])
-                messages.append({
-                    'role': 'system',
-                    'content': depends_message
-                })
+        # 4. System message: Current dimension specification
+        dimension_spec = "\n".join([
+            f"# Current Dimension: {self.refinement_aspect.aspect_name}",
+            f"\n**Description:** {self.refinement_aspect.aspect_description}",
+            f"\n## Evaluation Criteria\n",
+            self.refinement_aspect.evaluation_instructions
+        ])
+        messages.append({
+            'role': 'system',
+            'content': dimension_spec
+        })
         
         # 5. User message: Original query to analyze
         user_message = f"**Original Research Input:**\n{query}"

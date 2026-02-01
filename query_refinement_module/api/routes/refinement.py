@@ -762,6 +762,41 @@ async def submit_answer(
         if command_payload.get("success", False) and not force_confirmation_needed:
             if command_type in ["back", "prev", "previous", "goto", "restart", "skip", "done", "submit", "end"]:
                 logger.info(f"[Query {query_id}] Saving session state after command: {command_type}")
+                
+                # Save dimension final values to DB when skip or done commands are used
+                if command_type in ["skip", "done"]:
+                    from query_refinement_module.db.crud import (
+                        mark_refinement_step_skipped,
+                        mark_refinement_step_user_ended_early,
+                        get_query_refinement_steps
+                    )
+                    
+                    active_step = session.get_active_step()
+                    if active_step and active_step.is_complete:
+                        db_steps = get_query_refinement_steps(db, query_id)
+                        db_step = next(
+                            (s for s in db_steps if s.aspect_name == active_step.refinement_aspect.aspect_name),
+                            None
+                        )
+                        
+                        if db_step:
+                            if command_type == "skip":
+                                mark_refinement_step_skipped(db, db_step.id)
+                                logger.info(
+                                    f"Marked dimension as skipped in DB: '{active_step.refinement_aspect.aspect_name}'",
+                                    extra={"query_id": query_id, "dimension": active_step.refinement_aspect.aspect_name}
+                                )
+                            elif command_type == "done":
+                                mark_refinement_step_user_ended_early(
+                                    db,
+                                    step_id=db_step.id,
+                                    final_value=active_step.normalized_value_as_str if active_step.normalized_value else None
+                                )
+                                logger.info(
+                                    f"Marked dimension as user-completed in DB: '{active_step.refinement_aspect.aspect_name}'",
+                                    extra={"query_id": query_id, "dimension": active_step.refinement_aspect.aspect_name}
+                                )
+                
                 session_manager.save_session(query_id, session)
         
         # Build and return command response
@@ -846,6 +881,22 @@ async def submit_answer(
     
     # Check if aspect is complete
     is_complete = status.get('complete', False)
+    
+    # If dimension is complete, save final value to database for evaluation
+    if is_complete and active_step.normalized_value:
+        from query_refinement_module.db.crud import update_refinement_step_final_value
+        update_refinement_step_final_value(
+            db,
+            step_id=db_step.id,
+            final_value=active_step.normalized_value_as_str,
+            is_complete=True,
+            was_skipped=False,
+            user_ended_early=False
+        )
+        logger.info(
+            f"Saved final value to DB for dimension '{active_step.refinement_aspect.aspect_name}'",
+            extra={"query_id": query_id, "dimension": active_step.refinement_aspect.aspect_name}
+        )
     
     # Get next prompt
     next_prompt = None

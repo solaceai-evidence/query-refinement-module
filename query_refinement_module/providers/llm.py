@@ -123,10 +123,36 @@ class LiteLLMProvider(LLMProviderInterface):
 
         # Build messages array
         if messages:
-            # Use provided conversation history
-            messages_list = messages.copy()
+            # Use provided conversation history and apply caching to marked messages
+            messages_list = []
+            for msg in messages:
+                new_msg = {"role": msg["role"], "content": msg["content"]}
+                
+                # Apply cache control if message is marked for caching
+                if msg.get("_cache") and cache_system_prompt and self._enable_prompt_caching:
+                    try:
+                        new_msg["cache_control"] = {"type": "ephemeral"}
+                        logger.debug(
+                            "System message caching enabled for %s message",
+                            msg["role"],
+                            extra={
+                                "model": target_model,
+                                "content_preview": msg["content"][:50] + "...",
+                                "request_id": get_request_id(),
+                                "trace_id": get_trace_id(),
+                            }
+                        )
+                    except Exception as e:
+                        # Gracefully handle providers that don't support caching
+                        logger.debug(
+                            "Could not apply prompt caching (provider may not support it): %s",
+                            e,
+                            extra={"model": target_model}
+                        )
+                
+                messages_list.append(new_msg)
         else:
-            # Build from prompts
+            # Build from prompts (legacy path)
             messages_list = []
             if system_prompt:
                 system_message = {"role": "system", "content": system_prompt}

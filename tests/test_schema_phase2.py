@@ -153,8 +153,8 @@ class TestPromptBuilder:
             examples_from="public health"
         )
         rendered = builder.render_user_context(ctx)
-        assert "tone: educational" in rendered
-        assert "complexity: novice" in rendered
+        assert "**tone**: educational" in rendered
+        assert "**complexity**: novice" in rendered
     
     def test_render_dimension_prompt(self):
         """Test rendering dimension prompt."""
@@ -208,7 +208,7 @@ class TestPromptBuilder:
         )
         
         assert "Research Query Refinement" in prompt  # Global
-        assert "tone: educational" in prompt  # User context
+        assert "**tone**: educational" in prompt  # User context
         assert "Test Dimension" in prompt  # Dimension
     
     def test_get_synthesis_system_prompt(self):

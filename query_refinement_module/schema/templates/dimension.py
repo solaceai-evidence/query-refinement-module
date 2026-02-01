@@ -15,25 +15,29 @@ Contains Jinja2 templates for:
 DIMENSION_REFINEMENT_TEMPLATE = """
 ---
 
-##  Dimension Evaluation Criteria
+## DIMENSION SPECIFICATION SCHEMA
 
-### Dimension Name and Description
+**Dimension:** {{ aspect_name }} 
+**Description:** {{ aspect_description }}
 
-**{{ aspect_name }}:** {{ aspect_description }}
+---
 
-
-### Evaluation Criteria
+### Criteria
 
 {{ evaluation_criteria }}
 
 ---
 
-{% if response_strategy %}
-### Response Strategy
-{{response_strategy }}
+### MAIN SPECIFICATION STATES (other states possible)
+
+| State | Action |
+|-------|--------|
+| **Clear** | All standards met → `is_complete: true` |
+| **Needs Refinement** | Missing elements → ask `next_question` |
+| **Partial** | Some elements present → ask `next_question` |
+| **Ambiguous/Vague** | Not specific enough → ask for clarification |
 
 ---
-{% endif %}
 
 {% if examples_section %}
 ### Examples
@@ -113,6 +117,14 @@ DIMENSION_REFINEMENT_TEMPLATE = """
 
 {% endfor %}
 {% endif %}
+
+---
+{% endif %}
+
+
+{% if response_strategy %}
+### Response Strategy
+{{response_strategy }}
 
 ---
 {% endif %}
@@ -233,7 +245,7 @@ EXAMPLES_SECTION_TEMPLATE = """
 # ============================================================================
 
 INITIAL_USER_INPUT_TEMPLATE = """
-## User Message (Initial Input)
+## Conversation History
  
 **Original User Input:**
 ```
@@ -250,18 +262,23 @@ INITIAL_USER_INPUT_TEMPLATE = """
 
 FOLLOW_USER_INPUT_TEMPLATE = """
 ## Conversation History
+
+**Original User Input:**
+```
+{{ original_input }}
+```
  
-**History:**
+**Conversation History:**
+{% if conversation_history %}
 {% for turn in conversation_history %}
 Q{{ loop.index }}: {{ turn.question }}
 A{{ loop.index }}: {{ turn.answer }}
 {% endfor %}
-Q{{ conversation_history | length + 1 }}: {{ latest_question }}
-
-**Latest User Message:**
-A{{ conversation_history | length + 1 }}: {{ latest_answer }}
+{% else %}
+(First refinement turn on this dimension)
+{% endif %}
 
 ---
 
-**EXECUTE REFINEMENT PROTOCOL** (with conversation history)
+ Extract specification using priority order: (1) Original input first, (2) Conversation history second (all turns). Assemble following Step 5: ASSEMBLE from Global system directive. Evaluate against Dimension Specification Schema. Output JSON result.
 """

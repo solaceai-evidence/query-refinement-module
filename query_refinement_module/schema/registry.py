@@ -106,18 +106,30 @@ def _load_frameworks(*, raise_on_error: bool = False) -> Dict[str, List[Refineme
                 continue
             
             # Check if first item is user_context
-            # YAML structure: first item has "user_context" key (value is None) 
-            # with user_type, context, etc. as sibling keys in the same dict
+            # YAML structure supports TWO formats:
+            # Format 1 (nested): first item has "user_context" key with nested dict value
+            # Format 2 (sibling): first item has "user_context" key (value is None) 
+            #                     with user_type, context, etc. as sibling keys
             user_context = None
             aspect_items = items
             
             first_item = items[0]
             if isinstance(first_item, dict) and "user_context" in first_item:
-                # Extract user_context fields from the first item
-                # All keys except "user_context" itself are the context fields
-                user_context = {k: v for k, v in first_item.items() if k != "user_context"}
-                aspect_items = items[1:]  # Remaining items are aspects
-                logger.debug(f"Framework '{framework_name}' has user_context: {user_context.get('user_type', 'unknown')}")
+                uc_value = first_item["user_context"]
+                
+                # Format 1: nested dict (user_context: {user_type: ..., context: ...})
+                if isinstance(uc_value, dict):
+                    user_context = uc_value
+                    aspect_items = items[1:]  # Remaining items are aspects
+                    logger.debug(f"Framework '{framework_name}' has user_context (nested): {user_context.get('user_type', 'unknown')}")
+                
+                # Format 2: sibling keys (user_context: null, user_type: ..., context: ...)
+                elif uc_value is None:
+                    # Extract user_context fields from the first item
+                    # All keys except "user_context" itself are the context fields
+                    user_context = {k: v for k, v in first_item.items() if k != "user_context"}
+                    aspect_items = items[1:]  # Remaining items are aspects
+                    logger.debug(f"Framework '{framework_name}' has user_context (sibling): {user_context.get('user_type', 'unknown')}")
             
             # Load aspects
             aspects = []
