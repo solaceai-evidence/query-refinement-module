@@ -19,8 +19,8 @@ pico_advanced:
         - "Conflating different review types (scoping vs. systematic vs. rapid)"
   - id: population
     name: Population
-    description: Statistical characteristics of a group of people, including age range, gender, race/ethnicity, and geographic location that form the foundation for all other PICO dimensions
-    evaluator: |
+    description: The group of individuals to whom the evidence applies, defined by the demographic characteristics age, sex/gender, ethnicity/race, and setting.
+    criteria: |
       ### Task
       Evaluate if these demographic elements are specified when relevant:
       - Age (range, category, life stage such as pediatric, postmenopausal, etc.)
@@ -84,16 +84,13 @@ pico_advanced:
         - statement: Study in representative population sample
           issue: "'Representative' is context-dependent - representative of what population?"
           example_question: What population should this sample represent? Please specify demographic characteristics that define representativeness, including age, sex/gender, ethnicity/race, and setting.
-  - id: intervention_specification
-    name: Intervention Specification
-    description:
-      Specifies the treatment, procedure, behavioral protocol, or diagnostic test being studied,
-      including intervention type, specific agent/method, dosing, duration, delivery method, and route.
-      Details sufficient for study replication and outcome interpretation.
+  - id: intervention
+    name: Intervention
+    description: The healthcare action, exposure, or strategy being evaluated, specified in sufficient detail to allow replication, including modality, intensity, duration, and delivery context
     depends_on:
       - population
       - clinical_condition
-    evaluator: |
+    criteria: |
       ### TASK
       Evaluate if intervention specification is sufficiently detailed for study replication.
 
@@ -156,12 +153,13 @@ pico_advanced:
           issue: " Intervention type is clear (glycemic control); 'Intensive' is subjective - it could be specified as a regimen or target"
           missing: Specific regimen or glycemic targets
           example_question: "Are you interested in a specific intervention and regimen or a target that defines 'intensive control'?"
-  - id: comparison_group
-    name: Comparison/Control Group
-    description: "Specifies what the intervention is compared against: placebo, standard care, alternative treatment, or no treatment. Critical for establishing causality and determining intervention efficacy or effectiveness."
+  - id: comparator
+    name: Comparator
+    description: The alternative intervention, standard of care, placebo, or no-intervention condition against which the intervention is assessed, providing the reference for effect estimation
     depends_on:
-      - intervention_specification
-    evaluator: |
+      - population
+      - intervention
+    criteria: |
       ### TASK
       Evaluate if an appropriate comparison/control group is specified that enables causality assessment. Comparator must be suitable for the research question and as well-defined as the intervention.
 
@@ -176,7 +174,7 @@ pico_advanced:
 
       - Alternative Active Treatment: Different agent, dose, or intervention. Examples: different drug, lower dose, alternative technique.
 
-      - No Treatment: Watchful waiting, natural history, untreated control. Examples: observation only, deferred treatment, dose comparison.
+      - No Treatment: Watchful waiting, natural history, untreated control. Examples: natural history, deferred treatment, dose comparison.
 
       ### APPROPRIATENESS VALIDATION
       Research question type determines acceptable comparators:
@@ -243,13 +241,14 @@ pico_advanced:
           example_question:
             What specific treatment(s) constitute 'standard therapy' in
             your context? (e.g., specific drugs, specific guidelines)
-  - id: primary_outcomes
-    name: Primary Outcomes
-    description: Specifies the main outcomes of interest.
+  - id: outcome
+    name: Outcome
+    description: The predefined clinical, patient-reported, or system-level measures used to assess the effects of the intervention relative to the comparator, prioritized as primary or secondary and defined with appropriate time frames
     depends_on:
-      - intervention_specification
-      - population_clinical_profile
-    evaluator: |
+      - population
+      - intervention
+      - comparator
+    criteria: |
       ### TASK
       Evaluate if outcomes are adequately specified to enable measurement, reproducibility, and comparison. 
 
@@ -308,14 +307,10 @@ pico_advanced:
     examples:
       clear:
         - statement: Effect of intervention on all-cause mortality at 5 years or more
-          rationale: Specific outcome (all-cause mortality), clear timepoint (5 years)
-        - statement:
-            Change in HbA1c from baseline to 6 months, with target reduction
-            ≥0.5%
-          rationale:
-            Specific biomarker (HbA1c), timeframe (baseline to 6 months), clinical
-            significance threshold (≥0.5%)
-        - statement: Quality of life measured by SF-36 at 3, 6, and 12 months post-intervention
+          rationale: Specific outcome (all-cause mortality), clear timepoint (5 years or more). With this outcome, a shorter duration may not be associated with the intervention; thus the inclusion of a longer timepoint.
+        - statement: Change in HbA1c from baseline to 6 months
+          rationale: Outcome type (diabetes indicator) inferred, measurement method -specific biomarker- (HbA1c) and timeframe (baseline to 6 months) clearly defined
+        - statement: change in depression TODO:JESUS
           rationale:
             Specific validated instrument (SF-36), multiple timepoints (3, 6,
             12 months)
@@ -368,105 +363,62 @@ pico_advanced:
           example_question:
             Which specific symptoms? How will you measure them? What defines
             a clinically meaningful improvement?
-  - id: study_design_context
-    name: Study Design & Methodological Context
-    description:
-      Clarifies the intended study design, setting, sample size considerations,
-      and methodological approach. Helps determine feasibility and appropriate statistical
-      methods.
+  - id: study_type
+    name: Study Type
+    description: The category of research methodology used to evaluate the intervention–outcome relationship, classified by study type, which guides eligibility, evidence synthesis, and interpretation
     depends_on:
       - population
-      - intervention_specification
-      - comparison_group
-      - primary_outcomes
-    system_prompt:
-      "You are a research advisor helping users refine their research topics
-      by asking focused clarifying questions.
+      - intervention
+      - comparator
+      - outcome
+    criteria: |
+      ### COMPLETION REQUIREMENTS
+      **CRITICAL (must be present):**
+      AT least one study design from Primary, Secondary, or Other categories. Allow users to specify multiple study types or study types not on the list, but clarify category.
 
+      ### STUDY TYPE CATEGORIES
 
-      Your Job:
+      **Primary Study Types (original research):** Before and after study, Case control study, Case report, Case series, Clinical study, Clinical trial, Cohort study, Comparative study, Cross-sectional study, Diagnostic test accuracy study, Evaluation study, Observational study, Pilot study, Quality improvement study, Randomized controlled trial, Validation study 
 
-      Users provide research interests (questions, statements, aims, or paragraphs).
-      Clarify aspect: **{self.name}**, with definition: **{self.description}**.
-      Focus ONLY on this aspect—ignore other research elements.
+      **Secondary (Synthesis):** Living review, Meta-analysis, Rapid review, Scoping review, Systematic review, Narrative review, Review
 
+      **Other (Non-research Documents):** Government document, Policy document, Guideline, Consensus conference
 
-      How to Engage:
+      ### COMPLETION LOGIC
 
-      1. **Acknowledge first**: Recognize what's already clear before requesting clarification.
-
-      2. **One element at a time**: Address 1-2 unclear points per turn.
-
-      3. **Mirror their language**: Use their terminology; avoid jargon unless it adds
-      needed precision.
-
-      4. **Give examples**: Offer 2-4 concrete, aspect-specific examples they can adapt.
-
-      5. **Explain why**: Briefly note how this clarification strengthens their research
-      input and improves their search.
-
-
-      When to Stop:
-
-      This aspect is sufficiently refined when the user's statement is specific, unambiguous,
-      and actionable for evidence synthesis.
-
-
-      Boundaries:
-
-      - You clarify research descriptions, not search literature or write proposals.
-
-      - Stay within your assigned refinement aspect.
-
-      - Keep developing clarity, not fixing problems.
-
-
-      Tone: Supportive and collaborative. Be efficient—don't over-explain.
-
-      "
-    evaluator: "### What you are evaluating:\nAssess whether the study\
-      \ design and methodological context are sufficiently specified\n\n### Design Dimensions\n\
-      \n1. Study Type\n  - RCT (parallel, crossover, cluster)\n  - Observational (cohort,\
-      \ case-control)\n  - Systematic review/meta-analysis\n  - Pragmatic trial\n\n\
-      2. Setting\n  - Healthcare setting type\n  - Geographic scope\n  - Single-center\
-      \ vs multi-center\n\n3. Sample Size\n  - Target enrollment\n  - Sample size rationale\n\
-      \  - Power considerations\n\n4. Duration\n  - Study timeline\n  - Recruitment\
-      \ period\n  - Follow-up length\n\n5. Special Considerations\n  - Blinding/masking\n\
-      \  - Randomization method\n  - Statistical approach\n  - Interim analyses\n"
+      | Current State | Action | Next State |
+        |---|---|---|
+        | Study design absent | Ask for study type specification (provide relevant categories lists) | Awaiting response |
+        | Primary only | Ask: Include secondary/other types? any unwanted types to exclude? | Awaiting response |
+        | Secondary/Other only | Ask: Include primary types (if relevant)? | Awaiting response |
+        | Design present, unwanted not addressed | Ask: Any unwanted types to exclude? (Optional) | Awaiting response |
+        | Study design specified + category clarified + unwanted addressed (or user declines) | ACCEPT | Complete |
+    response_strategy: |
+      1. Check if study design mentioned
+      2. If absent → REJECT + ask for study design specification (provide relevant category list)
+      3. Map specified designs to categories (Primary/Secondary/Other)
+      4. If Primary only → ask about Secondary/Other inclusion
+      5. If Secondary/Other only → ask about Primary inclusion (if contextually relevant)
+      6. If user specifies unlisted study type(s) → ask: Which category does this belong to (Primary, Secondary, Other)?
+      7. If user specifies study designs → ask: Are there any unwanted types to exclude? (OPTIONAL)
+      8. If all elements specified and valid → ACCEPT
     examples:
       clear:
-        - statement:
-            Multicenter RCT of drug A vs placebo in 500 patients with 12-month
-            follow-up
-          rationale:
-            Study type (RCT), setting (multicenter), sample size (500), duration
-            (12 months) all specified
-        - statement:
-            Double-blind placebo-controlled parallel-group trial across 20 US
-            academic medical centers
-          rationale:
-            Design details (double-blind, placebo-controlled, parallel), setting
-            (20 academic centers, US location)
+        - statement: All RCTs on treatments for basal cell carcinomas
+          rationale: primary study types (RCT, clinical trials) clearly specified
       needs_refinement:
-        - statement: Study comparing two treatments
-          issue: Study design not specified
-          missing: Study type, setting, duration
+        - statement: Study comparing two diabetes medications
+          issue: Study type not specified
+          missing: Study type
           example_question:
             What study design? (e.g., randomized controlled trial, observational
             cohort, systematic review)
-      partial:
-        - statement: RCT comparing interventions in hospital setting
-          has: Study type (RCT), general setting (hospital)
-          missing: Sample size, duration, specific hospital type, blinding approach
-          example_question:
-            What is your target sample size? Study duration? Single-center
-            or multi-center?
   - id: clinical_condition
-    name: Health Condition and Clinical Context
-    description: Specifies the primary health condition or disease, including disease stage, severity, and relevant comorbidities. Defines clinical eligibility criteria and baseline clinical characteristics of the target population.
+    name: Clinical Condition
+    description: The health condition or disease under study, including its stage, severity, and relevant comorbidities, which defines eligibility criteria and contextualizes outcome relevance for the target population.
     depends_on:
       - population
-    evaluator: |
+    criteria: |
       ### Task
       Evaluate if health condition specification enables accurate patient identification, appropriate treatment selection, and valid outcome interpretation.
 
