@@ -64,6 +64,7 @@ export interface StartRefinementResponse {
         [key: string]: any;
     };
     next_prompt: NextPrompt | null;
+    ready_for_synthesis: boolean;
 }
 
 // ============================================================
@@ -80,6 +81,7 @@ export interface SubmitAnswerResponse {
     followup_id: number;
     is_complete: boolean;
     next_prompt: NextPrompt | null;
+    ready_for_synthesis: boolean;
 }
 
 export interface CommandResponse {
@@ -131,6 +133,13 @@ export interface SynthesizeQueryResponse {
     query_id: number;
     refined_query: string;
     used_llm: boolean;
+    structured_output?: {
+        detail_values?: { [key: string]: any };
+        search_optimized?: string;
+        search_filters?: { [key: string]: any };
+        terminology?: string[];
+        synthesized_statement?: string;
+    } | null;
     metadata: {
         [key: string]: any;
     };

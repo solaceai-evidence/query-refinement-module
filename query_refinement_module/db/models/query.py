@@ -4,7 +4,7 @@ Query model for storing user queries in a session.
 Stores the original query and, upon completion, the full QueryRefinementResponse
 for evaluation purposes (synthesized statement, search variants, terminology, etc.).
 """
-from sqlalchemy import Column, Integer, String, Text, DateTime, ForeignKey, JSON
+from sqlalchemy import Column, Integer, String, Text, DateTime, ForeignKey, JSON, Boolean
 from sqlalchemy.orm import relationship
 from .user import Base, _utcnow
 
@@ -35,6 +35,10 @@ class Query(Base):
     created_at = Column(DateTime, default=_utcnow)
     updated_at = Column(DateTime, default=_utcnow, onupdate=_utcnow)
     completed_at = Column(DateTime, nullable=True)  # When refinement finished
+    
+    # Data consent (only persist if user submits feedback)
+    consent_given = Column(Boolean, default=False, nullable=False)
+    consent_given_at = Column(DateTime, nullable=True)
     
     # =========================================================================
     # Final Response Fields (QueryRefinementResponse Pydantic model)

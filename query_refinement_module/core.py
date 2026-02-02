@@ -941,6 +941,30 @@ class QueryRefinementManager:
                     body = body[:-1]
                 cleaned_text = "\n".join(body)
         
+        # Try to extract JSON from markdown text (for models that don't support structured outputs)
+        # Look for JSON object starting with { 
+        if not cleaned_text.startswith("{"):
+            # Try to find JSON in the response
+            import re
+            json_match = re.search(r'\{[\s\S]*\}', cleaned_text)
+            if json_match:
+                cleaned_text = json_match.group(0)
+                logger.info(f"Extracted JSON from markdown response for aspect '{aspect.id}'")
+            else:
+                # No JSON found - this is pure text response, cannot parse
+                error_message = f"No JSON found in response (got markdown/text instead)"
+                logger.warning(
+                    "Aspect %s produced non-JSON response on attempt %d: %s",
+                    aspect.id,
+                    attempt_number,
+                    error_message,
+                )
+                return self._ValidationResult(
+                    is_valid=False,
+                    parsed_payload=None,
+                    error_message=error_message,
+                )
+        
         # Parse JSON
         try:
             parsed_payload = json.loads(cleaned_text)

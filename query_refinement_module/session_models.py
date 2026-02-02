@@ -302,13 +302,24 @@ class AspectRefinementState:
                     'content': context_message
                 })
         
-        # 4. System message: Current dimension specification
-        dimension_spec = "\n".join([
+        # 4. System message: Current dimension specification with examples and JSON format
+        dimension_parts = [
             f"# Current Dimension: {self.refinement_aspect.aspect_name}",
             f"\n**Description:** {self.refinement_aspect.aspect_description}",
             f"\n## Evaluation Criteria\n",
             self.refinement_aspect.evaluation_instructions
-        ])
+        ]
+        
+        # Add examples if available
+        if self.refinement_aspect.examples:
+            examples_section = self.refinement_aspect._format_examples()
+            if examples_section:
+                dimension_parts.append("\n" + examples_section)
+        
+        # Add JSON format instructions
+        dimension_parts.append("\n" + self.refinement_aspect._format_response_instructions())
+        
+        dimension_spec = "\n".join(dimension_parts)
         messages.append({
             'role': 'system',
             'content': dimension_spec

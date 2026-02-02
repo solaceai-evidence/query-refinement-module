@@ -92,6 +92,7 @@ class StartRefinementResponse(BaseModel):
     query_id: int = Field(..., description="Database query ID")
     summary: Dict[str, Any] = Field(..., description="Initialization analysis summary")
     next_prompt: Optional[Dict[str, Any]] = Field(None, description="Next question for the user")
+    ready_for_synthesis: bool = Field(False, description="True if all aspects are complete and ready for synthesis")
 
 
 class SubmitAnswerRequest(BaseModel):
@@ -122,6 +123,7 @@ class SubmitAnswerResponse(BaseModel):
     followup_id: int = Field(..., description="ID of the follow-up entry")
     is_complete: bool = Field(..., description="Whether the aspect is complete")
     next_prompt: Optional[Dict[str, Any]] = Field(None, description="Next question if follow-up needed")
+    ready_for_synthesis: bool = Field(False, description="True if all aspects are complete and ready for synthesis")
 
 
 class CommandResponse(BaseModel):
@@ -240,11 +242,12 @@ async def _build_next_prompt(manager, session) -> Optional[Dict[str, Any]]:
             return None
         
         # If question already exists (from previous analysis), use it
-        if step.refinement_question:
+        if step.follow_up_question:
             result = {
                 "aspect_id": step.refinement_aspect.id,
                 "aspect_name": step.refinement_aspect.aspect_name,
-                "question": step.refinement_question,
+                "question": step.follow_up_question,
+                "description": step.refinement_aspect.aspect_description or "",
             }
             logger.info(f"  -> Using existing question for '{result['aspect_name']}', question: '{result['question'][:100]}...")
             return result
@@ -284,6 +287,7 @@ async def _build_next_prompt(manager, session) -> Optional[Dict[str, Any]]:
                     "aspect_id": step.refinement_aspect.id,
                     "aspect_name": step.refinement_aspect.aspect_name,
                     "question": status['next_question'],
+                    "description": step.refinement_aspect.aspect_description or "",
                 }
                 logger.info(f"  -> Generated question for '{result['aspect_name']}', question: '{result['question'][:100]}...")
                 return result
@@ -292,12 +296,13 @@ async def _build_next_prompt(manager, session) -> Optional[Dict[str, Any]]:
             # LLM failed - use simple fallback
             logger.error(f"  -> LLM analysis failed for aspect '{step.refinement_aspect.aspect_name}': {e}")
             fallback_question = f"Please provide details about {step.refinement_aspect.aspect_name}"
-            step.refinement_question = fallback_question
+            step.follow_up_question = fallback_question
             
             result = {
                 "aspect_id": step.refinement_aspect.id,
                 "aspect_name": step.refinement_aspect.aspect_name,
                 "question": fallback_question,
+                "description": step.refinement_aspect.aspect_description or "",
             }
             logger.info(f"  -> Using fallback question for '{result['aspect_name']}'")
             return result
@@ -466,6 +471,16 @@ async def start_refinement(
     set_request_id(request_id)
     
     start_time = time.time()
+    
+    # Check if user can start new workflow
+    if not current_user.is_superuser and current_user.has_completed_workflow:
+        raise HTTPException(
+            status_code=status.HTTP_403_FORBIDDEN,
+            detail="You have already completed one refinement workflow. "
+                   "For evaluation purposes, only one workflow per participant is allowed. "
+                   "Thank you for your participation!"
+        )
+    
     logger.info(
         "API: Starting refinement workflow",
         extra={
@@ -541,6 +556,7 @@ async def start_refinement(
         )
     
     # Generate question on-demand, looping until we find an aspect that needs refinement
+    # This auto-cascade continues through aspects that are immediately complete
     max_attempts = len(session.steps)  # Prevent infinite loop
     attempts = 0
     current_step = session.get_next_unrefined_aspect()
@@ -565,18 +581,37 @@ async def start_refinement(
             
             # If not complete, we have a question to ask - break
             if not analysis_status['complete']:
+                logger.info(f"Aspect '{current_step.refinement_aspect.aspect_name}' needs refinement - stopping auto-cascade")
                 break
+            
+            # Aspect is complete - log and save to database
+            logger.info(f"Aspect '{current_step.refinement_aspect.aspect_name}' marked complete immediately - auto-advancing")
+            
+            # Save final value to database
+            if current_step.normalized_value:
+                from query_refinement_module.db.crud import update_refinement_step_final_value
+                db_steps = get_query_refinement_steps(db, db_query.id)
+                db_step = next(
+                    (s for s in db_steps if s.aspect_name == current_step.refinement_aspect.aspect_name),
+                    None
+                )
+                if db_step:
+                    update_refinement_step_final_value(
+                        db,
+                        step_id=db_step.id,
+                        final_value=current_step.normalized_value_as_str,
+                        is_complete=True,
+                        was_skipped=False,
+                        user_ended_early=False
+                    )
                 
             # If complete, move to next aspect and continue loop
             current_step = session.get_next_unrefined_aspect()
             
         except Exception as e:
             logger.error(f"Error generating question for aspect {current_step.refinement_aspect.aspect_name}: {e}", exc_info=True)
-            # Generate fallback question using description
-            current_step.follow_up_question = (
-                current_step.refinement_aspect.aspect_description 
-                or f"Please provide details about {current_step.refinement_aspect.aspect_name}"
-            )
+            # Generate fallback question
+            current_step.follow_up_question = f"Please provide details about {current_step.refinement_aspect.aspect_name}."
             break
     
     # Get summary (will show all aspects as not yet analyzed)
@@ -588,6 +623,9 @@ async def start_refinement(
     }
     
     next_prompt = await _build_next_prompt(manager, session)
+    
+    # Check if all aspects are complete (ready for synthesis)
+    ready_for_synthesis = next_prompt is None and session.is_complete()
     
     # Save session to Redis for subsequent requests
     session_manager.save_session(db_query.id, session)
@@ -601,6 +639,7 @@ async def start_refinement(
             "session_id": db_session.id,
             "query_id": db_query.id,
             "total_aspects": summary["total_aspects"],
+            "ready_for_synthesis": ready_for_synthesis,
             "duration_ms": round(duration_ms, 2),
         },
     )
@@ -609,7 +648,8 @@ async def start_refinement(
         session_id=db_session.id,
         query_id=db_query.id,
         summary=summary,
-        next_prompt=next_prompt
+        next_prompt=next_prompt,
+        ready_for_synthesis=ready_for_synthesis
     )
 
 
@@ -767,8 +807,7 @@ async def submit_answer(
                 if command_type in ["skip", "done"]:
                     from query_refinement_module.db.crud import (
                         mark_refinement_step_skipped,
-                        mark_refinement_step_user_ended_early,
-                        get_query_refinement_steps
+                        mark_refinement_step_user_ended_early
                     )
                     
                     active_step = session.get_active_step()
@@ -902,15 +941,21 @@ async def submit_answer(
     next_prompt = None
     if not is_complete:
         # Still need follow-up on same aspect
+        fallback_question = f"Please provide more details about {active_step.refinement_aspect.aspect_name}."
         next_prompt = {
             "aspect_id": active_step.refinement_aspect.id,
             "aspect_name": active_step.refinement_aspect.aspect_name,
-            "question": active_step.follow_up_question or active_step.refinement_aspect.aspect_description or "",
+            "question": active_step.follow_up_question or fallback_question,
+            "description": active_step.refinement_aspect.aspect_description or "",
         }
     else:
-        # Move to next aspect - generate question on-demand with retry logic
+        # Current aspect complete - auto-cascade through any subsequent immediately-complete aspects
+        max_cascade_attempts = len(session.steps)  # Prevent infinite loop
+        cascade_attempts = 0
         next_step = session.get_next_unrefined_aspect()
-        if next_step:
+        
+        while next_step and cascade_attempts < max_cascade_attempts:
+            cascade_attempts += 1
             try:
                 # Generate initial question for next aspect with retry
                 question_result = await _generate_question_with_retry(
@@ -927,32 +972,48 @@ async def submit_answer(
                     result=question_result
                 )
                 
-                # If this aspect is also complete, try next one
-                if analysis_status['complete']:
-                    next_step = session.get_next_unrefined_aspect()
-                    if next_step:
-                        question_result = await _generate_question_with_retry(
-                            manager=manager,
-                            session=session,
-                            aspect_id=next_step.refinement_aspect.id,
-                            mode='initial'
-                        )
-                        manager.process_analysis_result(
-                            session=session,
-                            aspect_id=next_step.refinement_aspect.id,
-                            result=question_result
+                # If not complete, we have a question - stop cascading
+                if not analysis_status['complete']:
+                    logger.info(f"Aspect '{next_step.refinement_aspect.aspect_name}' needs refinement - stopping auto-cascade")
+                    break
+                
+                # Aspect is complete - log and save to database
+                logger.info(f"Aspect '{next_step.refinement_aspect.aspect_name}' marked complete immediately - auto-advancing")
+                
+                # Save final value to database
+                if next_step.normalized_value:
+                    from query_refinement_module.db.crud import update_refinement_step_final_value
+                    db_steps = get_query_refinement_steps(db, query_id)
+                    db_step = next(
+                        (s for s in db_steps if s.aspect_name == next_step.refinement_aspect.aspect_name),
+                        None
+                    )
+                    if db_step:
+                        update_refinement_step_final_value(
+                            db,
+                            step_id=db_step.id,
+                            final_value=next_step.normalized_value_as_str,
+                            is_complete=True,
+                            was_skipped=False,
+                            user_ended_early=False
                         )
                 
-                # Build prompt - will use existing question or cascade further
-                next_prompt = await _build_next_prompt(manager, session)
+                # Move to next aspect and continue cascading
+                next_step = session.get_next_unrefined_aspect()
                 
             except Exception as e:
                 logger.error(f"Error generating next question: {e}", exc_info=True)
-                # Use async _build_next_prompt which has better fallback handling
-                next_prompt = await _build_next_prompt(manager, session)
+                # Stop cascading on error, use fallback
+                break
+        
+        # Build prompt after cascade completes
+        next_prompt = await _build_next_prompt(manager, session)
     
     # Save updated session back to Redis
     session_manager.save_session(query_id, session)
+    
+    # Check if all aspects are complete (ready for synthesis)
+    ready_for_synthesis = next_prompt is None and session.is_complete()
     
     duration_ms = (time.time() - start_time) * 1000
     logger.info(
@@ -963,6 +1024,7 @@ async def submit_answer(
             "query_id": query_id,
             "is_command": is_command,
             "is_complete": is_complete,
+            "ready_for_synthesis": ready_for_synthesis,
             "duration_ms": round(duration_ms, 2),
         },
     )
@@ -971,7 +1033,8 @@ async def submit_answer(
         refinement_step_id=db_step.id,
         followup_id=db_followup.id,
         is_complete=is_complete,
-        next_prompt=next_prompt
+        next_prompt=next_prompt,
+        ready_for_synthesis=ready_for_synthesis
     )
 
 

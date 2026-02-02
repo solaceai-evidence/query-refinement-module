@@ -135,5 +135,14 @@ export const refinementService = {
             comments
         });
         return response.data;
+    },
+
+    /**
+     * Get current user's workflow status
+     * @returns {Promise<any>}
+     */
+    async getUserStatus() {
+        const response = await apiClient.get('/api/auth/me/status');
+        return response.data;
     }
 };

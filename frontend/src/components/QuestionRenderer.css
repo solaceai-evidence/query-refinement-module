@@ -21,6 +21,8 @@
     letter-spacing: 0.5px;
     margin-bottom: 8px;
     box-shadow: 0 2px 4px rgba(102, 126, 234, 0.2);
+    flex-wrap: wrap;
+    max-width: 100%;
 }
 
 .dimension-icon {
@@ -32,6 +34,42 @@
     overflow: hidden;
     text-overflow: ellipsis;
     white-space: nowrap;
+}
+
+.dimension-description {
+    display: flex;
+    align-items: center;
+    gap: 6px;
+    padding: 6px 10px;
+    background: rgba(255, 255, 255, 0.2);
+    border-radius: 4px;
+    font-size: 11px;
+    font-weight: 400;
+    text-transform: none;
+    letter-spacing: 0;
+    line-height: 1.4;
+    cursor: help;
+    transition: all 0.2s ease;
+    max-width: 100%;
+    width: 100%;
+    margin-top: 6px;
+}
+
+.dimension-description:hover {
+    background: rgba(255, 255, 255, 0.3);
+}
+
+.info-icon {
+    font-size: 13px;
+    flex-shrink: 0;
+}
+
+.description-text {
+    overflow: hidden;
+    text-overflow: ellipsis;
+    white-space: nowrap;
+    flex: 1;
+    font-size: 11px;
 }
 
 .question-renderer.loading {

@@ -4,6 +4,7 @@ Feedback API routes.
 from fastapi import APIRouter, Depends, HTTPException, status
 from sqlalchemy.orm import Session
 from typing import List
+from datetime import datetime, timezone
 
 from query_refinement_module.db.session import get_db
 from query_refinement_module.db.crud import (
@@ -26,7 +27,7 @@ def submit_feedback(
     db: Session = Depends(get_db)
 ):
     """
-    Submit feedback from the authenticated user.
+    Submit feedback and mark workflow complete (grants data consent).
     
     - **query_id**: Optional ID of the query being reviewed
     - **rating**: Optional rating (1-5)
@@ -41,6 +42,16 @@ def submit_feedback(
         session = get_query_session(db, session_id=query.session_id)
         if session.user_id != current_user.id:
             raise HTTPException(status_code=status.HTTP_403_FORBIDDEN, detail="Access denied")
+        
+        # Mark query as consented (user gave feedback = consent to use data)
+        query.consent_given = True
+        query.consent_given_at = datetime.now(timezone.utc)
+        
+        # Mark user workflow complete (unless superuser)
+        if not current_user.is_superuser:
+            current_user.has_completed_workflow = True
+        
+        db.commit()
     
     feedback = create_feedback(
         db,

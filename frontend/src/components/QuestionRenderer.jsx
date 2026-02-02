@@ -1,7 +1,7 @@
 import { useState } from 'react';
 import './QuestionRenderer.css';
 
-const QuestionRenderer = ({ question, onAnswer, loading, aspectName }) => {
+const QuestionRenderer = ({ question, onAnswer, loading, aspectName, aspectDescription }) => {
     const [answer, setAnswer] = useState('');
 
     const handleSubmit = (e) => {
@@ -24,6 +24,12 @@ const QuestionRenderer = ({ question, onAnswer, loading, aspectName }) => {
                 <div className="dimension-badge">
                     <span className="dimension-icon">📋</span>
                     <span className="dimension-name">{aspectName}</span>
+                    {aspectDescription && (
+                        <span className="dimension-description" title={aspectDescription}>
+                            <span className="info-icon">ℹ️</span>
+                            <span className="description-text">{aspectDescription}</span>
+                        </span>
+                    )}
                 </div>
             )}
             <div className="question-box">

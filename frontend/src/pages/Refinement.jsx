@@ -46,23 +46,37 @@ const Refinement = () => {
     const { logout } = useAuth();
     const navigate = useNavigate();
 
-    // Load session from localStorage on mount
+    // Check for saved session but don't auto-restore
+    const [savedSessionData, setSavedSessionData] = useState(null);
+    const [userStatus, setUserStatus] = useState(null);
+    const [workflowLimitReached, setWorkflowLimitReached] = useState(false);
+
     useEffect(() => {
         const savedSession = localStorage.getItem('refinement_session');
         if (savedSession) {
             try {
                 const session = JSON.parse(savedSession);
-                logger.info('Restoring session', { sessionId: session.sessionId, queryId: session.queryId });
-                // Restore session state
-                setSessionId(session.sessionId);
-                setQueryId(session.queryId);
-                setSelectedFramework(session.framework);
-                setStage('refinement');
-                // Could optionally reload query state from API
+                logger.info('Found saved session', { sessionId: session.sessionId, queryId: session.queryId });
+                setSavedSessionData(session);
             } catch (e) {
-                logger.error('Failed to restore session', e);
+                logger.error('Failed to parse saved session', e);
+                localStorage.removeItem('refinement_session');
             }
         }
+
+        // Check user workflow status
+        const checkUserStatus = async () => {
+            try {
+                const response = await refinementService.getUserStatus();
+                setUserStatus(response);
+                if (!response.can_start_new_workflow) {
+                    setWorkflowLimitReached(true);
+                }
+            } catch (err) {
+                logger.error('Failed to check user status', err);
+            }
+        };
+        checkUserStatus();
     }, []);
 
     // Save session to localStorage
@@ -75,6 +89,10 @@ const Refinement = () => {
     };
 
     const handleFrameworkSelect = (framework) => {
+        if (workflowLimitReached) {
+            setError('You have already completed one workflow. Thank you for your participation!');
+            return;
+        }
         setSelectedFramework(framework);
         setStage('initial-query');
     };
@@ -127,7 +145,15 @@ const Refinement = () => {
             setCurrentQuestion(response.next_prompt);
             setCurrentAspectId(response.next_prompt?.aspect_id);
             setAspects(response.summary?.aspects || []);
-            setStage('refinement');
+
+            // Check if all aspects are immediately complete (ready for synthesis)
+            if (response.ready_for_synthesis && !response.next_prompt) {
+                logger.info('All aspects complete immediately - triggering synthesis');
+                setStage('synthesis');
+                await handleSynthesis();
+            } else {
+                setStage('refinement');
+            }
 
             // Save session
             const sessionData = {
@@ -363,14 +389,19 @@ const Refinement = () => {
                     setCurrentQuestion(response.next_prompt);
                     setCurrentAspectId(response.next_prompt.aspect_id);
                 } else {
-                    console.log('[TRACE] No next_prompt - adding answer and triggering synthesis');
+                    console.log('[TRACE] No next_prompt - checking ready_for_synthesis flag');
                     // Add answer before synthesis
                     setConversationHistory(prev => [...prev,
                     createHistoryItem('answer', answer, { aspectId: currentAspectId })
                     ]);
                     setCurrentQuestion(null);
                     setCurrentAspectId(null);
-                    await handleSynthesis();
+
+                    // Check ready_for_synthesis flag
+                    if (response.ready_for_synthesis) {
+                        logger.info('All aspects complete - triggering synthesis');
+                        await handleSynthesis();
+                    }
                 }
 
                 // Fetch updated status to refresh aspects
@@ -469,8 +500,54 @@ const Refinement = () => {
         }
     };
 
+    const handleResumeSession = async () => {
+        if (!savedSessionData) return;
+
+        setLoading(true);
+        try {
+            // Restore session state
+            setSessionId(savedSessionData.sessionId);
+            setQueryId(savedSessionData.queryId);
+            setSelectedFramework(savedSessionData.framework);
+            setLogSessionId(savedSessionData.sessionId);
+
+            // Fetch current status from API
+            const status = await refinementService.getStatus(savedSessionData.queryId);
+
+            logger.info('Session resumed', {
+                sessionId: savedSessionData.sessionId,
+                queryId: savedSessionData.queryId,
+                stage: status.ready_for_synthesis ? 'synthesis' : 'refinement'
+            });
+
+            // Set aspects
+            setAspects(status.aspects || []);
+
+            // Check if ready for synthesis
+            if (status.ready_for_synthesis && !status.next_prompt) {
+                setStage('synthesis');
+                await handleSynthesis();
+            } else {
+                setCurrentQuestion(status.next_prompt);
+                setCurrentAspectId(status.next_prompt?.aspect_id);
+                setStage('refinement');
+            }
+
+            // Clear the saved session notification
+            setSavedSessionData(null);
+        } catch (err) {
+            logger.error('Failed to resume session', err);
+            setError('Failed to resume session. Please start a new one.');
+            clearSession();
+            setSavedSessionData(null);
+        } finally {
+            setLoading(false);
+        }
+    };
+
     const handleStartOver = () => {
         clearSession();
+        setSavedSessionData(null);
         setStage('framework-selection');
         setSelectedFramework(null);
         setInitialQuery('');
@@ -496,6 +573,11 @@ const Refinement = () => {
             <header className="refinement-header">
                 <h1>MPH Dissertation Research Advisor</h1>
                 <div className="header-actions">
+                    {savedSessionData && stage === 'framework-selection' && (
+                        <button onClick={handleResumeSession} className="btn-link btn-resume" disabled={loading}>
+                            {loading ? 'Resuming...' : 'Resume Session'}
+                        </button>
+                    )}
                     {stage !== 'framework-selection' && (
                         <button onClick={handleStartOver} className="btn-link">
                             Start Over
@@ -516,7 +598,46 @@ const Refinement = () => {
                 )}
 
                 {stage === 'framework-selection' && (
-                    <FrameworkSelector onSelect={handleFrameworkSelect} />
+                    <>
+                        {workflowLimitReached ? (
+                            <div className="workflow-complete-notice">
+                                <div className="notice-icon">✓</div>
+                                <div className="notice-content">
+                                    <h2>Thank You!</h2>
+                                    <p>You have already completed one refinement workflow.</p>
+                                    <p>For evaluation purposes, only one workflow per participant is allowed.</p>
+                                    <p>Your contribution to the research study is greatly appreciated!</p>
+                                </div>
+                            </div>
+                        ) : savedSessionData ? (
+                            <div className="saved-session-notice">
+                                <div className="notice-icon">💾</div>
+                                <div className="notice-content">
+                                    <h3>Continue Your Session?</h3>
+                                    <p>
+                                        You have an in-progress refinement session for the <strong>{savedSessionData.framework}</strong> framework.
+                                    </p>
+                                    <div className="notice-actions">
+                                        <button
+                                            onClick={handleResumeSession}
+                                            className="btn-primary"
+                                            disabled={loading}
+                                        >
+                                            {loading ? 'Resuming...' : 'Resume Session'}
+                                        </button>
+                                        <button
+                                            onClick={handleStartOver}
+                                            className="btn-secondary"
+                                        >
+                                            Start New Session
+                                        </button>
+                                    </div>
+                                </div>
+                            </div>
+                        ) : (
+                            <FrameworkSelector onSelect={handleFrameworkSelect} />
+                        )}
+                    </>
                 )}
 
                 {stage === 'initial-query' && (
@@ -588,6 +709,7 @@ const Refinement = () => {
                                     <QuestionRenderer
                                         question={currentQuestion.question || 'Please wait while we generate your question...'}
                                         aspectName={currentQuestion.aspect_name}
+                                        aspectDescription={currentQuestion.description}
                                         onAnswer={handleAnswer}
                                         loading={loading}
                                     />

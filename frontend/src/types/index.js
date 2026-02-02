@@ -30,7 +30,8 @@ export function isNextPrompt(obj) {
     return obj
         && typeof obj.aspect_id === 'string'
         && typeof obj.aspect_name === 'string'
-        && typeof obj.question === 'string';
+        && typeof obj.question === 'string'
+        && (obj.description === undefined || typeof obj.description === 'string');
 }
 
 /**

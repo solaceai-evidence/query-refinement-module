@@ -2,7 +2,7 @@
 User model for query refinement web app.
 Follows SQLAlchemy ORM standards.
 """
-from sqlalchemy import Column, Integer, String, DateTime
+from sqlalchemy import Column, Integer, String, DateTime, Boolean
 from sqlalchemy.orm import declarative_base
 from datetime import datetime, timezone
 
@@ -24,6 +24,10 @@ class User(Base):
     password_hash = Column(String(255), nullable=False)
     created_at = Column(DateTime, default=_utcnow)
     updated_at = Column(DateTime, default=_utcnow, onupdate=_utcnow)
+    
+    # Evaluation constraints
+    is_superuser = Column(Boolean, default=False, nullable=False)
+    has_completed_workflow = Column(Boolean, default=False, nullable=False)
 
     def __repr__(self):
-        return f"<User(id={self.id}, username='{self.username}', email='{self.email}')>"
+        return f"<User(id={self.id}, username='{self.username}', superuser={self.is_superuser}')>"
