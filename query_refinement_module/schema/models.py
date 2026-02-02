@@ -163,15 +163,22 @@ class CompletedDimension(BaseModel):
     name: str = Field(description="Human-readable name")
     description: str = Field(description="What this dimension represents")
     assembled_value: str = Field(description="The refined value using user's words")
+    was_skipped: bool = Field(default=False, description="Whether this dimension was skipped")
     
     @classmethod
-    def from_dimension(cls, dimension: "RefinementDimension", value: str) -> "CompletedDimension":
+    def from_dimension(
+        cls, 
+        dimension: "RefinementDimension", 
+        value: str,
+        was_skipped: bool = False
+    ) -> "CompletedDimension":
         """Create from a RefinementDimension with its assembled value."""
         return cls(
             id=dimension.id,
             name=dimension.aspect_name,
             description=dimension.aspect_description,
-            assembled_value=value
+            assembled_value=value,
+            was_skipped=was_skipped
         )
 
 

@@ -154,20 +154,36 @@ class PromptBuilder:
         """
         # Convert to dicts for template
         completed_dicts = []
+        completed_ids_with_values = set()
+        
         for dim in completed_dimensions:
             if hasattr(dim, 'model_dump'):
-                completed_dicts.append(dim.model_dump())
+                dim_dict = dim.model_dump()
             elif hasattr(dim, '__dict__'):
-                completed_dicts.append(vars(dim))
+                dim_dict = vars(dim)
             else:
-                completed_dicts.append(dict(dim))
+                dim_dict = dict(dim)
+            
+            completed_dicts.append(dim_dict)
+            
+            # Track which dependencies have actual values (not skipped, not empty)
+            was_skipped = dim_dict.get('was_skipped', False) if isinstance(dim_dict, dict) else getattr(dim, 'was_skipped', False)
+            assembled_value = dim_dict.get('assembled_value', '') if isinstance(dim_dict, dict) else getattr(dim, 'assembled_value', '')
+            
+            if hasattr(dim, 'id') and assembled_value and not was_skipped:
+                completed_ids_with_values.add(dim.id)
         
+        # Filter dependencies to only include those with clarified, non-skipped values
         dep_dicts = None
         if dependencies:
             dep_dicts = [
                 {"name": dep.aspect_name, "id": dep.id}
                 for dep in dependencies
+                if dep.id in completed_ids_with_values  # Only include if has actual value
             ]
+            # Only pass deps if there are valid ones
+            if not dep_dicts:
+                dep_dicts = None
         
         return self._dependencies_template.render(
             completed_dimensions=completed_dicts,

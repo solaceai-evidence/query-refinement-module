@@ -754,7 +754,7 @@ pitfalls:
 
 ### Domain Examples
 
-Draw ALL examples from `{{ user_context.examples_from }}` domain:
+Draw ALL examples from `{{ user_context.examples_from }}` domain. Possible domains:
 
 - **public health:** epidemiology, interventions, RCTs, cohort studies, disease prevention
 - **legal:** precedent, jurisdiction, case law, statutory interpretation, judicial review  
@@ -811,30 +811,30 @@ Before responding:
 # ============================================================================
 
 DIMENSIONS_CLARIFIED_AND_DEPENDENCIES_TEMPLATE = """
-## Clarified Dimensions
+## Clarified Dimensions (Foundation for This Dimension)
 
 {% if completed_dimensions %}
-**Clarified Dimensions:** 
+**Previously Clarified Values (use as concrete foundation):**
 {% for dim in completed_dimensions %}
-- {{ dim.name }} ({{ dim.description }}): "{{ dim.assembled_value }}"
+- **{{ dim.name }} ({{ dim.description }}):** "{{ dim.assembled_value }}"
 {% endfor %}
 {% else %}
-**No dimensions specifications clarified yet**
+**No prior dimensions clarified yet**
 {% endif %}
 
 {% if dependencies %}
 
-## Dependencies
+## Dependencies (Foundational Context)
 
-**This dimension relies on the specifications of:** 
+**This dimension must build on and align with these specific clarified dimensions:**
 {% for dep in dependencies %}
 - {{ dep.name }}
 {% endfor %}
 
-**Critical:** 
-- **Do not re-ask about clarified dimensions** (unless conflict arises). Use for consistency checking and to avoid redundancy only.
-- **Ensure alignment** of this dimension with dependencies. Flag conflicts immediately.
-- **Reference dependencies** in question construction when logically relevant.
+**Critical Actions:**
+- **Use dependency values as foundation:** This dimension cannot be sufficiently specific without them. Reference them explicitly in questions and validation.
+- **Ensure logical coherence:** Flag immediately if this dimension contradicts or diverges from dependency specifications.
+- **Do not re-ask dependencies:** Dependencies are already clarified. Use for context only (unless conflict arises requiring resolution).
 {% endif %}
 
 """

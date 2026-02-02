@@ -60,7 +60,7 @@ class AspectRefinementState:
     follow_up_question: Optional[str] = None
     
     # Stores the aspect specification as refined by user interaction 
-    normalized_value: Optional[Union[str, Dict, List, bool, int, float]] = None
+    normalized_value: Optional[str] = None
     
     @property
     def follow_up_count(self) -> int:
@@ -212,9 +212,9 @@ class AspectRefinementState:
         Build messages array for LLM API (multi-turn dialogue representation).
         
         Constructs structured messages with:
-        1. System message: Global platform instructions [CACHED]
+        1. System message: Global System Directive [CACHED]
         2. System message: User context adaptation profile [CACHED]
-        3. System message: Previously completed dimensions and dependencies
+        3. System message: Previously clarified dimensions, and dependencies
         4. System message: Current dimension specification
         5. User message: Original query to analyze
         6. Conversation history: Alternating assistant/user messages
@@ -232,7 +232,7 @@ class AspectRefinementState:
         messages = []
         builder = PromptBuilder()
         
-        # 1. System message: Global platform instructions [CACHED]
+        # 1. System message: Global System Directive [CACHED]
         messages.append({
             'role': 'system',
             'content': GLOBAL_SYSTEM_PROMPT,
@@ -248,7 +248,7 @@ class AspectRefinementState:
                 '_cache': True  # Mark for caching
             })
         
-        # 3. System message: Previously completed dimensions and dependencies
+        # 3. System message: Previously clarified dimensions, and dependencies
         if dependency_context:
             completed_dims = []
             for dep_id, entry in dependency_context.items():
