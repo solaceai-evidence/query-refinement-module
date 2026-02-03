@@ -488,13 +488,50 @@ const Refinement = () => {
             console.log('Synthesis result received:', result);
             console.log('Synthesis refined_query:', result?.refined_query);
             console.log('Synthesis structured_output:', result?.structured_output);
+
+            // Validate result before setting state
+            if (!result || typeof result !== 'object') {
+                throw new Error('Invalid synthesis response format');
+            }
+
+            // Check for truncated JSON in refined_query
+            if (result.refined_query &&
+                typeof result.refined_query === 'string' &&
+                (result.refined_query.includes('```json') || result.refined_query.startsWith('{'))) {
+                console.warn('⚠️ Synthesis returned raw JSON instead of parsed result');
+
+                // Try to extract synthesized_statement from the JSON string
+                try {
+                    // Remove markdown fences
+                    let jsonStr = result.refined_query.replace(/```json\n?/g, '').replace(/```\n?$/g, '');
+
+                    // Check if truncated
+                    if (!jsonStr.trim().endsWith('}')) {
+                        console.error('❌ JSON response is truncated!');
+                        setError('The synthesis response was incomplete. This usually means the LLM response was too long. Please try again or contact support.');
+                        return;
+                    }
+
+                    const parsed = JSON.parse(jsonStr);
+                    if (parsed.synthesized_statement) {
+                        result.refined_query = parsed.synthesized_statement;
+                        result.structured_output = parsed;
+                        console.log('✓ Successfully extracted synthesized_statement:', result.refined_query.substring(0, 100));
+                    }
+                } catch (parseErr) {
+                    console.error('Failed to parse JSON from refined_query:', parseErr);
+                    setError('The synthesis response could not be processed. Please try again.');
+                    return;
+                }
+            }
+
             setSynthesis(result);
             setStage('synthesis');
             clearSession(); // Clear saved session after completion
         } catch (err) {
             console.error('Synthesis error:', err);
             console.error('Error response:', err.response?.data);
-            setError(err.response?.data?.detail || 'Failed to synthesize query');
+            setError(err.response?.data?.detail || err.message || 'Failed to synthesize query');
         } finally {
             setLoading(false);
         }

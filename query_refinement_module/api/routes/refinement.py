@@ -1256,6 +1256,26 @@ async def synthesize_refined_query(
                     lines = lines[:-1]
                 json_str = '\n'.join(lines)
             
+            # Check if JSON might be truncated
+            if not json_str.rstrip().endswith('}'):
+                logger.error(
+                    "JSON response appears truncated (doesn't end with '}'), likely hit max_tokens limit",
+                    extra={
+                        "json_length": len(json_str),
+                        "json_preview_end": json_str[-100:] if len(json_str) > 100 else json_str
+                    }
+                )
+                # Attempt to extract synthesized_statement even from partial JSON
+                import re
+                statement_match = re.search(r'"synthesized_statement"\s*:\s*"([^"]+)"', json_str)
+                if statement_match:
+                    refined_query = statement_match.group(1)
+                    logger.info(f"Extracted synthesized_statement from truncated JSON: {refined_query[:100]}...")
+                else:
+                    logger.warning("Could not extract synthesized_statement from truncated JSON")
+                # Keep structured_output as None for truncated response
+                raise ValueError("JSON response was truncated, increase max_tokens")
+            
             # Parse JSON
             parsed_data = json.loads(json_str)
             
@@ -1266,16 +1286,26 @@ async def synthesize_refined_query(
                 'search_filters': parsed_data.get('search_filters'),
                 'terminology': parsed_data.get('terminology'),
                 'synthesized_statement': parsed_data.get('synthesized_statement'),
+                'dimensions': parsed_data.get('dimensions'),
             }
             
             # Use synthesized_statement as refined_query if available
             if parsed_data.get('synthesized_statement'):
                 refined_query = parsed_data['synthesized_statement']
                 
-            logger.info("Successfully parsed JSON from refined_query string")
+            logger.info(
+                "Successfully parsed JSON from refined_query string",
+                extra={"has_dimensions": 'dimensions' in parsed_data}
+            )
             
         except (json.JSONDecodeError, ValueError) as e:
-            logger.warning(f"Failed to parse JSON from refined_query: {e}")
+            logger.error(
+                f"Failed to parse JSON from refined_query: {e}",
+                extra={
+                    "error_type": type(e).__name__,
+                    "json_preview": json_str[:200] if 'json_str' in locals() else None
+                }
+            )
             # Keep refined_query as-is, structured_output remains None
     
     # Update database
@@ -1304,4 +1334,77 @@ async def synthesize_refined_query(
         used_llm=synthesis_result.get('used_llm', False),
         structured_output=structured_output,
         metadata=synthesis_result.get('metadata', {})
+    )
+
+
+# ==========================================
+# Debug Endpoint - Inspect Messages
+# ==========================================
+
+class InspectMessagesResponse(BaseModel):
+    """Response showing the actual messages sent to the LLM."""
+    query_id: int
+    current_dimension: Optional[str] = None
+    message_count: int
+    messages: List[Dict[str, Any]]
+    user_context_detected: bool
+    user_context_preview: Optional[str] = None
+
+
+@router.get("/queries/{query_id}/inspect-messages", response_model=InspectMessagesResponse)
+def inspect_messages(
+    query_id: int,
+    current_user = Depends(get_current_user),
+    session_manager: SessionManager = Depends(get_session_manager),
+    db: Session = Depends(get_db),
+):
+    """
+    Debug endpoint to inspect the actual messages being sent to the LLM.
+    
+    Shows:
+    - Full message array with roles and content
+    - Whether user context is included
+    - Preview of user context content
+    - Message count and structure
+    
+    Use this to verify that user context is being properly included in prompts.
+    """
+    # Verify query ownership
+    query = get_query(db, query_id)
+    if not query or query.user_id != current_user.id:
+        raise HTTPException(
+            status_code=status.HTTP_404_NOT_FOUND,
+            detail="Query not found"
+        )
+    
+    # Load session
+    session = session_manager.load_session(query_id)
+    if not session:
+        raise HTTPException(
+            status_code=status.HTTP_404_NOT_FOUND,
+            detail="Session not found or expired"
+        )
+    
+    # Get messages for current dimension
+    messages = session.get_messages(query.original_query)
+    
+    # Check for user context in messages
+    user_context_detected = False
+    user_context_preview = None
+    
+    for msg in messages:
+        content = msg.get("content", "")
+        if "User Context" in content or "user_context" in content.lower():
+            user_context_detected = True
+            # Get first 200 chars of user context message
+            user_context_preview = content[:200] + "..." if len(content) > 200 else content
+            break
+    
+    return InspectMessagesResponse(
+        query_id=query_id,
+        current_dimension=session.refinement_aspect.aspect_id if session.refinement_aspect else None,
+        message_count=len(messages),
+        messages=messages,
+        user_context_detected=user_context_detected,
+        user_context_preview=user_context_preview
     )

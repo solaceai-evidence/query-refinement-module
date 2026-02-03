@@ -1081,7 +1081,7 @@ class QueryRefinementManager:
         *,
         model: Optional[str] = None,
         temperature: float = 0.2,
-        max_tokens: int = 512,
+        max_tokens: int = 4096,
         additional_guidance: Optional[str] = None,
     ) -> Dict[str, Any]:
         """Generate a refined query by combining the original query with clarifications.
@@ -1090,7 +1090,7 @@ class QueryRefinementManager:
             session: Active refinement session containing user-provided clarifications.
             model: Optional model override for the synthesis call.
             temperature: Sampling temperature for the completion (default 0.2).
-            max_tokens: Maximum tokens for the synthesis response (default 512).
+            max_tokens: Maximum tokens for the synthesis response (default 2048, increased from 512 to prevent truncation).
             additional_guidance: Optional extra instruction appended to the prompt.
 
         Returns:

@@ -15,6 +15,43 @@ const SynthesisResult = ({ queryId, synthesis }) => {
     console.log('SynthesisResult rendered with:', { queryId, synthesis });
     console.log('synthesis.refined_query:', synthesis?.refined_query);
 
+    // Safety check for synthesis object
+    if (!synthesis || typeof synthesis !== 'object') {
+        console.error('Invalid synthesis object:', synthesis);
+        return (
+            <div className="synthesis-result">
+                <div className="error-banner">
+                    <p>⚠️ Synthesis result is invalid. Please try again.</p>
+                </div>
+            </div>
+        );
+    }
+
+    // Check for malformed refined_query (raw JSON)
+    let refinedQuery = synthesis.refined_query;
+    if (typeof refinedQuery === 'string' &&
+        (refinedQuery.includes('```json') || (refinedQuery.startsWith('{') && refinedQuery.includes('"synthesized_statement"')))) {
+        console.warn('⚠️ refined_query contains raw JSON, attempting to extract synthesized_statement');
+        try {
+            // Remove markdown fences
+            let jsonStr = refinedQuery.replace(/```json\n?/g, '').replace(/```\n?$/g, '').trim();
+
+            // Check if truncated
+            if (!jsonStr.endsWith('}')) {
+                refinedQuery = '⚠️ Response was incomplete. Please try synthesis again.';
+            } else {
+                const parsed = JSON.parse(jsonStr);
+                if (parsed.synthesized_statement) {
+                    refinedQuery = parsed.synthesized_statement;
+                    console.log('✓ Extracted synthesized_statement successfully');
+                }
+            }
+        } catch (e) {
+            console.error('Failed to extract synthesized_statement:', e);
+            refinedQuery = '⚠️ Could not process synthesis result. Please try again.';
+        }
+    }
+
     const toggleSection = (section) => {
         setExpandedSections(prev => ({
             ...prev,
@@ -113,10 +150,14 @@ const SynthesisResult = ({ queryId, synthesis }) => {
                 {expandedSections.refinedQuery && (
                     <>
                         <div className="refined-query">
-                            {synthesis.refined_query}
+                            {refinedQuery || '(No refined query available)'}
                         </div>
                         <div className="result-actions">
-                            <button onClick={() => copyToClipboard(synthesis.refined_query, 'refined query')} className="btn-secondary">
+                            <button
+                                onClick={() => copyToClipboard(refinedQuery || synthesis.refined_query, 'refined query')}
+                                className="btn-secondary"
+                                disabled={!refinedQuery}
+                            >
                                 📋 Copy Query
                             </button>
                             <button onClick={exportAsJson} className="btn-secondary">
