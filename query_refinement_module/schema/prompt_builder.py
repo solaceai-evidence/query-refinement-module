@@ -19,9 +19,6 @@ from .templates import (
     GLOBAL_SYSTEM_PROMPT,
     SYNTHESIS_TEMPLATE,
     DIMENSION_REFINEMENT_TEMPLATE,
-    EXAMPLES_SECTION_TEMPLATE,
-    INITIAL_USER_INPUT_TEMPLATE,
-    FOLLOW_USER_INPUT_TEMPLATE,
     USER_CONTEXT_PROFILE_TEMPLATE,
     DIMENSIONS_CLARIFIED_AND_DEPENDENCIES_TEMPLATE,
 )
@@ -91,11 +88,8 @@ class PromptBuilder:
         # Precompile templates for performance
         self._dimension_template = self._env.from_string(DIMENSION_REFINEMENT_TEMPLATE)
         self._synthesis_template = self._env.from_string(SYNTHESIS_TEMPLATE)
-        self._examples_template = self._env.from_string(EXAMPLES_SECTION_TEMPLATE)
         self._user_context_template = self._env.from_string(USER_CONTEXT_PROFILE_TEMPLATE)
         self._dependencies_template = self._env.from_string(DIMENSIONS_CLARIFIED_AND_DEPENDENCIES_TEMPLATE)
-        self._initial_input_template = self._env.from_string(INITIAL_USER_INPUT_TEMPLATE)
-        self._follow_up_template = self._env.from_string(FOLLOW_USER_INPUT_TEMPLATE)
     
     # =========================================================================
     # Global System Prompt
@@ -230,65 +224,8 @@ class PromptBuilder:
             examples_section=has_examples
         )
     
-    def render_examples_section(self, examples: ExamplesCollection) -> str:
-        """
-        Render just the examples section.
-        
-        Args:
-            examples: The examples collection to render
-            
-        Returns:
-            Rendered examples section
-        """
-        if hasattr(examples, 'model_dump'):
-            examples_dict = examples.model_dump()
-        elif hasattr(examples, '__dict__'):
-            examples_dict = vars(examples)
-        else:
-            examples_dict = dict(examples)
-        return self._examples_template.render(examples=examples_dict)
-    
     # =========================================================================
-    # User Input Prompts
-    # =========================================================================
-    
-    def render_initial_input(self, original_input: str) -> str:
-        """
-        Render the initial user input prompt (no conversation history).
-        
-        Args:
-            original_input: The user's original research query
-            
-        Returns:
-            Rendered initial input prompt
-        """
-        return self._initial_input_template.render(original_input=original_input)
-    
-    def render_follow_up_input(
-        self,
-        conversation_history: List[Dict[str, str]],
-        latest_question: str,
-        latest_answer: str
-    ) -> str:
-        """
-        Render the follow-up user input prompt (with conversation history).
-        
-        Args:
-            conversation_history: List of {question: str, answer: str} dicts
-            latest_question: The most recent question asked
-            latest_answer: The user's latest response
-            
-        Returns:
-            Rendered follow-up input prompt
-        """
-        return self._follow_up_template.render(
-            conversation_history=conversation_history,
-            latest_question=latest_question,
-            latest_answer=latest_answer
-        )
-    
-    # =========================================================================
-    # Synthesis Prompt
+    # Synthesis Prompts
     # =========================================================================
     
     def get_synthesis_system_prompt(self) -> str:
@@ -308,9 +245,9 @@ class PromptBuilder:
             original_input: The user's original research query
             
         Returns:
-            Formatted original input for synthesis
+            Just the original input text (template handles formatting)
         """
-        return f"## Original Input\n\n{original_input}"
+        return original_input
     
     def render_synthesis_dimensions(
         self,

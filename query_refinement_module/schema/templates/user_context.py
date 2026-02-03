@@ -132,32 +132,26 @@ DIMENSIONS_CLARIFIED_AND_DEPENDENCIES_TEMPLATE = """
 
 ### INPUTS
 {% if completed_dimensions %}
-**Completed Dimensions:**
+**Clarified Dimensions:**
 {% for dim in completed_dimensions %}
 - {{ dim.name }} ({{ dim.description }}): "{{ dim.assembled_value }}"
 {% endfor %}
 
-**Use these prior clarifications (as-is) to inform your current refinement. Do not re-ask**
+**Use these prior dimensions specifications (as-is) to inform your current refinement. Do not re-ask**
 {% else %}
 **No prior dimensions specifications clarified yet**
 {% endif %}
 
 {% if dependencies %}
-**Dependencies:**
+**Dependencies  (Foundational Context):**
 {% for dep in dependencies %}
 - {{ dep.name }}
 {% endfor %}
-{% endif %}
 
-### RE-ASKING EXCEPTIONS
-**Default: Never re-ask clarified dimensions** 
-
-**Exceptions IF:**
-- Direct contradiction (user says "A", prior clarified  says "not A") -> Flag: "You specified [prior]. Does [current] change that?"
-- Scope incompatibility (current methods don't fit prior constraints) → "Does [approach] still work given [prior dimension]?"
-- Logical impossibility (current input unfeasible given dependencies) → "[Alternative] would work better given [dependency]."
-
----
+**Critical Actions:**
+- **Use dependency values as foundation:** This dimension cannot be sufficiently specific without them. Reference them explicitly in questions and validation.
+- **Ensure logical coherence:** Flag immediately if this dimension contradicts or diverges from dependency specifications.
+- **Do not re-ask dependencies:** Dependencies are already clarified. Use for context only (unless conflict arises requiring resolution).
 
 ### DEPENDENCY ALIGNMENT CHECK
 
@@ -172,6 +166,8 @@ DIMENSIONS_CLARIFIED_AND_DEPENDENCIES_TEMPLATE = """
 | No conflict (current narrows/specifies prior) | ALIGNED | Proceed |
 
 ---
+{% endif %}
+
 
 ### PRE-PROCESSING CHECKLIST
 
@@ -193,4 +189,7 @@ Before STEP 1 of refinement protocol:
 4. Stop on conflicts; resolve via CONFLICT DETECTION protocol
 5. Reference dependencies naturally in questions (embed context, don't quote values)
 6. Proceed only after all gates pass
+
+---
+
 """
