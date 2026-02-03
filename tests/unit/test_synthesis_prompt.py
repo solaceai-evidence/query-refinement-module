@@ -81,10 +81,10 @@ class TestSynthesisPromptBuilder:
         assert "Outcome" in prompt
         assert "[SKIPPED]" in prompt
 
-    def test_aspects_section_handles_clear_in_original(self, sample_aspects):
-        """Test that [CLEAR_IN_ORIGINAL] aspects are included with a marker."""
+    def test_aspects_section_with_actual_and_skipped_values(self, sample_aspects):
+        """Test that actual dimension values and [SKIPPED] are properly included."""
         refinement_values = {
-            "population": "[CLEAR_IN_ORIGINAL]",
+            "population": "adults aged 18-65",
             "intervention": "drug therapy",
             "outcome": "[SKIPPED]",
         }
@@ -96,8 +96,10 @@ class TestSynthesisPromptBuilder:
             aspect_list=sample_aspects,
         )
 
-        # Should contain clear in original marker
-        assert "[CLEAR_IN_ORIGINAL]" in prompt
+        # Should contain actual values and skipped marker
+        assert "adults aged 18-65" in prompt
+        assert "drug therapy" in prompt
+        assert "[SKIPPED]" in prompt
 
     def test_output_format_includes_required_fields(self, sample_aspects, refinement_values):
         """Test that output format includes required dimensions."""

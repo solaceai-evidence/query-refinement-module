@@ -135,18 +135,18 @@ class TestSynthesisResponse:
         assert response.search_filters.fields_of_study == ""
 
     def test_refined_dimensions_with_special_values(self):
-        """Test refined_dimensions can contain special markers."""
+        """Test refined_dimensions can contain special markers like [SKIPPED] and actual values."""
         payload = self._base_payload()
         payload["refined_dimensions"].update(
             {
                 "outcome": "[SKIPPED]",
-                "intervention": "[CLEAR_IN_ORIGINAL]",
+                "intervention": "metformin 500mg daily",
             }
         )
         response = QueryRefinementResponse(**payload)
 
         assert response.refined_dimensions["outcome"] == "[SKIPPED]"
-        assert response.refined_dimensions["intervention"] == "[CLEAR_IN_ORIGINAL]"
+        assert response.refined_dimensions["intervention"] == "metformin 500mg daily"
 
     def test_model_allows_updates(self):
         """Test model configuration allows field updates."""

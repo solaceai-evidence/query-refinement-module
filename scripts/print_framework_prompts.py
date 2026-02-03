@@ -1,18 +1,23 @@
 """
-Print framework prompts for review.
+Print framework prompts for review and auditing.
 
 This script loads a YAML framework definition and prints the prompts that would be
-generated for each dimension, making it easy to review and share with colleagues.
+generated, allowing you to audit each component separately.
 
 Usage:
-    python scripts/print_framework_prompts.py <framework_yaml> <framework_name> [options]
+    poetry run python scripts/print_framework_prompts.py <framework_yaml> <framework_name> [options]
 
-Options:
+Audit Options (show specific components):
+    --global-system      Show only the global system directive prompt
+    --user-context-only  Show only the user context adaptation prompt
+    --dimension <id>     Show only specific dimension prompt (full: system + user)
+    --all-dimensions     Show all dimension prompts together with user context
+    --synthesis          Show synthesis prompt with mock refinements
+    --summary            Show compact summary of framework structure
+
+Other Options:
     --query <text>       Custom query (default: realistic sample based on framework)
-    --aspect <id>        Show only specific aspect by ID
-    --summary            Show compact summary instead of full prompts
-    --followup           Also show follow-up mode example  
-    --synthesis          Show synthesis (final) prompt with mock refinements
+    --clean              No headers/decorations, just raw prompt output
 """
 import sys
 from pathlib import Path
@@ -20,6 +25,8 @@ import yaml
 
 from query_refinement_module.schema import RefinementAspect
 from query_refinement_module.schema.synthesis import SynthesisPromptBuilder
+from query_refinement_module.schema.prompt_builder import PromptBuilder
+from query_refinement_module.prompt.system_role import GLOBAL_SYSTEM_PROMPT
 
 
 # Sample queries for different framework types
@@ -48,9 +55,9 @@ def load_framework(yaml_path: Path, framework_name: str) -> tuple[list[Refinemen
     aspect_items = framework_def
     
     if framework_def and isinstance(framework_def[0], dict) and "user_context" in framework_def[0]:
-        # Extract user_context fields (all keys except "user_context" itself)
+        # Extract user_context dict from first item
         first_item = framework_def[0]
-        user_context = {k: v for k, v in first_item.items() if k != "user_context"}
+        user_context = first_item["user_context"]
         aspect_items = framework_def[1:]  # Remaining items are aspects
     
     # Attach user_context to each aspect if present
@@ -63,16 +70,53 @@ def load_framework(yaml_path: Path, framework_name: str) -> tuple[list[Refinemen
     return aspects, user_context
 
 
-def print_full_unified_prompt(aspect: RefinementAspect, query: str, show_followup: bool = False):
-    """Print the complete unified prompt as it would appear in production."""
-    print(f"\n{'=' * 80}")
-    print(f"ASPECT: {aspect.aspect_name} (ID: {aspect.id})")
-    print('=' * 80)
+def print_global_system_prompt(clean: bool = False):
+    """Print the global system directive."""
+    if not clean:
+        print("=" * 80)
+        print("GLOBAL SYSTEM DIRECTIVE")
+        print("=" * 80)
+        print()
+    print(GLOBAL_SYSTEM_PROMPT)
+
+
+def print_user_context_prompt(aspects: list[RefinementAspect], clean: bool = False):
+    """Print the user context adaptation prompt."""
+    if not aspects or not aspects[0].user_context:
+        if not clean:
+            print("No user context defined for this framework")
+        return
     
-    print("\n[SYSTEM PROMPT]\n")
+    builder = PromptBuilder()
+    user_context_prompt = builder.render_user_context(aspects[0].user_context)
+    
+    if not clean:
+        print("=" * 80)
+        print("USER CONTEXT ADAPTATION PROMPT")
+        print("=" * 80)
+        print()
+    print(user_context_prompt)
+
+
+def print_dimension_prompt(aspect: RefinementAspect, query: str, clean: bool = False):
+    """Print a single dimension's complete prompt (system + user)."""
+    if not clean:
+        print("=" * 80)
+        print(f"DIMENSION: {aspect.aspect_name} (ID: {aspect.id})")
+        print("=" * 80)
+        print()
+        print("[SYSTEM PROMPT]")
+        print()
+    
+    # System prompt
     print(aspect.get_system_role())
     
-    print("\n[USER PROMPT - INITIAL]\n")
+    if not clean:
+        print()
+        print("[USER PROMPT - INITIAL]")
+        print()
+    
+    # User prompt (initial)
     initial_prompt = aspect.build_unified_prompt(
         original_input=query,
         follow_up_history=[],
@@ -80,99 +124,158 @@ def print_full_unified_prompt(aspect: RefinementAspect, query: str, show_followu
         mode='initial'
     )
     print(initial_prompt)
+
+
+def print_all_dimensions(aspects: list[RefinementAspect], query: str, clean: bool = False):
+    """Print all dimension prompts together with user context."""
+    if not clean:
+        print("=" * 80)
+        print("ALL DIMENSIONS WITH USER CONTEXT")
+        print("=" * 80)
+        print()
     
-    if show_followup:
-        print("\n[USER PROMPT - FOLLOWUP]\n")
-        followup_prompt = aspect.build_unified_prompt(
+    # First: Global system directive
+    if not clean:
+        print("--- GLOBAL SYSTEM DIRECTIVE ---")
+        print()
+    print(GLOBAL_SYSTEM_PROMPT)
+    
+    if not clean:
+        print()
+        print()
+    
+    # Second: User context (if present)
+    if aspects and aspects[0].user_context:
+        if not clean:
+            print("--- USER CONTEXT ---")
+            print()
+        builder = PromptBuilder()
+        print(builder.render_user_context(aspects[0].user_context))
+        if not clean:
+            print()
+            print()
+    
+    # Third: Each dimension
+    for i, aspect in enumerate(aspects):
+        if not clean:
+            print(f"--- DIMENSION {i+1}: {aspect.aspect_name} ---")
+            print()
+        
+        # Dimension-specific prompt
+        dimension_prompt = aspect.build_unified_prompt(
             original_input=query,
-            follow_up_history=[
-                {'question': 'What age range?', 'response': 'Adults 18-65'},
-                {'question': 'Any specific gender?', 'response': 'All genders'}
-            ],
-            dependency_context={
-                'population': {
-                    'name': 'Population',
-                    'description': 'Target population',
-                    'value': 'Adults aged 18-65, all genders'
-                }
-            },
-            mode='followup'
+            follow_up_history=[],
+            dependency_context={},
+            mode='initial'
         )
-        print(followup_prompt)
+        print(dimension_prompt)
+        
+        if not clean and i < len(aspects) - 1:
+            print()
+            print()
 
 
-def print_summary(aspect: RefinementAspect):
-    """Print a compact summary of the aspect configuration."""
-    print(f"• {aspect.aspect_name} ({aspect.id})")
-    print(f"  Description: {aspect.aspect_description}")
-    print(f"  Follow-ups: {'Enabled' if aspect.allow_follow_up else 'Disabled'} (max: {aspect.max_follow_ups})")
-    if aspect.depends_on:
-        print(f"  Dependencies: {', '.join(aspect.depends_on)}")
-    if aspect.examples:
-        # ExamplesCollection is a Pydantic model, use model_dump() to get dict
-        examples_dict = aspect.examples.model_dump(exclude_none=True)
-        example_counts = {k: len(v) for k, v in examples_dict.items() if isinstance(v, list)}
-        print(f"  Examples: {example_counts}")
-    print()
-
-
-def print_synthesis_prompt(aspects: list[RefinementAspect], query: str):
+def print_synthesis_prompt(aspects: list[RefinementAspect], query: str, clean: bool = False):
     """Print the synthesis prompt with mock completed refinements."""
-    print(f"\n{'=' * 80}")
-    print("SYNTHESIS STEP")
-    print('=' * 80)
+    if not clean:
+        print("=" * 80)
+        print("SYNTHESIS PROMPT")
+        print("=" * 80)
+        print()
     
+    # Create mock refinement values
     refinement_aspect_values = {}
     for i, aspect in enumerate(aspects):
         if i % 3 == 0:
             refinement_aspect_values[aspect.id] = "[SKIPPED]"
-        elif i % 3 == 1:
-            refinement_aspect_values[aspect.id] = "[CLEAR_IN_ORIGINAL]"
         else:
+            # Generate appropriate mock values for non-skipped dimensions
             if "population" in aspect.id.lower():
                 refinement_aspect_values[aspect.id] = "adults aged 18-65 with Type 2 diabetes"
             elif "intervention" in aspect.id.lower():
                 refinement_aspect_values[aspect.id] = "metformin therapy, 500-1000mg daily"
             elif "outcome" in aspect.id.lower():
                 refinement_aspect_values[aspect.id] = "glycemic control (HbA1c reduction)"
+            elif "comparator" in aspect.id.lower():
+                refinement_aspect_values[aspect.id] = "placebo or standard care"
             elif "temporal" in aspect.id.lower() or "time" in aspect.id.lower():
                 refinement_aspect_values[aspect.id] = "studies from 2018-2023"
+            elif "study" in aspect.id.lower() and "type" in aspect.id.lower():
+                refinement_aspect_values[aspect.id] = "randomized controlled trials and systematic reviews"
+            elif "setting" in aspect.id.lower():
+                refinement_aspect_values[aspect.id] = "primary care clinics in urban settings"
+            elif "condition" in aspect.id.lower() or "clinical" in aspect.id.lower():
+                refinement_aspect_values[aspect.id] = "mild to moderate severity, newly diagnosed"
             else:
                 refinement_aspect_values[aspect.id] = f"refined value for {aspect.aspect_name}"
     
     builder = SynthesisPromptBuilder()
     
-    print("\n[SYSTEM PROMPT]\n")
+    if not clean:
+        print("[SYSTEM PROMPT]")
+        print()
     print(builder.get_system_prompt())
     
-    print("\n[USER PROMPT]\n")
+    if not clean:
+        print()
+        print("[USER PROMPT]")
+        print()
     synthesis_prompt = builder.get_synthesis_prompt(
         original_input=query,
         aspectID_value_mapping=refinement_aspect_values,
         aspect_list=aspects
     )
     print(synthesis_prompt)
+
+
+def print_summary(aspects: list[RefinementAspect], framework_name: str, yaml_path: Path, clean: bool = False):
+    """Print a compact summary of the framework."""
+    if not clean:
+        print("=" * 80)
+        print(f"FRAMEWORK SUMMARY: {framework_name}")
+        print(f"SOURCE: {yaml_path}")
+        print("=" * 80)
+        print()
     
-    print("\n[MOCK REFINEMENT VALUES]\n")
     for aspect in aspects:
-        value = refinement_aspect_values.get(aspect.id, "[NOT SET]")
-        print(f"{aspect.id}: {value}")
+        print(f"• {aspect.aspect_name} ({aspect.id})")
+        print(f"  Description: {aspect.aspect_description}")
+        print(f"  Follow-ups: {'Enabled' if aspect.allow_follow_up else 'Disabled'} (max: {aspect.max_follow_ups})")
+        if aspect.depends_on:
+            print(f"  Dependencies: {', '.join(aspect.depends_on)}")
+        if aspect.examples:
+            examples_dict = aspect.examples.model_dump(exclude_none=True)
+            example_counts = {k: len(v) for k, v in examples_dict.items() if isinstance(v, list)}
+            print(f"  Examples: {example_counts}")
+        print()
 
 
 def main():
     if len(sys.argv) < 3:
-        print("Usage: python print_framework_prompts.py <framework_yaml> <framework_name> [options]")
-        print("\nOptions:")
+        print("Usage: poetry run python scripts/print_framework_prompts.py <framework_yaml> <framework_name> [options]")
+        print("\nAudit Options (show specific components):")
+        print("  --global-system      Show only the global system directive prompt")
+        print("  --user-context-only  Show only the user context adaptation prompt")
+        print("  --dimension <id>     Show only specific dimension prompt (full: system + user)")
+        print("  --all-dimensions     Show all dimension prompts together with user context")
+        print("  --synthesis          Show synthesis prompt with mock refinements")
+        print("  --summary            Show compact summary of framework structure")
+        print("\nOther Options:")
         print("  --query <text>       Custom query (default: realistic sample based on framework)")
-        print("  --aspect <id>        Show only specific aspect by ID")
-        print("  --summary            Show compact summary instead of full prompts")
-        print("  --followup           Also show follow-up mode example")
-        print("  --synthesis          Show synthesis (final) prompt with mock refinements")
+        print("  --clean              No headers/decorations, just raw prompt output")
         print("\nExamples:")
-        print("  python scripts/print_framework_prompts.py refinement_frameworks/pico_advanced_complete.yaml pico_advanced")
-        print("  python scripts/print_framework_prompts.py refinement_frameworks/mph_dissertation.yaml mph_dissertation --aspect population")
-        print("  python scripts/print_framework_prompts.py refinement_frameworks/pico_advanced_complete.yaml pico_advanced --followup")
-        print("  python scripts/print_framework_prompts.py refinement_frameworks/pico_advanced_complete.yaml pico_advanced --synthesis")
+        print("  # Show global system directive")
+        print("  poetry run python scripts/print_framework_prompts.py refinement_frameworks/frameworks.yaml pico_advanced --global-system")
+        print("\n  # Show user context only")
+        print("  poetry run python scripts/print_framework_prompts.py refinement_frameworks/frameworks.yaml pico_advanced --user-context-only")
+        print("\n  # Show specific dimension")
+        print("  poetry run python scripts/print_framework_prompts.py refinement_frameworks/frameworks.yaml pico_advanced --dimension population")
+        print("\n  # Show all dimensions together")
+        print("  poetry run python scripts/print_framework_prompts.py refinement_frameworks/frameworks.yaml pico_advanced --all-dimensions")
+        print("\n  # Show synthesis prompt")
+        print("  poetry run python scripts/print_framework_prompts.py refinement_frameworks/frameworks.yaml pico_advanced --synthesis")
+        print("\n  # Clean output (no decorations)")
+        print("  poetry run python scripts/print_framework_prompts.py refinement_frameworks/frameworks.yaml pico_advanced --dimension population --clean")
         raise SystemExit(1)
 
     yaml_path = Path(sys.argv[1])
@@ -180,80 +283,74 @@ def main():
     
     # Parse options
     args = sys.argv[3:]
-    query = None  # Will use sample query if not specified
-    aspect_filter = None
-    show_summary = False
-    show_followup = False
+    query = None
+    dimension_id = None
+    show_global_system = False
+    show_user_context_only = False
+    show_all_dimensions = False
     show_synthesis = False
+    show_summary = False
+    clean = False
     
     i = 0
     while i < len(args):
         if args[i] == '--query' and i + 1 < len(args):
             query = args[i + 1]
             i += 2
-        elif args[i] == '--aspect' and i + 1 < len(args):
-            aspect_filter = args[i + 1]
+        elif args[i] == '--dimension' and i + 1 < len(args):
+            dimension_id = args[i + 1]
             i += 2
-        elif args[i] == '--summary':
-            show_summary = True
+        elif args[i] == '--global-system':
+            show_global_system = True
             i += 1
-        elif args[i] == '--followup':
-            show_followup = True
+        elif args[i] == '--user-context-only':
+            show_user_context_only = True
+            i += 1
+        elif args[i] == '--all-dimensions':
+            show_all_dimensions = True
             i += 1
         elif args[i] == '--synthesis':
             show_synthesis = True
+            i += 1
+        elif args[i] == '--summary':
+            show_summary = True
+            i += 1
+        elif args[i] == '--clean':
+            clean = True
             i += 1
         else:
             print(f"Unknown option: {args[i]}")
             raise SystemExit(1)
 
+    # Load framework
     aspects, user_context = load_framework(yaml_path, framework_name)
     
     # Use framework-appropriate sample query if not specified
     if query is None:
         query = SAMPLE_QUERIES.get(framework_name, SAMPLE_QUERIES["default"])
     
-    # Filter by aspect ID if specified
-    if aspect_filter:
-        aspects = [a for a in aspects if a.id == aspect_filter]
-        if not aspects:
-            print(f"❌ Aspect '{aspect_filter}' not found in framework '{framework_name}'")
+    # Execute requested operation
+    if show_global_system:
+        print_global_system_prompt(clean=clean)
+    elif show_user_context_only:
+        print_user_context_prompt(aspects, clean=clean)
+    elif dimension_id:
+        # Find specific dimension
+        dimension_aspects = [a for a in aspects if a.id == dimension_id]
+        if not dimension_aspects:
+            print(f"Error: Dimension '{dimension_id}' not found in framework '{framework_name}'")
+            print(f"Available dimensions: {', '.join([a.id for a in aspects])}")
             raise SystemExit(1)
-
-    # Print header
-    print(f"\n{'=' * 80}")
-    print(f"FRAMEWORK: {framework_name}")
-    print(f"SOURCE: {yaml_path}")
-    print(f"ASPECTS: {len(aspects)}")
-    print(f"QUERY: {query}")
-    print('=' * 80)
-    
-    # Print user_context if present
-    if user_context:
-        print("\n[USER CONTEXT]")
-        print(f"  User Type: {user_context.get('user_type', 'Not specified')}")
-        print(f"  Context: {user_context.get('context', 'Not specified')}")
-        print(f"  Tone: {user_context.get('tone', 'Not specified')}")
-        print(f"  Complexity: {user_context.get('complexity', 'Not specified')}")
-        print(f"  Examples From: {user_context.get('examples_from', 'Not specified')}")
-        if 'constraints' in user_context:
-            print(f"  Constraints:")
-            for c in user_context['constraints']:
-                print(f"    - {c}")
-        if 'pitfalls' in user_context:
-            print(f"  Pitfalls:")
-            for p in user_context['pitfalls']:
-                print(f"    - {p}")
-
-    if show_synthesis:
-        print_synthesis_prompt(aspects, query)
+        print_dimension_prompt(dimension_aspects[0], query, clean=clean)
+    elif show_all_dimensions:
+        print_all_dimensions(aspects, query, clean=clean)
+    elif show_synthesis:
+        print_synthesis_prompt(aspects, query, clean=clean)
     elif show_summary:
-        print()
-        for aspect in aspects:
-            print_summary(aspect)
+        print_summary(aspects, framework_name, yaml_path, clean=clean)
     else:
-        for aspect in aspects:
-            print_full_unified_prompt(aspect, query, show_followup=show_followup)
+        # Default: show summary
+        print_summary(aspects, framework_name, yaml_path, clean=clean)
 
 
 if __name__ == "__main__":
