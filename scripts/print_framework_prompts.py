@@ -99,79 +99,84 @@ def print_user_context_prompt(aspects: list[RefinementAspect], clean: bool = Fal
 
 
 def print_dimension_prompt(aspect: RefinementAspect, query: str, clean: bool = False):
-    """Print a single dimension's complete prompt (system + user)."""
-    if not clean:
-        print("=" * 80)
-        print(f"DIMENSION: {aspect.aspect_name} (ID: {aspect.id})")
-        print("=" * 80)
-        print()
-        print("[SYSTEM PROMPT]")
-        print()
-    
-    # System prompt
-    print(aspect.get_system_role())
+    """Print a single dimension's complete message array structure."""
+    from query_refinement_module.schema.prompt_builder import build_refinement_messages
     
     if not clean:
-        print()
-        print("[USER PROMPT - INITIAL]")
+        print("=" * 80)
+        print(f"DIMENSION MESSAGES: {aspect.aspect_name} (ID: {aspect.id})")
+        print("=" * 80)
         print()
     
-    # User prompt (initial)
-    initial_prompt = aspect.build_unified_prompt(
-        original_input=query,
-        follow_up_history=[],
-        dependency_context={},
-        mode='initial'
+    # Build messages using the actual production code path
+    messages = build_refinement_messages(
+        dimension=aspect,
+        query=query,
+        conversation_history=[],
+        dependency_context=None
     )
-    print(initial_prompt)
+    
+    # Print each message with role labels
+    for i, msg in enumerate(messages, 1):
+        role = msg['role']
+        content = msg['content']
+        cache_marker = " [CACHED]" if msg.get('_cache') else ""
+        
+        if not clean:
+            print(f"[MESSAGE {i}: {role.upper()}{cache_marker}]")
+            print()
+        print(content)
+        if not clean and i < len(messages):
+            print()
+            print("-" * 80)
+            print()
 
 
 def print_all_dimensions(aspects: list[RefinementAspect], query: str, clean: bool = False):
-    """Print all dimension prompts together with user context."""
+    """Print all dimension message structures."""
+    from query_refinement_module.schema.prompt_builder import build_refinement_messages
+    
     if not clean:
         print("=" * 80)
-        print("ALL DIMENSIONS WITH USER CONTEXT")
+        print("ALL DIMENSIONS MESSAGE STRUCTURE")
         print("=" * 80)
         print()
     
-    # First: Global system directive
-    if not clean:
-        print("--- GLOBAL SYSTEM DIRECTIVE ---")
-        print()
-    print(GLOBAL_SYSTEM_PROMPT)
-    
-    if not clean:
-        print()
-        print()
-    
-    # Second: User context (if present)
-    if aspects and aspects[0].user_context:
-        if not clean:
-            print("--- USER CONTEXT ---")
-            print()
-        builder = PromptBuilder()
-        print(builder.render_user_context(aspects[0].user_context))
-        if not clean:
-            print()
-            print()
-    
-    # Third: Each dimension
+    # Print each dimension's complete message array
     for i, aspect in enumerate(aspects):
         if not clean:
-            print(f"--- DIMENSION {i+1}: {aspect.aspect_name} ---")
+            print(f"--- DIMENSION {i+1}: {aspect.aspect_name} (ID: {aspect.id}) ---")
             print()
         
-        # Dimension-specific prompt
-        dimension_prompt = aspect.build_unified_prompt(
-            original_input=query,
-            follow_up_history=[],
-            dependency_context={},
-            mode='initial'
+        messages = build_refinement_messages(
+            dimension=aspect,
+            query=query,
+            conversation_history=[],
+            dependency_context=None
         )
-        print(dimension_prompt)
+        
+        for j, msg in enumerate(messages, 1):
+            role = msg['role']
+            content = msg['content']
+            cache_marker = " [CACHED]" if msg.get('_cache') else ""
+            
+            if not clean:
+                print(f"  [Message {j}: {role.upper()}{cache_marker}]")
+                print()
+            
+            # Indent content for readability
+            if not clean:
+                for line in content.split('\n'):
+                    print(f"    {line}")
+            else:
+                print(content)
+            
+            if not clean and j < len(messages):
+                print()
         
         if not clean and i < len(aspects) - 1:
             print()
+            print("=" * 80)
             print()
 
 

@@ -40,7 +40,7 @@ def test_message_structure_with_user_context():
     
     # 1. First message: Global directive with cache marker
     assert messages[0]["role"] == "system", "First message should be system (global directive)"
-    assert "GLOBAL" in messages[0]["content"] or "platform" in messages[0]["content"].lower(), "Should contain global instructions"
+    assert "Research Query Refinement" in messages[0]["content"] or "System Directive" in messages[0]["content"], "Should contain global instructions"
     assert messages[0].get("_cache") is True, "Global directive should be marked for caching"
     
     # 2. Second message: User context with cache marker
@@ -94,16 +94,23 @@ def test_message_structure_with_dependencies():
     query = "Test query"
     messages = state.get_messages(query=query, dependency_context=dependency_context)
     
-    # Find dependency message
+    # Find dependency message (completed dimensions that serve as dependencies)
     dep_msg = None
     for msg in messages:
-        if msg["role"] == "system" and "Previously Completed" in msg["content"]:
-            dep_msg = msg
-            break
+        # Look for system message containing dependency values
+        if msg["role"] == "system":
+            # Check if it contains the actual dependency values (not just mentions in global directive)
+            has_all_values = all(
+                dependency_context[dep_id]["value"] in msg["content"]
+                for dep_id in aspect.depends_on
+            )
+            if has_all_values:
+                dep_msg = msg
+                break
     
-    assert dep_msg is not None, "Should include previously completed dimensions"
+    assert dep_msg is not None, f"Should include previously clarified dimensions with dependency values. Aspect depends on: {aspect.depends_on}"
     
-    # Verify dependency values are included
+    # Verify all dependency values are included
     for dep_id in aspect.depends_on:
         expected_value = dependency_context[dep_id]["value"]
         assert expected_value in dep_msg["content"], f"Should include dependency value for {dep_id}"

@@ -399,7 +399,7 @@ class PromptBuilder:
                     'role': 'system',
                     'content': self.render_completed_dimensions(
                         completed_dimensions=completed_deps,
-                        dependencies=[dimension]
+                        dependencies=None  # Dependencies list not needed here
                     )
                 })
         
