@@ -32,6 +32,7 @@ __all__ = [
     "create_dimension_prompt",
     "create_synthesis_prompt",
     "get_prompt_builder",
+    "build_refinement_messages",
 ]
 
 
@@ -331,6 +332,99 @@ class PromptBuilder:
         
         return "\n\n".join(parts)
     
+    def build_refinement_messages(
+        self,
+        dimension: RefinementDimension,
+        query: str,
+        conversation_history: List[Dict[str, str]],
+        dependency_context: Optional[Dict[str, Dict[str, str]]] = None
+    ) -> List[Dict[str, str]]:
+        """
+        Build messages array for dimension refinement (multi-turn dialogue).
+        
+        Constructs structured messages with:
+        1. System message: Global System Directive [CACHED]
+        2. System message: User context adaptation profile [CACHED]
+        3. System message: Previously clarified dimensions (dependencies)
+        4. System message: Current dimension specification
+        5. User message: Original query to analyze
+        6. Conversation history: Alternating assistant/user messages
+        
+        Args:
+            dimension: The dimension being refined
+            query: The original query to analyze
+            conversation_history: List of Q&A exchanges for this dimension
+            dependency_context: Values from completed dependencies
+            
+        Returns:
+            List of message dicts with 'role' and 'content' keys
+        """
+        messages = []
+        
+        # 1. System message: Global System Directive [CACHED]
+        # Uses GLOBAL_SYSTEM_PROMPT from module-level imports (from .templates)
+        messages.append({
+            'role': 'system',
+            'content': GLOBAL_SYSTEM_PROMPT,
+            '_cache': True
+        })
+        
+        # 2. System message: User context adaptation profile [CACHED]
+        if dimension.user_context:
+            messages.append({
+                'role': 'system',
+                'content': self.render_user_context(dimension.user_context),
+                '_cache': True
+            })
+        
+        # 3. System message: Previously clarified dimensions (dependencies)
+        # Uses existing render_completed_dimensions() method with CompletedDimension models
+        if dependency_context and dimension.depends_on:
+            completed_deps = []
+            for dep_id in dimension.depends_on:
+                entry = dependency_context.get(dep_id)
+                if entry and entry.get("value"):
+                    # CompletedDimension already imported at module level
+                    completed_dep = CompletedDimension(
+                        id=dep_id,
+                        name=entry.get("name") or dep_id.replace("_", " ").title(),
+                        description=entry.get("description", ""),
+                        assembled_value=entry["value"],
+                        was_skipped=False
+                    )
+                    completed_deps.append(completed_dep)
+            
+            if completed_deps:
+                messages.append({
+                    'role': 'system',
+                    'content': self.render_completed_dimensions(
+                        completed_dimensions=completed_deps,
+                        dependencies=[dimension]
+                    )
+                })
+        
+        # 4. System message: Current dimension specification
+        messages.append({
+            'role': 'system',
+            'content': self.render_dimension_prompt(
+                dimension=dimension,
+                include_examples=True
+            )
+        })
+        
+        # 5. User message: Original query
+        messages.append({
+            'role': 'user',
+            'content': query
+        })
+        
+        # 6. Conversation history: Alternating assistant/user messages
+        for qa in conversation_history:
+            messages.append({'role': 'assistant', 'content': qa['question']})
+            messages.append({'role': 'user', 'content': qa['response']})
+        
+        return messages
+    
     def build_synthesis_messages(
         self,
         original_input: str,
@@ -446,6 +540,32 @@ _default_builder = PromptBuilder()
 def get_prompt_builder() -> PromptBuilder:
     """Get the default prompt builder instance."""
     return _default_builder
+
+
+def build_refinement_messages(
+    dimension: RefinementDimension,
+    query: str,
+    conversation_history: List[Dict[str, str]],
+    dependency_context: Optional[Dict[str, Dict[str, str]]] = None
+) -> List[Dict[str, str]]:
+    """
+    Convenience function to build refinement messages.
+    
+    Args:
+        dimension: The dimension being refined
+        query: The original query to analyze
+        conversation_history: List of Q&A exchanges
+        dependency_context: Values from completed dependencies
+        
+    Returns:
+        List of message dicts ready for LLM
+    """
+    return _default_builder.build_refinement_messages(
+        dimension=dimension,
+        query=query,
+        conversation_history=conversation_history,
+        dependency_context=dependency_context
+    )
 
 
 def create_dimension_prompt(
