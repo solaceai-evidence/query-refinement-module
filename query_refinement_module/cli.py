@@ -270,22 +270,135 @@ async def run_cli(manager: QueryRefinementManager, framework_name: str, query: s
                 print(f"Error: {exc}")
             else:
                 refined_query = synthesis.get("refined_query", "").strip()
-                refined_values = synthesis.get("refined_values", {})
+                synthesized_statement = synthesis.get("synthesized_statement", "").strip()
                 
-                if refined_query:
+                # Display synthesized statement (or fallback to refined_query)
+                if synthesized_statement:
+                    print(f"Refined:  {synthesized_statement}\n")
+                elif refined_query:
                     print(f"Refined:  {refined_query}\n")
                 else:
                     print(f"Refined:  {session.original_query}\n")
                 
-                # Show extracted values
-                if refined_values:
+                # Show refined dimensions
+                detail_values = synthesis.get("detail_values")
+                if detail_values:
                     print("─"*80)
-                    print("EXTRACTED VALUES")
+                    print("REFINED DIMENSIONS")
                     print("─"*80)
-                    for aspect_id, value in refined_values.items():
+                    for aspect_id, value in detail_values.items():
                         aspect = next((s.refinement_aspect for s in session.steps if s.refinement_aspect.id == aspect_id), None)
                         aspect_name = aspect.aspect_name if aspect else aspect_id
-                        print(f"• {aspect_name}: {value}")
+                        if value and value != "[SKIPPED]" and value != "null":
+                            print(f"• {aspect_name}: {value}")
+                    print()
+                
+                # Show search optimized queries
+                search_optimized = synthesis.get("search_optimized")
+                if search_optimized:
+                    print("─"*80)
+                    print("SEARCH-OPTIMIZED QUERIES")
+                    print("─"*80)
+                    
+                    semantic = search_optimized.get("semantic", "")
+                    if semantic:
+                        print(f"\nSemantic Query (for vector search):")
+                        print(f"  {semantic}")
+                    
+                    keyword = search_optimized.get("keyword", {})
+                    if keyword:
+                        structured = keyword.get("structured", "")
+                        if structured:
+                            print(f"\nBoolean Query:")
+                            print(f"  {structured}")
+                        
+                        phrases = keyword.get("phrases", [])
+                        if phrases:
+                            print(f"\nKey Phrases:")
+                            for phrase in phrases:
+                                print(f"  • \"{phrase}\"")
+                        
+                        terms = keyword.get("terms", {})
+                        if terms:
+                            required = terms.get("required", [])
+                            optional = terms.get("optional", [])
+                            excluded = terms.get("excluded", [])
+                            
+                            if required:
+                                print(f"\nRequired Terms: {', '.join(required)}")
+                            if optional:
+                                print(f"Optional Terms: {', '.join(optional)}")
+                            if excluded:
+                                print(f"Excluded Terms: {', '.join(excluded)}")
+                    
+                    grey_lit = search_optimized.get("grey_literature", {})
+                    if grey_lit and any(grey_lit.values()):
+                        print(f"\nGrey Literature Search:")
+                        broad = grey_lit.get("broad_concepts", [])
+                        if broad:
+                            print(f"  Concepts: {', '.join(broad)}")
+                        org = grey_lit.get("organizational_terms", [])
+                        if org:
+                            print(f"  Organizations: {', '.join(org)}")
+                        geo = grey_lit.get("geographic_variants", [])
+                        if geo:
+                            print(f"  Geographic: {', '.join(geo)}")
+                    print()
+                
+                # Show search filters
+                search_filters = synthesis.get("search_filters")
+                if search_filters:
+                    print("─"*80)
+                    print("SEARCH FILTERS")
+                    print("─"*80)
+                    
+                    pub_years = search_filters.get("publication_years", "")
+                    if pub_years:
+                        print(f"Publication Years: {pub_years}")
+                    
+                    venues = search_filters.get("venues", [])
+                    if venues:
+                        print(f"Venues: {', '.join(venues)}")
+                    
+                    authors = search_filters.get("authors", [])
+                    if authors:
+                        print(f"Authors: {', '.join(authors)}")
+                    
+                    pub_types = search_filters.get("publication_types", [])
+                    if pub_types:
+                        print(f"Publication Types: {', '.join(pub_types)}")
+                    
+                    fields = search_filters.get("fields_of_study", [])
+                    if fields:
+                        print(f"Fields of Study: {', '.join(fields)}")
+                    print()
+                
+                # Show terminology
+                terminology = synthesis.get("terminology")
+                if terminology:
+                    print("─"*80)
+                    print("TERMINOLOGY")
+                    print("─"*80)
+                    
+                    primary = terminology.get("primary_terms", [])
+                    if primary:
+                        print(f"Primary Terms: {', '.join(primary)}")
+                    
+                    synonyms = terminology.get("synonyms", {})
+                    if synonyms:
+                        print(f"\nSynonyms:")
+                        for term, syn_list in synonyms.items():
+                            if syn_list:
+                                print(f"  {term}: {', '.join(syn_list)}")
+                    
+                    domain = terminology.get("domain_specific", [])
+                    if domain:
+                        print(f"\nDomain-Specific: {', '.join(domain)}")
+                    
+                    colloq = terminology.get("colloquial", [])
+                    if colloq:
+                        print(f"Colloquial: {', '.join(colloq)}")
+                    print()
                     
             print("="*80)
 
