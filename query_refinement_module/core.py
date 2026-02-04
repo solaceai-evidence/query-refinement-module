@@ -429,10 +429,6 @@ class QueryRefinementManager:
         if not parsed_payload:
             raise ValueError(f"No parsed payload from LLM for aspect '{aspect_id}'")
         
-        # Add metadata to LLM response
-        parsed_payload['context'] = mode
-        parsed_payload['round'] = len(step.conversation_history) + 1
-        
         # Create and validate response (Pydantic validators handle field validation)
         try:
             result = DimensionEvaluationResponse(**parsed_payload)
@@ -1119,14 +1115,15 @@ class QueryRefinementManager:
         
         if is_valid:
             if warnings:
-                logger.warning(
+                # Only log warnings in DEBUG mode - LLMs often add harmless extra fields
+                logger.debug(
                     "Response validation warnings for aspect %s: %s",
                     aspect.id,
                     "; ".join(warnings),
                 )
                 self.trace_emitter.emit(
                     "llm_validation_warning",
-                    level="warning",
+                    level="debug",
                     metadata={
                         "aspect_id": aspect.id,
                         "attempt": attempt_number,

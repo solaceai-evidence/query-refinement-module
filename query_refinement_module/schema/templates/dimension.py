@@ -138,7 +138,9 @@ If complete:
 - **current**: FULL cumulative specification from all responses, using user's exact words with minimal connectors
 - **question**: clarifying question if incomplete, empty string "" if complete
 
-**Critical:** If user gave shorthand (number/letter), expand to full content in "current".
+**Critical Rules:**
+- If user gave shorthand (number/letter), expand to full content in "current"
+- **ONLY include these 3 fields** - do not add extra fields like 'context', 'round', 'metadata', etc.
 
 ---
 

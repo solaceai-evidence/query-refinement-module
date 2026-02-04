@@ -36,18 +36,6 @@ class DimensionEvaluationResponse(BaseModel):
         description="Focused question with 2-4 inline examples (REQUIRED if complete=False, empty string otherwise)"
     )
     
-    # Metadata for tracking
-    context: Literal['initial', 'followup'] = Field(
-        default='initial',
-        description="Whether this was initial analysis or follow-up"
-    )
-    
-    round: int = Field(
-        default=1,
-        ge=1,
-        description="Conversation round (1=initial, 2+=follow-up)"
-    )
-    
     model_config = ConfigDict(
         frozen=False,
         validate_assignment=True
