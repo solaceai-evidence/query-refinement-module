@@ -1391,8 +1391,20 @@ def inspect_messages(
             detail="Session not found or expired"
         )
     
+    # Get active step to inspect messages
+    active_step = session.get_active_step()
+    if not active_step:
+        raise HTTPException(
+            status_code=status.HTTP_400_BAD_REQUEST,
+            detail="No active dimension to inspect"
+        )
+    
     # Get messages for current dimension
-    messages = session.get_messages(query.original_query)
+    dependency_context = session.get_dependency_context(active_step.refinement_aspect.id)
+    messages = active_step.get_messages(
+        query=session.original_query,
+        dependency_context=dependency_context
+    )
     
     # Check for user context in messages
     user_context_detected = False
@@ -1408,7 +1420,7 @@ def inspect_messages(
     
     return InspectMessagesResponse(
         query_id=query_id,
-        current_dimension=session.refinement_aspect.aspect_id if session.refinement_aspect else None,
+        current_dimension=active_step.refinement_aspect.id,
         message_count=len(messages),
         messages=messages,
         user_context_detected=user_context_detected,

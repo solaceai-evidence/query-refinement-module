@@ -101,10 +101,10 @@ class SearchOptimized(BaseModel):
 class SearchFilters(BaseModel):
     """Metadata filters for search refinement."""
     publication_years: str = Field(default="")
-    venues: str = Field(default="")
+    venues: List[str] = Field(default_factory=list)
     authors: List[str] = Field(default_factory=list)
     publication_types: List[str] = Field(default_factory=list)
-    fields_of_study: str = Field(default="")
+    fields_of_study: List[str] = Field(default_factory=list)
 
 class Terminology(BaseModel):
     """Terminology mapping and variants."""

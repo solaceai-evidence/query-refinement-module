@@ -141,7 +141,7 @@ class TestPromptBuilder:
         # Check that user context is rendered with Type and Context fields
         assert "**Type**: student" in rendered
         assert "**Context**: Academic research" in rendered
-        assert "**Domain for examples**: public health" in rendered
+        assert "**Examples domain**: public health" in rendered
     
     def test_render_dimension_prompt(self):
         """Test rendering dimension prompt."""

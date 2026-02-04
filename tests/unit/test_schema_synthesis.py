@@ -162,10 +162,10 @@ class TestSynthesisResponseValidation:
             },
             "search_filters": {
                 "publication_years": "",
-                "venues": "",
+                "venues": [],
                 "authors": [],
                 "publication_types": [],
-                "fields_of_study": "",
+                "fields_of_study": [],
             },
             "terminology": {
                 "primary_terms": [],

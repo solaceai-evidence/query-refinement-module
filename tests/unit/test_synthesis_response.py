@@ -35,10 +35,10 @@ class TestSynthesisResponse:
             },
             "search_filters": {
                 "publication_years": "",
-                "venues": "",
+                "venues": [],
                 "authors": [],
                 "publication_types": [],
-                "fields_of_study": "",
+                "fields_of_study": [],
             },
             "terminology": {
                 "primary_terms": ["diabetes"],
@@ -81,9 +81,9 @@ class TestSynthesisResponse:
         payload["search_filters"].update(
             {
                 "publication_years": "2018-2023",
-                "venues": "Diabetes Care, JAMA",
+                "venues": ["Diabetes Care", "JAMA"],
                 "authors": ["Smith J", "Johnson M"],
-                "fields_of_study": "endocrinology, clinical medicine",
+                "fields_of_study": ["Medicine", "Endocrinology"],
             }
         )
 
@@ -91,9 +91,9 @@ class TestSynthesisResponse:
 
         assert response.synthesized_statement == "diabetes treatment in adults"
         assert response.search_filters.publication_years == "2018-2023"
-        assert response.search_filters.venues == "Diabetes Care, JAMA"
+        assert response.search_filters.venues == ["Diabetes Care", "JAMA"]
         assert len(response.search_filters.authors) == 2
-        assert response.search_filters.fields_of_study == "endocrinology, clinical medicine"
+        assert response.search_filters.fields_of_study == ["Medicine", "Endocrinology"]
 
     def test_missing_required_field_synthesized_statement(self):
         """Test validation fails without synthesized_statement."""
@@ -130,9 +130,9 @@ class TestSynthesisResponse:
         response = QueryRefinementResponse(**self._base_payload())
 
         assert response.search_filters.publication_years == ""
-        assert response.search_filters.venues == ""
+        assert response.search_filters.venues == []
         assert response.search_filters.authors == []
-        assert response.search_filters.fields_of_study == ""
+        assert response.search_filters.fields_of_study == []
 
     def test_refined_dimensions_with_special_values(self):
         """Test refined_dimensions can contain special markers like [SKIPPED] and actual values."""
