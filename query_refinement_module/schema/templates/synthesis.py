@@ -64,6 +64,14 @@ Combine original query with non-null dimensions. Rules:
 - Keep format: question stays question, statement stays statement
 - Never add unstated information
 
+**When all/most dimensions are [SKIPPED]:**
+- Extract as much as possible from the original query alone
+- Normalize terminology and clean up phrasing
+- Make implicit elements explicit where clear from context
+- Still generate full structured output based solely on original query
+- Be more conservative with search filters (use empty arrays when uncertain)
+- Acknowledge limited specificity in synthesized_statement while maximizing utility
+
 ### refined_dimensions
 All dimension IDs from input with their values. Use `null` for [SKIPPED] dimensions.
 
