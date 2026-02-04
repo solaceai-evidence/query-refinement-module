@@ -1,0 +1,70 @@
+name: Build macOS Package (ARM64)
+
+on:
+  workflow_dispatch:
+  push:
+    branches:
+      - main
+    paths:
+      - 'packaging/macos/**'
+      - 'query_refinement_module/**'
+      - 'pyproject.toml'
+      - '.github/workflows/build-macos-arm64.yml'
+
+jobs:
+  build-arm64:
+    runs-on: macos-14  # Apple Silicon runner
+    
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v4
+
+      - name: Set up Python 3.12
+        uses: actions/setup-python@v5
+        with:
+          python-version: '3.12'
+
+      - name: Install Poetry
+        run: |
+          curl -sSL https://install.python-poetry.org | python3 -
+          echo "$HOME/.local/bin" >> $GITHUB_PATH
+
+      - name: Install dependencies
+        run: |
+          poetry install --no-interaction --no-ansi
+          poetry run pip install pyinstaller
+
+      - name: Build macOS executable (arm64)
+        run: |
+          cd packaging/macos
+          poetry run pyinstaller QueryRefine.spec --clean --target-arch arm64
+
+      - name: Verify build output
+        run: |
+          if [ ! -d "packaging/macos/dist/QueryRefine.app" ]; then
+            echo "ERROR: Build failed - QueryRefine.app not found"
+            exit 1
+          fi
+          echo "✓ Build successful"
+          ls -la packaging/macos/dist/QueryRefine.app/Contents/MacOS/
+
+      - name: Create distribution package
+        run: |
+          mkdir -p QueryRefine-arm64
+          cp -R packaging/macos/dist/QueryRefine.app QueryRefine-arm64/
+          cp packaging/macos/sample.env QueryRefine-arm64/
+          cp packaging/macos/sample_framework.yaml QueryRefine-arm64/
+          cp packaging/macos/Run\ Query\ Refine.command QueryRefine-arm64/
+          cp packaging/macos/Configure\ Environment.command QueryRefine-arm64/
+          chmod +x QueryRefine-arm64/*.command
+          
+      - name: Create zip archive
+        run: |
+          ditto -c -k --keepParent QueryRefine-arm64 QueryRefine-macOS-arm64.zip
+
+      - name: Upload artifact
+        uses: actions/upload-artifact@v4
+        with:
+          name: QueryRefine-macOS-arm64
+          path: QueryRefine-macOS-arm64.zip
+          retention-days: 30
