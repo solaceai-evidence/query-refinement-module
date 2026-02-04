@@ -35,10 +35,10 @@ def make_aspect(id="aspect", allow_follow_up=True, max_follow_ups=2):
 @pytest.mark.asyncio
 async def test_followup_loop_stops_on_is_complete():
     aspect = make_aspect()
-    # Updated: Include all required fields (is_complete, reasoning, confidence, refinement_aspect_value)
+    # Updated: Include all required fields (complete, current, question)
     responses = [
-        '{"is_complete": false, "reasoning": "Needs more", "confidence": 0.5, "refinement_aspect_value": null, "next_question": "Clarify?"}',
-        '{"is_complete": true, "reasoning": "Clear", "confidence": 0.9, "refinement_aspect_value": "Clear value", "next_question": null}',
+        '{"complete": false, "current": "", "question": "Clarify?"}',
+        '{"complete": true, "current": "Clear value", "question": ""}',
     ]
     llm = DummyLLMProvider(responses)
     manager = QueryRefinementManager(llm)
@@ -54,11 +54,11 @@ async def test_followup_loop_stops_on_is_complete():
 @pytest.mark.asyncio
 async def test_followup_loop_respects_max_rounds():
     aspect = make_aspect(max_follow_ups=1)
-    # Updated: Include all required fields with confidence
+    # Updated: Include all required fields
     responses = [
-        '{"is_complete": false, "reasoning": "Needs more", "confidence": 0.5, "refinement_aspect_value": null, "next_question": "Clarify?"}',
-        '{"is_complete": false, "reasoning": "Needs more", "confidence": 0.5, "refinement_aspect_value": null, "next_question": "Clarify?"}',  # retry
-        '{"is_complete": false, "reasoning": "Needs more", "confidence": 0.5, "refinement_aspect_value": null, "next_question": "Clarify?"}',  # retry
+        '{"complete": false, "current": "", "question": "Clarify?"}',
+        '{"complete": false, "current": "", "question": "Clarify?"}',  # retry
+        '{"complete": false, "current": "", "question": "Clarify?"}',  # retry
     ]
     llm = DummyLLMProvider(responses)
     manager = QueryRefinementManager(llm)

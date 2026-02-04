@@ -241,8 +241,6 @@ def save_query_refinement_response(
             - search_optimized: Dict (semantic, keyword, grey_literature)
             - search_filters: Dict (publication_years, venues, etc.)
             - terminology: Dict (primary_terms, synonyms, etc.)
-            - metadata: Dict (temporal, geographic, source_types, other)
-            - processing_log: Dict (preserved, normalized, integrated, expanded)
         
     Returns:
         Updated Query or None if not found
@@ -275,14 +273,6 @@ def save_query_refinement_response(
         # Store terminology
         if 'terminology' in response:
             query.terminology = response['terminology']
-        
-        # Store metadata (named response_metadata in DB to avoid conflict)
-        if 'metadata' in response:
-            query.response_metadata = response['metadata']
-        
-        # Store processing log
-        if 'processing_log' in response:
-            query.processing_log = response['processing_log']
         
         db.commit()
         db.refresh(query)

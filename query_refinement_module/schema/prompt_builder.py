@@ -220,7 +220,7 @@ class PromptBuilder:
             aspect_name=dimension.aspect_name,
             aspect_description=dimension.aspect_description,
             evaluation_criteria=dimension.get_evaluation_content(),
-            response_strategy=dimension.response_strategies,
+            assembly_rules=dimension.assembly_rules,
             examples=examples_dict,
             examples_section=has_examples
         )

@@ -240,7 +240,7 @@ def test_query_aspect_refiner_get_prompts_includes_dependency_context(caplog):
             dependency_context=context,
         )
 
-    assert "refinement specialist" in system_prompt or "You are" in system_prompt
+    assert "Research" in system_prompt or "ROLE" in system_prompt or "refinement" in system_prompt
     assert "Previous refinements" in user_prompt or "Original" in user_prompt
     # Updated: Now formatted as **Name**: Value (or similar formatting)
     assert "Dep" in user_prompt and "Value" in user_prompt
@@ -518,13 +518,11 @@ async def test_process_next_step_returns_none_when_no_pending():
 @pytest.mark.asyncio
 async def test_process_next_step_records_follow_up_without_schema():
     aspect = make_aspect()
-    # Updated: Include all required fields (is_complete, reasoning, confidence, refinement_aspect_value)
+    # Updated: Include all required fields (complete, current, question)
     json_response = json.dumps({
-        "is_complete": True,
-        "reasoning": "Answer", 
-        "confidence": 0.95,
-        "refinement_aspect_value": "Synthesized answer",
-        "next_question": None,
+        "complete": True,
+        "current": "Synthesized answer",
+        "question": "",
         "demo": "Synthesized answer"  # Dynamic value field
     })
     manager = build_manager(responses=[json_response, json_response, json_response])
@@ -537,7 +535,7 @@ async def test_process_next_step_records_follow_up_without_schema():
     assert result["response"] == json_response
     assert step.is_complete
     assert step.conversation_history[-1]["response"] == json_response
-    # refinement_aspect_value_as_str returns the synthesized value from the dynamic field (aspect.id)
+    # normalized_value_as_str returns the synthesized value from the dynamic field (aspect.id)
     assert step.normalized_value_as_str == "Synthesized answer"
     assert step.normalized_value == "Synthesized answer"
 
@@ -554,11 +552,10 @@ async def test_process_next_step_enforces_json_validation():
     # Valid JSON response with all required fields
     responses = [
         json.dumps({
-            "is_complete": True,
-            "reasoning": "ok",
+            "complete": True,
+            "current": "value",
+            "question": "",
             "confidence": 0.9,
-            "refinement_aspect_value": "value",
-            "next_question": None,
             "demo": "value"  # Dynamic value field for aspect.id
         })
     ]

@@ -184,12 +184,49 @@ class LiteLLMProvider(LLMProviderInterface):
         if max_tokens is not None and "max_tokens" not in completion_kwargs:
             completion_kwargs["max_tokens"] = max_tokens
         
-        # Explicitly disable streaming for non-streaming calls
-        completion_kwargs["stream"] = False
-
-        # Get current request context for tracing
+        # Get current request context for tracing (needed for logging below)
         request_id = get_request_id()
         trace_id = get_trace_id()
+        
+        # Handle response_format for structured outputs
+        # Supports both Pydantic models (for providers with native structured output support)
+        # and JSON schema dicts (for broader compatibility)
+        if response_format is not None:
+            try:
+                from pydantic import BaseModel
+                if isinstance(response_format, type) and issubclass(response_format, BaseModel):
+                    # Use Pydantic model directly - litellm will convert to appropriate format
+                    # Works with: OpenAI (gpt-4o+), Anthropic (Claude 3.5+), Google (Gemini 1.5+)
+                    completion_kwargs["response_format"] = response_format
+                    logger.debug(
+                        "Using Pydantic model for structured output",
+                        extra={
+                            "model": target_model,
+                            "response_format_type": response_format.__name__,
+                            "request_id": request_id,
+                            "trace_id": trace_id,
+                        }
+                    )
+                elif isinstance(response_format, dict):
+                    # Use JSON schema dict (e.g., {"type": "json_object"})
+                    completion_kwargs["response_format"] = response_format
+                    logger.debug(
+                        "Using JSON schema for structured output",
+                        extra={
+                            "model": target_model,
+                            "response_format": response_format,
+                            "request_id": request_id,
+                            "trace_id": trace_id,
+                        }
+                    )
+            except ImportError:
+                logger.warning(
+                    "Pydantic not available, response_format ignored",
+                    extra={"model": target_model}
+                )
+        
+        # Explicitly disable streaming for non-streaming calls
+        completion_kwargs["stream"] = False
 
         logger.info(
             "Dispatching async completion",
@@ -382,24 +419,49 @@ class LiteLLMProvider(LLMProviderInterface):
         if max_tokens is not None and "max_tokens" not in completion_kwargs:
             completion_kwargs["max_tokens"] = max_tokens
         
+        # Get current request context for distributed tracing (needed for logging below)
+        request_id = get_request_id()
+        trace_id = get_trace_id()
+        
         # Handle response_format for structured outputs
+        # Supports both Pydantic models (for providers with native structured output support)
+        # and JSON schema dicts (for broader compatibility)
         if response_format is not None:
             try:
-                # Check if it's a Pydantic model
                 from pydantic import BaseModel
                 if isinstance(response_format, type) and issubclass(response_format, BaseModel):
+                    # Use Pydantic model directly - litellm will convert to appropriate format
+                    # Works with: OpenAI (gpt-4o+), Anthropic (Claude 3.5+), Google (Gemini 1.5+)
                     completion_kwargs["response_format"] = response_format
+                    logger.debug(
+                        "Using Pydantic model for structured output",
+                        extra={
+                            "model": target_model,
+                            "response_format_type": response_format.__name__,
+                            "request_id": request_id,
+                            "trace_id": trace_id,
+                        }
+                    )
                 elif isinstance(response_format, dict):
+                    # Use JSON schema dict (e.g., {"type": "json_object"})
                     completion_kwargs["response_format"] = response_format
+                    logger.debug(
+                        "Using JSON schema for structured output",
+                        extra={
+                            "model": target_model,
+                            "response_format": response_format,
+                            "request_id": request_id,
+                            "trace_id": trace_id,
+                        }
+                    )
             except ImportError:
-                logger.warning("Pydantic not available, response_format ignored")
+                logger.warning(
+                    "Pydantic not available, response_format ignored",
+                    extra={"model": target_model}
+                )
         
         # Explicitly disable streaming for non-streaming calls
         completion_kwargs["stream"] = False
-
-        # Get current request context for distributed tracing
-        request_id = get_request_id()
-        trace_id = get_trace_id()
 
         logger.info(
             "Dispatching completion",

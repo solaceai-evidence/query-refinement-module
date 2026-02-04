@@ -200,64 +200,52 @@ def test_unified_prompt_formats_correctly():
 
 def test_refinement_analysis_response_validation():
     """Should validate RefinementAnalysisResponse completeness."""
-    # Complete response must have refinement_aspect_value - validation happens during construction
+    # Complete response must have current - validation happens during construction
     complete_response = DimensionEvaluationResponse(
-        is_complete=True,
-        reasoning='All details clear',
-        refinement_aspect_value='Adults aged 18-65',
-        next_question=None,
-        context='initial',
-        round=1
+        complete=True,
+        current='Adults aged 18-65',
+        question=''
     )
     # If construction succeeds, validation passed
-    assert complete_response.is_complete is True
-    assert complete_response.refinement_aspect_value == 'Adults aged 18-65'
+    assert complete_response.complete is True
+    assert complete_response.current == 'Adults aged 18-65'
     
-    # Incomplete response must have next_question - validation happens during construction
+    # Incomplete response must have question - validation happens during construction
     incomplete_response = DimensionEvaluationResponse(
-        is_complete=False,
-        reasoning='Need age range',
-        refinement_aspect_value=None,
-        next_question='What age range?',
-        context='initial',
-        round=1
+        complete=False,
+        current='',
+        question='What age range?'
     )
     # If construction succeeds, validation passed
-    assert incomplete_response.is_complete is False
-    assert incomplete_response.next_question == 'What age range?'
+    assert incomplete_response.complete is False
+    assert incomplete_response.question == 'What age range?'
 
 
 def test_refinement_analysis_response_invalid_complete():
-    """Should raise error when complete but no refinement_aspect_value."""
+    """Should raise error when complete but no current value."""
     import pytest
     from pydantic import ValidationError
     
     with pytest.raises(ValidationError) as exc_info:
         DimensionEvaluationResponse(
-            is_complete=True,
-            reasoning='Complete',
-            refinement_aspect_value=None,  # Missing!
-            next_question=None,
-            context='initial',
-            round=1
+            complete=True,
+            current='',  # Missing!
+            question=''
         )
     
-    assert 'refinement_aspect_value' in str(exc_info.value)
+    assert 'current' in str(exc_info.value)
 
 
 def test_refinement_analysis_response_invalid_incomplete():
-    """Should raise error when incomplete but no next_question."""
+    """Should raise error when incomplete but no question."""
     import pytest
     from pydantic import ValidationError
     
     with pytest.raises(ValidationError) as exc_info:
         DimensionEvaluationResponse(
-            is_complete=False,
-            reasoning='Incomplete',
-            refinement_aspect_value=None,
-            next_question=None,  # Missing!
-            context='initial',
-            round=1
+            complete=False,
+            current=None,
+            question=None,  # Missing!
         )
     
-    assert 'next_question' in str(exc_info.value)
+    assert 'question' in str(exc_info.value)

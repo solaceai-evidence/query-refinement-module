@@ -65,7 +65,7 @@ from .schema import (
     QueryRefinementResponse,
 )
 
-from .prompt.system_role import (
+from .schema.templates.global_system import (
     GLOBAL_SYSTEM_PROMPT,
 )
 from .session_commands import SessionCommands
@@ -313,14 +313,14 @@ class QueryRefinementManager:
                     last_question = step.follow_up_question or step.refinement_aspect.aspect_name
                     step.add_follow_up(
                         question=last_question,
-                        response=f"[Complete: {result.refinement_aspect_value}]"
+                        response=f"[Complete: {result.current}]"
                     )
                     break
                 else:
                     # Store question for next round
                     # The last user response is already in follow_up_history from CLI/API
                     # Just update refinement_question for next iteration
-                    step.follow_up_question = result.next_question
+                    step.follow_up_question = result.question
                     
                     if rounds >= max_followups:
                         # Reached max rounds without completion
@@ -452,36 +452,33 @@ class QueryRefinementManager:
         if not step:
             raise ValueError(f"No step found for aspect '{aspect_id}'")
         
-        if result.is_complete:
+        if result.complete:
             # Refinement complete - store final value
-            step.normalized_value = result.refinement_aspect_value
+            step.normalized_value = result.current
             step.is_complete = True
             
             # Log the assembled value for debugging
             logger.info(
                 f"Dimension complete for '{step.refinement_aspect.aspect_name}' | "
-                f"Assembled value: {result.refinement_aspect_value}"
+                f"Assembled value: {result.current}"
             )
             
             return {
                 'complete': True,
                 'aspect_id': aspect_id,
                 'aspect_name': step.refinement_aspect.aspect_name,
-                'refinement_aspect_value': result.refinement_aspect_value,
-                'reasoning': result.reasoning
+                'current': result.current
             }
         else:
             # Needs follow-up - store question
-            step.follow_up_question = result.next_question
+            step.follow_up_question = result.question
             step.is_complete = False
             
             return {
                 'complete': False,
                 'aspect_id': aspect_id,
                 'aspect_name': step.refinement_aspect.aspect_name,
-                'next_question': result.next_question,
-                'reasoning': result.reasoning,
-                'round': result.round
+                'next_question': result.question
             }
 
     def initialize_sequential(
@@ -880,6 +877,21 @@ class QueryRefinementManager:
             # Log LLM performance and caching info
             logger.info(f"LLM call completed in {call_duration:.2f}ms for aspect '{aspect.id}'")
             
+            # Log raw response for debugging (truncate if very long)
+            if len(response_text) <= 500:
+                logger.debug(
+                    "Raw LLM response for aspect %s: %s",
+                    aspect.id,
+                    response_text
+                )
+            else:
+                logger.debug(
+                    "Raw LLM response for aspect %s (truncated): %s... [%d more chars]",
+                    aspect.id,
+                    response_text[:500],
+                    len(response_text) - 500
+                )
+            
             # Check if response metadata indicates cache hit (Anthropic-specific)
             if hasattr(result, 'usage') and result.usage:
                 usage = result.usage if hasattr(result.usage, '__dict__') else {}
@@ -930,52 +942,172 @@ class QueryRefinementManager:
         Returns:
             ValidationResult with validation status and details
         """
-        # Strip markdown code fences if present (fallback for older responses or non-JSON mode)
+        # Multi-strategy JSON extraction for robust handling of various LLM response formats
         cleaned_text = response_text.strip()
+        extraction_method = "direct"  # Track which method succeeded for debugging
+        
+        logger.debug(
+            "Starting JSON extraction for aspect %s (attempt %d)",
+            aspect.id,
+            attempt_number,
+            extra={
+                "response_length": len(response_text),
+                "starts_with": response_text[:50] if response_text else "",
+            }
+        )
+        
+        # Strategy 1: Remove markdown code fences
         if cleaned_text.startswith("```"):
             lines = cleaned_text.splitlines()
             if len(lines) >= 2 and lines[0].startswith("```"):
-                # Drop opening fence and optional closing fence
                 body = lines[1:]
                 if body and body[-1].startswith("```"):
                     body = body[:-1]
-                cleaned_text = "\n".join(body)
+                cleaned_text = "\n".join(body).strip()
+                extraction_method = "markdown_fences_removed"
+                logger.debug("Removed markdown code fences for aspect %s", aspect.id)
         
-        # Try to extract JSON from markdown text (for models that don't support structured outputs)
-        # Look for JSON object starting with { 
+        # Strategy 2: Direct JSON if starts with {
         if not cleaned_text.startswith("{"):
-            # Try to find JSON in the response
             import re
-            json_match = re.search(r'\{[\s\S]*\}', cleaned_text)
-            if json_match:
-                cleaned_text = json_match.group(0)
-                logger.info(f"Extracted JSON from markdown response for aspect '{aspect.id}'")
-            else:
-                # No JSON found - this is pure text response, cannot parse
-                error_message = f"No JSON found in response (got markdown/text instead)"
+            
+            # Strategy 3: Look for JSON object with balanced braces (most robust)
+            # This handles JSON embedded in text like "Here's the response: {json...}"
+            brace_count = 0
+            start_pos = -1
+            end_pos = -1
+            
+            for i, char in enumerate(cleaned_text):
+                if char == '{':
+                    if brace_count == 0:
+                        start_pos = i
+                    brace_count += 1
+                elif char == '}':
+                    brace_count -= 1
+                    if brace_count == 0 and start_pos >= 0:
+                        end_pos = i + 1
+                        break
+            
+            if start_pos >= 0 and end_pos > start_pos:
+                json_candidate = cleaned_text[start_pos:end_pos]
+                # Verify it's valid JSON before accepting
+                try:
+                    json.loads(json_candidate)
+                    cleaned_text = json_candidate
+                    extraction_method = "balanced_braces"
+                    logger.info(
+                        "Extracted JSON using balanced brace matching for aspect '%s' (found at position %d-%d)",
+                        aspect.id,
+                        start_pos,
+                        end_pos
+                    )
+                except json.JSONDecodeError:
+                    # Try fallback strategies
+                    pass
+            
+            # Strategy 4: Regex fallback (greedy match for entire JSON object)
+            if not cleaned_text.startswith("{"):
+                # Try to match the outermost JSON object
+                json_match = re.search(r'\{[\s\S]*\}', cleaned_text)
+                if json_match:
+                    cleaned_text = json_match.group(0)
+                    extraction_method = "regex_match"
+                    logger.info("Extracted JSON using regex for aspect '%s'", aspect.id)
+                else:
+                    # Strategy 5: Look for JSON with specific field markers
+                    # Search for objects containing our expected fields (complete, current, question)
+                    field_pattern = r'\{[^}]*"complete"[^}]*"current"[^}]*"question"[^}]*\}'
+                    field_match = re.search(field_pattern, cleaned_text, re.DOTALL)
+                    if field_match:
+                        cleaned_text = field_match.group(0)
+                        extraction_method = "field_pattern"
+                        logger.info("Extracted JSON using field pattern matching for aspect '%s'", aspect.id)
+                    else:
+                        # No JSON found after all strategies - provide detailed error
+                        error_message = (
+                            f"No valid JSON found in response after trying multiple extraction strategies. "
+                            f"Response appears to be plain text/markdown. "
+                            f"LLM model may not support structured outputs. "
+                            f"Consider: (1) Using a model with JSON mode support (gpt-4, claude-3.5+, gemini-1.5+), "
+                            f"(2) Adding 'response_format': {{'type': 'json_object'}} to settings, "
+                            f"(3) Checking API key and model availability."
+                        )
+                        logger.warning(
+                            "Aspect %s failed JSON extraction on attempt %d: %s. Response preview: %s",
+                            aspect.id,
+                            attempt_number,
+                            error_message,
+                            cleaned_text[:300] if len(cleaned_text) > 300 else cleaned_text,
+                            extra={
+                                "response_length": len(response_text),
+                                "strategies_tried": ["direct", "markdown_fences", "balanced_braces", "regex", "field_pattern"],
+                            }
+                        )
+                        return self._ValidationResult(
+                            is_valid=False,
+                            parsed_payload=None,
+                            error_message=error_message,
+                        )
+        
+        logger.debug(
+            "JSON extraction successful for aspect %s using method: %s",
+            aspect.id,
+            extraction_method,
+            extra={"extracted_length": len(cleaned_text)}
+        )
+        
+        # Parse JSON with detailed error reporting
+        try:
+            parsed_payload = json.loads(cleaned_text)
+            logger.debug(
+                "Successfully parsed JSON for aspect %s",
+                aspect.id,
+                extra={
+                    "extraction_method": extraction_method,
+                    "field_count": len(parsed_payload) if isinstance(parsed_payload, dict) else 0,
+                    "has_complete": "complete" in parsed_payload if isinstance(parsed_payload, dict) else False,
+                    "has_current": "current" in parsed_payload if isinstance(parsed_payload, dict) else False,
+                    "has_question": "question" in parsed_payload if isinstance(parsed_payload, dict) else False,
+                }
+            )
+        except json.JSONDecodeError as json_error:
+            # Provide detailed error with context
+            error_line = getattr(json_error, 'lineno', 0)
+            error_col = getattr(json_error, 'colno', 0)
+            error_message = (
+                f"JSON parsing failed: {json_error.msg} at line {error_line}, column {error_col}. "
+                f"The extracted text may be malformed or truncated. "
+                f"Check max_tokens setting if response appears cut off."
+            )
+            
+            # Show context around error if possible
+            if error_line > 0:
+                lines = cleaned_text.split('\n')
+                context_start = max(0, error_line - 2)
+                context_end = min(len(lines), error_line + 2)
+                context = '\n'.join(lines[context_start:context_end])
                 logger.warning(
-                    "Aspect %s produced non-JSON response on attempt %d: %s",
+                    "JSON parse error for aspect %s on attempt %d: %s\nContext:\n%s",
                     aspect.id,
                     attempt_number,
                     error_message,
+                    context,
+                    extra={
+                        "error_line": error_line,
+                        "error_col": error_col,
+                        "json_length": len(cleaned_text),
+                        "extraction_method": extraction_method,
+                    }
                 )
-                return self._ValidationResult(
-                    is_valid=False,
-                    parsed_payload=None,
-                    error_message=error_message,
+            else:
+                logger.warning(
+                    "JSON parse error for aspect %s on attempt %d: %s. Content: %s",
+                    aspect.id,
+                    attempt_number,
+                    error_message,
+                    cleaned_text[:200] if len(cleaned_text) > 200 else cleaned_text,
                 )
-        
-        # Parse JSON
-        try:
-            parsed_payload = json.loads(cleaned_text)
-        except json.JSONDecodeError as json_error:
-            error_message = f"Response is not valid JSON: {json_error}"
-            logger.warning(
-                "Aspect %s produced non-JSON response on attempt %d: %s",
-                aspect.id,
-                attempt_number,
-                error_message,
-            )
+            
             return self._ValidationResult(
                 is_valid=False,
                 parsed_payload=None,
@@ -1008,9 +1140,9 @@ class QueryRefinementManager:
                 metadata={
                     "aspect_id": aspect.id,
                     "attempt": attempt_number,
-                    "is_complete": parsed_payload.get("is_complete", False),
-                    "has_refinement_value": bool(parsed_payload.get("refinement_aspect_value")),
-                    "has_next_question": bool(parsed_payload.get("next_question")),
+                    "complete": parsed_payload.get("complete", False),
+                    "has_current_value": bool(parsed_payload.get("current")),
+                    "has_question": bool(parsed_payload.get("question")),
                 }
             )
             return self._ValidationResult(

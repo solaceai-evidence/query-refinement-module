@@ -28,17 +28,16 @@ DIMENSION_REFINEMENT_TEMPLATE = """
 
 ---
 
-### MAIN SPECIFICATION STATES (other states possible)
+{% if assembly_rules %}
+### Assembly Rules for "current" Field
 
-| State | Action |
-|-------|--------|
-| **Clear** | All standards met → `is_complete: true` |
-| **Needs Refinement** | Missing elements → ask `next_question` |
-| **Partial** | Some elements present → ask `next_question` |
-| **Ambiguous/Vague** | Not specific enough → ask for clarification |
+Examples of how to format the `current` field for this dimension:
+
+{{ assembly_rules }}
 
 ---
 
+{% endif %}
 {% if examples_section %}
 ### Examples
 
@@ -122,35 +121,24 @@ DIMENSION_REFINEMENT_TEMPLATE = """
 {% endif %}
 
 
-{% if response_strategy %}
-### Response Strategy
-{{response_strategy }}
+## Response Format
 
----
-{% endif %}
+Output ONLY this JSON, nothing else before or after:
 
-### OUTPUT FORMAT AND REQUIREMENTS
-Generate **ONLY** valid JSON matching this exact structure:
+{"complete": <boolean>, "current": "<string>", "question": "<string>"}
 
-```json
-{
-  "is_complete": false,
-  "reasoning": "",
-  "next_question": null,
-  "refinement_aspect_value": null
-}
-```
-**Field Descriptions:**
-- `is_complete` (boolean): Indicates if the dimension is fully specified (`true`) or requires further refinement (`false`).
-- `reasoning` (string): Concise explanation of the current status, highlighting clear elements and identifying critical gaps.
-- `next_question` (string or null): If `is_complete` is `false`, provide the next focused question to address remaining gaps; otherwise, set to `null`.
-- `refinement_aspect_value` (string or null): If `is_complete` is `true`, provide the fully assembled dimension value using exact user words; otherwise, set to `null`.  
+If incomplete:
+{"complete": false, "current": "adults over 40", "question": "Which clinical condition and setting—primary care, hospital, or community?"}
 
-** Follow Value Assembly Rules from Global System Directive when constructing `refinement_aspect_value`. **
+If complete:
+{"complete": true, "current": "adults over 40 with type 2 diabetes in primary care settings", "question": ""}
 
-**Validation rules:**
-- If `is_complete: true` → `refinement_aspect_value` must be non-null, `next_question` must be null
-- If `is_complete: false` → `next_question` must be non-null, `refinement_aspect_value` can be null or partial
+**Fields:**
+- **complete**: boolean, not quoted (false if gaps remain, true if all requirements met)
+- **current**: FULL cumulative specification from all responses, using user's exact words with minimal connectors
+- **question**: clarifying question if incomplete, empty string "" if complete
+
+**Critical:** If user gave shorthand (number/letter), expand to full content in "current".
 
 ---
 

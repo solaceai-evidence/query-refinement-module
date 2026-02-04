@@ -153,12 +153,10 @@ async def run_cli(manager: QueryRefinementManager, framework_name: str, query: s
                 if status['complete']:
                     # Aspect is already clear from the query
                     print(f"✓ {header} is already clear from your query")
-                    if result.reasoning:
-                        print(f"  {result.reasoning}")
                     continue
                 
                 # Not complete - show question to user
-                question = result.next_question
+                question = result.question
                 
             except Exception as e:
                 print(f" Error: {e}")
@@ -217,7 +215,7 @@ async def run_cli(manager: QueryRefinementManager, framework_name: str, query: s
                             if status['complete']:
                                 print(f"✓ {header} is now complete")
                             else:
-                                question = result.next_question
+                                question = result.question
                                 print(f"\n{question}\n")
                         except Exception as e:
                             print(f" Error regenerating question: {e}")
@@ -237,10 +235,10 @@ async def run_cli(manager: QueryRefinementManager, framework_name: str, query: s
                         max_rounds=5
                     )
                     
-                    is_complete = result.get('is_complete', False)
+                    complete = result.get('is_complete', False)
                     rounds = result.get('rounds', 0)
                     
-                    if is_complete:
+                    if complete:
                         print(f"✓ {header} complete after {rounds} round(s)")
                         step.is_complete = True
                         break

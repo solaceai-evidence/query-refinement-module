@@ -15,7 +15,7 @@ from dataclasses import dataclass, field
 from typing import Any, Dict, List, Optional, Union
 
 from .schema import RefinementAspect
-from .prompt.system_role import GLOBAL_SYSTEM_PROMPT
+from .schema.templates.global_system import GLOBAL_SYSTEM_PROMPT
 
 logger = logging.getLogger(__name__)
 

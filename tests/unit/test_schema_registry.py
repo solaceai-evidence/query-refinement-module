@@ -48,8 +48,6 @@ test_framework:
       ### Evaluation
       - Check this
       - Check that
-    response_strategies: |
-      - If unclear: "Ask for clarification"
     examples:
       clear:
         - statement: "Clear example"
@@ -149,17 +147,6 @@ class TestFrameworkLoading:
         # evaluation_criteria should be in evaluation_instructions
         assert "### Evaluation" in aspect.evaluation_instructions
         assert "Check this" in aspect.evaluation_instructions
-    
-    def test_response_strategies_appended(self, temp_framework_file, monkeypatch):
-        """Test that response_strategies is appended to evaluation_instructions."""
-        monkeypatch.setenv("REFINEMENT_FRAMEWORK_PATH", temp_framework_file)
-        
-        frameworks = _load_frameworks(raise_on_error=True)
-        aspect = frameworks["test_framework"][0]
-        
-        # response_strategies should be appended
-        assert "Response Strategies" in aspect.evaluation_instructions
-        assert "If unclear" in aspect.evaluation_instructions
     
     def test_dependencies_preserved(self, temp_framework_file, monkeypatch):
         """Test that depends_on is correctly loaded."""

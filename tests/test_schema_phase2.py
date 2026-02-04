@@ -73,21 +73,6 @@ class TestPydanticModels:
         )
         assert len(examples.clear) == 1
         assert examples.has_examples() == True
-    
-    def test_response_strategies_list_conversion(self):
-        """Test that response_strategies list is converted to string."""
-        dim = RefinementDimension(
-            id="test",
-            aspect_name="Test",
-            aspect_description="Test desc",
-            response_strategies=[
-                {"If too broad": "Narrow it down"},
-                {"If vague": "Clarify it"}
-            ]
-        )
-        assert isinstance(dim.response_strategies, str)
-        assert "If too broad" in dim.response_strategies
-        assert "If vague" in dim.response_strategies
 
 
 class TestFrameworkLoading:
@@ -153,8 +138,10 @@ class TestPromptBuilder:
             examples_from="public health"
         )
         rendered = builder.render_user_context(ctx)
-        assert "**tone**: educational" in rendered
-        assert "**complexity**: novice" in rendered
+        # Check that user context is rendered with Type and Context fields
+        assert "**Type**: student" in rendered
+        assert "**Context**: Academic research" in rendered
+        assert "**Domain for examples**: public health" in rendered
     
     def test_render_dimension_prompt(self):
         """Test rendering dimension prompt."""
@@ -208,7 +195,7 @@ class TestPromptBuilder:
         )
         
         assert "Research Query Refinement" in prompt  # Global
-        assert "**tone**: educational" in prompt  # User context
+        assert "**Type**: student" in prompt  # User context  
         assert "Test Dimension" in prompt  # Dimension
     
     def test_get_synthesis_system_prompt(self):

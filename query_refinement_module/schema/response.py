@@ -22,22 +22,18 @@ class DimensionEvaluationResponse(BaseModel):
     - Follow-up analysis (is dimension clear after user's answer?)
     """
     
-    is_complete: bool = Field(
+    complete: bool = Field(
         description="Whether this dimension is sufficiently refined and clear"
     )
     
-    reasoning: str = Field(
-        description="Brief explanation of why the dimension is/isn't complete"
+    current: str = Field(
+        default="",
+        description="Assembled value using user's exact words (REQUIRED if complete=True, empty string otherwise)"
     )
     
-    refinement_aspect_value: Optional[str] = Field(
-        default=None,
-        description="Assembled value using user's exact words (REQUIRED if is_complete=True)"
-    )
-    
-    next_question: Optional[str] = Field(
-        default=None,
-        description="Focused question with 2-4 inline examples (REQUIRED if is_complete=False)"
+    question: str = Field(
+        default="",
+        description="Focused question with 2-4 inline examples (REQUIRED if complete=False, empty string otherwise)"
     )
     
     # Metadata for tracking
@@ -57,28 +53,28 @@ class DimensionEvaluationResponse(BaseModel):
         validate_assignment=True
     )
     
-    @field_validator('refinement_aspect_value')
+    @field_validator('current')
     @classmethod
     def validate_value_when_complete(cls, v, info):
-        """Ensure refinement_aspect_value provided when is_complete=True."""
+        """Ensure current provided when complete=True."""
         data = info.data
-        is_complete = data.get('is_complete', False)
-        if is_complete and not v:
+        complete = data.get('complete', False)
+        if complete and not v:
             raise ValueError(
-                "refinement_aspect_value is required when is_complete=True. "
+                "current is required when complete=True. "
                 "Must extract or assemble the dimension's value."
             )
         return v
     
-    @field_validator('next_question')
+    @field_validator('question')
     @classmethod
     def validate_question_when_incomplete(cls, v, info):
-        """Ensure next_question provided when is_complete=False."""
+        """Ensure question provided when complete=False."""
         data = info.data
-        is_complete = data.get('is_complete', True)
-        if not is_complete and not v:
+        complete = data.get('complete', True)
+        if not complete and not v:
             raise ValueError(
-                "next_question is required when is_complete=False. "
+                "question is required when complete=False. "
                 "Must ask a clarifying question."
             )
         return v
@@ -130,20 +126,7 @@ class Terminology(BaseModel):
     colloquial: List[str] = Field(default_factory=list)
 
 
-class Metadata(BaseModel):
-    """Additional contextual metadata."""
-    temporal: Optional[str] = None
-    geographic: Optional[str] = None
-    source_types: List[str] = Field(default_factory=list)
-    other: Dict[str, Any] = Field(default_factory=dict)
 
-
-class ProcessingLog(BaseModel):
-    """Log of transformations applied during synthesis."""
-    preserved: List[str] = Field(default_factory=list, description="What was kept from original")
-    normalized: List[str] = Field(default_factory=list, description="What was standardized")
-    integrated: List[str] = Field(default_factory=list, description="How details were combined")
-    expanded: List[str] = Field(default_factory=list, description="What was enriched")
 
 
 class QueryRefinementResponse(BaseModel):
@@ -154,8 +137,7 @@ class QueryRefinementResponse(BaseModel):
     - Synthesized research statement
     - Individual dimension values
     - Search-optimized variants
-    - Metadata and filters
-    - Processing documentation
+    - Filters and terminology
     """
     model_config = ConfigDict(
         frozen=False,
@@ -170,8 +152,6 @@ class QueryRefinementResponse(BaseModel):
     search_optimized: SearchOptimized
     search_filters: SearchFilters
     terminology: Terminology
-    metadata: Metadata
-    processing_log: ProcessingLog
 
 
 # Backward compatibility alias
@@ -184,6 +164,4 @@ __all__ = [
     "SearchOptimized",
     "SearchFilters",
     "Terminology",
-    "Metadata",
-    "ProcessingLog",
 ]

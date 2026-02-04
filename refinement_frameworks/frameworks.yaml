@@ -10,51 +10,37 @@ pico_advanced:
         - "Resources: Database access (PubMed, Embase, CINAHL, etc.), protocol registration (PROSPERO), institutional support"
         - "Skills: Advanced search strategies, risk of bias assessment, meta-analysis methods, GRADE framework"
         - "Standards: PRISMA reporting, Cochrane methodology, protocol peer review requirements"
-      pitfalls:
-        - "Question too broad resulting in unmanageable screening burden (>10,000 records)"
-        - "Overly narrow eligibility criteria yielding insufficient studies for synthesis"
-        - "Poorly defined outcomes leading to heterogeneous measurement approaches"
-        - "Inadequate specification of comparison groups or control conditions"
-        - "Not pre-specifying subgroup analyses or sensitivity analyses"
-        - "Conflating different review types (scoping vs. systematic vs. rapid)"
   - id: population
     name: Population
     description: The group of individuals to whom the evidence applies, defined by the demographic characteristics age, sex/gender, ethnicity/race, and setting.
     criteria: |
-      ### Task
-      Evaluate if these demographic elements are specified when relevant:
-      - Age (range, category, life stage such as pediatric, postmenopausal, etc.)
-      - Sex/gender  (male, female, non-binary, specific identities, all-inclusive)
-      - Ethnicity/race (specific groups, diverse populations, all-inclusive)
-      - Setting (urban, rural, clinical, community, school-based, geographic location)
+      **Task:** Evaluate and assemble demographic specification.
 
-      MINIMUM REQUIREMENT: At least one demographic MAY be specified. Zero is acceptable.
+      **Elements to track:**
+      - Age (range or category)
+      - Sex/gender
+      - Ethnicity/race
+      - Setting/location
 
-      IF no demographics specified:
-      Ask: "You are including all ages, genders, ethnicities, and settings. Confirm this is intended or specify target population."
+      **Required:**
+      - At least confirm whether "all populations" or specific demographics intended if none specified
+      - Age specification if condition is age-dependent
+      - Setting if intervention is geography/culture-dependent
 
-      CONTEXT-BASED VALIDATION:
-      - Universal interventions (e.g., kidney disease treatment) → accept general population
-      - Geography/culture-dependent interventions (e.g., dietary factors) → require setting specification
-      - Age-dependent conditions (e.g., OCD diagnosis/treatment) → require age specification
+      **Not required unless relevant:**
+      - Ethnicity narrowing (only if health disparities focus)
+      - All four elements (partial is acceptable if user confirms)
 
-      ANTI-OVER-REFINEMENT RULES:
-      - DO NOT request ethnicity/gender/subpopulation narrowing UNLESS query explicitly addresses health disparities or population-specific outcomes
-      - ACCEPT general terms ("young adults", "urban communities") without pushing for specificity
+      **Age standardization:**
+      When assembling, standardize age terms:
+      - "kids" → "children (2-12 years)"
+      - "elderly" → "older adults (65+ years)"
+      - Non-standard range → prepend "approximately"
 
-      AGE STANDARDIZATION:
-      Standard categories: Neonates (0-28d), Infants (0-2y), Children (2-12y), Adolescents (13-17y), Adults (18-64y), Young adults (18-39y), Middle-aged (40-64y), Older adults (65+y)
-
-      Apply these rules:
-      1. If user range deviates ±5y from standard boundary → prepend "approximately" (e.g., "4-10y" → "approximately 4-10 years")
-      2. If matches standard exactly → use "category (range)" (e.g., "kids" → "children (2-12 years)")
-      3. If overly broad AND age-critical → request clarification (e.g., "growth hormone in adults" → ask young vs older)
-      4. If overly broad AND age-NOT-critical → accept (e.g., "adults with diabetes" → accept "adults (18-64y)")
-    response_strategy: |
-      1. Evaluate demographic presence: parse user input for age, gender, ethnicity, setting, location
-      2. Apply context-based validation first (determines necessity)
-      3. If gaps exist AND required: emit conversational prompt
-      4. If gaps exist AND optional: silently accept with standardized elements (where applicable)
+      **Assembly example:**
+      - User: "diabetic people" → current: "people with diabetes"
+      - User: "middle-aged" → current: "middle-aged adults (40-64 years) with diabetes"
+      - User: "in community clinics" → current: "middle-aged adults (40-64 years) with diabetes in community clinics"
     examples:
       clear:
         - statement: Efficacy of metformin in adults aged 40-65 with type 2 diabetes
@@ -78,12 +64,6 @@ pico_advanced:
           issue: "'Minority populations' is vague and could mean multiple groups"
           missing: precise ethnicity/race or setting; maybe gender as well
           example_question: "Which specific population groups are you focusing on? (e.g., Hispanic/Latino, African American, Asian, Native American). Do you have any specifications regarding gender or geographic location?"
-        - statement: Middle-aged adults in diverse communities
-          issue: ambiguous setting and ethnicity/race
-          example_question: "Specify what dimensions of diversity matter (ethnic, socioeconomic, geographic)?"
-        - statement: Study in representative population sample
-          issue: "'Representative' is context-dependent - representative of what population?"
-          example_question: What population should this sample represent? Please specify demographic characteristics that define representativeness, including age, sex/gender, ethnicity/race, and setting.
   - id: intervention
     name: Intervention
     description: The healthcare action, exposure, or strategy being evaluated, specified in sufficient detail to allow replication, including modality, intensity, duration, and delivery context
@@ -91,40 +71,29 @@ pico_advanced:
       - population
       - clinical_condition
     criteria: |
-      ### TASK
-      Evaluate if intervention specification is sufficiently detailed for study replication.
+      **Task:** Evaluate and assemble intervention specification.
 
-      ### CRITICAL REQUIREMENTS
-      Intervention type AND specific agent/method MUST be specified. If either is absent, reject and prompt.
+      **Elements to track:**
+      - Intervention type (pharmacological/procedural/behavioral/diagnostic)
+      - Specific agent or method
+      - Dosing/intensity (if applicable)
+      - Duration (if applicable)
+      - Delivery method (if applicable)
 
-      ### ELEMENT REQUIREMENTS
+      **Required:**
+      - Intervention type
+      - Specific agent/method name
 
-      #### Intervention Type - CRITICAL
-      Must specify category: Pharmacological, Procedural, Behavioral, or Diagnostic. Reject if absent.
+      **Required if applicable:**
+      - Dosing: for dose-dependent interventions
+      - Duration: if affects outcomes
+      - Delivery: if route/setting/provider affects outcomes
 
-      #### Specific Agent/Method - CRITICAL
-      Must name specific drug/procedure/protocol/test. Generic or brand name, defined technique, or protocol required. Vague specifications (e.g., "statin therapy" without agent name) require clarification.
-
-      #### Dosing/Intensity - CONDITIONAL
-      Required if intervention is dose-dependent. Include dose amount, units, frequency, and timing. Optional for non-dose-dependent interventions (behavioral, diagnostic, or single-administration procedures).
-
-      #### Duration - CONDITIONAL
-      Required if duration materially affects outcome (most pharmacological and behavioral interventions). Optional if intervention is single-administration or duration clinically irrelevant.
-
-      #### Delivery Method - CONDITIONAL
-      Required if delivery affects outcomes (route, setting, or provider type clinically meaningful). Include route (oral, IV, subcutaneous), setting (inpatient, outpatient, home), and provider type if clinically relevant.
-
-      #### Adjunct Treatments - OPTIONAL
-      Accept if absent. Include if concurrent therapies, background medications, or supportive care protocols specified.
-    response_strategy: |
-      1. Parse input for intervention type (pharmacological/procedural/behavioral/diagnostic)
-      2. If absent → REJECT + PROMPT for intervention type
-      3. Parse input for specific agent/method
-      4. If absent or vague → REJECT + PROMPT for agent/method specification
-      5. Determine dosing requirement (dose-dependent interventions) → if required AND absent → PROMPT
-      6. Determine duration requirement (outcome timeline dependent) → if required AND absent → PROMPT
-      7. Assess delivery method clarity (clinical relevance dependent) → if relevant AND absent → PROMPT
-      8. If all critical and required conditional elements present and specific → ACCEPT
+      **Assembly example:**
+      - User: "I want to study a diabetes drug" → current: "pharmacological intervention for diabetes"
+      - User: "metformin specifically" → current: "metformin for diabetes"
+      - User: "500mg twice daily" → current: "metformin 500mg twice daily for diabetes"
+      - User: "for 6 months" → current: "metformin 500mg twice daily for 6 months"
     examples:
       clear:
         - statement: Metformin vs placebo in newly diagnosed Type 2 diabetes over 6 months.
@@ -160,51 +129,34 @@ pico_advanced:
       - population
       - intervention
     criteria: |
-      ### TASK
-      Evaluate if an appropriate comparison/control group is specified that enables causality assessment. Comparator must be suitable for the research question and as well-defined as the intervention.
+      **Task:** Evaluate and assemble comparator specification.
 
-      ### CRITICAL REQUIREMENT
-      At least ONE comparator MUST be specified. If absent, reject and prompt.
+      **Elements to track:**
+      - Comparator type (placebo/standard care/active comparator/no treatment)
+      - Specific comparator details (matching intervention specificity)
 
-      ### COMPARATOR TYPES
+      **Required:**
+      - At least one comparator specified
+      - Comparator detail level matching intervention detail
 
-      - Placebo Control: Inert substance or sham procedure. Examples: inactive pill, sham surgery, mock device.
+      **Comparator types:**
+      - Placebo: inert substance or mock procedure
+      - Standard care: specify which guideline or usual practice
+      - Active comparator: specify drug, dose, or technique
+      - No treatment: watchful waiting (justify if effective treatment exists)
 
-      - Standard Care/Treatment: Current guideline-recommended or usual care. Examples: evidence-based protocol, standard-of-care treatment.
 
-      - Alternative Active Treatment: Different agent, dose, or intervention. Examples: different drug, lower dose, alternative technique.
+      **ethical validation for no-treatment controls:**
+      - No-treatment controls require ethical justification IF effective treatment exists:
+        - Accept if: condition is self-limiting OR no proven effective treatment exists.
+        - Require justification if: established effective treatment exists and withholding causes harm.
+        - Flag if: vulnerable populations (children, severe illness) with no-treatment control without strong justification.
 
-      - No Treatment: Watchful waiting, natural history, untreated control. Examples: natural history, deferred treatment, dose comparison.
-
-      ### APPROPRIATENESS VALIDATION
-      Research question type determines acceptable comparators:
-
-      - Efficacy (intervention vs. nothing) → Acceptable: Placebo, no treatment. Unacceptable: Standard care (if standard exists).
-
-      - Effectiveness (intervention vs. current practice) → Acceptable: Standard care, usual care. Unacceptable: Placebo (if standard exists).
-
-      - Superiority (intervention A vs. B) → Acceptable: Alternative active treatment, standard care. Unacceptable: Placebo (unless ethically justified).
-
-      - Non-inferiority (intervention A ≥ B) → Acceptable: Standard care, active comparator. Unacceptable: Placebo.
-
-      Reject if comparator is unethical, inappropriate to research question, or unjustifiable when effective treatment exists.
-
-      ### SPECIFICITY & DETAIL VALIDATION
-      Comparator detail must match intervention detail level.
-
-      Example 1: Intervention "atorvastatin 40 mg daily" → Accept: "placebo matching atorvastatin formulation" OR "rosuvastatin 20 mg daily". Reject: "placebo" (insufficient detail).
-
-      Example 2: Intervention "cognitive behavioral therapy, 12 weekly sessions" → Accept: "standard therapy, 12 sessions" OR "no treatment". Reject: "alternative treatment" (requires specificity).
-
-      ### ETHICAL VALIDATION FOR NO-TREATMENT CONTROLS
-
-      No-treatment controls require ethical justification IF effective treatment exists:
-
-      Accept if: condition is self-limiting OR no proven effective treatment exists.
-
-      Require justification if: established effective treatment exists and withholding causes harm.
-
-      Flag if: vulnerable populations (children, severe illness) with no-treatment control without strong justification.
+      **Assembly example:**
+      - User: "compared to placebo" → current: "placebo"
+      - User: "matching tablets" → current: "matching placebo tablets"
+      - User: "also want to compare to standard care" → current: "matching placebo tablets and standard care"
+      - User: "standard care means metformin per ADA guidelines" → current: "matching placebo tablets and standard care (metformin per ADA guidelines)"
     examples:
       clear:
         - statement: Metformin vs placebo in prediabetic adults
@@ -249,61 +201,27 @@ pico_advanced:
       - intervention
       - comparator
     criteria: |
-      ### TASK
-      Evaluate if outcomes are adequately specified to enable measurement, reproducibility, and comparison. 
+      **Task:** Evaluate and assemble outcome specification.
 
-      ### CRITICAL REQUIREMENTS
-      At least ONE primary outcome MUST be specified. If absent, reject and prompt.
+      **Elements to track:**
+      - Primary outcome(s)
+      - Outcome type (clinical/surrogate/patient-reported/functional/safety)
+      - Measurement method or instrument
+      - Timepoint(s)
 
-      ### OUTCOME TYPES
-      - Clinical Outcomes: Mortality, morbidity, disease progression, treatment response.
-      - Surrogate/Biomarker Outcomes: Laboratory values, imaging markers, biological indicators predictive of clinical outcomes.
-      - Patient-Reported Outcomes (PROs): Symptoms, quality of life, functional status, patient-perceived benefit.
-      - Functional Outcomes: Physical function, activities of daily living, return to work, mobility.
-      - Safety/Adverse Events: Serious adverse events, treatment-related harm, tolerability.
-      Reject if outcomes are vague/general (e.g., "treatment effectiveness", "improved health") without specifics.
+      **Required:**
+      - At least one primary outcome
+      - Measurement method for vague outcomes (pain, QoL, improvement)
 
-      ### ELEMENT REQUIREMENTS
+      **Not required:**
+      - Instrument for self-evident outcomes (mortality)
+      - Timepoint if clinically obvious
 
-      #### Outcome Type - CRITICAL
-
-      At least one outcome type must be specified (clinical, surrogate, PRO, functional, or safety). Reject if absent.
-
-      #### Measurement Method - CONDITIONAL
-
-      Required if outcome type requires specific measurement. Include specific instruments, scales, laboratory tests, imaging modalities, or validated questionnaires. Optional if outcome is self-evident or clearly defined (e.g., "mortality" requires no instrument specification).
-
-      #### Timepoint(s) -  CONDITIONAL
-      Required if timing materially affects interpretation. Include when outcome measured, follow-up duration, and multiple assessment points if relevant. Optional if single measurement or timepoint is clinically obvious.
-
-      ### TIMEPOINT VALIDATION
-      If timepoint is critical to interpretation, validate:
-
-      Single timepoint acceptable if: acute intervention with immediate outcome OR chronic condition with standard follow-up window.
-
-      Multiple timepoints required if: intervention effect evolves over time OR sustained efficacy is question.
-
-      Follow-up duration specified → ACCEPT.
-
-      Vague timing (e.g., "after treatment," "at endpoint") → if clinically ambiguous → PROMPT for specific timepoint.
-
-      Outcome must be clearly operationalized.
-
-      Example 1: Outcome "quality of life" → Reject (vague). Accept: "quality of life measured by SF-36 questionnaire".
-
-      Example 2: Outcome "mortality" → Accept (self-evident). Accept: "all-cause mortality at 6 months".
-
-      Example 3: Outcome "blood pressure reduction" → Accept (clear). Accept: "systolic blood pressure reduction at 8 weeks" (more specific).
-
-      Vague outcomes (pain, improvement, benefit) require instrument specification or threshold definition.
-    response_strategy: |
-      1. Parse input for outcome mention
-      2. If absent → REJECT + PROMPT for outcome specification
-      3. Identify outcome type (clinical/surrogate/PRO/functional/safety)
-      4. Determine if measurement method required → if required AND absent or vague → PROMPT for method specification
-      5. Determine if timepoint required → if required AND absent or vague → PROMPT for timepoint specification
-      6. Validate outcome operationalization (not vague) → if vague → PROMPT for definition or instrument
-      7. If outcome present, adequately specified, with appropriate method and timepoint → ACCEPT
+      **Assembly example:**
+      - User: "looking at blood sugar control" → current: "glycemic control"
+      - User: "using HbA1c" → current: "glycemic control measured by HbA1c"
+      - User: "at 6 months" → current: "HbA1c at 6 months"
+      - User: "also want to look at hypoglycemic events" → current: "HbA1c at 6 months and hypoglycemic events"
     examples:
       clear:
         - statement: Effect of intervention on all-cause mortality at 5 years or more
@@ -372,36 +290,39 @@ pico_advanced:
       - comparator
       - outcome
     criteria: |
-      ### COMPLETION REQUIREMENTS
-      **CRITICAL (must be present):**
-      AT least one study design from Primary, Secondary, or Other categories. Allow users to specify multiple study types or study types not on the list, but clarify category.
+      **Task:** Evaluate and assemble study design specification.
 
-      ### STUDY TYPE CATEGORIES
+      **Elements to track:**
+      - Primary Study Types 
+      - Secondary Study Types 
+      - Other Study Types
 
-      **Primary Study Types (original research):** Before and after study, Case control study, Case report, Case series, Clinical study, Clinical trial, Cohort study, Comparative study, Cross-sectional study, Diagnostic test accuracy study, Evaluation study, Observational study, Pilot study, Quality improvement study, Randomized controlled trial, Validation study 
+      **Required:**
+      - At least one study design specified
 
-      **Secondary (Synthesis):** Living review, Meta-analysis, Rapid review, Scoping review, Systematic review, Narrative review, Review
+      **Categories:**
+      - Primary: Before and after study, Case control study, Case report, Case series, Clinical study, Clinical trial, Cohort study, Comparative study, Cross-sectional study, Diagnostic test accuracy study, Evaluation study, Observational study, Pilot study, Quality improvement study, Randomized controlled trial, Validation study
+      - Secondary: Living review, Meta-analysis, Rapid review, Scoping review, Systematic review, Narrative review, Review
+      - Other: Government document, Policy document, Guideline, Consensus conference
 
-      **Other (Non-research Documents):** Government document, Policy document, Guideline, Consensus conference
+      **Assembly example:**
+      - User: "RCTs" → Current: "randomized controlled trials"
+      - User: "also cohort studies" → Current: "randomized controlled trials and cohort studies"
+      - User: "but not retrospective ones" → Current: "randomized controlled trials and prospective cohort studies"
 
-      ### COMPLETION LOGIC
+      **Behavior:**
 
-      | Current State | Action | Next State |
-        |---|---|---|
-        | Study design absent | Ask for study type specification (provide relevant categories lists) | Awaiting response |
-        | Primary only | Ask: Include secondary/other types? any unwanted types to exclude? | Awaiting response |
-        | Secondary/Other only | Ask: Include primary types (if relevant)? | Awaiting response |
-        | Design present, unwanted not addressed | Ask: Any unwanted types to exclude? (Optional) | Awaiting response |
-        | Study design specified + category clarified + unwanted addressed (or user declines) | ACCEPT | Complete |
-    response_strategy: |
-      1. Check if study design mentioned
-      2. If absent → REJECT + ask for study design specification (provide relevant category list)
-      3. Map specified designs to categories (Primary/Secondary/Other)
-      4. If Primary only → ask about Secondary/Other inclusion
-      5. If Secondary/Other only → ask about Primary inclusion (if contextually relevant)
-      6. If user specifies unlisted study type(s) → ask: Which category does this belong to (Primary, Secondary, Other)?
-      7. If user specifies study designs → ask: Are there any unwanted types to exclude? (OPTIONAL)
-      8. If all elements specified and valid → ACCEPT
+      When prompting the user about study design types, always show the relevant category lists given above. 
+
+      If user mentions only PRIMARY types, naturally ask if they'd like to include secondary or other types, or note any unwanted exclusions.
+
+      If user mentions only SECONDARY or OTHER types, ask if primary types are relevant.
+
+      If user mentions MIXED types, optionally ask about any unwanted exclusions.
+
+      If user mentions an unlisted study type, map it to one of the three categories if possible.
+
+      Accept once at least one study design is clearly specified.
     examples:
       clear:
         - statement: All RCTs on treatments for basal cell carcinomas
@@ -419,39 +340,31 @@ pico_advanced:
     depends_on:
       - population
     criteria: |
-      ### Task
-      Evaluate if health condition specification enables accurate patient identification, appropriate treatment selection, and valid outcome interpretation.
+      **Task:** Evaluate and assemble health condition specification.
 
-      **CRITICAL REQUIREMENT**:
-      Primary condition/diagnosis MUST be specified. If absent, reject and prompt.
+      **Elements to track:**
+      - Primary condition name
+      - Disease stage (if applicable)
+      - Severity (if applicable)
+      - Relevant comorbidities (if applicable)
 
-      ### CONDITION SPECIFICITY VALIDATION
-      Condition is acceptable if:
-      - Clinically unambiguous (single primary treatment pathway) OR Specific enough to avoid disambiguation (e.g., "Type 2 diabetes" acceptable; "diabetes" requires type specification if ambiguous)
-      Reject only if multiple treatment pathways exist requiring clarification.
+      **Required:**
+      - Primary condition, unambiguous
 
-      ### CONDITIONAL ELEMENTS
-      - Disease Stage - Required IF clinically meaningful for prognosis or treatment selection (e.g., cancer staging, CKD stages, heart failure classification). Optional otherwise.
+      **Required if applicable:**
+      - Stage: for conditions where staging affects treatment (cancer, CKD)
+      - Severity: for conditions where severity affects treatment (depression, asthma)
 
-      - Severity - Required IF severity materially affects treatment choice (e.g., depression mild/moderate/severe, asthma control levels). Optional for conditions where severity is not treatment-determining.
+      **Ambiguity triggers:**
+      - "Diabetes" → ask: Type 1, Type 2, or gestational?
+      - "Heart disease" → ask: CAD, heart failure, or arrhythmia?
+      - "Cancer" → ask: which type and stage?
 
-      - Comorbidities - Include ONLY if comorbidity satisfies at least 1 criterion:
-        - Affects treatment feasibility (contraindication, drug interaction, organ function)
-        - Affects outcome interpretation (confounding variable)
-        - Explicitly defines inclusion/exclusion criteria
-        - Modifies disease prognosis in this specific context
-      Reject comorbidities with no link to primary condition or intervention (e.g., cancer + hypertension without specified interaction).
-
-      - Treatment History & Diagnostic Criteria - Optional enhancements; accept if absent.
-         - Is prior treatment status mentioned? (e.g., treatment-naive, refractory, maintenance therapy)
-         - Are diagnostic criteria specified? (e.g., ICD codes, clinical guidelines, biomarker thresholds)
-    response_strategy: |
-      1. Parse input for named condition
-      2. If absent → REJECT + PROMPT for condition
-      3. If present, assess specificity → if ambiguous → PROMPT for disambiguation
-      4. Determine stage/severity relevance via clinical context → if relevant AND absent → PROMPT
-      5. Validate comorbidities for clinical rationale → if stated without rationale → PROMPT
-      6. If all required elements present and valid → ACCEPT
+      **Assembly example:**
+      - User: "diabetes patients" → current: "diabetes" (ambiguous, need type)
+      - User: "type 2" → current: "type 2 diabetes"
+      - User: "with kidney problems too" → current: "type 2 diabetes with chronic kidney disease"
+      - User: "stage 3 CKD" → current: "type 2 diabetes with stage 3 chronic kidney disease"
     examples:
       clear:
         - statement: "Efficacy of SGLT2 inhibitors in Type 2 diabetes patients"

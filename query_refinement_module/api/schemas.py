@@ -185,8 +185,8 @@ class RefinementStepResponse(BaseModel):
     id: int
     query_id: int
     aspect_name: str
-    final_value: Optional[str] = None  # From LLM: refinement_aspect_value
-    is_complete: bool = False          # From LLM: is_complete
+    final_value: Optional[str] = None  # From LLM: current value
+    is_complete: bool = False          # From LLM: complete status
     was_skipped: bool = False          # Evaluation-only: /skip command
     user_ended_early: bool = False     # Evaluation-only: /done before LLM complete
     created_at: datetime

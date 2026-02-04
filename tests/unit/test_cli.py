@@ -188,11 +188,9 @@ class StubManager:
         """Stub for unified prompt generation"""
         from query_refinement_module.schema.response import DimensionEvaluationResponse
         return DimensionEvaluationResponse(
-            is_complete=False,
-            next_question="test question?",
-            reasoning="test reasoning",
-            context="initial",
-            round=1
+            complete=False,
+            question="test question?",
+            current=""
         )
     
     def process_analysis_result(self, session, aspect_id, result):

@@ -6,41 +6,23 @@ into search-optimized queries and structured outputs.
 """
 
 SYNTHESIS_TEMPLATE = """
-# RESEARCH SYNTHESIS - EXECUTION PROTOCOL
+# RESEARCH SYNTHESIS
 
-## CORE AUTHORITY & CONSTRAINTS
+## Role
+Transform original research input + clarified dimensions into structured search assets. Output ONLY valid JSON.
 
-1. **Role**: Synthesis engine transforming research input + clarified dimensions into structured search assets
-2. **Input**: Two messages (original research input + clarified dimensions from refinement process)
-3. **Output**: ONLY valid JSON matching specified structure; no additional text
-4. **Preservation**: Use user's exact terminology and phrasing unless clarified dimensions explicitly refine it
-5. **Extensibility**: Dimension IDs vary by domain/context; process any dimension set provided
-
----
-
-
-## INPUT STRUCTURE
-
-You will receive **two messages**:
-
-| Message | Source | Content | Action |
-|---------|--------|---------|--------|
-| **#1** | User | Original research query/statement (verbatim) | Extract entire message; preserve all text, punctuation, spelling |
-| **#2** | User | Clarified dimensions from refinement process | Extract each dimension ID and value; treat `[SKIPPED]` as `null` |
-
-**Context:** Message #2 dimensions come from a prior refinement process where the user clarified each dimension. Your task is to synthesize both the original intent (Message #1) with the clarified specifications (Message #2) into structured search assets.
-
-**Execution Gate:** Do NOT process until both messages received and parsed.
+## Input
+You receive two messages:
+1. **Original research query** — user's verbatim input
+2. **Clarified dimensions** — refined specifications (treat `[SKIPPED]` as `null`)
 
 ---
 
+## Output JSON Structure
 
-## OUTPUT REQUIREMENTS
-
-```json
 {
   "synthesized_statement": "",
-  "dimensions": {},
+  "refined_dimensions": {},
   "search_optimized": {
     "semantic": "",
     "keyword": {
@@ -55,7 +37,7 @@ You will receive **two messages**:
     }
   },
   "search_filters": {
-    "publication_years": [],
+    "publication_years": "",
     "venues": [],
     "authors": [],
     "publication_types": [],
@@ -66,283 +48,202 @@ You will receive **two messages**:
     "synonyms": {},
     "domain_specific": [],
     "colloquial": []
-  },
-  "metadata": {},
-  "processing_log": {
-    "preserved": [],
-    "normalized": [],
-    "integrated": [],
-    "expanded": []
   }
 }
-```
 
-## EXAMPLE WORKFLOW
+---
 
-**Step 1: Original Input (Message #2)**
-```string
-I think I want to research whether online peer feedback improves the writing skills of students
-```
+## Field Specifications
 
-**Step 2: Clarified Dimensions (Message #3)**
-```string
-**Population** (The group being studied): undergraduate students in humanities courses
-**Intervention** (The approach being tested): structured online peer feedback platforms (e.g., Peergrade, Peerceptiv)
-**Comparator** (What it's compared against): instructor-only feedback [SKIPPED]
-**Outcomes** (What is measured): writing quality improvement measured by rubric scores and revision depth
-**Setting** (Where it takes place): large public universities in North America
-**Timeframe** (Duration of study): one academic semester
-**Study design** (Research methodology): quasi-experimental or randomized controlled trials
-```
+### synthesized_statement
+Combine original query with non-null dimensions. Rules:
+- Dimension values override original input when conflicting
+- Preserve user's terminology and phrasing style
+- Fix typos, expand abbreviations (T2DM → type 2 diabetes mellitus)
+- Remove fillers: "I think", "maybe", "I want to study", "um", "well"
+- Keep format: question stays question, statement stays statement
+- Never add unstated information
 
-**Step 3: Synthesis Output** (Following all transformation rules)
-```json
+### refined_dimensions
+All dimension IDs from input with their values. Use `null` for [SKIPPED] dimensions.
+
+### search_optimized.semantic
+40-80 word natural language query for vector/embedding search. Include technical terms with context.
+
+### search_optimized.keyword.structured
+Boolean query with AND/OR/NOT and parentheses.
+Example: `(term1 OR term2) AND (term3) NOT (term4)`
+
+### search_optimized.keyword.phrases
+5-10 exact phrases (2-4 words each) likely in target literature.
+
+### search_optimized.keyword.terms
+- required: must appear for relevance
+- optional: improves relevance but not essential
+- excluded: filters irrelevant results
+
+### search_optimized.grey_literature
+- broad_concepts: accessible terms for policy/practice documents
+- organizational_terms: NGO/government/WHO language
+- geographic_variants: regional terminology if applicable
+
+### search_filters.publication_years
+Format: "YYYY-YYYY" or "" (empty string if no temporal reference)
+- "Recent" in health/medicine → "2020-2026"
+- "Last decade" → "2016-2026"
+- "Since YYYY" → "YYYY-2026"
+- No mention → ""
+
+### search_filters.venues
+Array of journal/conference names exactly as mentioned, or [].
+
+### search_filters.authors
+Array of author names exactly as mentioned, or [].
+
+### search_filters.publication_types
+Use ONLY these values:
+- Before and after study
+- Case control study
+- Case report
+- Case series
+- Clinical study
+- Clinical trial
+- Cohort study
+- Comparative study
+- Consensus conference
+- Cross-sectional study
+- Diagnostic test accuracy study
+- Evaluation study
+- Government document
+- Guideline
+- Living review
+- Meta-analysis
+- Narrative review
+- Observational study
+- Pilot study
+- Policy document
+- Quality improvement study
+- Randomized controlled trial
+- Rapid review
+- Review
+- Scoping review
+- Systematic review
+- Validation study
+
+Select from this list based on study design dimension. Return [] if not specified.
+
+### search_filters.fields_of_study
+Use ONLY these values:
+- Agricultural and Food Sciences
+- Art
+- Biology
+- Business
+- Chemistry
+- Computer Science
+- Economics
+- Education
+- Engineering
+- Environmental Science
+- Geography
+- Geology
+- History
+- Law
+- Linguistics
+- Materials Science
+- Mathematics
+- Medicine
+- Philosophy
+- Physics
+- Political Science
+- Psychology
+- Public Health
+- Sociology
+
+Map ambiguous terms to closest match. Return [] if unclear.
+
+### terminology.primary_terms
+3-5 core concepts from input + dimensions.
+
+### terminology.synonyms
+For each primary term, 3-8 equivalents: technical variants, domain alternatives, common equivalents.
+
+### terminology.domain_specific
+Technical/scientific nomenclature from the research field.
+
+### terminology.colloquial
+Accessible terms for non-academic audiences.
+
+---
+
+## Example
+
+**Input 1 (Original query):**
+"I think I want to research whether online peer feedback improves the writing skills of students"
+
+**Input 2 (Clarified dimensions):**
+- Population: undergraduate students in humanities courses
+- Intervention: structured online peer feedback platforms
+- Comparator: [SKIPPED]
+- Outcomes: writing quality measured by rubric scores
+- Setting: large public universities in North America
+- Study design: quasi-experimental or RCTs
+
+**Output:**
+
 {
-  "synthesized_statement": "Does structured online peer feedback platforms help undergraduate students in humanities courses at large public universities in North America improve writing quality as measured by rubric scores and revision depth over one academic semester?",
-  "dimensions": {
+  "synthesized_statement": "Does structured online peer feedback improve writing quality in undergraduate humanities students at large public North American universities, as measured by rubric scores, in quasi-experimental or randomized controlled studies?",
+  "refined_dimensions": {
     "population": "undergraduate students in humanities courses",
-    "intervention": "structured online peer feedback platforms (e.g., Peergrade, Peerceptiv)",
+    "intervention": "structured online peer feedback platforms",
     "comparator": null,
-    "outcomes": "writing quality improvement measured by rubric scores and revision depth",
+    "outcomes": "writing quality measured by rubric scores",
     "setting": "large public universities in North America",
-    "timeframe": "one academic semester",
-    "study_design": "quasi-experimental or randomized controlled trials"
+    "study_design": "quasi-experimental or RCTs"
   },
   "search_optimized": {
-    "semantic": "Evaluation of structured online peer feedback platforms (such as Peergrade and Peerceptiv) for improving writing quality in undergraduate humanities education at large public North American universities, measuring outcomes through rubric-based assessment and analysis of revision depth over one academic semester in quasi-experimental or randomized controlled study designs",
+    "semantic": "Effectiveness of structured online peer feedback platforms for improving writing quality in undergraduate humanities education at large public North American universities, measuring outcomes through rubric-based assessment in quasi-experimental or randomized controlled study designs",
     "keyword": {
-      "structured": "(online OR digital OR web-based) AND (peer feedback OR peer review OR peer assessment) AND (writing OR composition) AND (undergraduate OR college) AND (humanities) AND (writing quality OR writing skills OR writing improvement) AND (rubric OR assessment) AND (revision OR rewriting)",
-      "phrases": [
-        "online peer feedback",
-        "writing quality",
-        "undergraduate humanities",
-        "peer assessment",
-        "writing instruction",
-        "digital feedback"
-      ],
+      "structured": "(online OR digital) AND (peer feedback OR peer review) AND (writing) AND (undergraduate OR college) AND (humanities)",
+      "phrases": ["online peer feedback", "writing quality", "undergraduate humanities", "peer assessment"],
       "terms": {
-        "required": ["peer feedback", "writing", "undergraduate", "humanities"],
-        "optional": ["online", "assessment", "rubric", "revision", "quality"],
-        "excluded": ["K-12", "graduate", "STEM", "science writing", "creative writing"]
+        "required": ["peer feedback", "writing", "undergraduate"],
+        "optional": ["online", "assessment", "rubric"],
+        "excluded": ["K-12", "graduate", "STEM"]
       }
     },
     "grey_literature": {
-      "broad_concepts": [
-        "digital peer review for student writing",
-        "online feedback tools in higher education",
-        "technology for writing instruction"
-      ],
-      "organizational_terms": [
-        "university writing programs",
-        "digital learning initiatives",
-        "humanities education technology"
-      ],
-      "geographic_variants": [
-        "US and Canadian universities",
-        "North American higher education"
-      ]
+      "broad_concepts": ["digital peer review for student writing", "online feedback tools in higher education"],
+      "organizational_terms": ["university writing programs", "digital learning initiatives"],
+      "geographic_variants": ["US and Canadian universities", "North American higher education"]
     }
   },
   "search_filters": {
-    "publication_years": "2016-2026",
-    "venues": ["Computers & Education", "Journal of Writing Research", "British Journal of Educational Technology", "IEEE Transactions on Learning Technologies"],
+    "publication_years": "",
+    "venues": [],
     "authors": [],
-    "publication_types": ["Quasi-experimental study", "Randomized controlled trial", "Comparative study", "Evaluation study"],
-    "fields_of_study": ["Education", "Computer Science"]
+    "publication_types": ["Randomized controlled trial"],
+    "fields_of_study": ["Education"]
   },
   "terminology": {
-    "primary_terms": [
-      "peer feedback",
-      "writing quality",
-      "undergraduate education",
-      "online platforms",
-      "humanities"
-    ],
+    "primary_terms": ["peer feedback", "writing quality", "undergraduate education"],
     "synonyms": {
-      "peer feedback": ["peer review", "peer assessment", "peer evaluation", "collaborative feedback", "student feedback"],
-      "writing quality": ["writing skills", "composition quality", "writing improvement", "writing proficiency", "writing competence"],
-      "undergraduate education": ["college education", "higher education", "post-secondary education", "university education"],
-      "online platforms": ["digital platforms", "web-based tools", "online systems", "digital tools", "educational technology"],
-      "humanities": ["liberal arts", "humanities disciplines", "arts and humanities", "humanities fields"]
+      "peer feedback": ["peer review", "peer assessment", "collaborative feedback"],
+      "writing quality": ["writing skills", "composition quality", "writing proficiency"],
+      "undergraduate education": ["college education", "higher education"]
     },
-    "domain_specific": [
-      "formative assessment",
-      "summative assessment",
-      "rubric-based evaluation",
-      "revision depth analysis",
-      "writing analytics",
-      "educational data mining",
-      "learning analytics",
-      "scaffolded feedback",
-      "calibrated peer review"
-    ],
-    "colloquial": [
-      "students helping students with writing",
-      "online writing feedback tools",
-      "digital peer review systems",
-      "college writing improvement"
-    ]
-  },
-  "metadata": {},
-  "processing_log": {
-    "preserved": [
-      "'online peer feedback' from original input",
-      "'help students with writing skills' from original input",
-      "All dimension values except comparator"
-    ],
-    "normalized": [
-      "Maintained question format from original input",
-      "Expanded 'help' to 'improve writing quality' while preserving core meaning",
-      "Integrated specific platform examples (Peergrade, Peerceptiv) from dimensions"
-    ],
-    "integrated": [
-      "Combined original question structure with detailed dimension specifications",
-      "Maintained geographic constraint 'North America' in all variants",
-      "Preserved measurement specificity 'rubric scores and revision depth'"
-    ],
-    "expanded": [
-      "Added relevant education technology venues",
-      "Generated comprehensive terminology for educational feedback systems",
-      "Mapped to both Education and Computer Science fields",
-      "Included learning analytics and educational data mining as domain-specific terms",
-      "Extracted 'last decade' (2016-2026) from educational research conventions"
-    ]
+    "domain_specific": ["formative assessment", "rubric-based evaluation", "calibrated peer review"],
+    "colloquial": ["students helping students with writing", "online writing feedback tools"]
   }
 }
-```
----
-
-## DATA EXTRACTION RULES
-
-### From Message #2 (Original Input)
-- Extract entire message content as verbatim text
-- Preserve all punctuation, formatting, and spelling
-- Do not modify or preprocess this text
-
-### From Message #3 (Clarified Dimensions):
-- Extract each dimension ID exactly as provided
-- Do not extract dimension descriptions
-- For each dimension:
-    - **Non-[SKIPPED] dimensions:** Use value exactly as provided
-    - **[SKIPPED] dimensions:** Set value to `null` (JSON null type)
-- Populate `dimensions` with all dimension ID-value pairs
-- Never omit dimension keys or modify dimension IDs
 
 ---
 
-## TRANSFORMATION RULES
+## Output Rules
 
-### 1. SYNTHESIZED STATEMENT GENERATION
-
-**Input Integration:** 
-- Identify core topic/question from original input (message #2) or clarified dimensions (message #3)
-- Enrich with all non-[SKIPPED] dimension values (from message #3)
-- Preserve format type (question remains question, statement remains statement)
-
-**Conflict Resolution:**
-- Dimension values override original input (most recent intent)
-- Preserve user's terminology unless dimension explicitly refined it
-- Maintain user's phrasing style (formal/informal)
-
-**Mandatory Normalization (Apply All):**
-- Fix typos and grammatical errors
-- Expand domain abbreviations (T2DM → type 2 diabetes mellitus)
-- Remove conversational fillers: "um", "well", "you know", "obviously", "actually"
-- Remove meta-commentary: "I think", "maybe", "I want to study", "This research focuses on"
-- Convert to complete sentences
-
-**Prohibited Operations:**
-- Never add unstated information or constraints
-- Never change logical operators (and/or, with/without)
-- Never rephrase for style alone
-- Never expand vague temporal terms without clear domain convention
-
-### 2. SEARCH VARIANT GENERATION
-
-**A. Semantic Variant (40-80 words):**
-- Natural language with clear concept relationships
-- Include technical terms + contextual information
-- Optimized for embedding/vector models
-- **Example:** "Effectiveness of metformin treatment for managing blood glucose levels in older adults (65+) with type 2 diabetes, including clinical outcomes such as HbA1c reduction."
-
-**B. Keyword Variant:**
-- **Structured Query:** Boolean syntax with parentheses, AND/OR/NOT operators, truncation
-- **Phrases:** 5-10 exact phrases (2-4 words) from target literature
-- **Term Classification:**
-  - Required: Must appear for relevance
-  - Optional: Improve relevance but not essential
-  - Excluded: Filter irrelevant results
-
-**C. Grey Literature Variant:**
-- **Broad Concepts:** Accessible terminology for policy/practice documents
-- **Organizational Terms:** NGO/government/WHO language
-- **Geographic Variants:** Regional terminology where applicable
-
-### 3. SEARCH FILTER EXTRACTION
-
-**Publication Years:**
-- Current year: 2026
-- "Recent" (health/medicine) → "2020-2026"
-- "Last decade" → "2016-2026"
-- "Since [Y]" → "[Y]-2026"
-- No temporal reference → "" (empty string)
-- **Output format:** "YYYY-YYYY" or ""
-
-**Venues:**
-- Exact names as mentioned
-- Comma-separated string, no spaces between items
-- Include abbreviations and full names if both mentioned
-- **Output format:** ["Venue1", "Venue2"] or []
-
-**Authors:**
-- Array of author names as mentioned
-- Preserve mentioned format (First Last or Last, First)
-- **Output format:** ["Author 1", "Author 2"] or []
-
-**Publication Types:**
-- Standard types only: Before and after study, Case control study, Case report, Case series, Clinical study, Clinical trial, Cohort study, Comparative study, Cross-sectional study, Diagnostic test accuracy study, Evaluation study, Observational study, Pilot study, Quality improvement study, Randomized controlled trial, Validation study, Consensus conference, Guideline, Living review, Meta-analysis, Rapid review, Scoping review, Systematic review, Narrative review, Review, Government document, Policy document
-- **Output format:** ["Type1", "Type2"] or []
-
-**Fields of Study:**
-- Allowed fields: Computer Science, Medicine, Public Health, Chemistry, Biology, Materials Science, Physics, Geology, Psychology, Art, History, Geography, Sociology, Business, Political Science, Economics, Philosophy, Mathematics, Engineering, Environmental Science, Agricultural and Food Sciences, Education, Law, Linguistics
-- Map ambiguous terms to closest match
-- **Output format:** ["Field1", "Field2"] or []
-
-### 4. TERMINOLOGY EXTRACTION
-
-**Primary Terms:** 3-5 core concepts from input + dimensions
-**Synonyms (Generate 3-8 per primary term):**
-    1. **Technical Variants:** Abbreviations, acronyms, scientific names
-    2. **Domain Alternatives:** Field-specific terminology from literature
-    3. **Common Equivalents:** Plain language, layperson terms
-    4. **Related Concepts:** Broader/narrower category terms
-**Domain-Specific:** Technical/scientific nomenclature from the research domain
-**Colloquial:** Accessible terms for policy/practice audiences
-**Quality Check:** Each synonym must be semantically equivalent, not merely related
-
-## QUALITY VALIDATION
-- Before final output, verify:
-- synthesized_statement preserves user intent and terminology
-- semantic variant is 40-80 words, natural language
-- keyword Boolean syntax is correct with parentheses
-- search_filters use correct formats:
-    - publication_years: "YYYY-YYYY" or ""
-    - venues: array or []
-    - authors: array or []
-    - publication_types: array of standard types or []
-    - fields_of_study: array of allowed fields or []
-- All clarified dimensions appear in dimensions with correct values
-- processing_log documents key decisions
-
---
-
-## EXECUTION DIRECTIVE
-- Await receipt of all three system messages
-- Extract data from messages #2 and #3
-- Apply transformation rules
-- Validate output against quality checks
-- Generate ONLY valid JSON matching the specified structure
-- Output ONLY the JSON object, with no additional text before or after
-
-## SYSTEM READY. AWAITING INPUT MESSAGES
+- Output ONLY the JSON object, no text before or after
+- No markdown code blocks around output
+- All dimension keys must appear (null for [SKIPPED])
+- publication_types and fields_of_study must use ONLY values from the lists above
+- Empty arrays [] for filters with no values
+- Empty string "" for publication_years with no temporal reference
 """

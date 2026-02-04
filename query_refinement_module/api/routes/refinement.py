@@ -162,7 +162,6 @@ class SynthesizeQueryResponse(BaseModel):
     refined_query: str
     used_llm: bool
     structured_output: Optional[Dict[str, Any]] = None
-    metadata: Dict[str, Any]
 
 
 # ==========================================
@@ -279,7 +278,7 @@ async def _build_next_prompt(manager, session) -> Optional[Dict[str, Any]]:
             
             if status['complete']:
                 # Dimension is already clear - auto-completed, loop to next
-                logger.info(f"  -> Dimension '{step.refinement_aspect.aspect_name}' auto-completed with value: {str(status.get('refinement_aspect_value', ''))[:100]}")
+                logger.info(f"  -> Dimension '{step.refinement_aspect.aspect_name}' auto-completed with value: {str(status.get('current', ''))[:100]}")
                 continue
             else:
                 # Dimension needs clarification - return the question
@@ -401,6 +400,14 @@ async def _build_command_response(
         logger.info(f"[_build_command_response] SUBMIT/END command - marking synthesis ready")
         response.synthesis_ready = True
         response.next_prompt = None
+    
+    elif command_type in ["clear"]:
+        logger.info(f"[_build_command_response] CLEAR command - regenerating question for current aspect")
+        # Clear command - regenerate question for current aspect
+        response.next_prompt = await _build_next_prompt(manager, session)
+        logger.info(f"[_build_command_response] Next prompt: {'exists' if response.next_prompt else 'None'}")
+        if response.next_prompt:
+            logger.info(f"[_build_command_response]   -> Aspect: {response.next_prompt.get('aspect_name')}")
     
     elif command_type in ["back", "prev", "previous", "goto", "restart"]:
         logger.info(f"[_build_command_response] NAVIGATION command ({command_type}) - building next prompt")
@@ -1332,8 +1339,7 @@ async def synthesize_refined_query(
         query_id=request.query_id,
         refined_query=refined_query,
         used_llm=synthesis_result.get('used_llm', False),
-        structured_output=structured_output,
-        metadata=synthesis_result.get('metadata', {})
+        structured_output=structured_output
     )
 
 

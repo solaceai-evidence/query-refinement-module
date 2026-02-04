@@ -126,8 +126,7 @@ def test_get_evaluation_instructions_prompt_includes_examples_and_format():
     assert "Sample query" in prompt
     assert "NEEDS CLARIFICATION:" in prompt or "Too broad" in prompt
     # Should include base schema fields
-    assert "is_complete" in prompt
-    assert "reasoning" in prompt
+    assert "complete" in prompt
 
 
 def test_get_prompts_returns_system_and_user_prompts():
@@ -178,10 +177,9 @@ def test_format_response_instructions_lists_fields():
     instructions = aspect._format_response_instructions()
 
     # Should include base schema fields
-    assert "is_complete" in instructions
-    assert "reasoning" in instructions
-    assert "refinement_aspect_value" in instructions
-    assert "next_question" in instructions
+    assert "complete" in instructions
+    assert "current" in instructions
+    assert "question" in instructions
 
 
 def test_validate_response_missing_base_fields():
@@ -190,16 +188,16 @@ def test_validate_response_missing_base_fields():
 
     assert not is_valid
     assert "Missing required field" in error
-    assert "is_complete" in error
+    assert "complete" in error
 
 
 def test_validate_response_type_errors():
     aspect = make_aspect()
     is_valid, error = aspect.validate_response(
         {
-            "is_complete": "true",
-            "reasoning": 123,
-            "next_question": None,
+            "complete": "true",
+            "current": 123,
+            "question": None,
         }
     )
 
@@ -211,10 +209,9 @@ def test_validate_response_strict_warns_on_unexpected_fields():
     aspect = make_aspect()
     is_valid, error, warnings = aspect.validate_response_strict(
         {
-            "is_complete": True,
-            "reasoning": "All set",
-            "next_question": None,
-            "refinement_aspect_value": "Some value",
+            "complete": True,
+            "current": "Some value",
+            "question": "",
             "extra": "ignored",
         }
     )
@@ -231,9 +228,8 @@ def test_validate_response_with_additional_fields():
     )
 
     is_valid, message = aspect.validate_response({
-        "is_complete": True,
-        "reasoning": "Done",
-        "refinement_aspect_value": "Value",
+        "complete": True,
+        "current": "Value",
         "confidence": 0.9
     })
     assert is_valid

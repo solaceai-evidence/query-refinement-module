@@ -194,7 +194,7 @@ class RefinementDimension(BaseModel):
         - description → aspect_description (YAML uses 'description')
         - evaluator → evaluation_instructions (YAML uses 'evaluator')
         - criteria → evaluation_criteria (YAML uses 'criteria')
-        - response_strategy → response_strategies (YAML uses singular)
+        - response_strategy → assembly_rules (legacy compatibility)
     """
     model_config = ConfigDict(
         extra="allow",
@@ -224,10 +224,10 @@ class RefinementDimension(BaseModel):
         description="Criteria for evaluating this dimension",
         validation_alias="criteria"
     )
-    response_strategies: Optional[str] = Field(
-        default=None, 
-        description="Strategies for responding",
-        validation_alias="response_strategy"
+    assembly_rules: Optional[str] = Field(
+        default=None,
+        description="Examples showing what 'current' field should look like for this dimension",
+        validation_alias="response_strategy"  # Allow legacy YAML files to work
     )
     
     # Examples for few-shot learning
@@ -246,21 +246,21 @@ class RefinementDimension(BaseModel):
     max_follow_ups: int = Field(default=50, description="Max follow-up limit")
     metadata: Dict[str, Any] = Field(default_factory=dict, description="Additional metadata")
     
-    @field_validator('response_strategies', mode='before')
+    @field_validator('assembly_rules', mode='before')
     @classmethod
-    def parse_response_strategies(cls, v):
-        """Convert list of dicts to formatted string, or pass through string."""
+    def parse_assembly_rules(cls, v):
+        """Convert list of dicts/strings to formatted string, or pass through string."""
         if v is None:
             return None
         if isinstance(v, str):
             return v
         if isinstance(v, list):
-            # Convert list of dicts like [{"If too broad": "guidance..."}] to string
+            # Convert list to string format
             lines = []
             for item in v:
                 if isinstance(item, dict):
-                    for condition, guidance in item.items():
-                        lines.append(f"- **{condition}:** {guidance}")
+                    for key, value in item.items():
+                        lines.append(f"- **{key}:** {value}")
                 elif isinstance(item, str):
                     lines.append(f"- {item}")
             return "\n".join(lines) if lines else None
@@ -273,11 +273,6 @@ class RefinementDimension(BaseModel):
             object.__setattr__(self, 'evaluation_instructions', self.evaluation_criteria)
         elif self.evaluation_criteria and self.evaluation_instructions:
             combined = f"{self.evaluation_instructions}\n\n{self.evaluation_criteria}"
-            object.__setattr__(self, 'evaluation_instructions', combined)
-        
-        # Append response_strategies if present
-        if self.response_strategies and self.evaluation_instructions:
-            combined = f"{self.evaluation_instructions}\n\n## Response Strategies\n\n{self.response_strategies}"
             object.__setattr__(self, 'evaluation_instructions', combined)
     
     @field_validator('examples', mode='before')
@@ -324,17 +319,15 @@ class RefinementDimension(BaseModel):
     # =========================================================================
     
     BASE_SCHEMA_FIELDS: ClassVar[Dict[str, str]] = {
-        "is_complete": "boolean",
-        "reasoning": "string",
-        "refinement_aspect_value": "string",
-        "next_question": "string"
+        "complete": "boolean",
+        "current": "string",
+        "question": "string"
     }
     
     BASE_FIELD_DESCRIPTIONS: ClassVar[Dict[str, str]] = {
-        "is_complete": "Whether the dimension has been sufficiently clarified",
-        "reasoning": "Brief explanation of the assessment",
-        "refinement_aspect_value": "The extracted/refined value when complete, null otherwise",
-        "next_question": "Follow-up question when incomplete, null otherwise"
+        "complete": "Whether the dimension has been sufficiently clarified",
+        "current": "The extracted/refined value when complete, empty string otherwise",
+        "question": "Follow-up question when incomplete, empty string otherwise"
     }
     
     # =========================================================================
@@ -486,8 +479,8 @@ class RefinementDimension(BaseModel):
             instructions.append(f"- **{field_name}** ({ftype}): {desc}")
         
         instructions.append("\n**Rules:**")
-        instructions.append("- `is_complete=true` → `refinement_aspect_value` must be non-null, `next_question` must be null")
-        instructions.append("- `is_complete=false` → `next_question` must be non-null, `refinement_aspect_value` must be null")
+        instructions.append("- `complete=true` → `current` must be non-empty, `question` must be empty string")
+        instructions.append("- `complete=false` → `question` must be non-empty, `current` must be empty string")
         
         return "\n".join(instructions)
     
@@ -641,12 +634,10 @@ class RefinementDimension(BaseModel):
                 example_value = "true/false"
             elif field_type == "float":
                 example_value = "0.0-1.0"
-            elif field_name == "reasoning":
-                example_value = '"why complete/incomplete (1-2 sentences)"'
-            elif field_name == "refinement_aspect_value":
-                example_value = '"clear, specific value (if complete) OR null"'
-            elif field_name == "next_question":
-                example_value = '"focused question with inline examples (if incomplete) OR null"'
+            elif field_name == "current":
+                example_value = '"clear, specific value (if complete) OR empty string"'
+            elif field_name == "question":
+                example_value = '"focused question with inline examples (if incomplete) OR empty string"'
             else:
                 example_value = f'"<{field_type}>"'
             
@@ -658,8 +649,8 @@ class RefinementDimension(BaseModel):
         lines.append("}")
         lines.append("")
         lines.append("**Rules:**")
-        lines.append("- `is_complete=true` → `refinement_aspect_value` must be non-null, `next_question` must be null")
-        lines.append("- `is_complete=false` → `next_question` must be non-null, `refinement_aspect_value` must be null")
+        lines.append("- `complete=true` → `current` must be non-empty, `question` must be empty string")
+        lines.append("- `complete=false` → `question` must be non-empty, `current` must be empty string")
         
         return "\n".join(lines)
     
@@ -686,7 +677,7 @@ class RefinementDimension(BaseModel):
         for field_name, field_type in self.BASE_SCHEMA_FIELDS.items():
             if field_name not in response:
                 # Some fields are conditionally required
-                if field_name in ("refinement_aspect_value", "next_question"):
+                if field_name in ("current", "question"):
                     continue
                 validation_errors.append(f"Missing required field: {field_name}")
                 continue
@@ -698,19 +689,19 @@ class RefinementDimension(BaseModel):
                 validation_errors.append(f"Field '{field_name}' must be boolean")
             elif field_type == "float" and not isinstance(value, (int, float)):
                 validation_errors.append(f"Field '{field_name}' must be float")
-            elif field_type == "string" and value is not None and not isinstance(value, str):
-                validation_errors.append(f"Field '{field_name}' must be string or null")
+            elif field_type == "string" and not isinstance(value, str):
+                validation_errors.append(f"Field '{field_name}' must be string")
         
-        # Validate conditional fields based on is_complete
-        is_complete = response.get("is_complete", False)
-        if is_complete:
-            refinement_aspect_value = response.get("refinement_aspect_value")
-            if not refinement_aspect_value or not isinstance(refinement_aspect_value, str):
-                validation_errors.append("'refinement_aspect_value' required as non-empty string when is_complete=true")
+        # Validate conditional fields based on complete
+        complete = response.get("complete", False)
+        if complete:
+            current = response.get("current", "")
+            if not current or not isinstance(current, str):
+                validation_errors.append("'current' required as non-empty string when complete=true")
         else:
-            next_question = response.get("next_question")
-            if not next_question or not isinstance(next_question, str):
-                validation_errors.append("'next_question' required as non-empty string when is_complete=false")
+            question = response.get("question", "")
+            if not question or not isinstance(question, str):
+                validation_errors.append("'question' required as non-empty string when complete=false")
         
         if validation_errors:
             return False, "; ".join(validation_errors)
