@@ -41,10 +41,15 @@ __all__ = [
 # =============================================================================
 
 def _create_jinja_env() -> Environment:
-    """Create a Jinja2 environment with appropriate settings."""
+    """
+    Create a Jinja2 environment with appropriate settings.
+    
+    CRITICAL: autoescape must be False (not select_autoescape) to prevent
+    HTML entity encoding of quotes and other characters in LLM prompts.
+    """
     env = Environment(
         loader=BaseLoader(),
-        autoescape=select_autoescape(default=False),
+        autoescape=False,  # Must be False to prevent HTML entity encoding
         trim_blocks=True,
         lstrip_blocks=True,
         keep_trailing_newline=True,
