@@ -2,7 +2,12 @@
 Print framework prompts for review and auditing.
 
 This script loads a YAML framework definition and prints the prompts that would be
-generated, allowing you to audit each component separately.
+generated, allowing you to audit each component separately. It uses the production
+code paths (build_refinement_messages, SynthesisPromptBuilder) to ensure you see
+exactly what the LLM receives.
+
+Updated: Uses RefinementDimension (the Pydantic model) consistently throughout.
+RefinementAspect is maintained in the codebase as a backward-compatibility alias.
 
 Usage:
     poetry run python scripts/print_framework_prompts.py <framework_yaml> <framework_name> [options]
@@ -23,10 +28,11 @@ import sys
 from pathlib import Path
 import yaml
 
-from query_refinement_module.schema import RefinementAspect
+# RefinementDimension is the new name; RefinementAspect is an alias for backward compatibility
+from query_refinement_module.schema import RefinementDimension
 from query_refinement_module.schema.synthesis import SynthesisPromptBuilder
 from query_refinement_module.schema.prompt_builder import PromptBuilder
-from query_refinement_module.prompt.system_role import GLOBAL_SYSTEM_PROMPT
+from query_refinement_module.schema.templates.global_system import GLOBAL_SYSTEM_PROMPT
 
 
 # Sample queries for different framework types
@@ -37,12 +43,12 @@ SAMPLE_QUERIES = {
 }
 
 
-def load_framework(yaml_path: Path, framework_name: str) -> tuple[list[RefinementAspect], dict | None]:
+def load_framework(yaml_path: Path, framework_name: str) -> tuple[list[RefinementDimension], dict | None]:
     """
     Load a framework from YAML, handling the user_context pattern.
     
     Returns:
-        tuple: (list of RefinementAspect, user_context dict or None)
+        tuple: (list of RefinementDimension, user_context dict or None)
     """
     document = yaml.safe_load(yaml_path.read_text())
     framework_def = document.get(framework_name)
@@ -65,7 +71,7 @@ def load_framework(yaml_path: Path, framework_name: str) -> tuple[list[Refinemen
     for item in aspect_items:
         if user_context:
             item = {**item, 'user_context': user_context}
-        aspects.append(RefinementAspect(**item))
+        aspects.append(RefinementDimension(**item))
     
     return aspects, user_context
 
@@ -80,7 +86,7 @@ def print_global_system_prompt(clean: bool = False):
     print(GLOBAL_SYSTEM_PROMPT)
 
 
-def print_user_context_prompt(aspects: list[RefinementAspect], clean: bool = False):
+def print_user_context_prompt(aspects: list[RefinementDimension], clean: bool = False):
     """Print the user context adaptation prompt."""
     if not aspects or not aspects[0].user_context:
         if not clean:
@@ -98,22 +104,48 @@ def print_user_context_prompt(aspects: list[RefinementAspect], clean: bool = Fal
     print(user_context_prompt)
 
 
-def print_dimension_prompt(aspect: RefinementAspect, query: str, clean: bool = False):
+def print_dimension_prompt(aspect: RefinementDimension, query: str, clean: bool = False, 
+                          all_aspects: list[RefinementDimension] = None):
     """Print a single dimension's complete message array structure."""
     from query_refinement_module.schema.prompt_builder import build_refinement_messages
     
     if not clean:
         print("=" * 80)
         print(f"DIMENSION MESSAGES: {aspect.aspect_name} (ID: {aspect.id})")
+        if aspect.depends_on:
+            print(f"Dependencies: {', '.join(aspect.depends_on)}")
         print("=" * 80)
         print()
+    
+    # Build mock dependency context if dimension has dependencies
+    dependency_context = None
+    if aspect.depends_on and all_aspects:
+        dependency_context = {}
+        aspect_map = {a.id: a for a in all_aspects}
+        for dep_id in aspect.depends_on:
+            dep_aspect = aspect_map.get(dep_id)
+            if dep_aspect:
+                # Create mock value based on dependency type
+                mock_value = f"[Mock {dep_aspect.aspect_name}]"
+                if "population" in dep_id.lower():
+                    mock_value = "adults aged 18-65 with Type 2 diabetes"
+                elif "intervention" in dep_id.lower():
+                    mock_value = "metformin therapy, 500-1000mg daily"
+                elif "clinical" in dep_id.lower() or "condition" in dep_id.lower():
+                    mock_value = "Type 2 diabetes mellitus, newly diagnosed"
+                
+                dependency_context[dep_id] = {
+                    "name": dep_aspect.aspect_name,
+                    "description": dep_aspect.aspect_description,
+                    "value": mock_value
+                }
     
     # Build messages using the actual production code path
     messages = build_refinement_messages(
         dimension=aspect,
         query=query,
         conversation_history=[],
-        dependency_context=None
+        dependency_context=dependency_context
     )
     
     # Print each message with role labels
@@ -132,7 +164,7 @@ def print_dimension_prompt(aspect: RefinementAspect, query: str, clean: bool = F
             print()
 
 
-def print_all_dimensions(aspects: list[RefinementAspect], query: str, clean: bool = False):
+def print_all_dimensions(aspects: list[RefinementDimension], query: str, clean: bool = False):
     """Print all dimension message structures."""
     from query_refinement_module.schema.prompt_builder import build_refinement_messages
     
@@ -180,7 +212,7 @@ def print_all_dimensions(aspects: list[RefinementAspect], query: str, clean: boo
             print()
 
 
-def print_synthesis_prompt(aspects: list[RefinementAspect], query: str, clean: bool = False):
+def print_synthesis_prompt(aspects: list[RefinementDimension], query: str, clean: bool = False):
     """Print the synthesis prompt with mock completed refinements."""
     if not clean:
         print("=" * 80)
@@ -233,7 +265,7 @@ def print_synthesis_prompt(aspects: list[RefinementAspect], query: str, clean: b
     print(synthesis_prompt)
 
 
-def print_summary(aspects: list[RefinementAspect], framework_name: str, yaml_path: Path, clean: bool = False):
+def print_summary(aspects: list[RefinementDimension], framework_name: str, yaml_path: Path, clean: bool = False):
     """Print a compact summary of the framework."""
     if not clean:
         print("=" * 80)
@@ -346,7 +378,7 @@ def main():
             print(f"Error: Dimension '{dimension_id}' not found in framework '{framework_name}'")
             print(f"Available dimensions: {', '.join([a.id for a in aspects])}")
             raise SystemExit(1)
-        print_dimension_prompt(dimension_aspects[0], query, clean=clean)
+        print_dimension_prompt(dimension_aspects[0], query, clean=clean, all_aspects=aspects)
     elif show_all_dimensions:
         print_all_dimensions(aspects, query, clean=clean)
     elif show_synthesis:
