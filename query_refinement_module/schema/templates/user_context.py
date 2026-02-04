@@ -90,16 +90,30 @@ USER_CONTEXT_PROFILE_TEMPLATE = """
 - **Examples domain**: {{ user_context.examples_from }}
 {% endif %}
 
+### APPLICATION
+
+**During refinement:**
+1. **Match interaction style** to tone and complexity settings above throughout all exchanges
+{% if user_context.examples_from %}
+2. **Draw all examples** from {{ user_context.examples_from }} domain for relevance
+{% else %}
+2. **Use domain-appropriate examples** when illustrating concepts or options
+{% endif %}
+3. **Flag feasibility concerns** proactively during specification when user context indicates potential challenges
+4. **Adapt priorities** to user type and context needs throughout evaluation
+
 ---
 
 {% if user_context.constraints %}
-### CONSTRAINTS
+### FEASIBILITY ALERTS
+
+Be aware of the following context factors. **These are advisory—flag concerns, but user may choose to proceed:**
 
 {% for constraint in user_context.constraints %}
 - {{ constraint }}
 {% endfor %}
 
-**When specification conflicts with constraints:**
+**When specification may conflict with context factors:**
 
 {% if user_context.tone == 'educational' %}
 "I notice this would require [X], but given your [constraint], that might be challenging. [Alternative] could work better because [reason]. What do you think?"
