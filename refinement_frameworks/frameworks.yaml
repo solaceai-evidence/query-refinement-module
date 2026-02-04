@@ -300,29 +300,50 @@ pico_advanced:
       **Required:**
       - At least one study design specified
 
-      **Categories:**
-      - Primary: Before and after study, Case control study, Case report, Case series, Clinical study, Clinical trial, Cohort study, Comparative study, Cross-sectional study, Diagnostic test accuracy study, Evaluation study, Observational study, Pilot study, Quality improvement study, Randomized controlled trial, Validation study
-      - Secondary: Living review, Meta-analysis, Rapid review, Scoping review, Systematic review, Narrative review, Review
-      - Other: Government document, Policy document, Guideline, Consensus conference
+      **Category Definitions:**
+
+      PRIMARY STUDY TYPES: 
+      Before and after study, Case control study, Case report, Case series, Clinical study, Clinical trial, Cohort study, Comparative study, Cross-sectional study, Diagnostic test accuracy study, Evaluation study, Observational study, Pilot study, Quality improvement study, Randomized controlled trial, Validation study
+
+      SECONDARY STUDY TYPES
+      Living review, Meta-analysis, Rapid review, Scoping review, Systematic review, Narrative review, Review
+
+      OTHER STUDY TYPES: 
+      Government document, Policy document, Guideline, Consensus conference
 
       **Assembly example:**
       - User: "RCTs" → Current: "randomized controlled trials"
       - User: "also cohort studies" → Current: "randomized controlled trials and cohort studies"
       - User: "but not retrospective ones" → Current: "randomized controlled trials and prospective cohort studies"
 
-      **Behavior:**
+      **Showing Category Lists to User:**
 
-      When prompting the user about study design types, always show the relevant category lists given above. 
+      ALWAYS show the relevant category list(s) when asking for clarification:
 
-      If user mentions only PRIMARY types, naturally ask if they'd like to include secondary or other types, or note any unwanted exclusions.
+      - If no study type specified yet → show ALL STUDY TYPES list
+      - If asking about PRIMARY types → show PRIMARY STUDY TYPES list
+      - If asking about SECONDARY types → show SECONDARY STUDY TYPES list
+      - If asking about OTHER types → show OTHER STUDY TYPES list
+      - If asking about multiple categories → show all relevant lists
+      - If user has specified one category and you're asking about others → show only the new category list(s)
 
-      If user mentions only SECONDARY or OTHER types, ask if primary types are relevant.
 
-      If user mentions MIXED types, optionally ask about any unwanted exclusions.
+      **Clarification Behavior:**
 
-      If user mentions an unlisted study type, map it to one of the three categories if possible.
+      - If user mentions only PRIMARY types → acknowledge, then ask: "Would you also like to include secondary sources (reviews, meta-analyses) or other document types (guidelines, policies)?" + show SECONDARY and OTHER lists
 
-      Accept once at least one study design is clearly specified.
+      - If user mentions only SECONDARY types → acknowledge, then ask: "Should we also include primary research studies?" + show PRIMARY list
+
+      - If user mentions only OTHER types → acknowledge, then ask: "Should we also include primary research or secondary sources?" + show PRIMARY and SECONDARY lists
+
+      - If user mentions MIXED types (from multiple categories) → acknowledge, optionally ask about exclusions from shown lists or remaining categories
+
+      - If nothing specified yet → start by asking about PRIMARY types + show PRIMARY list
+
+      - If user mentions unlisted study type → map to closest category if possible, or ask for clarification
+
+      **Completion:**
+      Accept once at least one study design is clearly specified from any category.
     examples:
       clear:
         - statement: All RCTs on treatments for basal cell carcinomas

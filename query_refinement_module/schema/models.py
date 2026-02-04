@@ -388,6 +388,11 @@ class RefinementDimension(BaseModel):
     
     def get_prompts(self, query: str) -> tuple:
         """
+        DEPRECATED: Use build_refinement_messages() from prompt_builder instead.
+        
+        This method returns separate system/user prompts instead of a proper
+        message array format expected by modern LLM APIs.
+        
         Get both system and developer prompts for this refinement aspect.
         
         Args:
@@ -396,6 +401,13 @@ class RefinementDimension(BaseModel):
         Returns:
             Tuple of (system_prompt, developer_prompt)
         """
+        import warnings
+        warnings.warn(
+            "RefinementAspect.get_prompts() is deprecated. Use build_refinement_messages() "
+            "from prompt_builder module instead for proper message array format.",
+            DeprecationWarning,
+            stacklevel=2
+        )
         return self.get_system_role(), self.get_evaluation_instructions_prompt(query)
     
     def _format_examples(self) -> str:

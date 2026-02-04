@@ -98,76 +98,6 @@ class StubLLMProvider(LLMProviderInterface):
 # Test 1: Follow-Up Prompt Includes Synthesis Instructions
 # ---------------------------------------------------------------------------
 
-def test_follow_up_prompt_includes_synthesis_instructions():
-    """Verify follow-up prompts instruct LLM to synthesize all conversation history."""
-    aspect = make_aspect(aspect_id="population", name="Population")
-    refiner = AspectRefinementState(refinement_aspect=aspect)
-    
-    # Simulate multi-turn conversation
-    refiner.add_follow_up("What age group?", "Well, I'm thinking probably adults")
-    refiner.add_follow_up("Specific ages?", "Maybe like 18 to 65 or so")
-    refiner.add_follow_up("Any conditions?", "Yeah definitely Type 2 diabetes")
-    
-    prompt = refiner.format_follow_up_prompt_template("Original query")
-    
-    # Check for synthesis instructions (updated to use aspect.id field)
-    assert "FOLLOW-UP CONTEXT" in prompt
-    assert "FINAL SYNTHESIZED value" in prompt or "CUMULATIVE SYNTHESIZED value" in prompt
-    assert "Combines ALL user responses" in prompt
-    assert "entire conversation history" in prompt
-    
-    # Check for cleaning instructions
-    assert "Removes conversational language" in prompt
-    assert "I think" in prompt  # Example of what to remove
-    assert "maybe" in prompt
-    assert "probably" in prompt
-    assert "Removes filler words" in prompt
-    assert "Removes meta-commentary" in prompt
-    
-    # Check for declarative statement instruction
-    assert "declarative statement" in prompt
-    assert "not as an answer to a question" in prompt
-    
-    # Check for examples (now using aspect.id field instead of final_value)
-    assert "GOOD population" in prompt or "GOOD" in prompt
-    assert "BAD population" in prompt or "BAD" in prompt
-    assert "Adults aged 18-65 with Type 2 diabetes" in prompt  # Good example
-    
-    # Verify conversation history is included
-    assert "What age group?" in prompt
-    assert "adults" in prompt
-    assert "18 to 65" in prompt
-    assert "Type 2 diabetes" in prompt
-
-
-def test_follow_up_prompt_includes_conversation_history():
-    """Verify all Q&A pairs are included in follow-up prompts."""
-    aspect = make_aspect()
-    refiner = AspectRefinementState(refinement_aspect=aspect)
-    
-    refiner.add_follow_up("Question 1", "Answer 1")
-    refiner.add_follow_up("Question 2", "Answer 2")
-    refiner.add_follow_up("Question 3", "Answer 3")
-    
-    prompt = refiner.format_follow_up_prompt_template("Test query")
-    
-    # All Q&A pairs should be present
-    assert "Follow-up 1" in prompt
-    assert "Question 1" in prompt
-    assert "Answer 1" in prompt
-    
-    assert "Follow-up 2" in prompt
-    assert "Question 2" in prompt
-    assert "Answer 2" in prompt
-    
-    assert "Follow-up 3" in prompt
-    assert "Question 3" in prompt
-    assert "Answer 3" in prompt
-    
-    # Conversation history section should be present
-    assert "Conversation history for this aspect:" in prompt
-
-
 # ---------------------------------------------------------------------------
 # Test 2: Dependency Context Includes Description
 # ---------------------------------------------------------------------------
@@ -298,10 +228,6 @@ def test_get_prompts_formats_dependency_with_description():
     # Check formatting with description
     assert "**Population** (Define the target population): Adults aged 18-65 with Type 2 diabetes" in user_prompt
     assert "**Time Period** (Temporal constraints for the study): Studies published 2020-2025" in user_prompt
-    
-    # Check section header
-    assert "Previous refinements" in user_prompt
-    assert "authoritative context" in user_prompt
 
 
 def test_get_prompts_handles_missing_description():

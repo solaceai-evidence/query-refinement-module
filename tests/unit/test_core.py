@@ -248,41 +248,6 @@ def test_query_aspect_refiner_get_prompts_includes_dependency_context(caplog):
     assert any("depends on ['missing']" in record.message for record in caplog.records)
 
 
-def test_query_aspect_refiner_follow_up_prompt_template():
-    aspect = make_aspect()
-    refiner = AspectRefinementState(refinement_aspect=aspect)
-    refiner.add_follow_up("Initial", "First answer")
-    refiner.add_follow_up("Follow-up", "Second answer")
-
-    prompt = refiner.format_follow_up_prompt_template("Original query text")
-
-    assert "FOLLOW-UP CONTEXT" in prompt
-    assert "Most recent user answer" in prompt
-    assert "Second answer" in prompt
-    assert "Respond in the following JSON format" in prompt
-    # Verify original query is included (from analysis_prompt with {query})
-    assert "Original query text" in prompt
-
-
-def test_query_aspect_refiner_follow_up_includes_query_without_placeholder():
-    """Test that follow-up prompts include the query even when analysis_prompt lacks {query}."""
-    aspect = make_aspect(analysis_prompt="Evaluate the temporal characteristics.")
-    refiner = AspectRefinementState(refinement_aspect=aspect)
-    refiner.add_follow_up("What time period?", "Last 5 years")
-
-    prompt = refiner.format_follow_up_prompt_template("Effect of exercise on diabetes")
-
-    # Should have follow-up context
-    assert "FOLLOW-UP CONTEXT" in prompt
-    # Should have conversation history
-    assert "What time period?" in prompt
-    assert "Last 5 years" in prompt
-    # Should have the original statement included
-    assert "Effect of exercise on diabetes" in prompt
-    # Should have the analysis prompt content
-    assert "Evaluate the temporal characteristics" in prompt
-
-
 def test_query_aspect_refiner_can_ask_followup_respects_limits():
     aspect = make_aspect(allow_follow_up=True, max_follow_ups=1)
     refiner = AspectRefinementState(refinement_aspect=aspect)
@@ -290,18 +255,6 @@ def test_query_aspect_refiner_can_ask_followup_respects_limits():
     assert refiner.can_ask_followup()
     refiner.add_follow_up("Q1", "A1")
     assert not refiner.can_ask_followup()
-
-
-def test_query_aspect_refiner_conversation_history_text():
-    aspect = make_aspect()
-    refiner = AspectRefinementState(refinement_aspect=aspect)
-    assert refiner.get_conversation_history_text() == "no previous follow-up questions."
-
-    refiner.add_follow_up("Question", "Answer")
-    history = refiner.get_conversation_history_text()
-    assert "Follow-up 1" in history
-    assert "Question" in history
-    assert "Answer" in history
 
 
 # ---------------------------------------------------------------------------

@@ -10,17 +10,6 @@ from query_refinement_module.core import (
 )
 from tests.unit.test_helpers import make_aspect
 
-def test_followup_null_and_empty_history():
-    aspect = make_aspect(allow_follow_up=True)
-    refiner = AspectRefinementState(refinement_aspect=aspect)
-    assert refiner.follow_up_count == 0
-    assert refiner.normalized_value_as_str is None
-    assert refiner.get_conversation_history_text() == "no previous follow-up questions."
-    prompt = refiner.format_follow_up_prompt_template("query")
-    assert "FOLLOW-UP CONTEXT" in prompt
-    assert "no previous follow-up questions." in prompt
-
-
 def test_followup_max_rounds():
     aspect = make_aspect(allow_follow_up=True, max_follow_ups=2)
     refiner = AspectRefinementState(refinement_aspect=aspect)

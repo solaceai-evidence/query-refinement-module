@@ -126,6 +126,11 @@ class AspectRefinementState:
     
     def get_prompts(self, query: str, dependency_context: Optional[Dict[str, Dict[str, str]]] = None, **kwargs) -> tuple[str, str]:
         """
+        DEPRECATED: Use get_messages() instead.
+        
+        This method builds prompts inline, violating separation of concerns.
+        The get_messages() method properly delegates to the schema layer.
+        
         Get both system and user prompts for this refinement aspect with dependency context.
         
         Args:
@@ -137,6 +142,13 @@ class AspectRefinementState:
         Returns:
             Tuple of (system_prompt, analysis_prompt)
         """
+        import warnings
+        warnings.warn(
+            "get_prompts() is deprecated. Use get_messages() instead, which properly "
+            "delegates prompt construction to the schema layer.",
+            DeprecationWarning,
+            stacklevel=2
+        )
         system_prompt = self.refinement_aspect.get_system_role()
 
         context_lines: List[str] = []
@@ -169,35 +181,20 @@ class AspectRefinementState:
             self.refinement_aspect.get_evaluation_instructions_prompt(statement=query, **kwargs)
         ]
 
+        # Add dependency context (no headers - handled by prompt builder)
         if context_lines:
-            refinement_instructions_prompt_sections.extend(
-                [
-                    "",
-                    "### Previous refinements (authoritative context)\n"
-                    "Use the following confirmed refinements as fixed constraints when evaluating the user-submitted input, "
-                    "according to the definition of this refinement aspect:",
-                    *context_lines,
-                ]
-            )
+            refinement_instructions_prompt_sections.extend(["", *context_lines])
         
-        # Include conversation history for multi-turn refinement
+        # Add conversation history (no headers - handled by prompt builder)
         if self.conversation_history:
-            conversation_lines = [
-                "",
-                "### Conversation history for this aspect\n"
-                "The following is the conversation history so far for this specific refinement aspect. "
-                "Use it as context when determining if further follow-up is needed:",
-                ""
-            ]
-            
+            conversation_lines = [""]
             for idx, exchange in enumerate(self.conversation_history, 1):
                 question = exchange.get('question', '')
                 response = exchange.get('response', '')
                 conversation_lines.append(f"**Turn {idx}:**")
-                conversation_lines.append(f"Question: {question}")
-                conversation_lines.append(f"Answer: {response}")
+                conversation_lines.append(f"Q: {question}")
+                conversation_lines.append(f"A: {response}")
                 conversation_lines.append("")
-            
             refinement_instructions_prompt_sections.extend(conversation_lines)
 
         return system_prompt, "\n".join(refinement_instructions_prompt_sections)
@@ -253,111 +250,7 @@ class AspectRefinementState:
         })
         # Extract and store value from response
         self.extract_and_store_value(response)
-    
-    def get_conversation_history_text(self) -> str:
-        """
-        Format follow-up history for use in prompts.
-        """
-        if not self.conversation_history:
-            return "no previous follow-up questions."
-        
-        history_lines = []
-        for i, qa in enumerate(self.conversation_history, start=0):
-            history_lines.append(f"Follow-up {i+1}:") # i+1 to make it human-friendly
-            history_lines.append(f" Q: {qa.get('question', '')}")
-            history_lines.append(f" A: {qa.get('response', '')}")
-        return "\n".join(history_lines)
-    
-    def format_follow_up_prompt_template(
-        self,
-        original_query: str,
-    ) -> str:
-        """Build a follow-up analysis prompt with explicit context history guidance.
 
-        The follow-up flow reuses the refinement aspect's schema while adding
-        instructions that clarify this is a subsequent turn. The conversation
-        history for the aspect is appended so the LLM can avoid repetition and
-        focus on unresolved details.
-
-        Args:
-            original_query: The initial user query for the session.
-
-        Returns:
-            Formatted prompt string ready for an LLM follow-up call.
-        """
-
-        history_text = self.get_conversation_history_text()
-        latest_answer = self.normalized_value_as_str or ""
-        
-        # Get current refinement aspect value for display
-        current_value = self.normalized_value
-        value_display = ""
-        if current_value is not None:
-            field_name = self.refinement_aspect.id
-            if isinstance(current_value, (dict, list)):
-                value_json = json.dumps(current_value, indent=2, ensure_ascii=False)
-                value_display = f"\n\nCURRENT VALUE FOR '{field_name}':\n{value_json}"
-            else:
-                value_display = f"\n\nCURRENT VALUE FOR '{field_name}': {current_value}"
-
-        follow_up_preamble = textwrap.dedent(
-            f"""
-            FOLLOW-UP CONTEXT:
-            For aspect "{self.refinement_aspect.aspect_name}", review the conversation history below.
-            Only ask for information that is still missing or unclear.{value_display}
-            
-            At each response, you MUST update the '{self.refinement_aspect.id}' field with the CUMULATIVE SYNTHESIZED value.
-            This means each response should build upon previous answers, progressively refining the value.
-            
-            If complete, set ``needs_refinement`` to ``false`` and provide:
-            1. A brief explanation of why no further follow-up is needed (explanation field)
-            2. In the ``{self.refinement_aspect.id}`` field, provide the FINAL SYNTHESIZED value that:
-               - Combines ALL user responses from the entire conversation history
-               - Forms ONE coherent, complete statement (or structured object/array)
-               - Removes conversational language ("I think", "maybe", "probably", "I guess", "kind of")
-               - Removes filler words and unnecessary elaboration ("well", "you know", "obviously", "definitely")
-               - Removes meta-commentary ("I want to study", "I'm interested in", "This research focuses on")
-               - Includes all key factual details from ALL answers
-               - Is written as a clear, declarative statement (not as an answer to a question)
-               - Focuses on essential information only
-            
-            Example conversation:
-              Q1: What age group?
-              A1: Well, I'm thinking probably adults, you know, not kids
-              Q2: Specific ages?
-              A2: Maybe like 18 to 65 or so
-              Q3: Any conditions?
-              A3: Yeah definitely Type 2 diabetes, but not the gestational kind obviously
-            
-            GOOD {self.refinement_aspect.id}: "Adults aged 18-65 with Type 2 diabetes (excluding gestational diabetes)"
-            (Synthesizes all 3 answers, removes conversational fluff, forms coherent statement)
-            
-            BAD {self.refinement_aspect.id}: "Yeah definitely Type 2 diabetes, but not the gestational kind obviously"
-            (Only last answer - missing age information! Keeps conversational language!)
-            
-            BAD {self.refinement_aspect.id}: "The user wants to study adults probably 18-65 with Type 2 diabetes"
-            (Keeps meta-commentary and uncertain language like "wants to study", "probably")
-            """
-        ).strip()
-
-        history_section_lines = ["Conversation history for this aspect:", history_text]
-        if latest_answer:
-            history_section_lines.extend(
-                [
-                    "",
-                    "Most recent user answer:",
-                    latest_answer,
-                ]
-            )
-        history_section = "\n".join(history_section_lines)
-
-        base_prompt = self.refinement_aspect.get_evaluation_instructions_prompt(
-            statement=original_query
-        )
-
-        sections = [follow_up_preamble, history_section, base_prompt]
-        return "\n\n".join(section for section in sections if section)
-    
 
 @dataclass
 class RefinementSession:

@@ -105,6 +105,33 @@ Build the specification incrementally across the conversation.
 
 ---
 
+## VALUE CLEANUP (MANDATORY)
+
+When assembling the "current" field at each turn, you MUST remove:
+
+**Conversational language:**
+- Hedging: "I think", "maybe", "probably", "I guess", "kind of", "sort of", "perhaps"
+- Filler: "well", "you know", "obviously", "definitely", "clearly", "like"
+- Politeness: "please", "thank you", "if possible"
+
+**Meta-commentary:**
+- "I want to study", "I'm interested in", "This research focuses on"
+- "The goal is", "We aim to", "The purpose is"
+
+**Examples:**
+- ❌ "Well, I'm thinking probably semaglutide and rapid-action ones please"
+- ✅ "Semaglutide and rapid-action insulins"
+
+- ❌ "I want to study adults aged 18-65 maybe with diabetes"
+- ✅ "Adults aged 18-65 with diabetes"
+
+- ❌ "Obviously Type 2 diabetes but not gestational kind you know"
+- ✅ "Type 2 diabetes (excluding gestational diabetes)"
+
+**Apply cleanup every time you assemble the "current" field, not just when marking complete.**
+
+---
+
 ## QUALITY REQUIREMENTS
 
 Before marking complete, verify:
