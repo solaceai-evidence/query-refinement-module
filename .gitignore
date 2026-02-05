@@ -222,9 +222,12 @@ release/.DS_Store
 artifacts/*
 
 # PyInstaller build artifacts
-*.spec
-build/
-dist/
+# Note: Keep .spec files in packaging/ as they are build configurations
+packaging/**/build/
+packaging/**/dist/
+packaging/**/QueryRefine-Distribution/
+packaging/**/*.zip
+packaging/**/*.dmg
 mac_launcher.py
 
 # Hook cache
