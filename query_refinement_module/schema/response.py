@@ -67,9 +67,9 @@ class DimensionEvaluationResponse(BaseModel):
             )
         return v
 
-# ============================================================================
+# ===============================================================
 # Synthesis Response Models
-# ============================================================================
+# ===============================================================
 
 class SearchTerms(BaseModel):
     """Search terms categorized by requirement level."""
@@ -147,7 +147,6 @@ QueryRefinementResponse = QueryRefinementResponse
 
 __all__ = [
     "DimensionEvaluationResponse",
-    "QueryRefinementResponse",
     "QueryRefinementResponse",  # Alias for backward compatibility
     "SearchOptimized",
     "SearchFilters",

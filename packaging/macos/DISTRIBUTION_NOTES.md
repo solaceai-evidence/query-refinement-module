@@ -59,13 +59,13 @@ Once they download and unzip the file, they need to:
   - Other compatible providers
 
 ## Architecture
-The current build is for **Apple Silicon (arm64)** - M1/M2/M3 Macs.
+The current build is for **Apple Silicon (arm64)**.
 
-To build for Intel Macs, run:
-```bash
-cd packaging/macos
-poetry run pyinstaller QueryRefine.spec --target-arch x86_64 --clean
-```
+**Intel Mac Compatibility:** Intel Macs can run arm64 apps automatically via Rosetta 2 (built into macOS). No separate build is needed.
+
+**Note:** You cannot cross-compile from Apple Silicon to Intel (x86_64) using PyInstaller. To build native Intel binaries, you would need to build on an actual Intel Mac.
+
+If colleagues see "App is damaged" error, it's a macOS security issue, not an architecture problem. See the README.txt troubleshooting section for the fix (run `xattr -cr QueryRefine.app`).
 
 ## Rebuilding
 If you need to rebuild with updates:
@@ -102,6 +102,18 @@ cd /Users/w1214757/Dev/query-refinement-module/packaging/macos/QueryRefine-Distr
 # Test run
 ./Run\ Query\ Refine.command
 ```
+
+## Common Issue: "App is Damaged" Error
+
+If colleagues see this error (especially on Intel Macs), it's a **macOS security feature**, not a real problem:
+
+**Quick Fix:**
+```bash
+cd path/to/QueryRefine-Distribution
+xattr -cr QueryRefine.app
+```
+
+Then open the app normally. This removes the "quarantine" flag that macOS adds to downloaded files.
 
 ## Need Help?
 

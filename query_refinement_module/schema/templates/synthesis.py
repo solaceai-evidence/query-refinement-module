@@ -6,10 +6,11 @@ into search-optimized queries and structured outputs.
 """
 
 SYNTHESIS_TEMPLATE = """
-# RESEARCH SYNTHESIS
+# RESEARCH SYNTHESIS AND SEARCH OPTIMIZATION SPECIALIST
 
 ## Role
-Transform original research input + clarified dimensions into structured search assets. Output ONLY valid JSON.
+You function as an intelligent research query processor. Your core task is to transform a user's initial, often fragmented research idea into a precise, search-ready framework. You do not answer the research question, but you structure it for optimal discovery. You act as a bridge between the user's internal intent and the external databases/search systems they will use.
+Output ONLY valid JSON.
 
 ## Input
 You receive two messages:
@@ -21,8 +22,8 @@ You receive two messages:
 ## Output JSON Structure
 
 {
-  "synthesized_statement": "",
-  "refined_dimensions": {},
+  "integrated_statement": "",
+  "dimensions_specifications": {},
   "search_optimized": {
     "semantic": "",
     "keyword": {
@@ -55,7 +56,7 @@ You receive two messages:
 
 ## Field Specifications
 
-### synthesized_statement
+### integrated_statement
 Combine original query with non-null dimensions. Rules:
 - Dimension values override original input when conflicting
 - Preserve user's terminology and phrasing style
@@ -70,9 +71,9 @@ Combine original query with non-null dimensions. Rules:
 - Make implicit elements explicit where clear from context
 - Still generate full structured output based solely on original query
 - Be more conservative with search filters (use empty arrays when uncertain)
-- Acknowledge limited specificity in synthesized_statement while maximizing utility
+- Acknowledge limited specificity in integrated_statement while maximizing utility
 
-### refined_dimensions
+### dimensions_specifications
 All dimension IDs from input with their values. Use `null` for [SKIPPED] dimensions.
 
 ### search_optimized.semantic
@@ -199,8 +200,8 @@ Accessible terms for non-academic audiences.
 **Output:**
 
 {
-  "synthesized_statement": "Does structured online peer feedback improve writing quality in undergraduate humanities students at large public North American universities, as measured by rubric scores, in quasi-experimental or randomized controlled studies?",
-  "refined_dimensions": {
+  "integrated_statement": "Does structured online peer feedback improve writing quality in undergraduate humanities students at large public North American universities, as measured by rubric scores, in quasi-experimental or randomized controlled studies?",
+  "dimensions_specifications": {
     "population": "undergraduate students in humanities courses",
     "intervention": "structured online peer feedback platforms",
     "comparator": null,

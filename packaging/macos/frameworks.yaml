@@ -24,7 +24,7 @@ pico_advanced:
       - Relevant subgroup characteristics: roles (e.g., healthcare workers, parents, teachers, students, caregivers), affiliations (e.g., military veterans, union members), socioeconomic markers (e.g., low-income, uninsured, educational attainment), pregnancy/reproductive status, occupational categories, insurance status
 
       **Required:**
-      - At least confirm whether "all populations" or limited to specific demographics
+      - At least confirm whether "all populations" or specific demographics intended
       - Age specification if topic is age-dependent
       - Setting if research is geography/culture-dependent
 
@@ -93,6 +93,7 @@ pico_advanced:
       **Assembly example:**
       - User: "I want to study a diabetes drug" → current: "pharmacological intervention for diabetes"
       - User: "metformin specifically" → current: "metformin for diabetes"
+      - User: "500mg twice daily" → current: "metformin 500mg twice daily for diabetes"
       - User: "for 6 months" → current: "metformin 500mg twice daily for 6 months"
     examples:
       clear:
@@ -144,6 +145,13 @@ pico_advanced:
       - Standard care: specify which guideline or usual practice
       - Active comparator: specify drug, dose, or technique
       - No treatment: watchful waiting (justify if effective treatment exists)
+
+
+      **ethical validation for no-treatment controls:**
+      - No-treatment controls require ethical justification IF effective treatment exists:
+        - Accept if: condition is self-limiting OR no proven effective treatment exists.
+        - Require justification if: established effective treatment exists and withholding causes harm.
+        - Flag if: vulnerable populations (children, severe illness) with no-treatment control without strong justification.
 
       **Assembly example:**
       - User: "compared to placebo" → current: "placebo"
@@ -604,6 +612,7 @@ mph_dissertation:
       - Note: Mixed methods ambitious for MPH; ensure one is primary
 
       REVIEW DESIGNS:
+      - Systematic review: comprehensive synthesis with quality assessment
       - Scoping review: mapping evidence landscape, broader inclusion
       - Narrative review: less systematic, synthesizes themes
       - Rapid review: accelerated systematic review methods
@@ -858,7 +867,7 @@ mph_dissertation:
       - Relevant subgroup characteristics: roles (e.g., healthcare workers, parents, teachers, students, caregivers), affiliations (e.g., military veterans, union members), socioeconomic markers (e.g., low-income, uninsured, educational attainment), pregnancy/reproductive status, occupational categories, insurance status
 
       **Required:**
-      - At least confirm whether "all populations" or limited to specific demographics
+      - At least confirm whether "all populations" or specific demographics intended
       - Age specification if topic is age-dependent
       - Setting if research is geography/culture-dependent
 
@@ -960,246 +969,3 @@ mph_dissertation:
         - statement: Research on significant improvement
           issue: Significant and improvement both vague
           example_question: Improvement in what? How will you define and measure meaningful change?
-legal_research:
-  - user_context:
-      user_type: "Law student"
-      context: "Legal research question formulation for case analysis, moot court preparation, or law review article development. Student is developing a focused legal research question that requires clear identification of legal issues, jurisdiction, parties, and relevant legal standards."
-      tone: "educational"
-      complexity: "intermediate"
-      examples_from: "case law"
-      constraints:
-        - "Jurisdiction: Must specify applicable legal jurisdiction (federal vs state, specific circuit)"
-        - "Precedent research: Need manageable scope for case law review within academic timeline"
-        - "Legal standards: Must identify controlling statutes, regulations, or common law doctrines"
-        - "Time period: Consider whether historical or contemporary legal framework applies"
-  - id: legal_issue
-    name: Legal Issue
-    description: The specific legal question, doctrine, or area of law under examination, including the nature of the dispute or legal problem
-    criteria: |
-      **Task:** Evaluate and assemble legal issue specification.
-
-      **Elements to track:**
-      - Area of law (constitutional, contract, tort, criminal, civil procedure, evidence, property, etc.)
-      - Specific doctrine or legal principle
-      - Type of legal question (interpretation, application, validity, remedy)
-      - Level of specificity (field → subfield → specific doctrine)
-
-      **Required:**
-      - Clear legal issue or question identified
-      - Appropriate scope (not entire fields like "contract law", not hyper-specific single cases)
-      - Legal framing (not just factual dispute)
-
-      **Not required:**
-      - Specific case names (those come in research process)
-      - Complete doctrinal detail (refined through research)
-
-      **Scope calibration:**
-      - TOO BROAD: "constitutional law", "contracts", "criminal procedure"
-      - APPROPRIATE: "Fourth Amendment search and seizure", "material breach of contract", "hearsay exceptions"
-      - TOO NARROW: "application of fruit of poisonous tree to third-party consent in rental properties with absentee landlords"
-
-      **Assembly example:**
-      - User: "I'm interested in constitutional law" → current: "constitutional law" (too broad)
-      - User: "Fourth Amendment specifically" → current: "Fourth Amendment search and seizure"
-      - User: "vehicle stops" → current: "Fourth Amendment search and seizure in vehicle stops"
-      - User: "without probable cause" → current: "Fourth Amendment search and seizure in vehicle stops without probable cause (reasonableness standard)"
-    examples:
-      clear:
-        - statement: Fourth Amendment reasonableness of warrantless vehicle searches incident to arrest
-          rationale: Specific constitutional provision, defined context (vehicles, warrantless, incident to arrest), clear legal question
-        - statement: Statute of frauds application to oral modifications of written employment contracts
-          rationale: Specific doctrine (statute of frauds), context (employment contracts), type of transaction (oral modifications)
-        - statement: Hearsay exception for excited utterances in domestic violence prosecutions
-          rationale: Specific evidence rule, defined exception, clear application context
-      needs_refinement:
-        - statement: Constitutional law issues
-          issue: Entire field; no specific provision or doctrine
-          example_question: Constitutional law covers many areas. Which specific constitutional provision or doctrine - free speech, due process, equal protection, search and seizure?
-        - statement: Contract disputes
-          issue: Too vague; no specific legal issue
-          example_question: What specific contract law issue - formation, breach, remedies, interpretation, or defenses?
-      partial:
-        - statement: First Amendment free speech
-          has: Constitutional provision identified
-          missing: Specific doctrine or context (content-based restrictions, prior restraint, public forum, commercial speech?)
-          example_question: Which aspect of free speech - content-based restrictions, time/place/manner, commercial speech, or symbolic speech?
-      vague_ambiguous:
-        - statement: Legal issues in technology companies
-          issue: Not a legal issue; describes a context
-          example_question: What specific legal question about technology companies - intellectual property, privacy law, antitrust, employment law?
-  - id: jurisdiction
-    name: Jurisdiction
-    description: The applicable legal jurisdiction, including sovereign authority, court system, and geographic scope
-    depends_on:
-      - legal_issue
-    criteria: |
-      **Task:** Evaluate and assemble jurisdiction specification.
-
-      **Elements to track:**
-      - Sovereign level (federal, state, tribal, international)
-      - Specific jurisdiction (e.g., "New York", "Ninth Circuit", "Supreme Court")
-      - Court level if relevant (trial, appellate, supreme)
-      - Temporal scope (current law vs historical period)
-
-      **Required:**
-      - At least confirm federal vs state
-      - Specific state or circuit if researching regional law
-      - Acknowledgment if multi-jurisdictional
-
-      **Not required:**
-      - Venue (specific courthouse location)
-      - Complete citation format
-
-      **Assembly example:**
-      - User: "federal law" → current: "federal law"
-      - User: "specifically Ninth Circuit" → current: "federal law in Ninth Circuit"
-      - User: "California state law too" → current: "federal law (Ninth Circuit) and California state law"
-    examples:
-      clear:
-        - statement: Federal law under the Fourth Amendment as interpreted by the Ninth Circuit
-          rationale: Sovereign (federal), specific circuit identified, constitutional provision clear
-        - statement: New York State contract law under UCC Article 2
-          rationale: Specific state, area of law (contracts), statutory basis (UCC)
-        - statement: Federal patent law in the Federal Circuit
-          rationale: Federal jurisdiction, specialized court identified
-      needs_refinement:
-        - statement: Looking at the law
-          issue: No jurisdiction specified
-          example_question: Which jurisdiction - federal law, specific state law, or comparing multiple jurisdictions?
-      partial:
-        - statement: Federal constitutional law
-          has: Sovereign level (federal), type (constitutional)
-          missing: Whether focusing on specific circuit or Supreme Court precedent
-          example_question: Are you researching Supreme Court precedent specifically, or focusing on a particular federal circuit?
-  - id: parties
-    name: Parties and Relationships
-    description: The legal actors involved, their relationships, and their roles in the legal question
-    depends_on:
-      - legal_issue
-    criteria: |
-      **Task:** Evaluate and assemble parties specification.
-
-      **Elements to track:**
-      - Type of parties (individuals, corporations, government entities)
-      - Legal relationship (employer-employee, landlord-tenant, buyer-seller, plaintiff-defendant)
-      - Relevant characteristics (commercial vs consumer, sophisticated parties, fiduciary relationships)
-      - Standing or capacity considerations if relevant
-
-      **Required:**
-      - General category of parties (not specific names)
-      - Legal relationship that frames the dispute
-      - Confirmation if parties are individuals, businesses, or government
-
-      **Not required:**
-      - Specific party names
-      - Complete factual background
-
-      **Assembly example:**
-      - User: "employment situation" → current: "employer and employee"
-      - User: "company fired someone" → current: "employer (company) and employee (terminated)"
-      - User: "at-will employment" → current: "employer and at-will employee in wrongful termination context"
-    examples:
-      clear:
-        - statement: Government agency conducting administrative search of commercial business premises
-          rationale: Parties identified (government, business), relationship clear (regulatory), context specified
-        - statement: Landlord seeking to evict residential tenant for nonpayment of rent
-          rationale: Both parties, relationship, legal action, and cause specified
-        - statement: Corporate defendant in securities fraud class action by investor shareholders
-          rationale: Parties, relationship (corporation-shareholders), type of action clear
-      needs_refinement:
-        - statement: A legal dispute
-          issue: No parties identified
-          example_question: Who are the parties - individuals, businesses, government entities? What is their legal relationship?
-      partial:
-        - statement: Contract between two businesses
-          has: Party types (businesses), general relationship (contractual)
-          missing: Nature of businesses (commercial vs consumer), specific type of contract
-          example_question: What type of businesses and contract - B2B sale of goods, services agreement, franchise, partnership?
-  - id: legal_standard
-    name: Legal Standard or Test
-    description: The applicable legal standard, test, level of scrutiny, or burden of proof that governs the legal issue
-    depends_on:
-      - legal_issue
-      - jurisdiction
-    criteria: |
-      **Task:** Evaluate and assemble legal standard specification.
-
-      **Elements to track:**
-      - Governing test or standard (e.g., "reasonable person", "preponderance of evidence", "strict scrutiny")
-      - Source of standard (statute, common law, constitutional interpretation)
-      - Elements or factors if multi-part test
-      - Burden allocation (who bears burden of proof)
-
-      **Required:**
-      - Identification of applicable standard if well-established for the legal issue
-      - Acknowledgment if standard is disputed or evolving
-
-      **Not required unless central:**
-      - Complete recitation of all elements
-      - Detailed procedural posture
-
-      **Assembly example:**
-      - User: "reasonableness of search" → current: "Fourth Amendment reasonableness standard"
-      - User: "without warrant" → current: "Fourth Amendment reasonableness standard for warrantless searches"
-      - User: "totality of circumstances" → current: "Fourth Amendment reasonableness under totality of circumstances test for warrantless searches"
-    examples:
-      clear:
-        - statement: Material breach standard for anticipatory repudiation under common law contracts
-          rationale: Specific standard (material breach), context (anticipatory repudiation), source (common law)
-        - statement: Strict scrutiny review for content-based speech restrictions under First Amendment
-          rationale: Level of scrutiny identified, context (speech restrictions), constitutional basis clear
-        - statement: Probable cause standard for search warrant issuance under Fourth Amendment
-          rationale: Standard specified, procedural context (warrant issuance), constitutional provision
-      needs_refinement:
-        - statement: What standard applies
-          issue: No legal standard identified or described
-          example_question: What legal standard are you researching - burden of proof, level of scrutiny, specific doctrinal test?
-      partial:
-        - statement: Reasonable person standard
-          has: General standard identified
-          missing: Context - reasonable person for what (negligence, harassment, self-defense)?
-          example_question: Reasonable person standard in what context - tort negligence, criminal law, employment harassment?
-  - id: remedy_or_outcome
-    name: Remedy or Legal Outcome
-    description: The legal relief, remedy, or outcome sought or at issue in the legal question
-    depends_on:
-      - legal_issue
-      - parties
-    criteria: |
-      **Task:** Evaluate and assemble remedy or outcome specification.
-
-      **Elements to track:**
-      - Type of remedy (damages, injunction, declaratory judgment, specific performance, criminal penalty)
-      - Scope of relief (compensatory, punitive, equitable)
-      - Legal vs equitable remedies
-      - Whether remedy is central to research question
-
-      **Required:**
-      - General category of relief if central to issue
-      - Confirmation whether seeking or defending against remedy
-
-      **Not required:**
-      - Specific dollar amounts
-      - Complete remedial calculation
-
-      **Assembly example:**
-      - User: "trying to get damages" → current: "monetary damages"
-      - User: "for breach of contract" → current: "compensatory damages for breach of contract"
-      - User: "and punitive damages" → current: "compensatory and punitive damages for breach of contract"
-    examples:
-      clear:
-        - statement: Availability of punitive damages for breach of contract in commercial setting
-          rationale: Remedy type (punitive damages), legal basis (breach), context (commercial)
-        - statement: Preliminary injunction to prevent disclosure of trade secrets
-          rationale: Equitable remedy (injunction), timing (preliminary), substantive issue (trade secrets)
-        - statement: Suppression of evidence obtained through unlawful search under exclusionary rule
-          rationale: Criminal remedy (suppression), legal basis (unlawful search), specific doctrine (exclusionary rule)
-      needs_refinement:
-        - statement: What can they get
-          issue: No remedy identified
-          example_question: What type of legal relief - monetary damages, injunction, specific performance, or other remedy?
-      partial:
-        - statement: Injunctive relief
-          has: General remedy type (injunction)
-          missing: Type of injunction (preliminary vs permanent), basis for equitable relief
-          example_question: What type of injunction - preliminary, permanent, or both? What equities support injunctive relief?
