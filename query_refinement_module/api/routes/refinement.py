@@ -14,7 +14,7 @@ Key Features:
 import asyncio
 import logging
 import time
-from fastapi import APIRouter, Depends, HTTPException, status
+from fastapi import APIRouter, Depends, HTTPException, status, Request
 from sqlalchemy.orm import Session
 from typing import Dict, Any, Optional, Union, List
 
@@ -36,6 +36,8 @@ from query_refinement_module.api.auth import get_current_user
 from query_refinement_module.api.dependencies import get_refinement_manager, get_session_manager
 from query_refinement_module.schema.registry import get_framework, list_frameworks
 from query_refinement_module.api.session_manager import SessionManager
+from query_refinement_module.audit import audit_service
+from query_refinement_module.db.models.audit_log import AuditEventType
 from query_refinement_module.core import (
     QueryRefinementManager,
     is_user_command,
@@ -670,6 +672,7 @@ async def start_refinement(
 async def submit_answer(
     query_id: int,
     request: SubmitAnswerRequest,
+    http_request: Request,
     manager: QueryRefinementManager = Depends(get_refinement_manager),
     current_user = Depends(get_current_user),
     db: Session = Depends(get_db),
@@ -810,6 +813,66 @@ async def submit_answer(
                     f"{', '.join(invalidated)}. This means you'll need to re-answer those aspects. "
                     f"Click 'Confirm' to proceed."
                 )
+        
+        # ============================================================
+        # AUDIT LOGGING: Track command execution for debugging & compliance
+        # ============================================================
+        
+        # Get active dimension at time of command
+        active_step = session.get_active_step()
+        active_dimension = active_step.refinement_aspect.aspect_name if active_step else None
+        
+        # Map command type to specific audit event type
+        command_audit_map = {
+            "back": AuditEventType.COMMAND_BACK,
+            "prev": AuditEventType.COMMAND_BACK,
+            "previous": AuditEventType.COMMAND_BACK,
+            "restart": AuditEventType.COMMAND_RESTART,
+            "clear": AuditEventType.COMMAND_CLEAR,
+            "skip": AuditEventType.COMMAND_SKIP,
+            "done": AuditEventType.COMMAND_DONE,
+            "goto": AuditEventType.COMMAND_GOTO,
+            "status": AuditEventType.COMMAND_STATUS,
+            "help": AuditEventType.COMMAND_HELP,
+            "steps": AuditEventType.COMMAND_STEPS,
+        }
+        
+        audit_event_type = command_audit_map.get(command_type, AuditEventType.COMMAND_EXECUTE)
+        
+        # Build detailed audit context
+        audit_details = {
+            "command": command_type,
+            "command_input": user_input,
+            "argument": cmd_result.argument,
+            "active_dimension": active_dimension,
+            "force_requested": request.force,
+            "force_confirmation_needed": force_confirmation_needed,
+            "success": command_payload.get("success", False),
+        }
+        
+        # Add command-specific context
+        if "cleared_aspects" in command_payload:
+            audit_details["cleared_aspects"] = command_payload["cleared_aspects"]
+        if "invalidated" in command_payload:
+            audit_details["invalidated_aspects"] = command_payload["invalidated"]
+        if "target_aspect" in command_payload:
+            audit_details["target_aspect"] = command_payload["target_aspect"]
+        if "deleted_count" in command_payload:
+            audit_details["deleted_db_records"] = command_payload["deleted_count"]
+        
+        # Log command execution
+        audit_service.log_from_request(
+            db=db,
+            request=http_request,
+            event_type=audit_event_type,
+            user=current_user,
+            severity="info" if command_payload.get("success") else "warning",
+            resource_type="query",
+            resource_id=str(query_id),
+            action=f"Executed /{command_type} command" + (f" with arg '{cmd_result.argument}'" if cmd_result.argument else ""),
+            status="success" if command_payload.get("success") and not force_confirmation_needed else "needs_confirmation" if force_confirmation_needed else "failure",
+            details=audit_details
+        )
         
         # Save session state for state-mutating commands
         if command_payload.get("success", False) and not force_confirmation_needed:
@@ -1440,6 +1503,124 @@ async def synthesize_refined_query(
         refined_query=refined_query,
         used_llm=synthesis_result.get('used_llm', False),
         structured_output=structured_output
+    )
+
+
+# ==========================================
+# Command History Endpoint
+# ==========================================
+
+class CommandHistoryEntry(BaseModel):
+    """Single command execution record."""
+    timestamp: str
+    event_id: int
+    command: str
+    command_input: str
+    argument: Optional[str] = None
+    active_dimension: Optional[str] = None
+    success: bool
+    status: str
+    force_requested: bool
+    force_confirmation_needed: bool
+    cleared_aspects: Optional[List[str]] = None
+    invalidated_aspects: Optional[List[str]] = None
+    target_aspect: Optional[str] = None
+    deleted_db_records: Optional[int] = None
+    username: str
+    request_id: Optional[str] = None
+
+
+class CommandHistoryResponse(BaseModel):
+    """Response containing command execution history for a query."""
+    query_id: int
+    total_commands: int
+    commands: List[CommandHistoryEntry]
+
+
+@router.get("/queries/{query_id}/command-history", response_model=CommandHistoryResponse)
+def get_command_history(
+    query_id: int,
+    limit: int = 100,
+    current_user = Depends(get_current_user),
+    db: Session = Depends(get_db),
+):
+    """
+    Retrieve execution history of all commands for a specific query.
+    
+    Returns chronological list of command executions with full context:
+    - Command type and arguments
+    - Success/failure status
+    - Affected dimensions (cleared, invalidated)
+    - Active dimension at time of execution
+    - User and timestamp information
+    
+    Useful for:
+    - Debugging unexpected session states
+    - Understanding user workflow patterns
+    - Troubleshooting cascade delete issues
+    - Compliance and audit trails
+    
+    Args:
+        query_id: Query ID to get command history for
+        limit: Maximum number of commands to return (default: 100)
+    """
+    from query_refinement_module.db.models.audit_log import AuditLog
+    
+    # Verify query ownership
+    query = get_query(db, query_id)
+    if not query or query.user_id != current_user.id:
+        raise HTTPException(
+            status_code=status.HTTP_404_NOT_FOUND,
+            detail="Query not found"
+        )
+    
+    # Query audit logs for command events
+    command_event_types = [
+        AuditEventType.COMMAND_EXECUTE,
+        AuditEventType.COMMAND_BACK,
+        AuditEventType.COMMAND_RESTART,
+        AuditEventType.COMMAND_CLEAR,
+        AuditEventType.COMMAND_SKIP,
+        AuditEventType.COMMAND_DONE,
+        AuditEventType.COMMAND_GOTO,
+        AuditEventType.COMMAND_STATUS,
+        AuditEventType.COMMAND_HELP,
+        AuditEventType.COMMAND_STEPS,
+    ]
+    
+    audit_logs = db.query(AuditLog).filter(
+        AuditLog.resource_type == "query",
+        AuditLog.resource_id == str(query_id),
+        AuditLog.event_type.in_(command_event_types)
+    ).order_by(AuditLog.timestamp.desc()).limit(limit).all()
+    
+    # Build command history entries
+    commands = []
+    for log in reversed(audit_logs):  # Reverse to get chronological order
+        details = log.details or {}
+        commands.append(CommandHistoryEntry(
+            timestamp=log.timestamp.isoformat(),
+            event_id=log.id,
+            command=details.get("command", "unknown"),
+            command_input=details.get("command_input", ""),
+            argument=details.get("argument"),
+            active_dimension=details.get("active_dimension"),
+            success=details.get("success", False),
+            status=log.status or "unknown",
+            force_requested=details.get("force_requested", False),
+            force_confirmation_needed=details.get("force_confirmation_needed", False),
+            cleared_aspects=details.get("cleared_aspects"),
+            invalidated_aspects=details.get("invalidated_aspects"),
+            target_aspect=details.get("target_aspect"),
+            deleted_db_records=details.get("deleted_db_records"),
+            username=log.username or "unknown",
+            request_id=log.request_id
+        ))
+    
+    return CommandHistoryResponse(
+        query_id=query_id,
+        total_commands=len(commands),
+        commands=commands
     )
 
 

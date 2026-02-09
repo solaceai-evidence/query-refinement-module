@@ -45,9 +45,7 @@ You receive two messages:
     "fields_of_study": []
   },
   "terminology": {
-    "primary_terms": [],
     "synonyms": {},
-    "domain_specific": [],
     "colloquial": []
   }
 }
@@ -90,11 +88,6 @@ Example: `(term1 OR term2) AND (term3) NOT (term4)`
 - required: must appear for relevance
 - optional: improves relevance but not essential
 - excluded: filters irrelevant results
-
-### search_optimized.grey_literature
-- broad_concepts: accessible terms for policy/practice documents
-- organizational_terms: NGO/government/WHO language
-- geographic_variants: regional terminology if applicable
 
 ### search_filters.publication_years
 Format: "YYYY-YYYY" or "" (empty string if no temporal reference)
@@ -174,7 +167,7 @@ Map ambiguous terms to closest match. Return [] if unclear.
 3-5 core concepts from input + dimensions.
 
 ### terminology.synonyms
-For each primary term, 3-8 equivalents: technical variants, domain alternatives, common equivalents.
+For each core concept from the input + dimensions (maximum 8), 3-8 equivalents: technical variants, domain alternatives, common equivalents.
 
 ### terminology.domain_specific
 Technical/scientific nomenclature from the research field.

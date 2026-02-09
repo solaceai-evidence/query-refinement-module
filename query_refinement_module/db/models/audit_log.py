@@ -45,6 +45,18 @@ class AuditEventType:
     REFINEMENT_COMPLETE = "refinement.complete"
     REFINEMENT_ABORT = "refinement.abort"
     
+    # Command events (user commands during refinement)
+    COMMAND_EXECUTE = "command.execute"
+    COMMAND_BACK = "command.back"
+    COMMAND_RESTART = "command.restart"
+    COMMAND_CLEAR = "command.clear"
+    COMMAND_SKIP = "command.skip"
+    COMMAND_DONE = "command.done"
+    COMMAND_GOTO = "command.goto"
+    COMMAND_STATUS = "command.status"
+    COMMAND_HELP = "command.help"
+    COMMAND_STEPS = "command.steps"
+    
     # Feedback events
     FEEDBACK_CREATE = "feedback.create"
     FEEDBACK_UPDATE = "feedback.update"
