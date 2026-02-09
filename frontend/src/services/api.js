@@ -1,6 +1,7 @@
 import axios from 'axios';
 import { authUtils } from '../utils/auth';
 import { logger } from '../utils/logger';
+import { toast } from '../utils/toast';
 
 const baseURL = import.meta.env.VITE_API_BASE_URL || 'http://localhost:8000';
 
@@ -104,6 +105,14 @@ apiClient.interceptors.response.use(
 
             if (originalRequest._retryCount < 3) {
                 originalRequest._retryCount++;
+
+                // Show user-friendly notification
+                const delaySeconds = Math.ceil(delay / 1000);
+                toast.warning(
+                    `Server is busy. Retrying in ${delaySeconds} second${delaySeconds > 1 ? 's' : ''}... (Attempt ${originalRequest._retryCount}/3)`,
+                    delay
+                );
+
                 logger.warn('Rate limited - retrying', {
                     attempt: originalRequest._retryCount,
                     delay,
@@ -119,6 +128,9 @@ apiClient.interceptors.response.use(
                 retries: originalRequest._retryCount,
                 request_id: requestId
             });
+
+            // Show final error message to user
+            toast.error('Server is too busy right now. Please try again in a few minutes.', 10000);
 
             return Promise.reject({
                 message: 'Rate limit exceeded. Please try again later.',

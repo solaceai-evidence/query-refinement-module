@@ -59,9 +59,31 @@ const Refinement = () => {
         if (savedSession) {
             try {
                 const session = JSON.parse(savedSession);
-                console.log('[Refinement] Found saved session:', session);
+
+                // Validate session data structure
+                if (!session.sessionId || !session.queryId || !session.framework) {
+                    console.warn('[Refinement] Invalid session data structure, clearing...');
+                    logger.warn('Invalid saved session structure', { session });
+                    localStorage.removeItem('refinement_session');
+                    return;
+                }
+
+                // Check if session is too old (expired after 8 hours)
+                const sessionAge = session.timestamp ? Date.now() - session.timestamp : Infinity;
+                const MAX_SESSION_AGE = 8 * 60 * 60 * 1000; // 8 hours
+
+                if (sessionAge > MAX_SESSION_AGE) {
+                    console.warn('[Refinement] Session expired (older than 8 hours), clearing...');
+                    logger.warn('Saved session expired', { age: sessionAge, maxAge: MAX_SESSION_AGE });
+                    localStorage.removeItem('refinement_session');
+                    return;
+                }
+
+                console.log('[Refinement] Found valid saved session:', session);
                 logger.info('Found saved session', { sessionId: session.sessionId, queryId: session.queryId });
-                setSavedSessionData(session);
+
+                // Validate session exists on backend before showing restore option
+                validateAndSetSession(session);
             } catch (e) {
                 console.error('[Refinement] Failed to parse saved session:', e);
                 logger.error('Failed to parse saved session', e);
@@ -86,10 +108,39 @@ const Refinement = () => {
         checkUserStatus();
     }, []);
 
+    // Validate session exists on backend before offering restoration
+    const validateAndSetSession = async (session) => {
+        try {
+            // Quick check if session still exists on backend
+            await refinementService.getStatus(session.queryId);
+            // If successful, session is valid
+            setSavedSessionData(session);
+        } catch (err) {
+            // Session no longer exists on backend
+            if (err.response?.status === 404) {
+                console.warn('[Refinement] Saved session no longer exists on backend');
+                logger.warn('Saved session not found on backend', {
+                    sessionId: session.sessionId,
+                    queryId: session.queryId
+                });
+                localStorage.removeItem('refinement_session');
+            } else {
+                // Other error - still show restore option, let user try
+                logger.warn('Could not validate session, showing restore option anyway', err);
+                setSavedSessionData(session);
+            }
+        }
+    };
+
     // Save session to localStorage
     const saveSession = (sessionData) => {
         console.log('[Refinement] Saving session to localStorage:', sessionData);
-        localStorage.setItem('refinement_session', JSON.stringify(sessionData));
+        // Add timestamp for expiration checking
+        const sessionWithTimestamp = {
+            ...sessionData,
+            timestamp: Date.now()
+        };
+        localStorage.setItem('refinement_session', JSON.stringify(sessionWithTimestamp));
         console.log('[Refinement] Session saved. Verification:', localStorage.getItem('refinement_session'));
     };
 

@@ -202,11 +202,11 @@ Accessible terms for non-academic audiences.
     "semantic": "Studies comparing thromboprophylaxis interventions for venous thromboembolism prevention in patients undergoing major orthopedic surgery including total hip replacement, total knee replacement, and hip fracture surgery, examining antithrombotic medications such as low molecular weight heparins, direct oral anticoagulants, and antiplatelet agents alongside mechanical interventions including compression stockings and intermittent pneumatic compression devices, comparing effectiveness and safety both within intervention classes and across different prophylaxis approaches",
     "keyword": {
       "structured": "(("Arthroplasty" AND (knee OR hip)) OR “total knee replacement” OR “knee arthroplasty” OR tkr OR knee prosthesis OR knee joint OR total hip replacement OR hip arthroplasty OR thr OR Hip Prosthesis OR hip fracture surgery OR hfs OR (arthroscop* AND (knee OR meniscectomy OR synovectomy OR cruciate ligament))) AND (“pulmonary embol*” OR “pulmonary thromboembol*” OR PE OR “deep vein thrombos*” OR “deep venous thrombos*” OR “deep venous thromboembol*” OR “deep vein thromboembol*” OR DVT OR “venous thromboembol*” OR VTE OR “venous thrombos*” OR clot) AND (aspirin OR clopidogrel OR ticlopidine OR prasugrel OR heparin OR UFH OR LMWH OR enoxaparin OR dalteparin OR nadroparin OR ardeparin OR bemiparin OR certoparin OR parnaparin OR reviparin OR tinzaparin OR danaparoid OR fondaparinux OR idraparinux OR rivaroxaban OR apixaban OR enoxaparin OR desirudin OR argatroban OR bivalirudin OR lepirudin OR dabigatran OR warfarin OR acenocoumarol OR dicoumarol OR dextran sulfate OR ((compression or elastic) and (stocking* or boot*)) OR GCS OR venous foot pump OR VFP OR “pneumatic compression” OR “pneumatic hose” OR pneumatic compression hose OR “vena cava filter*” OR "Factor Xa Inhibitors")",
-      "phrases": ["total knee replacement", "writing quality", "undergraduate humanities", "peer assessment"],
+      "phrases": ["venous thromboembolism prophylaxis", "major orthopedic surgery", "total hip replacement", "total knee replacement", "compression stockings", "antithrombotic medications", "mechanical prophylaxis", "thromboprophylaxis interventions"],
       "terms": {
-        "required": ["peer feedback", "writing", "undergraduate"],
-        "optional": ["online", "assessment", "rubric"],
-        "excluded": ["K-12", "graduate", "STEM"]
+        "required": ["arthroplasty", "thromboprophylaxis", "venous thromboembolism", "prophylaxis", "orthopedic surgery"],
+        "optional": ["hospital", "rehabilitation", "compression stockings", "anticoagulant", "mechanical intervention", "pharmacological"],
+        "excluded": ["pediatric", "trauma", "spine surgery", "upper extremity"]
       }
     },
   },
@@ -215,14 +215,19 @@ Accessible terms for non-academic audiences.
     "venues": [],
     "authors": [],
     "publication_types": [],
-    "fields_of_study": []
+    "fields_of_study": ["Medicine"]
   },
   "terminology": {
     "primary_terms": ["peer feedback", "writing quality", "undergraduate education"],
     "synonyms": {
-      "peer feedback": ["peer review", "peer assessment", "collaborative feedback"],
-      "writing quality": ["writing skills", "composition quality", "writing proficiency"],
-      "undergraduate education": ["college education", "higher education"]
+      "venous thromboembolism": ["VTE", "venous thrombosis", "thromboembolic disease", "blood clots"],
+      "prophylaxis": ["prevention", "thromboprophylaxis", "preventive therapy", "preventive measures"],
+      "major orthopedic surgery": ["joint replacement surgery", "arthroplasty", "orthopedic procedures"],
+      "total hip replacement": ["total hip arthroplasty", "THR", "THA", "hip prosthesis"],
+      "total knee replacement": ["total knee arthroplasty", "TKR", "TKA", "knee prosthesis"],
+      "antithrombotic medications": ["anticoagulants", "blood thinners", "antithrombotic agents", "antiplatelet drugs"],
+      "compression stockings": ["graduated compression stockings", "GCS", "elastic stockings", "compression devices"],
+      "mechanical interventions": ["mechanical prophylaxis", "physical methods", "compression therapy", "intermittent pneumatic compression"]
     },
     "domain_specific": ["formative assessment", "rubric-based evaluation", "calibrated peer review"],
     "colloquial": ["students helping students with writing", "online writing feedback tools"]
