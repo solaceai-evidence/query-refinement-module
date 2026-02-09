@@ -376,6 +376,74 @@ def mark_refinement_step_user_ended_early(
     )
 
 
+def delete_refinement_steps_by_aspects(
+    db: Session,
+    query_id: int,
+    aspect_names: List[str]
+) -> int:
+    """
+    Delete refinement steps by aspect names (cascade delete for session truncation).
+    
+    Used when /back or /restart commands truncate the session - maintains referential
+    integrity between Redis session state and database records.
+    
+    Args:
+        db: Database session
+        query_id: Query ID to scope the deletion
+        aspect_names: List of aspect names to delete
+        
+    Returns:
+        Number of records deleted
+    """
+    if not aspect_names:
+        return 0
+    
+    deleted_count = db.query(RefinementStep).filter(
+        RefinementStep.query_id == query_id,
+        RefinementStep.aspect_name.in_(aspect_names)
+    ).delete(synchronize_session=False)
+    
+    db.commit()
+    return deleted_count
+
+
+def reset_refinement_step(
+    db: Session,
+    step_id: int,
+    clear_followup_history: bool = True
+) -> Optional[RefinementStep]:
+    """
+    Reset a refinement step to incomplete state (for /clear command).
+    
+    Maintains database consistency when user clears a dimension in Redis session.
+    Resets completion status and optionally clears follow-up history.
+    
+    Args:
+        db: Database session
+        step_id: ID of the refinement step to reset
+        clear_followup_history: Whether to delete follow-up history (default: True)
+        
+    Returns:
+        Reset RefinementStep or None if not found
+    """
+    step = get_refinement_step(db, step_id)
+    if step:
+        step.final_value = None
+        step.is_complete = False
+        step.was_skipped = False
+        step.user_ended_early = False
+        
+        # Optionally clear follow-up history to fully reset dimension
+        if clear_followup_history:
+            db.query(FollowUpHistory).filter(
+                FollowUpHistory.refinement_step_id == step_id
+            ).delete(synchronize_session=False)
+        
+        db.commit()
+        db.refresh(step)
+    return step
+
+
 # ==========================================
 # FollowUpHistory CRUD Operations (Audit Trail)
 # ==========================================

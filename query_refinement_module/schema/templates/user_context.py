@@ -134,104 +134,56 @@ Be aware of the following context factors. **These are advisory—flag concerns,
 # ============================================================================
 
 DIMENSIONS_CLARIFIED_AND_DEPENDENCIES_TEMPLATE = """
-## PRIOR CONTEXT
+## PRIOR CONTEXT — EXTRACT BEFORE ASKING
 
 {% if completed_dimensions %}
-### Already Clarified
-
-These dimensions are complete. **Extract relevant values from them before asking questions:**
+### Completed Dimensions
 
 {% for dim in completed_dimensions %}
-**{{ dim.name }}** ({{ dim.description }})
-→ {{ dim.assembled_value }}
-
-{% endfor %}
-
-- Dimensions marked [SKIPPED] are intentionally omitted by user
-- Extract values that apply to current dimension
-- If user contradicts any value, follow conflict resolution process
-
+{% if dependencies and dim.id in dependencies|map(attribute='id')|list %}✓ **{{ dim.name }}**: {{ dim.assembled_value }}
+{% else %}**{{ dim.name }}**: {{ dim.assembled_value }}
 {% endif %}
-
-{% if dependencies %}
-### Dependencies for Current Dimension
-
-**These dimensions directly inform the current dimension. Extract applicable values first:**
-
-{% for dep in dependencies %}
-**{{ dep.name }}**: {{ dep.assembled_value }}
-
 {% endfor %}
 
-**Extraction priority:**
-1. Look for direct mentions of current dimension elements in dependency text
-2. Extract using user's exact words from dependencies
-3. If extracted values fully satisfy schema → mark complete without asking
-4. If partially extracted → acknowledge, ask only about gaps
+**Instructions:**
+1. ✓ = DEPENDENCY (foundational, cannot be changed, current dimension MUST align)
+2. Search ALL dimensions above for elements matching current specification
+3. Extract using user's **exact words** from the dimension values
+4. Integrate extracted values into "current" field before asking questions
+5. Dimensions marked [SKIPPED] are intentionally omitted by user—do not ask about them
 
 {% endif %}
 
 {% if not completed_dimensions and not dependencies %}
-### Prior Context
+### First Dimension
 
-This is the first dimension. No prior context available for extraction.
+No prior context available. Proceed with questions.
 
 {% endif %}
-```
-
-## Example Workflow Demonstration:
-
-**Completed Dimension:**
-- **Intervention**: "metformin 500mg twice daily vs placebo for type 2 diabetes"
-
-**Current Dimension: Comparator**
-
-**Step 1: Extraction**
-```
-From "Intervention" dependency: "metformin 500mg twice daily vs placebo for type 2 diabetes"
-Extract for Comparator: "placebo"
-
-**Step 2: Assessment**
-
-- Schema requires: comparator type, dose (if applicable)
-- Extracted: "placebo" (no dose needed)
-- Status: COMPLETE
-
-Step 3: Output
-{
-  "current": "placebo",
-  "complete": true,
-  "source": "extracted from Intervention dependency"
-}
-```
-
-**No question asked!**
 
 ---
 
-**Alternative: Partial Extraction**
+## Extraction Examples
 
-**Completed Dimension:**
-- **Intervention**: "exercise program for obesity"
+**Example 1: Full Extraction (No Question Needed)**
+- Completed: **Intervention** = "metformin 500mg twice daily vs placebo"
+- Current: **Comparator**
+- Extraction: "placebo" (satisfies full schema)
+- Output: {"current": "placebo", "complete": true}
+- **No question asked**
 
-**Current Dimension: Intervention Details**
+**Example 2: Partial Extraction + Question**
+- Completed: **Intervention** = "exercise program for 6 months"
+- Current: **Intervention Details** (schema: type, frequency, duration, intensity)
+- Extraction: duration="6 months"
+- Output: {"current": "duration: 6 months", "complete": false}
+- Question: "I have the duration (6 months). What type of exercise will this be?"
 
-**Step 1: Extraction**
-```
-From "Intervention" dependency: "exercise program for obesity"
-Extract: "exercise program"
-Schema needs: type, frequency, duration, intensity
-```
-
-**Step 2: Assessment**
-- Extracted: program type (exercise)
-- Missing: frequency, duration, intensity
-- Status: PARTIAL
-
-**Step 3: Response (Educational tone)**
-```
-"Based on your intervention, I can see this is an exercise program. To complete the specification, I need a few details:
-
-What type of exercise? For example: aerobic, resistance training, or combined?"
+**Example 3: Cross-Dimension Extraction**
+- Completed: **Population** = "adults aged 18-65 with type 2 diabetes in urban clinics"
+- Current: **Setting**
+- Extraction: "urban clinics"
+- Output: {"current": "urban clinics", "complete": true}
+- **No question asked**
 ---
 """

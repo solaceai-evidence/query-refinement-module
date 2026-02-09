@@ -353,12 +353,12 @@ class PromptBuilder:
         3. System message: Previously clarified dimensions (dependencies)
         4. System message: Current dimension specification
         5. User message: Original query to analyze
-        6. Conversation history: Alternating assistant/user messages
+        6. Conversation history: Alternating assistant/user messages for THIS dimension
         
         Args:
             dimension: The dimension being refined
             query: The original query to analyze
-            conversation_history: List of Q&A exchanges for this dimension
+            conversation_history: List of Q&A exchanges for THIS dimension only
             dependency_context: Values from completed dependencies
             
         Returns:
@@ -423,7 +423,7 @@ class PromptBuilder:
             'content': query
         })
         
-        # 6. Conversation history: Alternating assistant/user messages
+        # 6. Conversation history: Alternating assistant/user messages for THIS dimension
         for qa in conversation_history:
             messages.append({'role': 'assistant', 'content': qa['question']})
             messages.append({'role': 'user', 'content': qa['response']})
@@ -558,12 +558,12 @@ def build_refinement_messages(
     
     Args:
         dimension: The dimension being refined
-        query: The original query to analyze
-        conversation_history: List of Q&A exchanges
-        dependency_context: Values from completed dependencies
+        query: The original query
+        conversation_history: Q&A history for THIS dimension
+        dependency_context: Completed dependency values
         
     Returns:
-        List of message dicts ready for LLM
+        List of messages for LLM API
     """
     return _default_builder.build_refinement_messages(
         dimension=dimension,

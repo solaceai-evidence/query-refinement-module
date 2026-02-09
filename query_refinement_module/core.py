@@ -1248,6 +1248,7 @@ class QueryRefinementManager:
         clarifications, baseline_summaries = self._gather_refinement_details(session)
 
         # Build refinement_aspect_values map for structured consumption
+        # ALL dimensions MUST be included in synthesis, even if [SKIPPED]
         refinement_aspect_values = {}
         for step in session.steps:
             aspect_id = step.refinement_aspect.id
@@ -1255,10 +1256,10 @@ class QueryRefinementManager:
             if step.normalized_value is not None and step.normalized_value != "":
                 # Use native value (dict/list/str/etc) - either extracted from original or from user dialogue
                 refinement_aspect_values[aspect_id] = step.normalized_value
-            elif step.was_skipped or (step.is_complete and not step.normalized_value):
-                # Skipped explicitly (/skip) or completed without value (/done, or auto-complete without extraction)
+            else:
+                # No value: skipped explicitly (/skip), completed without value, or incomplete when /submit used
+                # Mark as [SKIPPED] to indicate user did not consider this dimension important
                 refinement_aspect_values[aspect_id] = "[SKIPPED]"
-            # else: dimension incomplete - omit from synthesis (shouldn't happen for complete sessions)
 
         if not clarifications and not baseline_summaries:
             duration_ms = (time.time() - start_time) * 1000

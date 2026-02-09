@@ -99,13 +99,20 @@ class SessionCommands:
     
     def restart(self) -> Dict[str, Any]:
         """Restart the entire refinement session, clearing all aspects."""
+        # Track all aspects being cleared for DB cascade delete
+        cleared_aspects = [
+            step.refinement_aspect.aspect_name
+            for step in self.session.steps
+        ]
         cleared_count = len(self.session.steps)
+        
         self.session.steps = []
         self.session.synthesis_requested = False
         
         return {
             "success": True,
             "message": f"Session restarted. All {cleared_count} aspect(s) cleared.",
+            "cleared_aspects": cleared_aspects,
         }
     
     def skip_current(self) -> Dict[str, Any]:

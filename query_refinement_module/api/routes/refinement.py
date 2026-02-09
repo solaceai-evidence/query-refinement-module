@@ -29,6 +29,8 @@ from query_refinement_module.db.crud import (
     create_refinement_step,
     get_query_refinement_steps,
     create_followup,
+    delete_refinement_steps_by_aspects,
+    reset_refinement_step,
 )
 from query_refinement_module.api.auth import get_current_user
 from query_refinement_module.api.dependencies import get_refinement_manager, get_session_manager
@@ -149,6 +151,10 @@ class GetRefinementStatusResponse(BaseModel):
     is_complete: bool
     current_aspect: Optional[str]
     aspects_summary: Dict[str, Any]
+    next_prompt: Optional[Dict[str, Any]] = Field(None, description="Next question for the user")
+    ready_for_synthesis: bool = Field(False, description="True if all aspects are complete and ready for synthesis")
+    aspects: List[Dict[str, Any]] = Field(default_factory=list, description="List of aspect summaries")
+    conversation_history: List[Dict[str, Any]] = Field(default_factory=list, description="Full conversation history for UI restoration")
 
 
 class SynthesizeQueryRequest(BaseModel):
@@ -810,6 +816,34 @@ async def submit_answer(
             if command_type in ["back", "prev", "previous", "goto", "restart", "skip", "done", "submit", "end"]:
                 logger.info(f"[Query {query_id}] Saving session state after command: {command_type}")
                 
+                # Cascade delete DB records when session is truncated (referential integrity)
+                if command_type in ["back", "prev", "previous", "restart"]:
+                    cleared_aspects = command_payload.get("cleared_aspects", [])
+                    if cleared_aspects:
+                        deleted_count = delete_refinement_steps_by_aspects(
+                            db, query_id=query_id, aspect_names=cleared_aspects
+                        )
+                        logger.info(
+                            f"[Query {query_id}] Cascade deleted {deleted_count} DB records for truncated dimensions: {cleared_aspects}",
+                            extra={"query_id": query_id, "command": command_type, "deleted_count": deleted_count}
+                        )
+                
+                # Reset DB record when dimension is cleared (maintain consistency)
+                if command_type == "clear":
+                    active_step = session.get_active_step()
+                    if active_step:
+                        db_steps = get_query_refinement_steps(db, query_id)
+                        db_step = next(
+                            (s for s in db_steps if s.aspect_name == active_step.refinement_aspect.aspect_name),
+                            None
+                        )
+                        if db_step:
+                            reset_refinement_step(db, step_id=db_step.id, clear_followup_history=True)
+                            logger.info(
+                                f"[Query {query_id}] Reset DB record for cleared dimension: '{active_step.refinement_aspect.aspect_name}'",
+                                extra={"query_id": query_id, "dimension": active_step.refinement_aspect.aspect_name}
+                            )
+                
                 # Save dimension final values to DB when skip or done commands are used
                 if command_type in ["skip", "done"]:
                     from query_refinement_module.db.crud import (
@@ -1080,6 +1114,22 @@ async def get_refinement_status(
     if db_query.session.user_id != current_user.id:
         raise HTTPException(status_code=status.HTTP_403_FORBIDDEN, detail="Access denied")
     
+    # Check if query has been synthesized (workflow complete)
+    if db_query.refined_query and db_query.refined_query.strip():
+        logger.info(f"Query {query_id} already synthesized, returning completion status")
+        return GetRefinementStatusResponse(
+            query_id=query_id,
+            original_query=db_query.original_query,
+            refined_query=db_query.refined_query,
+            is_complete=True,
+            current_aspect=None,
+            aspects_summary={},
+            next_prompt=None,
+            ready_for_synthesis=True,
+            aspects=[],
+            conversation_history=[]
+        )
+    
     # Get framework name from database
     framework_name = db_query.session.framework_name
     if not framework_name:
@@ -1123,6 +1173,51 @@ async def get_refinement_status(
     summary = manager.get_initialization_summary(session)
     active_step = session.get_active_step()
     
+    # Build next prompt and check if ready for synthesis
+    next_prompt = await _build_next_prompt(manager, session)
+    ready_for_synthesis = next_prompt is None and session.is_complete()
+    
+    # Build aspects list for frontend
+    aspects = [
+        {
+            "aspect_id": step.refinement_aspect.id,
+            "aspect_name": step.refinement_aspect.aspect_name,
+            "is_complete": step.is_complete,
+            "needs_review": step.needs_review,
+            "was_skipped": step.was_skipped,
+            "status": (
+                "completed" if step.is_complete and not step.needs_review else
+                "needs review" if step.needs_review else
+                "active" if step == active_step else
+                "not started"
+            )
+        }
+        for step in session.steps
+    ]
+    
+    # Build conversation history for frontend restoration
+    conversation_history = []
+    # Add initial query
+    conversation_history.append({
+        "type": "query",
+        "content": db_query.original_query
+    })
+    # Add all Q&A exchanges from all steps
+    for step in session.steps:
+        for qa in step.conversation_history:
+            conversation_history.append({
+                "type": "question",
+                "content": qa.get('question', ''),
+                "aspectId": step.refinement_aspect.id,
+                "aspectName": step.refinement_aspect.aspect_name
+            })
+            if qa.get('response'):
+                conversation_history.append({
+                    "type": "answer",
+                    "content": qa['response'],
+                    "aspectId": step.refinement_aspect.id
+                })
+    
     duration_ms = (time.time() - start_time) * 1000
     logger.info(
         "API: Refinement status retrieved",
@@ -1132,6 +1227,7 @@ async def get_refinement_status(
             "query_id": query_id,
             "is_complete": session.is_complete(),
             "current_aspect": active_step.refinement_aspect.aspect_name if active_step else None,
+            "ready_for_synthesis": ready_for_synthesis,
             "duration_ms": round(duration_ms, 2),
         },
     )
@@ -1142,7 +1238,11 @@ async def get_refinement_status(
         refined_query=db_query.refined_query,
         is_complete=session.is_complete(),
         current_aspect=active_step.refinement_aspect.aspect_name if active_step else None,
-        aspects_summary=summary
+        aspects_summary=summary,
+        next_prompt=next_prompt,
+        ready_for_synthesis=ready_for_synthesis,
+        aspects=aspects,
+        conversation_history=conversation_history
     )
 
 

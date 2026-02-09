@@ -131,7 +131,13 @@ def test_handle_command_status_returns_summary():
 
 
 def test_handle_command_clear_clears_current_aspect():
-    """Test /clear clears current aspect data and flags for regeneration."""
+    """
+    Test /clear clears current aspect data and flags for regeneration.
+    
+    Note: This test verifies in-memory session behavior only.
+    Database synchronization (reset DB record to incomplete) is tested in
+    integration tests and handled by the API route handler (refinement.py).
+    """
     session = _make_session()
     step = session.steps[0]
     step.add_follow_up(question="Q?", response="Answer")
@@ -147,7 +153,13 @@ def test_handle_command_clear_clears_current_aspect():
 
 
 def test_handle_command_back_truncates_steps():
-    """Test /back removes current and future steps in sequential mode."""
+    """
+    Test /back removes current and future steps in sequential mode.
+    
+    Note: This test verifies in-memory session behavior only.
+    Database synchronization (cascade delete) is tested in integration tests
+    and handled by the API route handler (refinement.py).
+    """
     session = RefinementSession(original_query="Test query")
     
     # Add 3 steps
@@ -169,6 +181,7 @@ def test_handle_command_back_truncates_steps():
     assert payload["success"] is True
     assert len(session.steps) == 1  # Only first step remains
     assert "cleared" in payload["message"].lower()
+    assert "cleared_aspects" in payload  # Used by API handler for cascade delete
 
 
 def test_handle_command_skip_clears_all_data():
@@ -189,7 +202,13 @@ def test_handle_command_skip_clears_all_data():
 
 
 def test_handle_command_restart_truncates_all_steps():
-    """Test /restart clears all steps for full regeneration."""
+    """
+    Test /restart clears all steps for full regeneration.
+    
+    Note: This test verifies in-memory session behavior only.
+    Database synchronization (cascade delete of all records) is tested in
+    integration tests and handled by the API route handler (refinement.py).
+    """
     session = RefinementSession(original_query="Test query")
     
     # Add and complete multiple steps

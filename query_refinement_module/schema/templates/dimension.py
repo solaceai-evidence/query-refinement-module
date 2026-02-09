@@ -15,14 +15,14 @@ Contains Jinja2 templates for:
 DIMENSION_REFINEMENT_TEMPLATE = """
 ---
 
-## DIMENSION SPECIFICATION SCHEMA
+## DIMENSION SPECIFICATION
 
 **Dimension:** {{ aspect_name }} 
 **Description:** {{ aspect_description }}
 
 ---
 
-### Criteria
+### Specification
 
 {{ evaluation_criteria }}
 
