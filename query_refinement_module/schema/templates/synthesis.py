@@ -191,7 +191,7 @@ Accessible terms for non-academic audiences.
 **Output:**
 
 {
-  "integrated_statement": "studies about venous thromboembolism prophylaxis in patients undergoing major orthopedic surgery (total hip replacement, knee replacement, hip fracture surgery), comparing thromboprophylaxis interventions including antithrombotic medications and mechanical interventions such as compression stockings within and across classes",
+  "integrated_statement": "Recent studies about venous thromboembolism prophylaxis in patients undergoing major orthopedic surgery (total hip replacement, knee replacement, hip fracture surgery), comparing thromboprophylaxis interventions including antithrombotic medications and mechanical interventions such as compression stockings within and across classes",
   "dimensions_specifications": {
     "population": "patients undergoing major orthopedic surgery (total hip replacement, knee replacement, hip fracture surgery)",
     "intervention": "thromboprophylaxis interventions including antithrombotic medications and mechanical interventions such as compression stockings",
@@ -202,25 +202,20 @@ Accessible terms for non-academic audiences.
     "semantic": "Studies comparing thromboprophylaxis interventions for venous thromboembolism prevention in patients undergoing major orthopedic surgery including total hip replacement, total knee replacement, and hip fracture surgery, examining antithrombotic medications such as low molecular weight heparins, direct oral anticoagulants, and antiplatelet agents alongside mechanical interventions including compression stockings and intermittent pneumatic compression devices, comparing effectiveness and safety both within intervention classes and across different prophylaxis approaches",
     "keyword": {
       "structured": "(("Arthroplasty" AND (knee OR hip)) OR “total knee replacement” OR “knee arthroplasty” OR tkr OR knee prosthesis OR knee joint OR total hip replacement OR hip arthroplasty OR thr OR Hip Prosthesis OR hip fracture surgery OR hfs OR (arthroscop* AND (knee OR meniscectomy OR synovectomy OR cruciate ligament))) AND (“pulmonary embol*” OR “pulmonary thromboembol*” OR PE OR “deep vein thrombos*” OR “deep venous thrombos*” OR “deep venous thromboembol*” OR “deep vein thromboembol*” OR DVT OR “venous thromboembol*” OR VTE OR “venous thrombos*” OR clot) AND (aspirin OR clopidogrel OR ticlopidine OR prasugrel OR heparin OR UFH OR LMWH OR enoxaparin OR dalteparin OR nadroparin OR ardeparin OR bemiparin OR certoparin OR parnaparin OR reviparin OR tinzaparin OR danaparoid OR fondaparinux OR idraparinux OR rivaroxaban OR apixaban OR enoxaparin OR desirudin OR argatroban OR bivalirudin OR lepirudin OR dabigatran OR warfarin OR acenocoumarol OR dicoumarol OR dextran sulfate OR ((compression or elastic) and (stocking* or boot*)) OR GCS OR venous foot pump OR VFP OR “pneumatic compression” OR “pneumatic hose” OR pneumatic compression hose OR “vena cava filter*” OR "Factor Xa Inhibitors")",
-      "phrases": ["online peer feedback", "writing quality", "undergraduate humanities", "peer assessment"],
+      "phrases": ["total knee replacement", "writing quality", "undergraduate humanities", "peer assessment"],
       "terms": {
         "required": ["peer feedback", "writing", "undergraduate"],
         "optional": ["online", "assessment", "rubric"],
         "excluded": ["K-12", "graduate", "STEM"]
       }
     },
-    "grey_literature": {
-      "broad_concepts": ["digital peer review for student writing", "online feedback tools in higher education"],
-      "organizational_terms": ["university writing programs", "digital learning initiatives"],
-      "geographic_variants": ["US and Canadian universities", "North American higher education"]
-    }
   },
   "search_filters": {
-    "publication_years": "",
+    "publication_years": "2020-2026",
     "venues": [],
     "authors": [],
-    "publication_types": ["Randomized controlled trial"],
-    "fields_of_study": ["Education"]
+    "publication_types": [],
+    "fields_of_study": []
   },
   "terminology": {
     "primary_terms": ["peer feedback", "writing quality", "undergraduate education"],

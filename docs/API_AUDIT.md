@@ -164,28 +164,47 @@
 
 ---
 
-#### 6. **Framework Management**
+#### 6. **Framework Management** ✅ IMPLEMENTED
 **Problem:** Frameworks are read-only via file system, no runtime management  
 **Impact:** Cannot enable/disable frameworks, track usage, or validate schemas  
-**Missing Endpoints:**
-- `GET /api/admin/frameworks/validation` - Validate framework schemas
-- `GET /api/admin/frameworks/usage-stats` - Framework usage metrics
-- `POST /api/admin/frameworks/reload` - Reload frameworks from disk
+**Implementation:**
+- ✅ Created `/api/admin/frameworks` router with 7 endpoints
+- ✅ `GET /api/admin/frameworks/list` - List all available frameworks
+- ✅ `GET /api/admin/frameworks/usage-stats` - Framework usage metrics
+- ✅ `GET /api/admin/frameworks/{name}/validate` - Validate framework schemas
+- ✅ `POST /api/admin/frameworks/reload` - Reload frameworks from disk
+- ✅ `GET /api/admin/frameworks/{name}/details` - Get detailed framework info
+- ✅ `GET /api/admin/frameworks/{name}/usage` - Get specific framework usage
 
-**Recommendation:** Add framework admin endpoints
+**Status:** Complete - Full framework management and monitoring capabilities
 
 ---
 
 ### 🟢 NICE-TO-HAVE GAPS (Future Enhancements)
 
-#### 7. **Advanced Analytics**
-**Missing Endpoints:**
-- `GET /api/analytics/completion-rates` - Refinement completion statistics
-- `GET /api/analytics/dimension-skip-rates` - Which dimensions users skip most
-- `GET /api/analytics/command-usage` - Command usage patterns
-- `GET /api/analytics/llm-performance` - LLM response times, token usage
+#### 7. **Advanced Analytics** ✅ IMPLEMENTED
+**Implementation:**
+- ✅ Created `/api/admin/analytics` router with 4 comprehensive analytics endpoints
+- ✅ `GET /api/admin/analytics/completion-rates` - Refinement completion statistics with:
+  - Total/completed sessions, completion rates
+  - Average time to completion
+  - Sessions with all aspects answered
+  - Completion rates by framework and time buckets
+- ✅ `GET /api/admin/analytics/dimension-skip-rates` - Skip rate analysis:
+  - Overall skip rates
+  - Per-aspect skip rate breakdown
+  - Identify which dimensions users skip most
+- ✅ `GET /api/admin/analytics/command-usage` - Command pattern analysis:
+  - Total command executions
+  - Usage breakdown by command type (/back, /clear, /skip, etc.)
+  - Unique users, average commands per session
+- ✅ `GET /api/admin/analytics/llm-performance` - LLM performance metrics:
+  - Total API calls and error rates
+  - Average response times
+  - Token consumption tracking
+  - Performance breakdown by model and operation type
 
-**Recommendation:** Add analytics router in future iteration
+**Status:** Complete - Comprehensive analytics system for monitoring user behavior and system performance
 
 ---
 
@@ -233,17 +252,28 @@
    - Performance monitoring with active-sessions and cache-status endpoints
    - Reconstruction logging for troubleshooting
 
+5. **Framework Management Router** (`/api/admin/frameworks`) - COMPLETE
+   - List and validate frameworks
+   - Usage statistics and detailed info
+   - Runtime reload capability
+   - Per-framework usage tracking
+
+6. **Advanced Analytics Router** (`/api/admin/analytics`) - COMPLETE
+   - Completion rates and time-to-completion tracking
+   - Dimension skip rate analysis
+   - Command usage patterns
+   - LLM performance metrics (response times, tokens, errors)
+
 ### Next Iteration (Sprint 2)
 
-5. **Bulk Operations** (`/api/admin/bulk`)
+7. **Bulk Operations** (`/api/admin/bulk`)
    - Cleanup and maintenance tasks
    - Batch cache eviction
    - Session cleanup
 
 ### Future Consideration
-6. Analytics router
-7. User preferences
-8. Webhook system ✅ COMPLETE (implemented in previous release)
+8. User preferences (deferred - prototype will integrate with external systems)
+9. Webhook system ✅ COMPLETE (implemented in previous release)
 
 ---
 
