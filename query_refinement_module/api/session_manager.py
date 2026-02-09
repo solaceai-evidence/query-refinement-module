@@ -43,6 +43,7 @@ class SessionManager:
     - Session retrieval by query_id
     - Automatic cleanup via Redis expiration
     - Retry logic for transient failures
+    - Cache hit/miss tracking for diagnostics
     """
     
     def __init__(
@@ -68,6 +69,7 @@ class SessionManager:
         self.key_prefix = key_prefix
         self.max_retries = max_retries
         self.retry_delay = retry_delay
+        self.metrics_key = f"{key_prefix}metrics"
         
         # Test connection
         try:
@@ -182,7 +184,12 @@ class SessionManager:
             
             if not data:
                 log.info(f"No cached session found for query_id={query_id} (may need initialization)")
+                # Track cache miss
+                self._increment_metric("cache_misses")
                 return None
+            
+            # Track cache hit
+            self._increment_metric("cache_hits")
             
             # Parse and deserialize
             serialized = json.loads(data)
@@ -197,6 +204,8 @@ class SessionManager:
             
         except (RedisError, json.JSONDecodeError, Exception) as e:
             logger.error("Failed to load session for query_id=%d: %s", query_id, e)
+            # Track as cache miss on error
+            self._increment_metric("cache_misses")
             return None
     
     def delete_session(self, query_id: int) -> bool:
@@ -370,6 +379,119 @@ class SessionManager:
         except RedisError as e:
             logger.error("Failed to clear sessions: %s", e)
             return 0
+    
+    def _increment_metric(self, metric_name: str) -> None:
+        """
+        Increment a Redis counter for cache metrics.
+        
+        Args:
+            metric_name: Name of the metric to increment (e.g., 'cache_hits', 'cache_misses')
+        """
+        try:
+            self.redis_client.hincrby(self.metrics_key, metric_name, 1)
+        except RedisError as e:
+            logger.debug(f"Failed to increment metric {metric_name}: {e}")
+    
+    def get_cache_metrics(self) -> Dict[str, Any]:
+        """
+        Get cache hit/miss statistics.
+        
+        Returns:
+            Dictionary with cache metrics including hit rate
+        """
+        try:
+            metrics = self.redis_client.hgetall(self.metrics_key)
+            hits = int(metrics.get("cache_hits", 0))
+            misses = int(metrics.get("cache_misses", 0))
+            total = hits + misses
+            
+            return {
+                "cache_hits": hits,
+                "cache_misses": misses,
+                "total_lookups": total,
+                "hit_rate": round((hits / total * 100), 2) if total > 0 else 0.0,
+                "miss_rate": round((misses / total * 100), 2) if total > 0 else 0.0
+            }
+        except (RedisError, ValueError) as e:
+            logger.error(f"Failed to get cache metrics: {e}")
+            return {"error": str(e)}
+    
+    def reset_cache_metrics(self) -> bool:
+        """
+        Reset cache metrics counters.
+        
+        Returns:
+            True if reset successfully, False otherwise
+        """
+        try:
+            self.redis_client.delete(self.metrics_key)
+            logger.info("Reset cache metrics")
+            return True
+        except RedisError as e:
+            logger.error(f"Failed to reset cache metrics: {e}")
+            return False
+    
+    def log_reconstruction_attempt(
+        self,
+        query_id: int,
+        success: bool,
+        error_message: Optional[str] = None,
+        request_id: Optional[str] = None
+    ) -> None:
+        """
+        Log a session reconstruction attempt for diagnostics.
+        
+        Args:
+            query_id: Database query ID
+            success: Whether reconstruction succeeded
+            error_message: Error details if failed
+            request_id: Optional request ID for tracing
+        """
+        log = get_logger(__name__, request_id=request_id)
+        
+        # Store in Redis list with timestamp
+        reconstruction_key = f"{self.key_prefix}reconstruction:{query_id}"
+        attempt_data = {
+            "timestamp": time.time(),
+            "success": success,
+            "error": error_message,
+            "request_id": request_id
+        }
+        
+        try:
+            # Add to list (keep last 50 attempts per query)
+            self.redis_client.lpush(reconstruction_key, json.dumps(attempt_data))
+            self.redis_client.ltrim(reconstruction_key, 0, 49)  # Keep only 50 most recent
+            # Set TTL for reconstruction logs (24 hours)
+            self.redis_client.expire(reconstruction_key, 86400)
+            
+            status = "SUCCESS" if success else "FAILED"
+            log.info(
+                f"Logged reconstruction attempt for query_id={query_id}: {status}",
+                extra={"error": error_message} if error_message else {}
+            )
+        except RedisError as e:
+            logger.warning(f"Failed to log reconstruction attempt: {e}")
+    
+    def get_reconstruction_log(self, query_id: int, limit: int = 50) -> List[Dict[str, Any]]:
+        """
+        Get reconstruction attempt history for a query.
+        
+        Args:
+            query_id: Database query ID
+            limit: Maximum number of attempts to return
+            
+        Returns:
+            List of reconstruction attempts with timestamps
+        """
+        reconstruction_key = f"{self.key_prefix}reconstruction:{query_id}"
+        
+        try:
+            attempts = self.redis_client.lrange(reconstruction_key, 0, limit - 1)
+            return [json.loads(attempt) for attempt in attempts]
+        except (RedisError, json.JSONDecodeError) as e:
+            logger.error(f"Failed to get reconstruction log for query_id={query_id}: {e}")
+            return []
 
 
 class InMemorySessionManager:

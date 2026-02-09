@@ -32,7 +32,9 @@ configure_logging(
 
 logger = logging.getLogger(__name__)
 
-from query_refinement_module.api.routes import auth, queries, feedback, refinement, audit, frontend_logs, admin, webhooks
+from query_refinement_module.api.routes import (
+    auth, queries, feedback, refinement, audit, frontend_logs, admin, webhooks, admin_sessions
+)
 from query_refinement_module.api.exceptions import QueryRefinementException
 from query_refinement_module.api.rate_limit import RateLimitMiddleware
 from query_refinement_module.logging.middleware import RequestLoggingMiddleware
@@ -232,4 +234,5 @@ app.include_router(refinement.router, prefix="/api")
 app.include_router(audit.router, prefix="/api")
 app.include_router(frontend_logs.router, prefix="/api")
 app.include_router(admin.router, prefix="/api")
+app.include_router(admin_sessions.router)
 app.include_router(webhooks.router, prefix="/api")

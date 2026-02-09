@@ -75,11 +75,17 @@ Combine original query with non-null dimensions. Rules:
 All dimension IDs from input with their values. Use `null` for [SKIPPED] dimensions.
 
 ### search_optimized.semantic
-40-80 word natural language query for vector/embedding search. Include technical terms with context.
+40-80 word natural language query for vector/embedding search.
+- Focus on conceptual content and research aims
+- Include technical terminology with context
+- EXCLUDE temporal constraints (years), venue names, author names, publication types
+- Exception: Keep temporal elements if they're part of the research question itself (e.g., "longitudinal trends", "before/after policy changes")
 
 ### search_optimized.keyword.structured
 Boolean query with AND/OR/NOT and parentheses.
-Example: `(term1 OR term2) AND (term3) NOT (term4)`
+- Focus on domain terminology and concept relationships
+- EXCLUDE: publication years, journal names, author names, document types
+- These belong in search_filters
 
 ### search_optimized.keyword.phrases
 5-10 exact phrases (2-4 words each) likely in target literature.
@@ -174,32 +180,28 @@ Accessible terms for non-academic audiences.
 ## Example
 
 **Input 1 (Original query):**
-"I am interested on studies about venous thromboembolism prophylaxis in patients undergoing major orthopedic surgery"
+"I am interested in recent studies about venous thromboembolism prophylaxis in patients undergoing major orthopedic surgery"
 
 **Input 2 (Clarified dimensions):**
-- Population: patients undergoing major orthopedic surgery (total hip replacement, knee replacement, hip fracture surgery
-- Intervention: classes of thromboprophylaxis interventions including antithrombotic medications and mechanical interventions such as compression stockings
-- Comparator: [SKIPPED]
-- Outcomes: writing quality measured by rubric scores
-- Setting: large public universities in North America
-- Study design: quasi-experimental or RCTs
+- Population: "patients undergoing major orthopedic surgery (total hip replacement, knee replacement, hip fracture surgery)"
+- Intervention: "thromboprophylaxis interventions including antithrombotic medications and mechanical interventions such as compression stockings"
+- Comparison: "within and across classes (comparing interventions both within the same class and between different classes)"
+- Outcomes: [SKIPPED]
 
 **Output:**
 
 {
-  "integrated_statement": "Does structured online peer feedback improve writing quality in undergraduate humanities students at large public North American universities, as measured by rubric scores, in quasi-experimental or randomized controlled studies?",
+  "integrated_statement": "studies about venous thromboembolism prophylaxis in patients undergoing major orthopedic surgery (total hip replacement, knee replacement, hip fracture surgery), comparing thromboprophylaxis interventions including antithrombotic medications and mechanical interventions such as compression stockings within and across classes",
   "dimensions_specifications": {
-    "population": "undergraduate students in humanities courses",
-    "intervention": "structured online peer feedback platforms",
-    "comparator": null,
-    "outcomes": "writing quality measured by rubric scores",
-    "setting": "large public universities in North America",
-    "study_design": "quasi-experimental or RCTs"
+    "population": "patients undergoing major orthopedic surgery (total hip replacement, knee replacement, hip fracture surgery)",
+    "intervention": "thromboprophylaxis interventions including antithrombotic medications and mechanical interventions such as compression stockings",
+    "comparator": "within and across classes (comparing interventions both within the same class and between different classes)",
+    "outcomes": null
   },
   "search_optimized": {
-    "semantic": "Effectiveness of structured online peer feedback platforms for improving writing quality in undergraduate humanities education at large public North American universities, measuring outcomes through rubric-based assessment in quasi-experimental or randomized controlled study designs",
+    "semantic": "Studies comparing thromboprophylaxis interventions for venous thromboembolism prevention in patients undergoing major orthopedic surgery including total hip replacement, total knee replacement, and hip fracture surgery, examining antithrombotic medications such as low molecular weight heparins, direct oral anticoagulants, and antiplatelet agents alongside mechanical interventions including compression stockings and intermittent pneumatic compression devices, comparing effectiveness and safety both within intervention classes and across different prophylaxis approaches",
     "keyword": {
-      "structured": "(online OR digital) AND (peer feedback OR peer review) AND (writing) AND (undergraduate OR college) AND (humanities)",
+      "structured": "(("Arthroplasty" AND (knee OR hip)) OR “total knee replacement” OR “knee arthroplasty” OR tkr OR knee prosthesis OR knee joint OR total hip replacement OR hip arthroplasty OR thr OR Hip Prosthesis OR hip fracture surgery OR hfs OR (arthroscop* AND (knee OR meniscectomy OR synovectomy OR cruciate ligament))) AND (“pulmonary embol*” OR “pulmonary thromboembol*” OR PE OR “deep vein thrombos*” OR “deep venous thrombos*” OR “deep venous thromboembol*” OR “deep vein thromboembol*” OR DVT OR “venous thromboembol*” OR VTE OR “venous thrombos*” OR clot) AND (aspirin OR clopidogrel OR ticlopidine OR prasugrel OR heparin OR UFH OR LMWH OR enoxaparin OR dalteparin OR nadroparin OR ardeparin OR bemiparin OR certoparin OR parnaparin OR reviparin OR tinzaparin OR danaparoid OR fondaparinux OR idraparinux OR rivaroxaban OR apixaban OR enoxaparin OR desirudin OR argatroban OR bivalirudin OR lepirudin OR dabigatran OR warfarin OR acenocoumarol OR dicoumarol OR dextran sulfate OR ((compression or elastic) and (stocking* or boot*)) OR GCS OR venous foot pump OR VFP OR “pneumatic compression” OR “pneumatic hose” OR pneumatic compression hose OR “vena cava filter*” OR "Factor Xa Inhibitors")",
       "phrases": ["online peer feedback", "writing quality", "undergraduate humanities", "peer assessment"],
       "terms": {
         "required": ["peer feedback", "writing", "undergraduate"],
