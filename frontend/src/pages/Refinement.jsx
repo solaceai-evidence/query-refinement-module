@@ -52,16 +52,23 @@ const Refinement = () => {
     const [workflowLimitReached, setWorkflowLimitReached] = useState(false);
 
     useEffect(() => {
+        console.log('[Refinement] Component mounted, checking for saved session...');
         const savedSession = localStorage.getItem('refinement_session');
+        console.log('[Refinement] localStorage content:', savedSession);
+
         if (savedSession) {
             try {
                 const session = JSON.parse(savedSession);
+                console.log('[Refinement] Found saved session:', session);
                 logger.info('Found saved session', { sessionId: session.sessionId, queryId: session.queryId });
                 setSavedSessionData(session);
             } catch (e) {
+                console.error('[Refinement] Failed to parse saved session:', e);
                 logger.error('Failed to parse saved session', e);
                 localStorage.removeItem('refinement_session');
             }
+        } else {
+            console.log('[Refinement] No saved session found in localStorage');
         }
 
         // Check user workflow status
@@ -81,10 +88,13 @@ const Refinement = () => {
 
     // Save session to localStorage
     const saveSession = (sessionData) => {
+        console.log('[Refinement] Saving session to localStorage:', sessionData);
         localStorage.setItem('refinement_session', JSON.stringify(sessionData));
+        console.log('[Refinement] Session saved. Verification:', localStorage.getItem('refinement_session'));
     };
 
     const clearSession = () => {
+        console.log('[Refinement] Clearing session from localStorage');
         localStorage.removeItem('refinement_session');
     };
 
@@ -538,6 +548,10 @@ const Refinement = () => {
     };
 
     const handleResumeSession = async () => {
+        console.log('[Refinement] handleResumeSession called');
+        console.log('[Refinement] savedSessionData:', savedSessionData);
+        console.log('[Refinement] localStorage before resume:', localStorage.getItem('refinement_session'));
+
         if (!savedSessionData) return;
 
         setLoading(true);
@@ -550,6 +564,7 @@ const Refinement = () => {
 
             // Fetch current status from API
             const status = await refinementService.getStatus(savedSessionData.queryId);
+            console.log('[Refinement] Status received:', status);
 
             logger.info('Session resumed', {
                 sessionId: savedSessionData.sessionId,
@@ -557,8 +572,21 @@ const Refinement = () => {
                 stage: status.ready_for_synthesis ? 'synthesis' : 'refinement'
             });
 
+            // Restore initial query
+            if (status.original_query) {
+                setInitialQuery(status.original_query);
+            }
+
             // Set aspects
             setAspects(status.aspects || []);
+
+            // Restore conversation history
+            if (status.conversation_history && status.conversation_history.length > 0) {
+                logger.info('Restoring conversation history', {
+                    historyLength: status.conversation_history.length
+                });
+                setConversationHistory(status.conversation_history);
+            }
 
             // Check if ready for synthesis
             if (status.ready_for_synthesis && !status.next_prompt) {
@@ -568,11 +596,18 @@ const Refinement = () => {
                 setCurrentQuestion(status.next_prompt);
                 setCurrentAspectId(status.next_prompt?.aspect_id);
                 setStage('refinement');
+
+                // Keep session in localStorage so it can be resumed after refresh
+                // It will be cleared when synthesis completes or user starts over
+                console.log('[Refinement] Keeping session in localStorage for future refreshes');
             }
 
-            // Clear the saved session notification
+            // Clear the saved session notification but keep localStorage
             setSavedSessionData(null);
+            console.log('[Refinement] Cleared savedSessionData state but kept localStorage');
+            console.log('[Refinement] localStorage after resume:', localStorage.getItem('refinement_session'));
         } catch (err) {
+            console.error('[Refinement] Resume session failed:', err);
             logger.error('Failed to resume session', err);
             setError('Failed to resume session. Please start a new one.');
             clearSession();
@@ -583,6 +618,8 @@ const Refinement = () => {
     };
 
     const handleStartOver = () => {
+        console.log('[Refinement] handleStartOver called - clearing all state');
+        console.log('[Refinement] Stack trace:', new Error().stack);
         clearSession();
         setSavedSessionData(null);
         setStage('framework-selection');
