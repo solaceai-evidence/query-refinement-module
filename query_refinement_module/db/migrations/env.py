@@ -29,6 +29,9 @@ from query_refinement_module.db.models.refinement_step import RefinementStep
 from query_refinement_module.db.models.refinement_step_metadata import RefinementStepMetadata
 from query_refinement_module.db.models.feedback import Feedback
 from query_refinement_module.db.models.followup_history import FollowUpHistory
+from query_refinement_module.db.models.webhook import Webhook, WebhookDelivery
+from query_refinement_module.db.models.audit_log import AuditLog
+from query_refinement_module.db.models.frontend_log import FrontendLog
 
 target_metadata = Base.metadata
 

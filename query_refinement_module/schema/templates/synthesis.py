@@ -163,14 +163,8 @@ Use ONLY these values:
 
 Map ambiguous terms to closest match. Return [] if unclear.
 
-### terminology.primary_terms
-3-5 core concepts from input + dimensions.
-
 ### terminology.synonyms
-For each core concept from the input + dimensions (maximum 8), 3-8 equivalents: technical variants, domain alternatives, common equivalents.
-
-### terminology.domain_specific
-Technical/scientific nomenclature from the research field.
+For each core concept (maximum 8) from the input + dimensions, 3-8 equivalents: technical variants, domain alternatives, common equivalents.
 
 ### terminology.colloquial
 Accessible terms for non-academic audiences.
@@ -180,11 +174,11 @@ Accessible terms for non-academic audiences.
 ## Example
 
 **Input 1 (Original query):**
-"I think I want to research whether online peer feedback improves the writing skills of students"
+"I am interested on studies about venous thromboembolism prophylaxis in patients undergoing major orthopedic surgery"
 
 **Input 2 (Clarified dimensions):**
-- Population: undergraduate students in humanities courses
-- Intervention: structured online peer feedback platforms
+- Population: patients undergoing major orthopedic surgery (total hip replacement, knee replacement, hip fracture surgery
+- Intervention: classes of thromboprophylaxis interventions including antithrombotic medications and mechanical interventions such as compression stockings
 - Comparator: [SKIPPED]
 - Outcomes: writing quality measured by rubric scores
 - Setting: large public universities in North America

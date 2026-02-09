@@ -3,7 +3,7 @@ User model for query refinement web app.
 Follows SQLAlchemy ORM standards.
 """
 from sqlalchemy import Column, Integer, String, DateTime, Boolean
-from sqlalchemy.orm import declarative_base
+from sqlalchemy.orm import declarative_base, relationship
 from datetime import datetime, timezone
 
 Base = declarative_base()
@@ -28,6 +28,9 @@ class User(Base):
     # Evaluation constraints
     is_superuser = Column(Boolean, default=False, nullable=False)
     has_completed_workflow = Column(Boolean, default=False, nullable=False)
+    
+    # Relationships (defined via backref in other models, explicit here for webhooks)
+    webhooks = relationship("Webhook", back_populates="user", cascade="all, delete-orphan", lazy="dynamic")
 
     def __repr__(self):
         return f"<User(id={self.id}, username='{self.username}', superuser={self.is_superuser}')>"

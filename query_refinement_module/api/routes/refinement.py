@@ -10,6 +10,7 @@ Key Features:
 - Database metadata persistence
 - Performance monitoring
 - Error handling with detailed context
+- Webhook event notifications for external integrations
 """
 import asyncio
 import logging
@@ -659,6 +660,21 @@ async def start_refinement(
         },
     )
     
+    # Trigger webhook: refinement.started
+    try:
+        from query_refinement_module.services.webhook_service import (
+            trigger_webhook_event,
+            build_refinement_started_payload
+        )
+        payload = build_refinement_started_payload(
+            query_id=db_query.id,
+            user_id=current_user.id,
+            framework=request.framework_name
+        )
+        trigger_webhook_event(db, "refinement.started", payload, user_id=current_user.id)
+    except Exception as e:
+        logger.error(f"Failed to trigger refinement.started webhook: {e}", exc_info=True)
+    
     return StartRefinementResponse(
         session_id=db_session.id,
         query_id=db_query.id,
@@ -1040,6 +1056,22 @@ async def submit_answer(
             f"Saved final value to DB for dimension '{active_step.refinement_aspect.aspect_name}'",
             extra={"query_id": query_id, "dimension": active_step.refinement_aspect.aspect_name}
         )
+        
+        # Trigger webhook: refinement.step_completed
+        try:
+            from query_refinement_module.services.webhook_service import (
+                trigger_webhook_event,
+                build_refinement_step_completed_payload
+            )
+            payload = build_refinement_step_completed_payload(
+                query_id=query_id,
+                dimension=active_step.refinement_aspect.aspect_name,
+                aspect=active_step.refinement_aspect.aspect_name,
+                answer=active_step.normalized_value_as_str
+            )
+            trigger_webhook_event(db, "refinement.step_completed", payload, user_id=current_user.id)
+        except Exception as e:
+            logger.error(f"Failed to trigger refinement.step_completed webhook: {e}", exc_info=True)
     
     # Get next prompt
     next_prompt = None
@@ -1118,6 +1150,21 @@ async def submit_answer(
     
     # Check if all aspects are complete (ready for synthesis)
     ready_for_synthesis = next_prompt is None and session.is_complete()
+    
+    # Trigger webhook: refinement.complete (if all dimensions done)
+    if ready_for_synthesis:
+        try:
+            from query_refinement_module.services.webhook_service import (
+                trigger_webhook_event,
+                build_refinement_complete_payload
+            )
+            payload = build_refinement_complete_payload(
+                query_id=query_id,
+                total_steps=len(session.steps)
+            )
+            trigger_webhook_event(db, "refinement.complete", payload, user_id=current_user.id)
+        except Exception as e:
+            logger.error(f"Failed to trigger refinement.complete webhook: {e}", exc_info=True)
     
     duration_ms = (time.time() - start_time) * 1000
     logger.info(
@@ -1386,6 +1433,20 @@ async def synthesize_refined_query(
                 if session_step.conversation_history:
                     session_step.is_complete = True
     
+    # Trigger webhook: synthesis.started
+    try:
+        from query_refinement_module.services.webhook_service import (
+            trigger_webhook_event,
+            build_synthesis_started_payload
+        )
+        payload = build_synthesis_started_payload(
+            query_id=request.query_id,
+            initial_query=db_query.original_query
+        )
+        trigger_webhook_event(db, "synthesis.started", payload, user_id=current_user.id)
+    except Exception as e:
+        logger.error(f"Failed to trigger synthesis.started webhook: {e}", exc_info=True)
+    
     # Synthesize refined query
     try:
         synthesis_result = await manager.synthesize_refined_query(session)
@@ -1480,6 +1541,21 @@ async def synthesize_refined_query(
     
     # Update database
     update_refined_query(db, request.query_id, refined_query)
+    
+    # Trigger webhook: synthesis.complete
+    try:
+        from query_refinement_module.services.webhook_service import (
+            trigger_webhook_event,
+            build_synthesis_complete_payload
+        )
+        payload = build_synthesis_complete_payload(
+            query_id=request.query_id,
+            refined_query=refined_query,
+            initial_query=db_query.original_query
+        )
+        trigger_webhook_event(db, "synthesis.complete", payload, user_id=current_user.id)
+    except Exception as e:
+        logger.error(f"Failed to trigger synthesis.complete webhook: {e}", exc_info=True)
     
     # Delete session from Redis (workflow complete)
     session_manager.delete_session(request.query_id)
