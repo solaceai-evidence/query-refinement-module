@@ -1272,7 +1272,7 @@ class QueryRefinementManager:
                 },
             )
             return {
-                "refined_query": session.original_query,
+                "integrated_statement": session.original_query,
                 "used_llm": False,
                 "clarifications": [],
                 "baseline_summaries": [],
@@ -1385,7 +1385,7 @@ class QueryRefinementManager:
             
             # Validate with Pydantic model
             synthesis_response = QueryRefinementResponse(**response_data)
-            refined_query = synthesis_response.synthesized_statement
+            refined_query = synthesis_response.integrated_statement
             
             logger.info(
                 "Successfully parsed and validated structured synthesis response"
@@ -1395,8 +1395,8 @@ class QueryRefinementManager:
                 metadata={
                     "has_structured_response": True,
                     "response_length": len(refined_query),
-                    "has_detail_values": bool(synthesis_response.refined_dimensions),
-                    "detail_values_count": len(synthesis_response.refined_dimensions) if synthesis_response.refined_dimensions else 0,
+                    "has_detail_values": bool(synthesis_response.dimensions_specifications),
+                    "detail_values_count": len(synthesis_response.dimensions_specifications) if synthesis_response.dimensions_specifications else 0,
                 }
             )
         except json.JSONDecodeError as parse_error:
@@ -1472,7 +1472,7 @@ class QueryRefinementManager:
         )
 
         result_dict = {
-            "refined_query": refined_query,
+            "integrated_statement": refined_query,
             "used_llm": True,
             "clarifications": clarifications,
             "baseline_summaries": baseline_summaries,
@@ -1482,11 +1482,11 @@ class QueryRefinementManager:
         
         # Include structured response fields if available
         if synthesis_response:
-            result_dict["detail_values"] = synthesis_response.refined_dimensions
+            result_dict["dimensions_specifications"] = synthesis_response.dimensions_specifications
             result_dict["search_optimized"] = synthesis_response.search_optimized
             result_dict["search_filters"] = synthesis_response.search_filters
             result_dict["terminology"] = synthesis_response.terminology
-            result_dict["synthesized_statement"] = synthesis_response.synthesized_statement
+            result_dict["integrated_statement"] = synthesis_response.integrated_statement
 
         return result_dict
 

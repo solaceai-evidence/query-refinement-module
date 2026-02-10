@@ -131,16 +131,35 @@ export interface SynthesizeQueryRequest {
 
 export interface SynthesizeQueryResponse {
     query_id: number;
-    refined_query: string;
+    integrated_statement: string;
     used_llm: boolean;
     structured_output?: {
-        detail_values?: { [key: string]: any };
-        search_optimized?: string;
-        search_filters?: { [key: string]: any };
-        terminology?: string[];
-        synthesized_statement?: string;
+        dimensions_specifications?: { [key: string]: any };
+        search_optimized?: {
+            semantic?: string;
+            keyword?: {
+                structured?: string;
+                phrases?: string[];
+                terms?: {
+                    required?: string[];
+                    optional?: string[];
+                    excluded?: string[];
+                };
+            };
+        };
+        search_filters?: {
+            publication_years?: string;
+            venues?: string[];
+            authors?: string[];
+            publication_types?: string[];
+            fields_of_study?: string[];
+        };
+        terminology?: {
+            synonyms?: { [key: string]: string[] };
+            colloquial?: string[];
+        };
     } | null;
-    metadata: {
+    metadata?: {
         [key: string]: any;
     };
 }

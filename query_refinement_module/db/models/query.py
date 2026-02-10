@@ -15,23 +15,26 @@ class Query(Base):
     
     Core fields:
     - original_query: User's initial input
-    - refined_query: Legacy field (deprecated, use synthesized_statement)
+    - refined_query: Legacy field (for backward compatibility)
     
-    Final Response Fields (QueryRefinementResponse):
-    - synthesized_statement: Integrated research specification
-    - refined_dimensions: Dict of dimension_id -> final value
-    - search_optimized: Search variants (semantic, keyword, grey_literature)
+    Final Response Fields (stored using database column names):
+    - synthesized_statement: Stores API's integrated_statement
+    - refined_dimensions: Stores API's dimensions_specifications (as detail_values)
+    - search_optimized: Search variants (semantic, keyword)
     - search_filters: Publication years, venues, authors, etc.
-    - terminology: Primary terms, synonyms, domain-specific terms
-    - response_metadata: Temporal, geographic, source types
-    - processing_log: Preserved, normalized, integrated, expanded
+    - terminology: Synonyms, colloquial terms
+    - response_metadata: Additional context
+    - processing_log: Processing history
+    
+    Note: Database column names differ from API field names for historical reasons.
+    crud.py handles the mapping between API and database names.
     """
     __tablename__ = "queries"
 
     id = Column(Integer, primary_key=True, autoincrement=True)
     session_id = Column(Integer, ForeignKey("query_sessions.id"), nullable=False)
     original_query = Column(Text, nullable=False)
-    refined_query = Column(Text, nullable=True)  # Deprecated - use synthesized_statement
+    refined_query = Column(Text, nullable=True)  # Legacy field for backward compatibility
     created_at = Column(DateTime, default=_utcnow)
     updated_at = Column(DateTime, default=_utcnow, onupdate=_utcnow)
     completed_at = Column(DateTime, nullable=True)  # When refinement finished

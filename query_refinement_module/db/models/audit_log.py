@@ -32,6 +32,7 @@ class AuditEventType:
     SESSION_CREATE = "session.create"
     SESSION_END = "session.end"
     SESSION_ACCESS = "session.access"
+    SESSION_ABANDONED = "session.abandoned"
     
     # Query events
     QUERY_CREATE = "query.create"

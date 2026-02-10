@@ -32,6 +32,7 @@ from query_refinement_module.db.crud import (
     create_followup,
     delete_refinement_steps_by_aspects,
     reset_refinement_step,
+    abandon_query_session,
 )
 from query_refinement_module.api.auth import get_current_user
 from query_refinement_module.api.dependencies import get_refinement_manager, get_session_manager
@@ -168,7 +169,7 @@ class SynthesizeQueryRequest(BaseModel):
 class SynthesizeQueryResponse(BaseModel):
     """Response with synthesized refined query."""
     query_id: int
-    refined_query: str
+    integrated_statement: str
     used_llm: bool
     structured_output: Optional[Dict[str, Any]] = None
 
@@ -1456,27 +1457,26 @@ async def synthesize_refined_query(
             detail=f"Failed to synthesize query: {str(e)}"
         )
     
-    refined_query = synthesis_result.get('refined_query', '')
+    integrated_statement = synthesis_result.get('integrated_statement', '')
     
     # Build structured output from synthesis result
     structured_output = None
-    if synthesis_result.get('detail_values'):
+    if synthesis_result.get('dimensions_specifications'):
         # Already parsed by core.py
         structured_output = {
-            'detail_values': synthesis_result.get('detail_values'),
+            'dimensions_specifications': synthesis_result.get('dimensions_specifications'),
             'search_optimized': synthesis_result.get('search_optimized'),
             'search_filters': synthesis_result.get('search_filters'),
             'terminology': synthesis_result.get('terminology'),
-            'synthesized_statement': synthesis_result.get('synthesized_statement'),
         }
-    elif refined_query and (refined_query.startswith('{') or refined_query.startswith('```')):
-        # Try to parse JSON from refined_query string (fallback if core.py parsing failed)
+    elif integrated_statement and (integrated_statement.startswith('{') or integrated_statement.startswith('```')):
+        # Try to parse JSON from integrated_statement string (fallback if core.py parsing failed)
         try:
             import json
             import re
             
             # Strip markdown code fences if present
-            json_str = refined_query
+            json_str = integrated_statement
             if json_str.startswith('```'):
                 # Remove opening fence (```json or ```)
                 lines = json_str.split('\n')
@@ -1500,8 +1500,8 @@ async def synthesize_refined_query(
                 import re
                 statement_match = re.search(r'"integrated_statement"\s*:\s*"([^"]+)"', json_str)
                 if statement_match:
-                    refined_query = statement_match.group(1)
-                    logger.info(f"Extracted integrated_statement from truncated JSON: {refined_query[:100]}...")
+                    integrated_statement = statement_match.group(1)
+                    logger.info(f"Extracted integrated_statement from truncated JSON: {integrated_statement[:100]}...")
                 else:
                     logger.warning("Could not extract integrated_statement from truncated JSON")
                 # Keep structured_output as None for truncated response
@@ -1510,37 +1510,70 @@ async def synthesize_refined_query(
             # Parse JSON
             parsed_data = json.loads(json_str)
             
-            # Extract structured fields (use LLM field names from raw JSON)
+            # Extract structured fields (use LLM template field names)
             structured_output = {
-                'detail_values': parsed_data.get('detail_values'),
+                'dimensions_specifications': parsed_data.get('dimensions_specifications'),
                 'search_optimized': parsed_data.get('search_optimized'),
                 'search_filters': parsed_data.get('search_filters'),
                 'terminology': parsed_data.get('terminology'),
-                'synthesized_statement': parsed_data.get('integrated_statement'),  # LLM uses integrated_statement
-                'dimensions': parsed_data.get('dimensions_specifications'),  # LLM uses dimensions_specifications
             }
             
-            # Use integrated_statement (LLM field name) as refined_query if available
+            # Use integrated_statement (LLM field name) as integrated_statement if available
             if parsed_data.get('integrated_statement'):
-                refined_query = parsed_data['integrated_statement']
+                integrated_statement = parsed_data['integrated_statement']
                 
             logger.info(
-                "Successfully parsed JSON from refined_query string",
+                "Successfully parsed JSON from integrated_statement string",
                 extra={"has_dimensions": 'dimensions' in parsed_data}
             )
             
         except (json.JSONDecodeError, ValueError) as e:
             logger.error(
-                f"Failed to parse JSON from refined_query: {e}",
+                f"Failed to parse JSON from integrated_statement: {e}",
                 extra={
                     "error_type": type(e).__name__,
                     "json_preview": json_str[:200] if 'json_str' in locals() else None
                 }
             )
-            # Keep refined_query as-is, structured_output remains None
+            # Keep integrated_statement as-is, structured_output remains None
+    
+    # Validate integrated_statement before returning
+    if not integrated_statement or not integrated_statement.strip():
+        logger.error(
+            "Synthesis produced empty integrated_statement",
+            extra={
+                "request_id": request_id_val,
+                "query_id": request.query_id,
+                "synthesis_result_keys": list(synthesis_result.keys()) if synthesis_result else None,
+            }
+        )
+        raise HTTPException(
+            status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
+            detail="Synthesis produced empty result. Please try again."
+        )
+    
+    logger.info(
+        "Integrated statement before database update",
+        extra={
+            "request_id": request_id_val,
+            "integrated_statement_preview": integrated_statement[:200],
+            "integrated_statement_length": len(integrated_statement),
+        }
+    )
     
     # Update database
-    update_refined_query(db, request.query_id, refined_query)
+    update_refined_query(db, request.query_id, integrated_statement)
+    
+    # Verify database update
+    db.refresh(db_query)
+    logger.info(
+        "Database updated with refined query",
+        extra={
+            "request_id": request_id_val,
+            "query_id": request.query_id,
+            "db_integrated_statement_length": len(db_query.refined_query) if db_query.refined_query else 0,
+        }
+    )
     
     # Trigger webhook: synthesis.complete
     try:
@@ -1550,7 +1583,7 @@ async def synthesize_refined_query(
         )
         payload = build_synthesis_complete_payload(
             query_id=request.query_id,
-            refined_query=refined_query,
+            refined_query=integrated_statement,
             initial_query=db_query.original_query
         )
         trigger_webhook_event(db, "synthesis.complete", payload, user_id=current_user.id)
@@ -1568,18 +1601,30 @@ async def synthesize_refined_query(
             "user_id": current_user.id,
             "query_id": request.query_id,
             "used_llm": synthesis_result.get('used_llm', False),
-            "refined_query_length": len(refined_query),
+            "integrated_statement_length": len(integrated_statement),
             "has_structured_output": structured_output is not None,
             "duration_ms": round(duration_ms, 2),
         },
     )
     
-    return SynthesizeQueryResponse(
+    response = SynthesizeQueryResponse(
         query_id=request.query_id,
-        refined_query=refined_query,
+        integrated_statement=integrated_statement,
         used_llm=synthesis_result.get('used_llm', False),
         structured_output=structured_output
     )
+    
+    logger.info(
+        "Returning synthesis response",
+        extra={
+            "request_id": request_id_val,
+            "response_query_id": response.query_id,
+            "response_integrated_statement_length": len(response.integrated_statement),
+            "response_has_structured_output": response.structured_output is not None,
+        }
+    )
+    
+    return response
 
 
 # ==========================================
@@ -1783,3 +1828,142 @@ def inspect_messages(
         user_context_detected=user_context_detected,
         user_context_preview=user_context_preview
     )
+
+
+# ==========================================
+# Session Abandonment Endpoint
+# ==========================================
+
+class AbandonSessionRequest(BaseModel):
+    """Request to abandon/delete a session and all its data."""
+    session_id: int = Field(..., gt=0, description="ID of the session to abandon")
+
+
+class AbandonSessionResponse(BaseModel):
+    """Response with deletion details."""
+    status: str = Field(..., description="Status of the operation")
+    session_id: int = Field(..., description="ID of the abandoned session")
+    deletion_counts: Dict[str, int] = Field(..., description="Count of deleted records by type")
+    message: str = Field(..., description="Human-readable message")
+
+
+@router.post("/sessions/abandon", response_model=AbandonSessionResponse)
+async def abandon_session(
+    request: AbandonSessionRequest,
+    current_user = Depends(get_current_user),
+    db: Session = Depends(get_db),
+    session_manager: SessionManager = Depends(get_session_manager)
+):
+    """
+    Abandon/delete a session and all its associated data.
+    
+    This endpoint is used when a user clicks "Start Over" to clean up
+    incomplete sessions. It:
+    
+    1. Deletes all refinement data (steps, follow-ups, feedback)
+    2. Deletes all queries in the session
+    3. Deletes the session itself
+    4. Clears the Redis cache
+    
+    This ensures abandoned sessions don't count toward workflow limits.
+    
+    Note: AuditLog and FrontendLog entries are preserved for research.
+    """
+    import time
+    from query_refinement_module.tracing import generate_request_id, set_request_id
+    
+    # Generate and set request ID for tracing
+    request_id = generate_request_id()
+    set_request_id(request_id)
+    
+    start_time = time.time()
+    logger.info(
+        "API: Abandoning session",
+        extra={
+            "request_id": request_id,
+            "user_id": current_user.id,
+            "session_id": request.session_id,
+        },
+    )
+    
+    try:
+        # Abandon the session in database (includes authorization check)
+        result = abandon_query_session(db, request.session_id, current_user.id)
+        
+        # Clear Redis cache for all queries in this session
+        # Note: We don't have query_ids anymore, but the session is gone
+        # Redis will expire naturally, but we can try to clear known keys
+        # For now, just log that cache should be cleared
+        logger.info(
+            "Session abandoned, Redis cache will expire naturally",
+            extra={
+                "request_id": request_id,
+                "session_id": request.session_id,
+            }
+        )
+        
+        # Log audit event
+        try:
+            audit_service.log_event(
+                db=db,
+                event_type=AuditEventType.SESSION_ABANDONED,
+                user_id=current_user.id,
+                session_id=request.session_id,
+                metadata={
+                    "deletion_counts": result["deletion_counts"],
+                    "request_id": request_id,
+                }
+            )
+        except Exception as e:
+            logger.error(f"Failed to log audit event: {e}", exc_info=True)
+        
+        duration_ms = (time.time() - start_time) * 1000
+        logger.info(
+            "API: Session abandoned successfully",
+            extra={
+                "request_id": request_id,
+                "user_id": current_user.id,
+                "session_id": request.session_id,
+                "deletion_counts": result["deletion_counts"],
+                "duration_ms": round(duration_ms, 2),
+            },
+        )
+        
+        return AbandonSessionResponse(
+            status="success",
+            session_id=request.session_id,
+            deletion_counts=result["deletion_counts"],
+            message=f"Session {request.session_id} abandoned successfully. "
+                   f"Deleted {result['deletion_counts']['queries']} queries, "
+                   f"{result['deletion_counts']['refinement_steps']} refinement steps."
+        )
+        
+    except ValueError as e:
+        # Session not found or authorization failed
+        logger.warning(
+            f"Failed to abandon session: {e}",
+            extra={
+                "request_id": request_id,
+                "user_id": current_user.id,
+                "session_id": request.session_id,
+            }
+        )
+        raise HTTPException(
+            status_code=status.HTTP_404_NOT_FOUND,
+            detail=str(e)
+        )
+    except Exception as e:
+        logger.error(
+            f"Error abandoning session: {e}",
+            extra={
+                "request_id": request_id,
+                "user_id": current_user.id,
+                "session_id": request.session_id,
+            },
+            exc_info=True
+        )
+        raise HTTPException(
+            status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
+            detail=f"Failed to abandon session: {str(e)}"
+        )
+

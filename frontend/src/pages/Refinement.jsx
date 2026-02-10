@@ -541,60 +541,106 @@ const Refinement = () => {
      * @returns {Promise<void>}
      */
     const handleSynthesis = async () => {
-        if (!queryId || !sessionId) return;
+        if (!queryId || !sessionId) {
+            console.error('[handleSynthesis] Missing queryId or sessionId', { queryId, sessionId });
+            setError('Cannot synthesize: Missing session information');
+            return;
+        }
 
+        console.log('[handleSynthesis] Starting synthesis', { queryId, sessionId });
         setLoading(true);
+        setError(null);
+
         try {
             const result = await refinementService.getSynthesis(queryId);
-            console.log('Synthesis result received:', result);
-            console.log('Synthesis refined_query:', result?.refined_query);
-            console.log('Synthesis structured_output:', result?.structured_output);
+            console.log('[handleSynthesis] Raw result received:', result);
+            console.log('[handleSynthesis] Result type:', typeof result);
+            console.log('[handleSynthesis] Result keys:', result ? Object.keys(result) : 'null');
+        console.log('[handleSynthesis] integrated_statement:', result?.integrated_statement);
+        console.log('[handleSynthesis] integrated_statement type:', typeof result?.integrated_statement);
+        console.log('[handleSynthesis] structured_output:', result?.structured_output);
 
-            // Validate result before setting state
-            if (!result || typeof result !== 'object') {
-                throw new Error('Invalid synthesis response format');
-            }
+        // Validate result object exists
+        if (!result || typeof result !== 'object') {
+            console.error('[handleSynthesis] Invalid result format:', result);
+            throw new Error('Invalid synthesis response format - expected object, got ' + typeof result);
+        }
 
-            // Check for truncated JSON in refined_query
-            if (result.refined_query &&
-                typeof result.refined_query === 'string' &&
-                (result.refined_query.includes('```json') || result.refined_query.startsWith('{'))) {
-                console.warn('⚠️ Synthesis returned raw JSON instead of parsed result');
+        // Check if integrated_statement exists and is non-empty
+        if (!result.integrated_statement || typeof result.integrated_statement !== 'string') {
+            console.error('[handleSynthesis] Missing or invalid integrated_statement:', {
+                integrated_statement: result.integrated_statement,
+                type: typeof result.integrated_statement
+            });
+            throw new Error('Synthesis response missing integrated_statement field');
+        }
 
-                // Try to extract synthesized_statement from the JSON string
-                try {
-                    // Remove markdown fences
-                    let jsonStr = result.refined_query.replace(/```json\n?/g, '').replace(/```\n?$/g, '');
+        // Check if integrated_statement is just whitespace
+        if (result.integrated_statement.trim().length === 0) {
+            console.error('[handleSynthesis] integrated_statement is empty or whitespace');
+            throw new Error('Synthesis returned empty statement');
+        }
 
-                    // Check if truncated
-                    if (!jsonStr.trim().endsWith('}')) {
-                        console.error('❌ JSON response is truncated!');
-                        setError('The synthesis response was incomplete. This usually means the LLM response was too long. Please try again or contact support.');
-                        return;
-                    }
+        console.log('[handleSynthesis] Integrated statement length:', result.integrated_statement.length);
+        console.log('[handleSynthesis] First 200 chars:', result.integrated_statement.substring(0, 200));
 
-                    const parsed = JSON.parse(jsonStr);
-                    if (parsed.synthesized_statement) {
-                        result.refined_query = parsed.synthesized_statement;
-                        result.structured_output = parsed;
-                        console.log('✓ Successfully extracted synthesized_statement:', result.refined_query.substring(0, 100));
-                    }
-                } catch (parseErr) {
-                    console.error('Failed to parse JSON from refined_query:', parseErr);
+        // Check for truncated JSON in integrated_statement
+        if (result.integrated_statement &&
+            typeof result.integrated_statement === 'string' &&
+            (result.integrated_statement.includes('```json') || result.integrated_statement.startsWith('{'))) {
+            console.warn('[handleSynthesis] ⚠️ Synthesis returned raw JSON instead of parsed result');
+
+            // Try to extract integrated_statement from the JSON string
+            try {
+                // Remove markdown fences
+                let jsonStr = result.integrated_statement.replace(/```json\n?/g, '').replace(/```\n?$/g, '');
+
+                // Check if truncated
+                if (!jsonStr.trim().endsWith('}')) {
+                    console.error('[handleSynthesis] ❌ JSON response is truncated!');
+                    console.error('[handleSynthesis] Last 100 chars:', jsonStr.slice(-100));
+                    setError('The synthesis response was incomplete. This usually means the LLM response was too long. Please try again or contact support.');
+                    return;
+                }
+
+                const parsed = JSON.parse(jsonStr);
+                console.log('[handleSynthesis] Parsed JSON keys:', Object.keys(parsed));
+
+                if (parsed.integrated_statement) {
+                    result.integrated_statement = parsed.integrated_statement;
+                    result.structured_output = parsed;
+                    console.log('[handleSynthesis] ✓ Successfully extracted integrated_statement:', result.integrated_statement.substring(0, 100));
+                } else {
+                    console.warn('[handleSynthesis] No integrated_statement in parsed JSON');
+                }
+            } catch (parseErr) {
+                console.error('[handleSynthesis] Failed to parse JSON from integrated_statement:', parseErr);
                     setError('The synthesis response could not be processed. Please try again.');
                     return;
                 }
             }
 
+            console.log('[handleSynthesis] ✓ Setting synthesis result');
             setSynthesis(result);
+            console.log('[handleSynthesis] ✓ Changing stage to synthesis');
             setStage('synthesis');
+            console.log('[handleSynthesis] ✓ Clearing session');
             clearSession(); // Clear saved session after completion
+
+            console.log('[handleSynthesis] ✓ Synthesis complete and displayed');
         } catch (err) {
-            console.error('Synthesis error:', err);
-            console.error('Error response:', err.response?.data);
-            setError(err.response?.data?.detail || err.message || 'Failed to synthesize query');
+            console.error('[handleSynthesis] Synthesis error:', err);
+            console.error('[handleSynthesis] Error name:', err.name);
+            console.error('[handleSynthesis] Error message:', err.message);
+            console.error('[handleSynthesis] Error response:', err.response?.data);
+            console.error('[handleSynthesis] Error status:', err.response?.status);
+
+            const errorMessage = err.response?.data?.detail || err.message || 'Failed to synthesize query';
+            console.error('[handleSynthesis] Setting error:', errorMessage);
+            setError(errorMessage);
         } finally {
             setLoading(false);
+            console.log('[handleSynthesis] Loading state cleared');
         }
     };
 
@@ -668,9 +714,27 @@ const Refinement = () => {
         }
     };
 
-    const handleStartOver = () => {
+    const handleStartOver = async () => {
         console.log('[Refinement] handleStartOver called - clearing all state');
+        console.log('[Refinement] Current sessionId:', sessionId);
         console.log('[Refinement] Stack trace:', new Error().stack);
+
+        // If we have a session ID, abandon it on the backend to clean up database
+        if (sessionId) {
+            try {
+                console.log('[Refinement] Attempting to abandon session', sessionId);
+                await refinementService.abandonSession(sessionId);
+                console.log('[Refinement] Session abandoned successfully');
+                logger.info('Session abandoned', { sessionId });
+            } catch (error) {
+                // Log but don't block the UI reset
+                console.error('[Refinement] Failed to abandon session:', error);
+                logger.error('Failed to abandon session', error, { sessionId });
+                // Continue with UI reset anyway
+            }
+        }
+
+        // Clear local storage and UI state
         clearSession();
         setSavedSessionData(null);
         setStage('framework-selection');
@@ -685,6 +749,8 @@ const Refinement = () => {
         setConversationHistory([]);
         setCommandResult(null);
         setError(null);
+
+        console.log('[Refinement] State cleared, returning to framework selection');
     };
 
     const handleLogout = () => {
@@ -845,11 +911,11 @@ const Refinement = () => {
                                 </div>
                             )}
                         </div>
-
-                        {stage === 'synthesis' && synthesis && (
-                            <SynthesisResult queryId={queryId} synthesis={synthesis} />
-                        )}
                     </div>
+                )}
+
+                {stage === 'synthesis' && synthesis && (
+                    <SynthesisResult queryId={queryId} synthesis={synthesis} />
                 )}
             </main>
 

@@ -232,15 +232,15 @@ def save_query_refinement_response(
     Called when session is complete to persist all response fields
     for evaluation purposes.
     
+    Maps from API field names to database column names:
+        - integrated_statement (API) → synthesized_statement (DB)
+        - dimensions_specifications (API) → refined_dimensions (DB)
+        - search_optimized, search_filters, terminology (same in both)
+    
     Args:
         db: Database session
         query_id: ID of the query
-        response: Dict containing QueryRefinementResponse fields:
-            - synthesized_statement: str
-            - refined_dimensions: Dict[str, str]
-            - search_optimized: Dict (semantic, keyword, grey_literature)
-            - search_filters: Dict (publication_years, venues, etc.)
-            - terminology: Dict (primary_terms, synonyms, etc.)
+        response: Dict containing QueryRefinementResponse fields from core.synthesize_refined_query()
         
     Returns:
         Updated Query or None if not found
@@ -252,14 +252,25 @@ def save_query_refinement_response(
         # Set completion timestamp
         query.completed_at = datetime.now(timezone.utc)
         
-        # Store synthesized statement
-        if 'synthesized_statement' in response:
-            query.synthesized_statement = response['synthesized_statement']
+        # Map API field to database column (integrated_statement → synthesized_statement)
+        if 'integrated_statement' in response:
+            query.synthesized_statement = response['integrated_statement']
             # Also update legacy refined_query field
+            query.refined_query = response['integrated_statement']
+        elif 'synthesized_statement' in response:
+            # Backward compatibility: accept old field name
+            query.synthesized_statement = response['synthesized_statement']
             query.refined_query = response['synthesized_statement']
         
-        # Store dimension values
-        if 'refined_dimensions' in response:
+        # Map API field to database column (dimensions_specifications → refined_dimensions)
+        if 'dimensions_specifications' in response:
+            # API uses 'dimensions_specifications' as the key (LLM template name)
+            query.refined_dimensions = response['dimensions_specifications']
+        elif 'detail_values' in response:
+            # Backward compatibility: accept old field name
+            query.refined_dimensions = response['detail_values']
+        elif 'refined_dimensions' in response:
+            # Backward compatibility: accept old field name
             query.refined_dimensions = response['refined_dimensions']
         
         # Store search optimization
@@ -823,3 +834,132 @@ def get_query_metadata_summary(
     )
     
     return summary
+
+
+# ==========================================
+# Session Abandonment / Cleanup
+# ==========================================
+
+def abandon_query_session(db: Session, session_id: int, user_id: int) -> Dict[str, Any]:
+    """
+    Abandon/delete a query session and all its associated data.
+    
+    This is used when a user clicks "Start Over" to clean up incomplete
+    sessions so they don't count toward workflow limits.
+    
+    Deletes (in order to respect foreign key constraints):
+    1. FollowUpHistory entries (linked to RefinementSteps)
+    2. RefinementStepMetadata entries
+    3. RefinementSteps (linked to Queries)
+    4. Feedback (linked to Queries)
+    5. Queries (linked to QuerySession)
+    6. QuerySession itself
+    
+    Note: AuditLog and FrontendLog entries are preserved for research purposes
+    but marked with session status 'abandoned'.
+    
+    Args:
+        db: Database session
+        session_id: ID of the QuerySession to abandon
+        user_id: ID of the user (for authorization check)
+        
+    Returns:
+        Dictionary with deletion counts and status
+        
+    Raises:
+        ValueError: If session doesn't exist or doesn't belong to user
+    """
+    log = get_logger(__name__)
+    
+    # Verify session exists and belongs to user
+    query_session = db.query(QuerySession).filter(
+        QuerySession.id == session_id,
+        QuerySession.user_id == user_id
+    ).first()
+    
+    if not query_session:
+        raise ValueError(f"Session {session_id} not found or doesn't belong to user {user_id}")
+    
+    log.info(
+        f"Abandoning query session",
+        extra={
+            "session_id": session_id,
+            "user_id": user_id,
+            "framework": query_session.framework_name,
+        }
+    )
+    
+    # Track deletion counts
+    deletion_counts = {
+        "followups": 0,
+        "step_metadata": 0,
+        "refinement_steps": 0,
+        "feedback": 0,
+        "queries": 0,
+        "session": 0
+    }
+    
+    # Get all queries for this session
+    queries = db.query(Query).filter(Query.session_id == session_id).all()
+    query_ids = [q.id for q in queries]
+    
+    log.info(f"Found {len(queries)} queries to delete for session {session_id}")
+    
+    if query_ids:
+        # Delete FollowUpHistory (linked to RefinementSteps)
+        from query_refinement_module.db.models.followup_history import FollowUpHistory
+        followups_deleted = db.query(FollowUpHistory).filter(
+            FollowUpHistory.refinement_step_id.in_(
+                db.query(RefinementStep.id).filter(RefinementStep.query_id.in_(query_ids))
+            )
+        ).delete(synchronize_session=False)
+        deletion_counts["followups"] = followups_deleted
+        
+        # Delete RefinementStepMetadata
+        metadata_deleted = db.query(RefinementStepMetadata).filter(
+            RefinementStepMetadata.refinement_step_id.in_(
+                db.query(RefinementStep.id).filter(RefinementStep.query_id.in_(query_ids))
+            )
+        ).delete(synchronize_session=False)
+        deletion_counts["step_metadata"] = metadata_deleted
+        
+        # Delete RefinementSteps
+        steps_deleted = db.query(RefinementStep).filter(
+            RefinementStep.query_id.in_(query_ids)
+        ).delete(synchronize_session=False)
+        deletion_counts["refinement_steps"] = steps_deleted
+        
+        # Delete Feedback
+        feedback_deleted = db.query(Feedback).filter(
+            Feedback.query_id.in_(query_ids)
+        ).delete(synchronize_session=False)
+        deletion_counts["feedback"] = feedback_deleted
+        
+        # Delete Queries
+        queries_deleted = db.query(Query).filter(
+            Query.id.in_(query_ids)
+        ).delete(synchronize_session=False)
+        deletion_counts["queries"] = queries_deleted
+    
+    # Mark session as abandoned and delete
+    query_session.status = "abandoned"
+    db.delete(query_session)
+    deletion_counts["session"] = 1
+    
+    # Commit all deletions
+    db.commit()
+    
+    log.info(
+        f"Abandoned session {session_id}",
+        extra={
+            "session_id": session_id,
+            "user_id": user_id,
+            "deletion_counts": deletion_counts,
+        }
+    )
+    
+    return {
+        "status": "abandoned",
+        "session_id": session_id,
+        "deletion_counts": deletion_counts
+    }

@@ -80,10 +80,44 @@ export const refinementService = {
      * @returns {Promise<SynthesizeQueryResponse>}
      */
     async getSynthesis(queryId) {
-        const response = await apiClient.post('/api/refinement/synthesize', {
-            query_id: queryId
-        });
-        return response.data;
+        logger.info('Getting synthesis', { queryId });
+
+        try {
+            const response = await apiClient.post('/api/refinement/synthesize', {
+                query_id: queryId
+            });
+
+            logger.info('Synthesis response received', {
+                queryId,
+                hasData: !!response.data,
+                dataKeys: response.data ? Object.keys(response.data) : null,
+                integratedStatementLength: response.data?.integrated_statement?.length || 0
+            });
+
+            // Validate response structure
+            if (!response.data) {
+                logger.error('Empty synthesis response', { queryId });
+                throw new Error('Synthesis returned empty response');
+            }
+
+            if (!response.data.integrated_statement) {
+                logger.error('Missing integrated_statement in synthesis response', {
+                    queryId,
+                    responseKeys: Object.keys(response.data)
+                });
+                throw new Error('Synthesis response missing integrated_statement field');
+            }
+
+            logger.info('Synthesis validated successfully', {
+                queryId,
+                integratedStatementPreview: response.data.integrated_statement.substring(0, 100)
+            });
+
+            return response.data;
+        } catch (error) {
+            logger.error('Get synthesis failed', error, { queryId });
+            throw error;
+        }
     },
 
     /**
@@ -144,5 +178,31 @@ export const refinementService = {
     async getUserStatus() {
         const response = await apiClient.get('/api/auth/me/status');
         return response.data;
+    },
+
+    /**
+     * Abandon a session and delete all its data
+     * Used when user clicks "Start Over" to ensure session doesn't count toward limits
+     * @param {number} sessionId - Session ID to abandon
+     * @returns {Promise<any>}
+     */
+    async abandonSession(sessionId) {
+        logger.info('Abandoning session', { sessionId });
+
+        try {
+            const response = await apiClient.post('/api/refinement/sessions/abandon', {
+                session_id: sessionId
+            });
+
+            logger.info('Session abandoned successfully', {
+                sessionId,
+                deletionCounts: response.data?.deletion_counts
+            });
+
+            return response.data;
+        } catch (error) {
+            logger.error('Abandon session failed', error, { sessionId });
+            throw error;
+        }
     }
 };

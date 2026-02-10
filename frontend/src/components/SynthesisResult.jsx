@@ -12,44 +12,48 @@ const SynthesisResult = ({ queryId, synthesis }) => {
     });
 
     // Debug logging
-    console.log('SynthesisResult rendered with:', { queryId, synthesis });
-    console.log('synthesis.refined_query:', synthesis?.refined_query);
+    console.log('[SynthesisResult] Component rendered');
+    console.log('[SynthesisResult] Props:', { queryId, synthesis });
+    console.log('[SynthesisResult] synthesis type:', typeof synthesis);
+    console.log('[SynthesisResult] synthesis keys:', synthesis ? Object.keys(synthesis) : 'null');
+    console.log('[SynthesisResult] integrated_statement:', synthesis?.integrated_statement);
+    console.log('[SynthesisResult] integrated_statement type:', typeof synthesis?.integrated_statement);
 
     // Safety check for synthesis object
     if (!synthesis || typeof synthesis !== 'object') {
-        console.error('Invalid synthesis object:', synthesis);
+        console.error('[SynthesisResult] Invalid synthesis object:', synthesis);
+        console.error('[SynthesisResult] Expected object, got:', typeof synthesis);
         return (
             <div className="synthesis-result">
                 <div className="error-banner">
                     <p>⚠️ Synthesis result is invalid. Please try again.</p>
+                    <p style={{ fontSize: '0.9em', marginTop: '8px' }}>Debug: Received {typeof synthesis}</p>
                 </div>
             </div>
         );
     }
 
-    // Check for malformed refined_query (raw JSON)
-    let refinedQuery = synthesis.refined_query;
-    if (typeof refinedQuery === 'string' &&
-        (refinedQuery.includes('```json') || (refinedQuery.startsWith('{') && refinedQuery.includes('"synthesized_statement"')))) {
-        console.warn('⚠️ refined_query contains raw JSON, attempting to extract synthesized_statement');
-        try {
-            // Remove markdown fences
-            let jsonStr = refinedQuery.replace(/```json\n?/g, '').replace(/```\n?$/g, '').trim();
+    // Check if integrated_statement exists
+    if (!synthesis.integrated_statement) {
+        console.error('[SynthesisResult] Missing integrated_statement field');
+        console.error('[SynthesisResult] Available fields:', Object.keys(synthesis));
+        return (
+            <div className="synthesis-result">
+                <div className="error-banner">
+                    <p>⚠️ Synthesis result is incomplete - missing integrated statement.</p>
+                    <p style={{ fontSize: '0.9em', marginTop: '8px' }}>Debug: Missing integrated_statement field</p>
+                </div>
+            </div>
+        );
+    }
 
-            // Check if truncated
-            if (!jsonStr.endsWith('}')) {
-                refinedQuery = '⚠️ Response was incomplete. Please try synthesis again.';
-            } else {
-                const parsed = JSON.parse(jsonStr);
-                if (parsed.synthesized_statement) {
-                    refinedQuery = parsed.synthesized_statement;
-                    console.log('✓ Extracted synthesized_statement successfully');
-                }
-            }
-        } catch (e) {
-            console.error('Failed to extract synthesized_statement:', e);
-            refinedQuery = '⚠️ Could not process synthesis result. Please try again.';
-        }
+    // Use integrated_statement directly - API now properly parses and extracts it
+    const integratedStatement = synthesis.integrated_statement;
+
+    // Safety check: if integrated_statement somehow contains raw JSON (should not happen anymore)
+    if (typeof integratedStatement === 'string' && integratedStatement.startsWith('{')) {
+        console.warn('[SynthesisResult] ⚠️ integrated_statement appears to be raw JSON - this indicates an API parsing issue');
+        console.error('[SynthesisResult] Raw JSON in integrated_statement:', integratedStatement.substring(0, 200));
     }
 
     const toggleSection = (section) => {
@@ -144,21 +148,21 @@ const SynthesisResult = ({ queryId, synthesis }) => {
 
             <div className="result-section">
                 <div className="section-header" onClick={() => toggleSection('refinedQuery')}>
-                    <h3>Refined Query</h3>
+                    <h3>Integrated Statement</h3>
                     <span className="toggle-icon">{expandedSections.refinedQuery ? '−' : '+'}</span>
                 </div>
                 {expandedSections.refinedQuery && (
                     <>
                         <div className="refined-query">
-                            {refinedQuery || '(No refined query available)'}
+                            {integratedStatement || '(No integrated statement available)'}
                         </div>
                         <div className="result-actions">
                             <button
-                                onClick={() => copyToClipboard(refinedQuery || synthesis.refined_query, 'refined query')}
+                                onClick={() => copyToClipboard(integratedStatement, 'integrated statement')}
                                 className="btn-secondary"
-                                disabled={!refinedQuery}
+                                disabled={!integratedStatement}
                             >
-                                📋 Copy Query
+                                📋 Copy Statement
                             </button>
                             <button onClick={exportAsJson} className="btn-secondary">
                                 💾 Export JSON

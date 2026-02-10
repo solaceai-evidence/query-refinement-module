@@ -212,16 +212,16 @@ class TestFrontendContracts:
         
         Frontend expects:
         - query_id: number
-        - refined_query: string
+        - integrated_statement: string
         - used_llm: boolean
         - structured_output: object | null
         """
         response_dict = {
             "query_id": 1,
-            "refined_query": "refined search query",
+            "integrated_statement": "refined search query",
             "used_llm": True,
             "structured_output": {
-                "integrated_statement": "refined query",
+                "dimensions_specifications": {},
                 "search_optimized": {}
             }
         }
@@ -230,13 +230,13 @@ class TestFrontendContracts:
         
         # Validate required fields
         assert hasattr(response, 'query_id')
-        assert hasattr(response, 'refined_query')
+        assert hasattr(response, 'integrated_statement')
         assert hasattr(response, 'used_llm')
         assert hasattr(response, 'structured_output')
         
         # Validate types
         assert isinstance(response.query_id, int)
-        assert isinstance(response.refined_query, str)
+        assert isinstance(response.integrated_statement, str)
         assert isinstance(response.used_llm, bool)
         
         print("✓ SynthesizeQueryResponse contract valid")

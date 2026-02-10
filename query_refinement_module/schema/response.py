@@ -122,28 +122,28 @@ class QueryRefinementResponse(BaseModel):
     Complete synthesis output integrating all refined dimensions.
     
     Provides:
-    - Synthesized research statement
-    - Individual dimension values
+    - Integrated research statement
+    - Individual dimension specifications
     - Search-optimized variants
     - Filters and terminology
     - Optional metadata and processing logs
     
-    Note: Accepts LLM template field names (integrated_statement, dimensions_specifications)
-    via validation aliases, but exposes them as database field names
-    (synthesized_statement, refined_dimensions) for Python code access.
+    Uses LLM template field names as canonical:
+    - integrated_statement (not synthesized_statement)
+    - dimensions_specifications (not refined_dimensions)
     """
     model_config = ConfigDict(
         frozen=False,
         validate_assignment=True,
-        populate_by_name=True  # Allow both alias and field name
+        populate_by_name=True  # Allow both names for backward compatibility
     )
-    synthesized_statement: str = Field(
+    integrated_statement: str = Field(
         description="Integrated research specification preserving user's voice",
-        validation_alias="integrated_statement"  # Accept this name from LLM JSON
+        alias="synthesized_statement"  # Database column name (for backward compatibility)
     )
-    refined_dimensions: Dict[str, str] = Field(
+    dimensions_specifications: Dict[str, str] = Field(
         description="Normalized value for each dimension (dimension_id -> value)",
-        validation_alias="dimensions_specifications"  # Accept this name from LLM JSON
+        alias="refined_dimensions"  # Database column name (for backward compatibility)
     )
     search_optimized: SearchOptimized
     search_filters: SearchFilters
