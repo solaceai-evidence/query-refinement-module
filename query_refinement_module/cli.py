@@ -44,6 +44,7 @@ def build_manager(
     return QueryRefinementManager(
         llm_provider=provider,
         tracing_provider=tracer,
+        terminal_reinforcement_threshold=settings.terminal_reinforcement_threshold,
     )
 
 

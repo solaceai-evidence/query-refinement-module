@@ -128,6 +128,7 @@ class AspectRefinementState:
         self,
         query: str,
         dependency_context: Optional[Dict[str, Dict[str, str]]] = None,
+        terminal_reinforcement_threshold: Optional[int] = None,
         **kwargs
     ) -> List[Dict[str, str]]:
         """
@@ -139,6 +140,7 @@ class AspectRefinementState:
         Args:
             query: The query to analyze
             dependency_context: Values from completed dependencies
+            terminal_reinforcement_threshold: Add reinforcement after N turns (None=use default from settings)
             **kwargs: Additional context (unused, for backward compatibility)
             
         Returns:
@@ -146,11 +148,15 @@ class AspectRefinementState:
         """
         from query_refinement_module.schema.prompt_builder import build_refinement_messages
         
+        # Terminal reinforcement threshold: use provided value or default to 3 (hardcoded optimal)
+        threshold = terminal_reinforcement_threshold if terminal_reinforcement_threshold is not None else 3
+        
         return build_refinement_messages(
             dimension=self.refinement_aspect,
             query=query,
             conversation_history=self.conversation_history,
-            dependency_context=dependency_context
+            dependency_context=dependency_context,
+            terminal_reinforcement_threshold=threshold
         )
     
     def can_ask_followup(self) -> bool:

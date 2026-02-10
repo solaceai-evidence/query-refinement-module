@@ -73,6 +73,7 @@ class LLMSettings:
     max_tokens: Optional[int] = None
     completion_kwargs: Dict[str, Any] = field(default_factory=dict)
     enable_prompt_caching: bool = True
+    terminal_reinforcement_threshold: int = 3  # Hardcoded optimal value (data-driven from 3,777 dimensions)
 
     @classmethod
     def from_env(cls, *, require_model: bool = True) -> "LLMSettings":
@@ -104,6 +105,7 @@ class LLMSettings:
             max_tokens=max_tokens,
             completion_kwargs=completion_kwargs,
             enable_prompt_caching=enable_prompt_caching,
+            # terminal_reinforcement_threshold uses class default of 3 (data-driven optimal value)
         )
 
     def as_provider_kwargs(self) -> Dict[str, Any]:

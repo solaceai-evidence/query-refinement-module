@@ -556,65 +556,65 @@ const Refinement = () => {
             console.log('[handleSynthesis] Raw result received:', result);
             console.log('[handleSynthesis] Result type:', typeof result);
             console.log('[handleSynthesis] Result keys:', result ? Object.keys(result) : 'null');
-        console.log('[handleSynthesis] integrated_statement:', result?.integrated_statement);
-        console.log('[handleSynthesis] integrated_statement type:', typeof result?.integrated_statement);
-        console.log('[handleSynthesis] structured_output:', result?.structured_output);
+            console.log('[handleSynthesis] integrated_statement:', result?.integrated_statement);
+            console.log('[handleSynthesis] integrated_statement type:', typeof result?.integrated_statement);
+            console.log('[handleSynthesis] structured_output:', result?.structured_output);
 
-        // Validate result object exists
-        if (!result || typeof result !== 'object') {
-            console.error('[handleSynthesis] Invalid result format:', result);
-            throw new Error('Invalid synthesis response format - expected object, got ' + typeof result);
-        }
+            // Validate result object exists
+            if (!result || typeof result !== 'object') {
+                console.error('[handleSynthesis] Invalid result format:', result);
+                throw new Error('Invalid synthesis response format - expected object, got ' + typeof result);
+            }
 
-        // Check if integrated_statement exists and is non-empty
-        if (!result.integrated_statement || typeof result.integrated_statement !== 'string') {
-            console.error('[handleSynthesis] Missing or invalid integrated_statement:', {
-                integrated_statement: result.integrated_statement,
-                type: typeof result.integrated_statement
-            });
-            throw new Error('Synthesis response missing integrated_statement field');
-        }
+            // Check if integrated_statement exists and is non-empty
+            if (!result.integrated_statement || typeof result.integrated_statement !== 'string') {
+                console.error('[handleSynthesis] Missing or invalid integrated_statement:', {
+                    integrated_statement: result.integrated_statement,
+                    type: typeof result.integrated_statement
+                });
+                throw new Error('Synthesis response missing integrated_statement field');
+            }
 
-        // Check if integrated_statement is just whitespace
-        if (result.integrated_statement.trim().length === 0) {
-            console.error('[handleSynthesis] integrated_statement is empty or whitespace');
-            throw new Error('Synthesis returned empty statement');
-        }
+            // Check if integrated_statement is just whitespace
+            if (result.integrated_statement.trim().length === 0) {
+                console.error('[handleSynthesis] integrated_statement is empty or whitespace');
+                throw new Error('Synthesis returned empty statement');
+            }
 
-        console.log('[handleSynthesis] Integrated statement length:', result.integrated_statement.length);
-        console.log('[handleSynthesis] First 200 chars:', result.integrated_statement.substring(0, 200));
+            console.log('[handleSynthesis] Integrated statement length:', result.integrated_statement.length);
+            console.log('[handleSynthesis] First 200 chars:', result.integrated_statement.substring(0, 200));
 
-        // Check for truncated JSON in integrated_statement
-        if (result.integrated_statement &&
-            typeof result.integrated_statement === 'string' &&
-            (result.integrated_statement.includes('```json') || result.integrated_statement.startsWith('{'))) {
-            console.warn('[handleSynthesis] ⚠️ Synthesis returned raw JSON instead of parsed result');
+            // Check for truncated JSON in integrated_statement
+            if (result.integrated_statement &&
+                typeof result.integrated_statement === 'string' &&
+                (result.integrated_statement.includes('```json') || result.integrated_statement.startsWith('{'))) {
+                console.warn('[handleSynthesis] ⚠️ Synthesis returned raw JSON instead of parsed result');
 
-            // Try to extract integrated_statement from the JSON string
-            try {
-                // Remove markdown fences
-                let jsonStr = result.integrated_statement.replace(/```json\n?/g, '').replace(/```\n?$/g, '');
+                // Try to extract integrated_statement from the JSON string
+                try {
+                    // Remove markdown fences
+                    let jsonStr = result.integrated_statement.replace(/```json\n?/g, '').replace(/```\n?$/g, '');
 
-                // Check if truncated
-                if (!jsonStr.trim().endsWith('}')) {
-                    console.error('[handleSynthesis] ❌ JSON response is truncated!');
-                    console.error('[handleSynthesis] Last 100 chars:', jsonStr.slice(-100));
-                    setError('The synthesis response was incomplete. This usually means the LLM response was too long. Please try again or contact support.');
-                    return;
-                }
+                    // Check if truncated
+                    if (!jsonStr.trim().endsWith('}')) {
+                        console.error('[handleSynthesis] ❌ JSON response is truncated!');
+                        console.error('[handleSynthesis] Last 100 chars:', jsonStr.slice(-100));
+                        setError('The synthesis response was incomplete. This usually means the LLM response was too long. Please try again or contact support.');
+                        return;
+                    }
 
-                const parsed = JSON.parse(jsonStr);
-                console.log('[handleSynthesis] Parsed JSON keys:', Object.keys(parsed));
+                    const parsed = JSON.parse(jsonStr);
+                    console.log('[handleSynthesis] Parsed JSON keys:', Object.keys(parsed));
 
-                if (parsed.integrated_statement) {
-                    result.integrated_statement = parsed.integrated_statement;
-                    result.structured_output = parsed;
-                    console.log('[handleSynthesis] ✓ Successfully extracted integrated_statement:', result.integrated_statement.substring(0, 100));
-                } else {
-                    console.warn('[handleSynthesis] No integrated_statement in parsed JSON');
-                }
-            } catch (parseErr) {
-                console.error('[handleSynthesis] Failed to parse JSON from integrated_statement:', parseErr);
+                    if (parsed.integrated_statement) {
+                        result.integrated_statement = parsed.integrated_statement;
+                        result.structured_output = parsed;
+                        console.log('[handleSynthesis] ✓ Successfully extracted integrated_statement:', result.integrated_statement.substring(0, 100));
+                    } else {
+                        console.warn('[handleSynthesis] No integrated_statement in parsed JSON');
+                    }
+                } catch (parseErr) {
+                    console.error('[handleSynthesis] Failed to parse JSON from integrated_statement:', parseErr);
                     setError('The synthesis response could not be processed. Please try again.');
                     return;
                 }
@@ -915,7 +915,42 @@ const Refinement = () => {
                 )}
 
                 {stage === 'synthesis' && synthesis && (
-                    <SynthesisResult queryId={queryId} synthesis={synthesis} />
+                    <div className="refinement-interface">
+                        <div className="refinement-main">
+                            {conversationHistory.length > 0 && (
+                                <div className="history-panel">
+                                    <div className="history-panel-header">Conversation History</div>
+                                    <div className="conversation-history">
+                                        {conversationHistory.map((item, index) => {
+                                            if (item.type === 'command') {
+                                                return (
+                                                    <CommandHistoryItem
+                                                        key={`${item.timestamp}-${index}`}
+                                                        command={item.content}
+                                                        result={item.result}
+                                                    />
+                                                );
+                                            }
+                                            return (
+                                                <div key={`${item.timestamp}-${index}`} className={`history-item ${item.type}`}>
+                                                    <div className="history-label">
+                                                        {item.type === 'query' ? '📝 Initial Query' :
+                                                            item.type === 'question' ? `❓ Question${item.aspectName ? ` (${item.aspectName})` : ''}` :
+                                                                '💬 Your Answer'}
+                                                    </div>
+                                                    <div className="history-content">{item.content}</div>
+                                                </div>
+                                            );
+                                        })}
+                                    </div>
+                                </div>
+                            )}
+
+                            <div className="question-input-fixed">
+                                <SynthesisResult queryId={queryId} synthesis={synthesis} />
+                            </div>
+                        </div>
+                    </div>
                 )}
             </main>
 

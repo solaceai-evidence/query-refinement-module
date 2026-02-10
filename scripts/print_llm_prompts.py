@@ -77,7 +77,10 @@ async def main():
     # Initialize manager
     settings = LLMSettings.from_env()
     provider = LiteLLMProvider(**settings.as_provider_kwargs())
-    manager = QueryRefinementManager(llm_provider=provider)
+    manager = QueryRefinementManager(
+        llm_provider=provider,
+        terminal_reinforcement_threshold=settings.terminal_reinforcement_threshold
+    )
     
     # Get framework
     framework = registry.get_framework(args.framework)

@@ -40,6 +40,7 @@ from query_refinement_module.schema.registry import get_framework, list_framewor
 from query_refinement_module.api.session_manager import SessionManager
 from query_refinement_module.audit import audit_service
 from query_refinement_module.db.models.audit_log import AuditEventType
+from query_refinement_module.settings import LLMSettings
 from query_refinement_module.core import (
     QueryRefinementManager,
     is_user_command,
@@ -1802,10 +1803,12 @@ def inspect_messages(
         )
     
     # Get messages for current dimension
+    llm_settings = LLMSettings.from_env(require_model=False)
     dependency_context = session.get_dependency_context(active_step.refinement_aspect.id)
     messages = active_step.get_messages(
         query=session.original_query,
-        dependency_context=dependency_context
+        dependency_context=dependency_context,
+        terminal_reinforcement_threshold=llm_settings.terminal_reinforcement_threshold
     )
     
     # Check for user context in messages

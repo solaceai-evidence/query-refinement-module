@@ -34,6 +34,8 @@ def test_build_manager_from_env_uses_settings(monkeypatch):
     provider_kwargs = {"default_model": "m"}
 
     class StubSettings:
+        terminal_reinforcement_threshold = 3  # Default value
+        
         def as_provider_kwargs(self):
             return provider_kwargs
 
@@ -61,6 +63,7 @@ def test_build_manager_from_env_accepts_explicit_settings(monkeypatch):
     class StubSettings:
         def __init__(self):
             self.called = []
+            self.terminal_reinforcement_threshold = 3  # Default value
 
         def as_provider_kwargs(self):
             self.called.append("provider")

@@ -10,6 +10,7 @@ class StubSettings:
     def __init__(self, provider_kwargs=None, analyzer_kwargs=None):
         self._provider_kwargs = provider_kwargs or {"default_model": "demo"}
         self._analyzer_kwargs = analyzer_kwargs or {"temperature": 0.1}
+        self.terminal_reinforcement_threshold = 3  # Default value
 
     def as_provider_kwargs(self):
         return self._provider_kwargs

@@ -41,7 +41,8 @@ def get_refinement_manager() -> QueryRefinementManager:
     
     # Create manager (analyzer removed in v2.0 - uses initialize_sequential)
     manager = QueryRefinementManager(
-        llm_provider=llm_provider
+        llm_provider=llm_provider,
+        terminal_reinforcement_threshold=llm_settings.terminal_reinforcement_threshold
     )
     
     return manager

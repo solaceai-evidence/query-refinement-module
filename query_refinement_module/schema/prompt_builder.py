@@ -342,10 +342,11 @@ class PromptBuilder:
         dimension: RefinementDimension,
         query: str,
         conversation_history: List[Dict[str, str]],
-        dependency_context: Optional[Dict[str, Dict[str, str]]] = None
+        dependency_context: Optional[Dict[str, Dict[str, str]]] = None,
+        terminal_reinforcement_threshold: int = 3  # Default kept here as final safety net
     ) -> List[Dict[str, str]]:
         """
-        Build messages array for dimension refinement (multi-turn dialogue).
+        Build messages array for dimension refinement with terminal reinforcement.
         
         Constructs structured messages with:
         1. System message: Global System Directive [CACHED]
@@ -353,13 +354,18 @@ class PromptBuilder:
         3. System message: Previously clarified dimensions (dependencies)
         4. System message: Current dimension specification
         5. User message: Original query to analyze
-        6. Conversation history: Alternating assistant/user messages for THIS dimension
+        6. Conversation history: Alternating assistant/user messages
+        7. System message: Terminal reinforcement (turns ≥ threshold only)
+        
+        Terminal reinforcement repeats cached instructions at conversation end
+        to combat recency bias in long conversations (research-backed approach).
         
         Args:
             dimension: The dimension being refined
             query: The original query to analyze
             conversation_history: List of Q&A exchanges for THIS dimension only
             dependency_context: Values from completed dependencies
+            terminal_reinforcement_threshold: Add reinforcement after N turns (0=disabled)
             
         Returns:
             List of message dicts with 'role' and 'content' keys
@@ -427,6 +433,28 @@ class PromptBuilder:
         for qa in conversation_history:
             messages.append({'role': 'assistant', 'content': qa['question']})
             messages.append({'role': 'user', 'content': qa['response']})
+        
+        # 7. Terminal reinforcement: Repeat cached instructions at end for long conversations
+        # Research-backed approach to combat recency bias and maintain instruction adherence
+        if terminal_reinforcement_threshold > 0 and len(conversation_history) >= terminal_reinforcement_threshold:
+            # Build reinforcement from cached components
+            reinforcement_parts = [GLOBAL_SYSTEM_PROMPT]
+            if dimension.user_context:
+                reinforcement_parts.append(self.render_user_context(dimension.user_context))
+            
+            messages.append({
+                'role': 'system',
+                'content': '\n\n'.join(reinforcement_parts)
+            })
+            
+            logger.info(
+                f"Terminal reinforcement added for {dimension.aspect_name} (turn {len(conversation_history)})",
+                extra={
+                    "dimension": dimension.aspect_name,
+                    "turn_count": len(conversation_history),
+                    "threshold": terminal_reinforcement_threshold
+                }
+            )
         
         return messages
     
@@ -551,7 +579,8 @@ def build_refinement_messages(
     dimension: RefinementDimension,
     query: str,
     conversation_history: List[Dict[str, str]],
-    dependency_context: Optional[Dict[str, Dict[str, str]]] = None
+    dependency_context: Optional[Dict[str, Dict[str, str]]] = None,
+    terminal_reinforcement_threshold: int = 3  # Delegates to method, inherits same default
 ) -> List[Dict[str, str]]:
     """
     Convenience function to build refinement messages.
@@ -561,6 +590,7 @@ def build_refinement_messages(
         query: The original query
         conversation_history: Q&A history for THIS dimension
         dependency_context: Completed dependency values
+        terminal_reinforcement_threshold: Add reinforcement after N turns (default: 3 from LLMSettings)
         
     Returns:
         List of messages for LLM API
@@ -569,7 +599,8 @@ def build_refinement_messages(
         dimension=dimension,
         query=query,
         conversation_history=conversation_history,
-        dependency_context=dependency_context
+        dependency_context=dependency_context,
+        terminal_reinforcement_threshold=terminal_reinforcement_threshold
     )
 
 

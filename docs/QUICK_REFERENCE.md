@@ -253,6 +253,43 @@ redis-cli FLUSHALL
 
 ---
 
+## 🆕 New Feature: Terminal Reinforcement
+
+**What**: Repeats core instructions at the end of long conversations to prevent LLMs from "forgetting" initial directives.
+
+**Why**: Analysis of 3,777 dimensions showed 0.9% need 3+ turns due to instruction drift.
+
+**Configuration**: **Hardcoded to threshold=3** (no environment variable)
+- Data-driven optimal value from 3,777 dimension analysis
+- 94.8% complete in 1 turn, 4.3% in 2 turns (normal)
+- Threshold=3 targets the 0.9% that struggle (35 dimensions)
+
+**Impact**:
+- Affects only 0.9% of dimensions (35 out of 3,777)
+- +0.9% average token cost increase (negligible)
+- Research-backed (Liu et al. 2023 "Lost in the Middle")
+
+**Monitoring**:
+```bash
+# Count activations
+grep "Terminal reinforcement added" logs/app.log | wc -l
+
+# Check initialization
+grep "Terminal Reinforcement Threshold:" logs/app.log | tail -1
+# Should show: "Terminal Reinforcement Threshold: 3"
+```
+
+**Documentation**:
+- **Full Docs**: [TERMINAL_REINFORCEMENT.md](TERMINAL_REINFORCEMENT.md)
+- **Summary**: [TERMINAL_REINFORCEMENT_SUMMARY.md](TERMINAL_REINFORCEMENT_SUMMARY.md)
+- **Quick Ref**: [TERMINAL_REINFORCEMENT_QUICKREF.md](TERMINAL_REINFORCEMENT_QUICKREF.md)
+- **Changelog**: [TERMINAL_REINFORCEMENT_CHANGELOG.md](TERMINAL_REINFORCEMENT_CHANGELOG.md)
+
+**Status**: ✅ Implementation Complete | ⏳ Testing Pending
+
+---
+
 *Document created: February 9, 2026*  
 *Last updated: February 9, 2026*  
 *System version: 0.3.0*
+

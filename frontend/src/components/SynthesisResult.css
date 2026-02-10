@@ -1,14 +1,13 @@
 .synthesis-result {
-    max-width: 900px;
-    margin: 0 auto;
+    width: 100%;
     padding: 20px;
 }
 
 .synthesis-result h2 {
     text-align: center;
     color: #28a745;
-    font-size: 32px;
-    margin-bottom: 30px;
+    font-size: 28px;
+    margin-bottom: 20px;
 }
 
 .result-section {
@@ -19,32 +18,10 @@
     margin-bottom: 20px;
 }
 
-.section-header {
-    display: flex;
-    justify-content: space-between;
-    align-items: center;
-    cursor: pointer;
-    user-select: none;
-    margin-bottom: 15px;
-}
-
-.section-header:hover {
-    opacity: 0.8;
-}
-
-.section-header h3 {
-    margin: 0;
-}
-
-.toggle-icon {
-    font-size: 24px;
-    font-weight: bold;
-    color: #667eea;
-}
-
 .result-section h3 {
     color: #333;
     font-size: 18px;
+    margin-bottom: 15px;
 }
 
 .refined-query {
