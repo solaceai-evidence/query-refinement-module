@@ -301,9 +301,12 @@ def test_cannot_access_other_users_queries():
     )
     query_id = start_response.json()["query_id"]
     
-    # Create second user
+    # Create second user with unique credentials
+    import time
+    timestamp = int(time.time() * 1000)
     test_user_2 = {
-        "email": "history_test2@example.com",
+        "username": f"history_test2_{timestamp}",
+        "email": f"history_test2_{timestamp}@example.com",
         "password": "TestPass123!",
         "name": "History Test User 2"
     }
@@ -311,8 +314,9 @@ def test_cannot_access_other_users_queries():
     
     login_response = requests.post(
         f"{BASE_URL}/api/auth/login",
-        data={"username": test_user_2["email"], "password": test_user_2["password"]}
+        data={"username": test_user_2["username"], "password": test_user_2["password"]}
     )
+    assert login_response.status_code == 200, f"Login failed: {login_response.text}"
     token2 = login_response.json()["access_token"]
     headers2 = {"Authorization": f"Bearer {token2}"}
     

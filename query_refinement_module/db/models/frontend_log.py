@@ -10,7 +10,7 @@ from typing import Optional
 from sqlalchemy import Column, Integer, String, DateTime, Text, JSON, ForeignKey, Index
 from sqlalchemy.orm import relationship
 
-from query_refinement_module.db.database import Base
+from .user import Base
 
 
 def _utcnow():

@@ -6,7 +6,7 @@ Provides API for managing webhook configurations and viewing delivery history.
 from fastapi import APIRouter, Depends, HTTPException, status
 from sqlalchemy.orm import Session
 from typing import List, Optional
-from pydantic import BaseModel, HttpUrl, Field
+from pydantic import BaseModel, HttpUrl, Field, ConfigDict
 from datetime import datetime
 
 from query_refinement_module.api.auth import get_current_user
@@ -64,8 +64,7 @@ class WebhookResponse(BaseModel):
     created_at: datetime
     updated_at: datetime
 
-    class Config:
-        from_attributes = True
+    model_config = ConfigDict(from_attributes=True)
 
 
 class WebhookSecretResponse(BaseModel):
@@ -89,8 +88,7 @@ class WebhookDeliveryResponse(BaseModel):
     created_at: datetime
     completed_at: Optional[datetime]
 
-    class Config:
-        from_attributes = True
+    model_config = ConfigDict(from_attributes=True)
 
 
 class WebhookEventTypesResponse(BaseModel):

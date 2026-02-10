@@ -600,7 +600,8 @@ async def test_synthesize_refined_query_without_clarifications():
 @pytest.mark.asyncio
 async def test_synthesize_refined_query_with_clarifications():
     aspect = make_aspect(aspect_id="a", name="Population")
-    # Synthesis expects JSON with all required QueryRefinementResponse fields
+    # Synthesis expects JSON with required QueryRefinementResponse fields
+    # Optional fields (grey_literature, primary_terms, domain_specific, metadata, processing_log) omitted to test they're truly optional
     llm_response = json.dumps({
         "synthesized_statement": "Refined query for adults 18-65",
         "refined_dimensions": {"population": "Adults 18-65"},
@@ -610,12 +611,8 @@ async def test_synthesize_refined_query_with_clarifications():
                 "structured": "adults AND (18-65)",
                 "phrases": ["adults 18-65"],
                 "terms": {"required": ["adults"], "optional": [], "excluded": []}
-            },
-            "grey_literature": {
-                "broad_concepts": [],
-                "organizational_terms": [],
-                "geographic_variants": []
             }
+            # grey_literature is optional - omitted
         },
         "search_filters": {
             "publication_years": "",
@@ -625,23 +622,13 @@ async def test_synthesize_refined_query_with_clarifications():
             "fields_of_study": []
         },
         "terminology": {
-            "primary_terms": ["adults"],
+            # primary_terms is optional - omitted
             "synonyms": {},
-            "domain_specific": [],
+            # domain_specific is optional - omitted
             "colloquial": []
-        },
-        "metadata": {
-            "temporal": None,
-            "geographic": None,
-            "source_types": [],
-            "other": {}
-        },
-        "processing_log": {
-            "preserved": [],
-            "normalized": [],
-            "integrated": [],
-            "expanded": []
         }
+        # metadata is optional - omitted
+        # processing_log is optional - omitted
     })
     manager = build_manager(responses=[llm_response])
     session = RefinementSession(original_query="original query")

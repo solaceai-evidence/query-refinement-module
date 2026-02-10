@@ -25,7 +25,7 @@ import string
 import json
 import csv
 from pathlib import Path
-from typing import List, Tuple, Dict
+from typing import List, Tuple, Dict, Optional, Any
 
 # Add parent directory to path
 sys.path.insert(0, str(Path(__file__).parent.parent))
@@ -118,7 +118,7 @@ def generate_user_credentials(n: int, starting_number: int = 1) -> List[Tuple[st
     return credentials
 
 
-def create_users_in_db(credentials: List[Tuple[str, str]], db: Session = None, include_email: bool = False) -> Dict[str, any]:
+def create_users_in_db(credentials: List[Tuple[str, str]], db: Optional[Session] = None, include_email: bool = False) -> Dict[str, Any]:
     """
     Create users in the database from credential pairs.
     

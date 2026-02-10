@@ -387,6 +387,8 @@ def delete_refinement_steps_by_aspects(
     Used when /back or /restart commands truncate the session - maintains referential
     integrity between Redis session state and database records.
     
+    Uses ORM-level delete to trigger cascade relationships (e.g., followup_history).
+    
     Args:
         db: Database session
         query_id: Query ID to scope the deletion
@@ -398,10 +400,16 @@ def delete_refinement_steps_by_aspects(
     if not aspect_names:
         return 0
     
-    deleted_count = db.query(RefinementStep).filter(
+    # Use ORM-level delete to trigger cascade relationships
+    steps_to_delete = db.query(RefinementStep).filter(
         RefinementStep.query_id == query_id,
         RefinementStep.aspect_name.in_(aspect_names)
-    ).delete(synchronize_session=False)
+    ).all()
+    
+    deleted_count = len(steps_to_delete)
+    
+    for step in steps_to_delete:
+        db.delete(step)
     
     db.commit()
     return deleted_count

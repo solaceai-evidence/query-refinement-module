@@ -13,6 +13,7 @@ class TestSynthesisResponse:
     """Test suite for QueryRefinementResponse model."""
 
     def _base_payload(self):
+        """Base payload with all fields for backward compatibility."""
         return {
             "synthesized_statement": "diabetes in adults",
             "refined_dimensions": {"population": "adults", "condition": "diabetes"},
@@ -58,6 +59,41 @@ class TestSynthesisResponse:
                 "integrated": [],
                 "expanded": [],
             },
+        }
+    
+    def _minimal_payload(self):
+        """Minimal payload with only required fields (optional fields omitted)."""
+        return {
+            "synthesized_statement": "diabetes in adults",
+            "refined_dimensions": {"population": "adults", "condition": "diabetes"},
+            "search_optimized": {
+                "semantic": "Semantic search query for diabetes in adults",
+                "keyword": {
+                    "structured": "(diabetes) AND (adults)",
+                    "phrases": ["diabetes adults"],
+                    "terms": {
+                        "required": ["diabetes"],
+                        "optional": ["adult"],
+                        "excluded": [],
+                    },
+                },
+                # grey_literature is optional - omitted
+            },
+            "search_filters": {
+                "publication_years": "",
+                "venues": [],
+                "authors": [],
+                "publication_types": [],
+                "fields_of_study": [],
+            },
+            "terminology": {
+                # primary_terms is optional - omitted
+                "synonyms": {"diabetes": ["T2DM"]},
+                # domain_specific is optional - omitted
+                "colloquial": [],
+            },
+            # metadata is optional - omitted
+            # processing_log is optional - omitted
         }
 
     def test_valid_minimal_response(self):
@@ -155,6 +191,28 @@ class TestSynthesisResponse:
         # Should allow updates (frozen=False in Config)
         response.synthesized_statement = "updated"
         assert response.synthesized_statement == "updated"
+    
+    def test_optional_fields_can_be_omitted(self):
+        """Test that optional fields (grey_literature, primary_terms, domain_specific, metadata, processing_log) can be omitted."""
+        payload = self._minimal_payload()
+        response = QueryRefinementResponse(**payload)
+        
+        # Verify required fields are present
+        assert response.synthesized_statement == "diabetes in adults"
+        assert response.refined_dimensions == {"population": "adults", "condition": "diabetes"}
+        assert response.search_optimized.semantic
+        assert response.search_optimized.keyword
+        
+        # Verify optional fields are None when omitted
+        assert response.search_optimized.grey_literature is None
+        assert response.terminology.primary_terms is None
+        assert response.terminology.domain_specific is None
+        assert response.metadata is None
+        assert response.processing_log is None
+        
+        # Verify other fields still work
+        assert response.terminology.synonyms == {"diabetes": ["T2DM"]}
+        assert response.terminology.colloquial == []
 
 
 if __name__ == "__main__":

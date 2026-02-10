@@ -14,7 +14,7 @@ from threading import Thread
 import queue
 
 from query_refinement_module.api.main import app
-from query_refinement_module.db.database import get_db
+from query_refinement_module.db.session import get_db
 from query_refinement_module.db.models.user import User
 from query_refinement_module.db.models.webhook import Webhook, WebhookDelivery
 from query_refinement_module.db import crud_webhooks

@@ -18,7 +18,12 @@ def test_database_url():
 @pytest.fixture(scope="function")
 def test_db_engine(test_database_url):
     """Create a fresh database engine for each test."""
-    engine = create_engine(test_database_url, echo=False)
+    # Add check_same_thread=False for SQLite to work with FastAPI TestClient's threading
+    engine = create_engine(
+        test_database_url, 
+        echo=False,
+        connect_args={"check_same_thread": False}
+    )
     Base.metadata.create_all(engine)
     yield engine
     Base.metadata.drop_all(engine)

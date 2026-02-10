@@ -96,7 +96,7 @@ class SearchOptimized(BaseModel):
     """Search variants optimized for different retrieval strategies."""
     semantic: str = Field(description="Natural language semantic search query")
     keyword: KeywordSearch
-    grey_literature: GreyLiteratureSearch
+    grey_literature: Optional[GreyLiteratureSearch] = None
 
 class SearchFilters(BaseModel):
     """Metadata filters for search refinement."""
@@ -108,9 +108,9 @@ class SearchFilters(BaseModel):
 
 class Terminology(BaseModel):
     """Terminology mapping and variants."""
-    primary_terms: List[str] = Field(default_factory=list)
+    primary_terms: Optional[List[str]] = None
     synonyms: Dict[str, List[str]] = Field(default_factory=dict)
-    domain_specific: List[str] = Field(default_factory=list)
+    domain_specific: Optional[List[str]] = None
     colloquial: List[str] = Field(default_factory=list)
 
 
@@ -126,6 +126,7 @@ class QueryRefinementResponse(BaseModel):
     - Individual dimension values
     - Search-optimized variants
     - Filters and terminology
+    - Optional metadata and processing logs
     """
     model_config = ConfigDict(
         frozen=False,
@@ -140,6 +141,8 @@ class QueryRefinementResponse(BaseModel):
     search_optimized: SearchOptimized
     search_filters: SearchFilters
     terminology: Terminology
+    metadata: Optional[Dict[str, Any]] = None
+    processing_log: Optional[Dict[str, Any]] = None
 
 
 # Backward compatibility alias

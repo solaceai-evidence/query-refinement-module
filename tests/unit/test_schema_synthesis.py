@@ -190,3 +190,43 @@ class TestSynthesisResponseValidation:
         # Should not raise
         result = validate_synthesis_response(response)
         assert result.synthesized_statement == "A refined research question"
+    
+    def test_valid_response_without_optional_fields(self):
+        """Test valid synthesis response with optional fields omitted."""
+        response = {
+            "synthesized_statement": "A refined research question",
+            "refined_dimensions": {"population": "adults"},
+            "search_optimized": {
+                "semantic": "semantic query",
+                "keyword": {
+                    "structured": "query",
+                    "phrases": [],
+                    "terms": {"required": [], "optional": [], "excluded": []},
+                },
+                # grey_literature omitted (optional)
+            },
+            "search_filters": {
+                "publication_years": "",
+                "venues": [],
+                "authors": [],
+                "publication_types": [],
+                "fields_of_study": [],
+            },
+            "terminology": {
+                # primary_terms omitted (optional)
+                "synonyms": {},
+                # domain_specific omitted (optional)
+                "colloquial": [],
+            },
+            # metadata omitted (optional)
+            # processing_log omitted (optional)
+        }
+        
+        # Should not raise
+        result = validate_synthesis_response(response)
+        assert result.synthesized_statement == "A refined research question"
+        assert result.search_optimized.grey_literature is None
+        assert result.terminology.primary_terms is None
+        assert result.terminology.domain_specific is None
+        assert result.metadata is None
+        assert result.processing_log is None

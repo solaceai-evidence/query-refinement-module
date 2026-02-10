@@ -102,6 +102,9 @@ def test_cascade_delete_with_followup_history(db: Session, test_user):
     followups_before = get_step_followups(db, refinement_step_id=step.id)
     assert len(followups_before) == 2
     
+    # Store step_id before deletion
+    step_id = step.id
+    
     # Delete the step (should cascade to follow-ups)
     deleted_count = delete_refinement_steps_by_aspects(
         db, query_id=query.id, aspect_names=["test_dimension"]
@@ -110,7 +113,7 @@ def test_cascade_delete_with_followup_history(db: Session, test_user):
     assert deleted_count == 1
     
     # Verify follow-ups were cascade deleted
-    followups_after = get_step_followups(db, refinement_step_id=step.id)
+    followups_after = get_step_followups(db, refinement_step_id=step_id)
     assert len(followups_after) == 0
 
 
@@ -189,7 +192,7 @@ def test_back_command_db_consistency(db: Session, test_user):
     assert deleted_count == 3
     
     # Verify DB matches expected session state
-    remaining_steps = get_query_refinement_steps(db, query_id)
+    remaining_steps = get_query_refinement_steps(db, query.id)
     assert len(remaining_steps) == 2
     assert {s.aspect_name for s in remaining_steps} == {"dimension_1", "dimension_2"}
 
@@ -217,7 +220,7 @@ def test_restart_command_db_consistency(db: Session, test_user):
     assert deleted_count == 5
     
     # Verify DB is empty
-    remaining_steps = get_query_refinement_steps(db, query_id)
+    remaining_steps = get_query_refinement_steps(db, query.id)
     assert len(remaining_steps) == 0
 
 
@@ -264,17 +267,17 @@ def test_multiple_back_commands_sequence(db: Session, test_user):
     
     # First /back from dimension 5 (removes 5)
     delete_refinement_steps_by_aspects(db, query_id=query.id, aspect_names=["dimension_5"])
-    steps = get_query_refinement_steps(db, query_id)
+    steps = get_query_refinement_steps(db, query.id)
     assert len(steps) == 4
     
     # Second /back from dimension 4 (removes 4)
     delete_refinement_steps_by_aspects(db, query_id=query.id, aspect_names=["dimension_4"])
-    steps = get_query_refinement_steps(db, query_id)
+    steps = get_query_refinement_steps(db, query.id)
     assert len(steps) == 3
     
     # Third /back from dimension 3 (removes 3)
     delete_refinement_steps_by_aspects(db, query_id=query.id, aspect_names=["dimension_3"])
-    steps = get_query_refinement_steps(db, query_id)
+    steps = get_query_refinement_steps(db, query.id)
     assert len(steps) == 2
     
     # Verify only dimensions 1 and 2 remain

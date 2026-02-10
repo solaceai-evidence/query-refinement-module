@@ -214,15 +214,15 @@ class TestFrontendContracts:
         - query_id: number
         - refined_query: string
         - used_llm: boolean
-        - metadata: object
+        - structured_output: object | null
         """
         response_dict = {
             "query_id": 1,
             "refined_query": "refined search query",
             "used_llm": True,
-            "metadata": {
-                "synthesis_time": 1.23,
-                "aspects_used": 4
+            "structured_output": {
+                "integrated_statement": "refined query",
+                "search_optimized": {}
             }
         }
         
@@ -232,7 +232,7 @@ class TestFrontendContracts:
         assert hasattr(response, 'query_id')
         assert hasattr(response, 'refined_query')
         assert hasattr(response, 'used_llm')
-        assert hasattr(response, 'metadata')
+        assert hasattr(response, 'structured_output')
         
         # Validate types
         assert isinstance(response.query_id, int)
