@@ -127,16 +127,23 @@ class QueryRefinementResponse(BaseModel):
     - Search-optimized variants
     - Filters and terminology
     - Optional metadata and processing logs
+    
+    Note: Accepts LLM template field names (integrated_statement, dimensions_specifications)
+    via validation aliases, but exposes them as database field names
+    (synthesized_statement, refined_dimensions) for Python code access.
     """
     model_config = ConfigDict(
         frozen=False,
-        validate_assignment=True
+        validate_assignment=True,
+        populate_by_name=True  # Allow both alias and field name
     )
-    synthesized_statement: str =  Field(
-        description="Integrated research specification preserving user's voice"
+    synthesized_statement: str = Field(
+        description="Integrated research specification preserving user's voice",
+        validation_alias="integrated_statement"  # Accept this name from LLM JSON
     )
     refined_dimensions: Dict[str, str] = Field(
-        description="Normalized value for each dimension (dimension_id -> value)"
+        description="Normalized value for each dimension (dimension_id -> value)",
+        validation_alias="dimensions_specifications"  # Accept this name from LLM JSON
     )
     search_optimized: SearchOptimized
     search_filters: SearchFilters

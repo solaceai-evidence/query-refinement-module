@@ -270,11 +270,11 @@ async def run_cli(manager: QueryRefinementManager, framework_name: str, query: s
                 print(f"Error: {exc}")
             else:
                 refined_query = synthesis.get("refined_query", "").strip()
-                synthesized_statement = synthesis.get("synthesized_statement", "").strip()
+                integrated_statement = synthesis.get("integrated_statement", "").strip()
                 
                 # Display synthesized statement (or fallback to refined_query)
-                if synthesized_statement:
-                    print(f"Refined:  {synthesized_statement}\n")
+                if integrated_statement:
+                    print(f"Refined:  {integrated_statement}\n")
                 elif refined_query:
                     print(f"Refined:  {refined_query}\n")
                 else:

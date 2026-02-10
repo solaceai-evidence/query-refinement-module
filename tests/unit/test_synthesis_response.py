@@ -13,10 +13,10 @@ class TestSynthesisResponse:
     """Test suite for QueryRefinementResponse model."""
 
     def _base_payload(self):
-        """Base payload with all fields for backward compatibility."""
+        """Base payload using LLM field names (as template specifies)."""
         return {
-            "synthesized_statement": "diabetes in adults",
-            "refined_dimensions": {"population": "adults", "condition": "diabetes"},
+            "integrated_statement": "diabetes in adults",
+            "dimensions_specifications": {"population": "adults", "condition": "diabetes"},
             "search_optimized": {
                 "semantic": "Semantic search query for diabetes in adults",
                 "keyword": {
@@ -62,10 +62,10 @@ class TestSynthesisResponse:
         }
     
     def _minimal_payload(self):
-        """Minimal payload with only required fields (optional fields omitted)."""
+        """Minimal payload with only required fields using LLM field names."""
         return {
-            "synthesized_statement": "diabetes in adults",
-            "refined_dimensions": {"population": "adults", "condition": "diabetes"},
+            "integrated_statement": "diabetes in adults",
+            "dimensions_specifications": {"population": "adults", "condition": "diabetes"},
             "search_optimized": {
                 "semantic": "Semantic search query for diabetes in adults",
                 "keyword": {
@@ -100,6 +100,7 @@ class TestSynthesisResponse:
         """Test creation with minimal required fields."""
         response = QueryRefinementResponse(**self._base_payload())
 
+        # Verify Python code accesses via DB field names
         assert response.synthesized_statement == "diabetes in adults"
         assert response.refined_dimensions == {"population": "adults", "condition": "diabetes"}
         assert response.search_filters.publication_years == ""
@@ -107,8 +108,8 @@ class TestSynthesisResponse:
     def test_valid_response_with_all_fields(self):
         """Test creation with all optional fields."""
         payload = self._base_payload()
-        payload["synthesized_statement"] = "diabetes treatment in adults"
-        payload["refined_dimensions"].update(
+        payload["integrated_statement"] = "diabetes treatment in adults"
+        payload["dimensions_specifications"].update(
             {
                 "intervention": "metformin",
                 "outcome": "glycemic control",
@@ -125,41 +126,44 @@ class TestSynthesisResponse:
 
         response = QueryRefinementResponse(**payload)
 
+        # Access via Python/DB field names
         assert response.synthesized_statement == "diabetes treatment in adults"
         assert response.search_filters.publication_years == "2018-2023"
         assert response.search_filters.venues == ["Diabetes Care", "JAMA"]
         assert len(response.search_filters.authors) == 2
         assert response.search_filters.fields_of_study == ["Medicine", "Endocrinology"]
 
-    def test_missing_required_field_synthesized_statement(self):
-        """Test validation fails without synthesized_statement."""
+    def test_missing_required_field_integrated_statement(self):
+        """Test validation fails without integrated_statement (LLM field name)."""
         with pytest.raises(ValidationError) as exc_info:
             payload = self._base_payload()
-            payload.pop("synthesized_statement")
+            payload.pop("integrated_statement")
             QueryRefinementResponse(**payload)
         
         errors = exc_info.value.errors()
-        assert any(e["loc"] == ("synthesized_statement",) for e in errors)
+        # Error should reference the Python field name
+        assert any("synthesized_statement" in str(e) or "integrated_statement" in str(e) for e in errors)
 
-    def test_missing_required_field_refined_dimensions(self):
-        """Test validation fails without refined_dimensions."""
+    def test_missing_required_field_dimensions_specifications(self):
+        """Test validation fails without dimensions_specifications (LLM field name)."""
         with pytest.raises(ValidationError) as exc_info:
             payload = self._base_payload()
-            payload.pop("refined_dimensions")
+            payload.pop("dimensions_specifications")
             QueryRefinementResponse(**payload)
         
         errors = exc_info.value.errors()
-        assert any(e["loc"] == ("refined_dimensions",) for e in errors)
+        # Error should reference the Python field name
+        assert any("refined_dimensions" in str(e) or "dimensions_specifications" in str(e) for e in errors)
 
-    def test_refined_dimensions_must_be_dict(self):
-        """Test refined_dimensions must be a dictionary."""
+    def test_dimensions_specifications_must_be_dict(self):
+        """Test dimensions_specifications must be a dictionary."""
         with pytest.raises(ValidationError) as exc_info:
             payload = self._base_payload()
-            payload["refined_dimensions"] = "not a dict"
+            payload["dimensions_specifications"] = "not a dict"
             QueryRefinementResponse(**payload)
         
         errors = exc_info.value.errors()
-        assert any("refined_dimensions" in str(e["loc"]) for e in errors)
+        assert any("refined_dimensions" in str(e["loc"]) or "dimensions_specifications" in str(e["loc"]) for e in errors)
 
     def test_default_empty_values(self):
         """Test default values for optional fields."""
@@ -170,10 +174,10 @@ class TestSynthesisResponse:
         assert response.search_filters.authors == []
         assert response.search_filters.fields_of_study == []
 
-    def test_refined_dimensions_with_special_values(self):
-        """Test refined_dimensions can contain special markers like [SKIPPED] and actual values."""
+    def test_dimensions_specifications_with_special_values(self):
+        """Test dimensions_specifications can contain special markers like [SKIPPED] and actual values."""
         payload = self._base_payload()
-        payload["refined_dimensions"].update(
+        payload["dimensions_specifications"].update(
             {
                 "outcome": "[SKIPPED]",
                 "intervention": "metformin 500mg daily",
@@ -181,6 +185,7 @@ class TestSynthesisResponse:
         )
         response = QueryRefinementResponse(**payload)
 
+        # Access via Python/DB field names
         assert response.refined_dimensions["outcome"] == "[SKIPPED]"
         assert response.refined_dimensions["intervention"] == "metformin 500mg daily"
 

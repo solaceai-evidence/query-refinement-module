@@ -1496,33 +1496,33 @@ async def synthesize_refined_query(
                         "json_preview_end": json_str[-100:] if len(json_str) > 100 else json_str
                     }
                 )
-                # Attempt to extract synthesized_statement even from partial JSON
+                # Attempt to extract integrated_statement (LLM field name) even from partial JSON
                 import re
-                statement_match = re.search(r'"synthesized_statement"\s*:\s*"([^"]+)"', json_str)
+                statement_match = re.search(r'"integrated_statement"\s*:\s*"([^"]+)"', json_str)
                 if statement_match:
                     refined_query = statement_match.group(1)
-                    logger.info(f"Extracted synthesized_statement from truncated JSON: {refined_query[:100]}...")
+                    logger.info(f"Extracted integrated_statement from truncated JSON: {refined_query[:100]}...")
                 else:
-                    logger.warning("Could not extract synthesized_statement from truncated JSON")
+                    logger.warning("Could not extract integrated_statement from truncated JSON")
                 # Keep structured_output as None for truncated response
                 raise ValueError("JSON response was truncated, increase max_tokens")
             
             # Parse JSON
             parsed_data = json.loads(json_str)
             
-            # Extract structured fields
+            # Extract structured fields (use LLM field names from raw JSON)
             structured_output = {
                 'detail_values': parsed_data.get('detail_values'),
                 'search_optimized': parsed_data.get('search_optimized'),
                 'search_filters': parsed_data.get('search_filters'),
                 'terminology': parsed_data.get('terminology'),
-                'synthesized_statement': parsed_data.get('synthesized_statement'),
-                'dimensions': parsed_data.get('dimensions'),
+                'synthesized_statement': parsed_data.get('integrated_statement'),  # LLM uses integrated_statement
+                'dimensions': parsed_data.get('dimensions_specifications'),  # LLM uses dimensions_specifications
             }
             
-            # Use synthesized_statement as refined_query if available
-            if parsed_data.get('synthesized_statement'):
-                refined_query = parsed_data['synthesized_statement']
+            # Use integrated_statement (LLM field name) as refined_query if available
+            if parsed_data.get('integrated_statement'):
+                refined_query = parsed_data['integrated_statement']
                 
             logger.info(
                 "Successfully parsed JSON from refined_query string",
