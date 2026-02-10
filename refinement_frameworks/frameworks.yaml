@@ -6,10 +6,11 @@ pico_advanced:
       complexity: "expert" # (novice, intermediate, advanced, expert)
       examples_from: "public health"
       constraints:
-        - "Timeline: 12-24+ months typical; affects acceptable scope and comprehensiveness of search strategy"
-        - "Specificity: PROSPERO registration requires precise, pre-specified PICO elements before protocol submission"
-        - "Searchability: Question elements must translate to reproducible database search terms"
-        - "Comparability: Included studies must be sufficiently similar for meaningful synthesis"
+        - "Specificity check: Every dimension must have concrete, measurable definitions without ambiguous terms (reject 'elderly', 'standard care', 'improved outcomes' unless operationalized)"
+        - "Alignment check: All dimensions must be mutually compatible (intervention appropriate for population and condition, outcome measurable given design constraints)"
+        - "Search-readiness check: Each element can be converted into specific database search terms, MeSH headings, or screening criteria"
+        - "Completeness check: All critical PICO elements defined without circular dependencies (no 'depends on what studies we find')"
+        - "Synthesis-feasibility check: The combined dimensions define a coherent, comparable body of evidence rather than heterogeneous narrative-only collection"
   - id: population
     name: Population
     description: The group of individuals, communities, or entities to whom the research applies, defined by demographic characteristics, geographic context, and relevant inclusion criteria.
@@ -93,7 +94,7 @@ pico_advanced:
       **Assembly example:**
       - User: "I want to study a diabetes drug" → current: "pharmacological intervention for diabetes"
       - User: "metformin specifically" → current: "metformin for diabetes"
-      - User: "for 6 months" → current: "metformin 500mg twice daily for 6 months"
+      - User: "for at least 6 months" → current: "metformin for at least 6 months"
     examples:
       clear:
         - statement: Metformin vs placebo in newly diagnosed Type 2 diabetes over 6 months.
@@ -640,7 +641,7 @@ mph_dissertation:
           example_question: What approach will you take - cross-sectional survey, qualitative interviews, secondary data analysis, or literature review?
         - statement: I'll do an RCT
           issue: RCT rarely feasible for MPH timeline and resources
-          example_question: RCTs typically exceed MPH scope. What are you hoping to learn? Consider quasi-experimental design or systematic review of existing RCTs.
+          example_question: RCTs typically exceed MPH scope. What are you hoping to learn? Consider quasi-experimental design or rapid or scoping reviews of existing RCTs.
       partial:
         - statement: qualitative study on patient experiences
           has: Paradigm (qualitative), focus (experiences)
@@ -701,7 +702,7 @@ mph_dissertation:
       - Note: Primary data typically requires IRB approval
 
       LITERATURE-BASED:
-      - Systematic review (existing studies as data)
+      - Rapid review (existing studies as data)
       - Scoping review
       - Policy document analysis
 
@@ -797,17 +798,18 @@ mph_dissertation:
       - Subset selection with clear criteria
       - Weighted analysis (complex survey designs like NHANES)
 
-      SYSTEMATIC REVIEW:
-      - Comprehensive search strategy
-      - Inclusion/exclusion criteria for studies
-      - PRISMA flow for study selection
+      REVIEW DESIGNS (RAPID/SCOPING):
+      - Focused search strategy (rapid review: limited databases, scoping review: broader inclusion)
+      - Clear inclusion/exclusion criteria for studies
+      - Study selection flow diagram
+      - Note: Systematic reviews typically too time-intensive for MPH timeline (6-12 months)
 
       **Sample size guidance for MPH:**
       - Quantitative surveys: 100-500 typical, power calculation recommended
       - Secondary data: often thousands, limited by dataset
       - Qualitative interviews: 15-30 (until saturation)
       - Focus groups: 3-6 groups of 6-10 participants
-      - Systematic review: determined by literature (report search yield)
+      - Rapid/scoping reviews: typically 20-50 studies (rapid review more focused, scoping review broader mapping)
 
       **Assembly example:**
       - User: "I'll sample people" → current: "sampling strategy unspecified"

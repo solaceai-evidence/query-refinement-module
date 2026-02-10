@@ -6,10 +6,10 @@ mph_dissertation:
       complexity: "intermediate" # (novice, intermediate, advanced, expert)
       examples_from: "public health"
       constraints:
-        - "Timeline: 6-12 months for completion (typically one academic year)"
-        - "Resources: Limited to publicly available datasets, literature review, or small-scale primary data collection"
-        - "Scope: Must be achievable by a single student with faculty advisor guidance"
-        - "Output: Written dissertation/capstone paper, possibly poster or brief presentation"
+        - "Timeline: 6-12 months limits study designs (no prospective cohorts, RCTs typically infeasible)"
+        - "Data access: Existing public datasets preferred; primary data collection requires IRB timeline buffer"
+        - "Scope: Single focused research question; avoid multiple aims or complex multi-phase designs"
+        - "Sample size: Recruitment capacity limited; large primary surveys rarely feasible"
   - id: mph_research_domain
     name: "MPH research domain"
     description: the public health topic or health issue under investigation
@@ -195,7 +195,6 @@ mph_dissertation:
       - Note: Mixed methods ambitious for MPH; ensure one is primary
 
       REVIEW DESIGNS:
-      - Systematic review: comprehensive synthesis with quality assessment
       - Scoping review: mapping evidence landscape, broader inclusion
       - Narrative review: less systematic, synthesizes themes
       - Rapid review: accelerated systematic review methods
@@ -232,7 +231,7 @@ mph_dissertation:
           example_question: What approach will you take - cross-sectional survey, qualitative interviews, secondary data analysis, or literature review?
         - statement: I'll do an RCT
           issue: RCT rarely feasible for MPH timeline and resources
-          example_question: RCTs typically exceed MPH scope. What are you hoping to learn? Consider quasi-experimental design or systematic review of existing RCTs.
+          example_question: RCTs typically exceed MPH scope. What are you hoping to learn? Consider quasi-experimental design or rapid or scoping reviews of existing RCTs.
       partial:
         - statement: qualitative study on patient experiences
           has: Paradigm (qualitative), focus (experiences)
@@ -293,7 +292,7 @@ mph_dissertation:
       - Note: Primary data typically requires IRB approval
 
       LITERATURE-BASED:
-      - Systematic review (existing studies as data)
+      - Rapid review (existing studies as data)
       - Scoping review
       - Policy document analysis
 
@@ -389,17 +388,18 @@ mph_dissertation:
       - Subset selection with clear criteria
       - Weighted analysis (complex survey designs like NHANES)
 
-      SYSTEMATIC REVIEW:
-      - Comprehensive search strategy
-      - Inclusion/exclusion criteria for studies
-      - PRISMA flow for study selection
+      REVIEW DESIGNS (RAPID/SCOPING):
+      - Focused search strategy (rapid review: limited databases, scoping review: broader inclusion)
+      - Clear inclusion/exclusion criteria for studies
+      - Study selection flow diagram
+      - Note: Systematic reviews typically too time-intensive for MPH timeline (6-12 months)
 
       **Sample size guidance for MPH:**
       - Quantitative surveys: 100-500 typical, power calculation recommended
       - Secondary data: often thousands, limited by dataset
       - Qualitative interviews: 15-30 (until saturation)
       - Focus groups: 3-6 groups of 6-10 participants
-      - Systematic review: determined by literature (report search yield)
+      - Rapid/scoping reviews: typically 20-50 studies (rapid review more focused, scoping review broader mapping)
 
       **Assembly example:**
       - User: "I'll sample people" → current: "sampling strategy unspecified"
@@ -445,17 +445,18 @@ mph_dissertation:
       **Elements to track:**
       - Age (range, category, or life stage)
       - Sex/gender
+      - Ethnicity/race
       - Geographic setting or context
-      - Relevant subgroup characteristics (condition, risk factor, role, or affiliation)
+      - Relevant subgroup characteristics: roles (e.g., healthcare workers, parents, teachers, students, caregivers), affiliations (e.g., military veterans, union members), socioeconomic markers (e.g., low-income, uninsured, educational attainment), pregnancy/reproductive status, occupational categories, insurance status
 
       **Required:**
-      - At least confirm whether "all populations" or specific demographics intended
+      - At least confirm whether "all populations" or limited to specific demographics
       - Age specification if topic is age-dependent
       - Setting if research is geography/culture-dependent
 
       **Not required unless relevant:**
-      - Ethnicity narrowing (only if health disparities focus)
-      - All four elements (partial is acceptable if user confirms scope)
+      - Ethnicity/race specification (only if health disparities focus or explicitly mentioned)
+      - All elements (partial is acceptable if user confirms scope)
 
       **Age standardization:**
       When assembling, standardize age terms:
