@@ -468,7 +468,7 @@ def check_integrity(
                 
                 redis_step_names = []
                 if redis_session:
-                    redis_step_names = [s.refinement_aspect.aspect_name for s in redis_session.steps]
+                    redis_step_names = [s.refinement_aspect.name for s in redis_session.steps]
                 
                 # Compare
                 db_set = set(db_step_names)

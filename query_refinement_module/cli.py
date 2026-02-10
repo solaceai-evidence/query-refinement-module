@@ -121,8 +121,8 @@ async def run_cli(manager: QueryRefinementManager, framework_name: str, query: s
                 # All aspects complete
                 break
 
-            header = step.refinement_aspect.aspect_name
-            aspect_desc = step.refinement_aspect.aspect_description or ""
+            header = step.refinement_aspect.name
+            aspect_desc = step.refinement_aspect.description or ""
             
             print("\n" + "─"*80)
             print(f" {header.upper()}")
@@ -289,7 +289,7 @@ async def run_cli(manager: QueryRefinementManager, framework_name: str, query: s
                     print("─"*80)
                     for aspect_id, value in detail_values.items():
                         aspect = next((s.refinement_aspect for s in session.steps if s.refinement_aspect.id == aspect_id), None)
-                        aspect_name = aspect.aspect_name if aspect else aspect_id
+                        aspect_name = aspect.name if aspect else aspect_id
                         if value and value != "[SKIPPED]" and value != "null":
                             print(f"• {aspect_name}: {value}")
                     print()

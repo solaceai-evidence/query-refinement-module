@@ -185,7 +185,7 @@ async def validate_framework(
         for aspect in aspects:
             aspect_info = {
                 "id": aspect.id,
-                "name": aspect.aspect_name,
+                "name": aspect.name,
                 "description": aspect.description[:100] + "..." if len(aspect.description) > 100 else aspect.description,
                 "has_system_prompt": bool(aspect.system_prompt),
                 "has_user_prompt": bool(aspect.user_prompt_template),
@@ -198,7 +198,7 @@ async def validate_framework(
                 aspect_info["issues"].append("Missing aspect ID")
                 aspect_info["valid"] = False
                 
-            if not aspect.aspect_name:
+            if not aspect.name:
                 aspect_info["issues"].append("Missing aspect name")
                 aspect_info["valid"] = False
                 

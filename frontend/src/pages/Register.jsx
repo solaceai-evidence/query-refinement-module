@@ -80,7 +80,9 @@ const Register = () => {
                         <label htmlFor="username">Username</label>
                         <input
                             id="username"
+                            name="username"
                             type="text"
+                            autoComplete="username"
                             value={username}
                             onChange={(e) => setUsername(e.target.value)}
                             required
@@ -105,7 +107,9 @@ const Register = () => {
                         <label htmlFor="password">Password</label>
                         <input
                             id="password"
+                            name="password"
                             type="password"
+                            autoComplete="new-password"
                             value={password}
                             onChange={(e) => setPassword(e.target.value)}
                             required
@@ -120,7 +124,9 @@ const Register = () => {
                         <label htmlFor="confirmPassword">Confirm Password</label>
                         <input
                             id="confirmPassword"
+                            name="confirmPassword"
                             type="password"
+                            autoComplete="new-password"
                             value={confirmPassword}
                             onChange={(e) => setConfirmPassword(e.target.value)}
                             required

@@ -73,7 +73,7 @@ class SessionCommands:
         
         # Track what will be cleared (everything from current onward)
         cleared_aspects = [
-            step.refinement_aspect.aspect_name 
+            step.refinement_aspect.name 
             for step in self.session.steps[active_idx:]
         ]
         
@@ -84,7 +84,7 @@ class SessionCommands:
         prev_step.is_complete = False
         prev_step.needs_review = False
         
-        message = f"Moved back to: {prev_step.refinement_aspect.aspect_name}"
+        message = f"Moved back to: {prev_step.refinement_aspect.name}"
         if cleared_aspects:
             message += f"\n⚠️  Cleared {len(cleared_aspects)} aspect(s): {', '.join(cleared_aspects)}"
             message += "\nThey will be regenerated based on your updated answers."
@@ -101,7 +101,7 @@ class SessionCommands:
         """Restart the entire refinement session, clearing all aspects."""
         # Track all aspects being cleared for DB cascade delete
         cleared_aspects = [
-            step.refinement_aspect.aspect_name
+            step.refinement_aspect.name
             for step in self.session.steps
         ]
         cleared_count = len(self.session.steps)
@@ -130,7 +130,7 @@ class SessionCommands:
         
         return {
             "success": True,
-            "message": f"Skipped: {active.refinement_aspect.aspect_name}.\nNo specifications from this dimension will be provided to dependent refinement dimensions.",
+            "message": f"Skipped: {active.refinement_aspect.name}.\nNo specifications from this dimension will be provided to dependent refinement dimensions.",
             "step": active,
         }
     
@@ -150,7 +150,7 @@ class SessionCommands:
         
         return {
             "success": True,
-            "message": f"Cleared: {active.refinement_aspect.aspect_name}. Question will be regenerated.",
+            "message": f"Cleared: {active.refinement_aspect.name}. Question will be regenerated.",
             "step": active,
             "regenerate_question": True,
         }
@@ -161,7 +161,7 @@ class SessionCommands:
         if not active:
             return {"success": False, "message": "No active step to finish"}
         
-        message = f"Completed refinement aspect: {active.refinement_aspect.aspect_name}"
+        message = f"Completed refinement aspect: {active.refinement_aspect.name}"
         if not active.normalized_value:
             message += " (no additional details provided)."
         
@@ -186,7 +186,7 @@ class SessionCommands:
         }
     
     def get_status(self) -> Dict[str, Any]:
-        """Get current session status."""
+        """Get current session status with detailed dimension information."""
         active = self.session.get_active_step()
         summary = self.session.get_step_summary()
         
@@ -195,6 +195,7 @@ class SessionCommands:
         processed_count = len(self.session.steps)
         remaining_count = total_aspects - processed_count
         
+        # Build basic status message
         status_lines = [
             "Session Status:",
             f"  Processed: {summary['completed']}/{processed_count} complete",
@@ -204,17 +205,62 @@ class SessionCommands:
         if active:
             active_idx = self.session.steps.index(active) + 1
             status_tag = " (needs review)" if active.needs_review else ""
-            status_lines.append(f"  Current: Step {active_idx} - {active.refinement_aspect.aspect_name}{status_tag}")
+            status_lines.append(f"  Current: Step {active_idx} - {active.refinement_aspect.name}{status_tag}")
         else:
             if processed_count == total_aspects:
                 status_lines.append("  Current: All aspects processed")
             else:
                 status_lines.append(f"  Current: Ready for next aspect ({remaining_count} remaining)")
         
+        # Build detailed dimension status
+        dimension_details = []
+        for step in self.session.steps:
+            # Determine status
+            if step.was_skipped:
+                status = "skipped"
+                status_icon = "⊘"
+            elif step.is_complete and not step.needs_review:
+                status = "complete"
+                status_icon = "✓"
+            elif step.needs_review:
+                status = "needs_review"
+                status_icon = "⚠"
+            elif step == active:
+                status = "active"
+                status_icon = "▶"
+            else:
+                status = "in_progress"
+                status_icon = "◌"
+            
+            # Get assembled value
+            assembled_value = None
+            if step.normalized_value_as_str and not step.was_skipped:
+                assembled_value = step.normalized_value_as_str
+            
+            # Add dimension detail
+            dimension_details.append({
+                "name": step.refinement_aspect.name,
+                "description": step.refinement_aspect.description or "",
+                "status": status,
+                "status_icon": status_icon,
+                "is_active": step == active,
+                "follow_up_count": step.follow_up_count,
+                "assembled_value": assembled_value,
+                "was_skipped": step.was_skipped,
+            })
+        
+        # Enhanced summary with additional metrics
+        enhanced_summary = {
+            **summary,
+            "completed_steps": summary['completed'],
+            "pending_steps": remaining_count,
+            "dimensions": dimension_details,
+        }
+        
         return {
             "success": True,
             "message": "\n".join(status_lines),
-            "summary": summary,
+            "summary": enhanced_summary,
             "active_step": active,
         }
     
@@ -237,7 +283,7 @@ class SessionCommands:
                 status = "in progress"
             
             followups = f" ({step.follow_up_count} follow-ups)" if step.follow_up_count > 0 else ""
-            lines.append(f"  {i}. [{status}] {step.refinement_aspect.aspect_name}{followups}")
+            lines.append(f"  {i}. [{status}] {step.refinement_aspect.name}{followups}")
         
         if processed_count < total_aspects:
             lines.append(f"\n  ... {total_aspects - processed_count} more aspect(s) will be generated on-demand")

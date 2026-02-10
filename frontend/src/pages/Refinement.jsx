@@ -288,13 +288,24 @@ const Refinement = () => {
                 answer
             );
 
+            console.log('[TRACE] ========== RAW RESPONSE ==========');
+            console.log('[TRACE] Response received, type:', typeof response);
+            console.log('[TRACE] Response keys:', Object.keys(response || {}));
+            console.log('[TRACE] Full response:', JSON.stringify(response, null, 2));
+            console.log('[TRACE] =====================================');
+
             // Check if this is a command response using type guard
-            if (isCommandResponse(response)) {
+            const isCmd = isCommandResponse(response);
+            console.log('[TRACE] isCommandResponse returned:', isCmd);
+
+            if (isCmd) {
                 logger.info('Command executed', {
                     commandType: response.command_type,
                     success: response.success,
                     hasNextPrompt: !!response.next_prompt
                 });
+
+                console.log('[COMMAND] Full response:', JSON.stringify(response, null, 2));
 
                 /** @type {CommandResult} */
                 const commandResultData = {
@@ -306,7 +317,9 @@ const Refinement = () => {
                     invalidated_aspects: response.invalidated_aspects
                 };
 
-                console.log('[COMMAND RESPONSE] Setting command result:', commandResultData);
+                console.log('[COMMAND RESPONSE] Setting command result:', JSON.stringify(commandResultData, null, 2));
+                console.log('[COMMAND RESPONSE] step_summary exists?', !!response.step_summary);
+                console.log('[COMMAND RESPONSE] step_summary value:', response.step_summary);
 
                 // Add command result to history
                 setConversationHistory(prev => {
@@ -469,8 +482,12 @@ const Refinement = () => {
                 await updateAspectStatus();
             }
         } catch (err) {
+            console.error('[ERROR] ========== CATCH BLOCK ==========');
             console.error('[ERROR] Error in handleAnswer:', err);
-            console.error('[ERROR] Error response:', err.response?.data);
+            console.error('[ERROR] Error message:', err.message);
+            console.error('[ERROR] Error response:', err.response);
+            console.error('[ERROR] Error response data:', err.response?.data);
+            console.error('[ERROR] ======================================');
             setError(err.response?.data?.detail || err.message || 'Failed to process answer');
         } finally {
             console.log('[TRACE] handleAnswer complete, setting loading to false');

@@ -282,7 +282,7 @@ class QueryRefinementManager:
         if step.is_complete:
             return {
                 "aspect_id": step.refinement_aspect.id,
-                "aspect_name": step.refinement_aspect.aspect_name,
+                "name": step.refinement_aspect.name,
                 "follow_up_history": step.conversation_history,
                 "is_complete": step.is_complete,
                 "final_value": step.normalized_value_as_str,
@@ -310,7 +310,7 @@ class QueryRefinementManager:
                 # Log to follow-up history
                 if status['complete']:
                     # Store final question and value in history
-                    last_question = step.follow_up_question or step.refinement_aspect.aspect_name
+                    last_question = step.follow_up_question or step.refinement_aspect.name
                     step.add_follow_up(
                         question=last_question,
                         response=f"[Complete: {result.current}]"
@@ -331,7 +331,7 @@ class QueryRefinementManager:
                 # LLM error - mark as complete with error
                 logger.error(f"LLM error in followup for {step.refinement_aspect.id}: {e}")
                 step.add_follow_up(
-                    question=step.follow_up_question or step.refinement_aspect.aspect_name,
+                    question=step.follow_up_question or step.refinement_aspect.name,
                     response=f"[Validation error: {e}]"
                 )
                 step.is_complete = True
@@ -353,7 +353,7 @@ class QueryRefinementManager:
         
         return {
             "aspect_id": step.refinement_aspect.id,
-            "aspect_name": step.refinement_aspect.aspect_name,
+            "name": step.refinement_aspect.name,
             "follow_up_history": step.conversation_history,
             "is_complete": step.is_complete,
             "final_value": step.normalized_value_as_str,
@@ -461,14 +461,14 @@ class QueryRefinementManager:
             
             # Log the assembled value for debugging
             logger.info(
-                f"Dimension complete for '{step.refinement_aspect.aspect_name}' | "
+                f"Dimension complete for '{step.refinement_aspect.name}' | "
                 f"Assembled value: {result.current}"
             )
             
             return {
                 'complete': True,
                 'aspect_id': aspect_id,
-                'aspect_name': step.refinement_aspect.aspect_name,
+                'name': step.refinement_aspect.name,
                 'current': result.current
             }
         else:
@@ -479,7 +479,7 @@ class QueryRefinementManager:
             return {
                 'complete': False,
                 'aspect_id': aspect_id,
-                'aspect_name': step.refinement_aspect.aspect_name,
+                'name': step.refinement_aspect.name,
                 'next_question': result.question
             }
 
@@ -515,7 +515,7 @@ class QueryRefinementManager:
 
             logger.info("Initializing sequential refinement session for query: %s", original_query)
             logger.debug("Refinement framework aspects: %s",
-                         [aspect.aspect_name for aspect in refinement_framework])
+                         [aspect.name for aspect in refinement_framework])
             
             # Create session
             session = RefinementSession(original_query=original_query)
@@ -690,7 +690,7 @@ class QueryRefinementManager:
             Dict with error response.
         """
         failure_response = f"[Validation error: {error_message}]" if error_message else "[Validation error]"
-        question_text = step.follow_up_question or aspect.aspect_name
+        question_text = step.follow_up_question or aspect.name
         
         step.add_follow_up(question=question_text, response=failure_response)
         step.is_complete = True
@@ -706,7 +706,7 @@ class QueryRefinementManager:
         
         return {
             "aspect_id": aspect.id,
-            "aspect_name": aspect.aspect_name,
+            "name": aspect.name,
             "question": question_text,
             "response": failure_response,
             "error": True
@@ -1197,17 +1197,17 @@ class QueryRefinementManager:
                 if summary:
                     if step.conversation_history:
                         # Had follow-ups, so this is a refined/synthesized value
-                        clarifications.append((step.refinement_aspect.aspect_name, summary))
+                        clarifications.append((step.refinement_aspect.name, summary))
                     else:
                         # No follow-ups, was clear in original query
-                        baseline_summaries.append((step.refinement_aspect.aspect_name, summary))
+                        baseline_summaries.append((step.refinement_aspect.name, summary))
                     continue
             
             # Fallback: needs_refinement_rationale (explanation why aspect was clear)
             if step.is_complete:
                 rationale = (step.reasoning or "").strip()
                 if rationale:
-                    baseline_summaries.append((step.refinement_aspect.aspect_name, rationale))
+                    baseline_summaries.append((step.refinement_aspect.name, rationale))
 
         return clarifications, baseline_summaries
 
@@ -1523,8 +1523,8 @@ class QueryRefinementManager:
         for step in session.steps:
             aspect_info = {
                 "id": step.refinement_aspect.id,
-                "name": step.refinement_aspect.aspect_name,
-                "description": step.refinement_aspect.aspect_description,
+                "name": step.refinement_aspect.name,
+                "description": step.refinement_aspect.description,
                 "is_complete": step.is_complete
             }
             

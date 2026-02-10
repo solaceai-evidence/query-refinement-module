@@ -198,7 +198,7 @@ class SessionManager:
             log.info(
                 f"Successfully loaded session for query_id={query_id} "
                 f"(steps={len(session.steps)}, "
-                f"active_step={session.get_active_step().refinement_aspect.aspect_name if session.get_active_step() else 'None'})"
+                f"active_step={session.get_active_step().refinement_aspect.name if session.get_active_step() else 'None')}")
             )
             return session
             

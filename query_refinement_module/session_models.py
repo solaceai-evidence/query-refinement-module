@@ -401,7 +401,7 @@ class RefinementSession:
 
             step_summaries.append(
                 {
-                    "refinement_aspect": step.refinement_aspect.aspect_name,
+                    "refinement_aspect": step.refinement_aspect.name,
                     "is_complete": step.is_complete,
                     "needs_review": step.needs_review,
                     "follow_up_count": step.follow_up_count,
@@ -436,7 +436,7 @@ class RefinementSession:
             if not step.conversation_history:
                 continue
                 
-            lines.append(f"[{step.refinement_aspect.aspect_name}]")
+            lines.append(f"[{step.refinement_aspect.name}]")
             lines.append("")
             
             for i, qa in enumerate(step.conversation_history, 1):
@@ -496,7 +496,7 @@ class RefinementSession:
                 step.is_complete = False
                 step.needs_review = True  # Flag for review, DON'T clear history
                 step.was_skipped = False
-                invalidated.append(step.refinement_aspect.aspect_name)
+                invalidated.append(step.refinement_aspect.name)
                 
                 # Recursively invalidate dependents of this step
                 sub_invalidated = self._invalidate_dependents(step.refinement_aspect.id)
@@ -517,8 +517,8 @@ class RefinementSession:
             "steps": [
                 {
                     "refinement_aspect_id": step.refinement_aspect.id,
-                    "refinement_aspect_name": step.refinement_aspect.aspect_name,
-                    "refinement_aspect_description": step.refinement_aspect.aspect_description,
+                    "refinement_aspect_name": step.refinement_aspect.name,
+                    "refinement_aspect_description": step.refinement_aspect.description,
                     # Multi-turn conversation
                     "follow_up_history": step.conversation_history,
                     # Completion status

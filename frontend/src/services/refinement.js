@@ -49,6 +49,11 @@ export const refinementService = {
         const url = `/api/refinement/queries/${queryId}/answer`;
         const isCommand = userResponse.startsWith('/');
 
+        console.log('[SERVICE v2.0] === STARTING continueRefinement ===');
+        console.log('[SERVICE v2.0] URL:', url);
+        console.log('[SERVICE v2.0] userResponse:', userResponse);
+        console.log('[SERVICE v2.0] isCommand:', isCommand);
+
         logger.info('Continue refinement', {
             queryId,
             isCommand,
@@ -57,14 +62,30 @@ export const refinementService = {
         });
 
         try {
+            console.log('[SERVICE v2.0] About to make axios call...');
+
             const response = await apiClient.post(url, {
                 answer: userResponse,
                 force: force
             });
 
+            console.log('[SERVICE v2.0] AXIOS CALL COMPLETED!');
+            console.log('[SERVICE v2.0] Response status:', response.status);
+            console.log('[SERVICE v2.0] Response data:', response.data);
+            console.log('[SERVICE v2.0] Response data stringified:', JSON.stringify(response.data, null, 2));
+
             logger.debug('Refinement response received', response.data);
+
+            console.log('[SERVICE v2.0] Returning response.data...');
             return response.data;
         } catch (error) {
+            console.error('[SERVICE v2.0] === CAUGHT ERROR ===');
+            console.error('[SERVICE v2.0] Error type:', error.constructor.name);
+            console.error('[SERVICE v2.0] Error message:', error.message);
+            console.error('[SERVICE v2.0] Error response:', error.response);
+            console.error('[SERVICE v2.0] Error response data:', error.response?.data);
+            console.error('[SERVICE v2.0] Full error:', error);
+
             logger.error('Continue refinement failed', error, {
                 queryId,
                 userResponse: isCommand ? userResponse : '[user answer]',

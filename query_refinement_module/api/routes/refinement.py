@@ -255,18 +255,18 @@ async def _build_next_prompt(manager, session) -> Optional[Dict[str, Any]]:
         if step.follow_up_question:
             result = {
                 "aspect_id": step.refinement_aspect.id,
-                "aspect_name": step.refinement_aspect.aspect_name,
+                "name": step.refinement_aspect.name,
                 "question": step.follow_up_question,
-                "description": step.refinement_aspect.aspect_description or "",
+                "description": step.refinement_aspect.description or "",
             }
-            logger.info(f"  -> Using existing question for '{result['aspect_name']}', question: '{result['question'][:100]}...")
+            logger.info(f"  -> Using existing question for '{result['name']}', question: '{result['question'][:100]}...")
             return result
         
         # No question exists - analyze with LLM to determine if dimension is already clear
         try:
             import time
             llm_start = time.time()
-            logger.info(f"  -> Generating question via LLM analysis for aspect '{step.refinement_aspect.aspect_name}'")
+            logger.info(f"  -> Generating question via LLM analysis for aspect '{step.refinement_aspect.name}'")
             logger.info(f"  -> Aspect ID: {step.refinement_aspect.id}, mode: initial")
             
             # Call LLM to analyze dimension with full context
@@ -278,7 +278,7 @@ async def _build_next_prompt(manager, session) -> Optional[Dict[str, Any]]:
             )
             
             llm_duration = (time.time() - llm_start) * 1000
-            logger.info(f"  -> LLM call completed in {llm_duration:.2f}ms for aspect '{step.refinement_aspect.aspect_name}'")
+            logger.info(f"  -> LLM call completed in {llm_duration:.2f}ms for aspect '{step.refinement_aspect.name}'")
             
             # Process the analysis
             status = manager.process_analysis_result(
@@ -289,32 +289,32 @@ async def _build_next_prompt(manager, session) -> Optional[Dict[str, Any]]:
             
             if status['complete']:
                 # Dimension is already clear - auto-completed, loop to next
-                logger.info(f"  -> Dimension '{step.refinement_aspect.aspect_name}' auto-completed with value: {str(status.get('current', ''))[:100]}")
+                logger.info(f"  -> Dimension '{step.refinement_aspect.name}' auto-completed with value: {str(status.get('current', ''))[:100]}")
                 continue
             else:
                 # Dimension needs clarification - return the question
                 result = {
                     "aspect_id": step.refinement_aspect.id,
-                    "aspect_name": step.refinement_aspect.aspect_name,
+                    "name": step.refinement_aspect.name,
                     "question": status['next_question'],
-                    "description": step.refinement_aspect.aspect_description or "",
+                    "description": step.refinement_aspect.description or "",
                 }
                 logger.info(f"  -> Generated question for '{result['aspect_name']}', question: '{result['question'][:100]}...")
                 return result
                 
         except Exception as e:
             # LLM failed - use simple fallback
-            logger.error(f"  -> LLM analysis failed for aspect '{step.refinement_aspect.aspect_name}': {e}")
-            fallback_question = f"Please provide details about {step.refinement_aspect.aspect_name}"
+            logger.error(f"  -> LLM analysis failed for aspect '{step.refinement_aspect.name}': {e}")
+            fallback_question = f"Please provide details about {step.refinement_aspect.name}"
             step.follow_up_question = fallback_question
             
             result = {
                 "aspect_id": step.refinement_aspect.id,
-                "aspect_name": step.refinement_aspect.aspect_name,
+                "name": step.refinement_aspect.name,
                 "question": fallback_question,
-                "description": step.refinement_aspect.aspect_description or "",
+                "description": step.refinement_aspect.description or "",
             }
-            logger.info(f"  -> Using fallback question for '{result['aspect_name']}'")
+            logger.info(f"  -> Using fallback question for '{result['name']}'")
             return result
     
     # Max attempts reached without finding a dimension that needs clarification
@@ -383,7 +383,7 @@ async def _build_command_response(
         if steps:
             response.step_list = [
                 {
-                    "aspect_name": step.refinement_aspect.aspect_name,
+                    "name": step.refinement_aspect.name,
                     "aspect_id": step.refinement_aspect.id,
                     "is_complete": step.is_complete,
                     "needs_review": step.needs_review,
@@ -418,7 +418,7 @@ async def _build_command_response(
         response.next_prompt = await _build_next_prompt(manager, session)
         logger.info(f"[_build_command_response] Next prompt: {'exists' if response.next_prompt else 'None'}")
         if response.next_prompt:
-            logger.info(f"[_build_command_response]   -> Aspect: {response.next_prompt.get('aspect_name')}")
+            logger.info(f"[_build_command_response]   -> Aspect: {response.next_prompt.get('name')}")
     
     elif command_type in ["back", "prev", "previous", "goto", "restart"]:
         logger.info(f"[_build_command_response] NAVIGATION command ({command_type}) - building next prompt")
@@ -427,7 +427,7 @@ async def _build_command_response(
         response.next_prompt = await _build_next_prompt(manager, session)
         logger.info(f"[_build_command_response] Next prompt: {'exists' if response.next_prompt else 'None'}")
         if response.next_prompt:
-            logger.info(f"[_build_command_response]   -> Aspect: {response.next_prompt.get('aspect_name')}")
+            logger.info(f"[_build_command_response]   -> Aspect: {response.next_prompt.get('name')}")
     
     elif command_type in ["skip", "done"]:
         logger.info(f"[_build_command_response] CONTROL command ({command_type}) - advancing to next step")
@@ -436,7 +436,7 @@ async def _build_command_response(
         logger.info(f"[_build_command_response] Next prompt: {'exists' if response.next_prompt else 'None'}")
         if response.next_prompt:
             has_question = bool(response.next_prompt.get('question'))
-            logger.info(f"[_build_command_response]   -> Aspect: {response.next_prompt.get('aspect_name')}, has question: {has_question}")
+            logger.info(f"[_build_command_response]   -> Aspect: {response.next_prompt.get('name')}, has question: {has_question}")
             if has_question:
                 logger.info(f"[_build_command_response]   -> Question preview: {response.next_prompt.get('question')[:100]}")
         else:
@@ -570,7 +570,7 @@ async def start_refinement(
         create_refinement_step(
             db,
             query_id=db_query.id,
-            aspect_name=step.refinement_aspect.aspect_name
+            aspect_name=step.refinement_aspect.name
         )
     
     # Generate question on-demand, looping until we find an aspect that needs refinement
@@ -599,18 +599,18 @@ async def start_refinement(
             
             # If not complete, we have a question to ask - break
             if not analysis_status['complete']:
-                logger.info(f"Aspect '{current_step.refinement_aspect.aspect_name}' needs refinement - stopping auto-cascade")
+                logger.info(f"Aspect '{current_step.refinement_aspect.name}' needs refinement - stopping auto-cascade")
                 break
             
             # Aspect is complete - log and save to database
-            logger.info(f"Aspect '{current_step.refinement_aspect.aspect_name}' marked complete immediately - auto-advancing")
+            logger.info(f"Aspect '{current_step.refinement_aspect.name}' marked complete immediately - auto-advancing")
             
             # Save final value to database
             if current_step.normalized_value:
                 from query_refinement_module.db.crud import update_refinement_step_final_value
                 db_steps = get_query_refinement_steps(db, db_query.id)
                 db_step = next(
-                    (s for s in db_steps if s.aspect_name == current_step.refinement_aspect.aspect_name),
+                    (s for s in db_steps if s.aspect_name == current_step.refinement_aspect.name),
                     None
                 )
                 if db_step:
@@ -627,9 +627,9 @@ async def start_refinement(
             current_step = session.get_next_unrefined_aspect()
             
         except Exception as e:
-            logger.error(f"Error generating question for aspect {current_step.refinement_aspect.aspect_name}: {e}", exc_info=True)
+            logger.error(f"Error generating question for aspect {current_step.refinement_aspect.name}: {e}", exc_info=True)
             # Generate fallback question
-            current_step.follow_up_question = f"Please provide details about {current_step.refinement_aspect.aspect_name}."
+            current_step.follow_up_question = f"Please provide details about {current_step.refinement_aspect.name}."
             break
     
     # Get summary (will show all aspects as not yet analyzed)
@@ -765,7 +765,7 @@ async def submit_answer(
         db_steps = get_query_refinement_steps(db, query_id)
         for db_step in db_steps:
             session_step = next(
-                (s for s in session.steps if s.refinement_aspect.aspect_name == db_step.aspect_name),
+                (s for s in session.steps if s.refinement_aspect.name == db_step.aspect_name),
                 None
             )
             if session_step:
@@ -838,7 +838,7 @@ async def submit_answer(
         
         # Get active dimension at time of command
         active_step = session.get_active_step()
-        active_dimension = active_step.refinement_aspect.aspect_name if active_step else None
+        active_dimension = active_step.refinement_aspect.name if active_step else None
         
         # Map command type to specific audit event type
         command_audit_map = {
@@ -908,6 +908,22 @@ async def submit_answer(
                             f"[Query {query_id}] Cascade deleted {deleted_count} DB records for truncated dimensions: {cleared_aspects}",
                             extra={"query_id": query_id, "command": command_type, "deleted_count": deleted_count}
                         )
+                    
+                    # For /back command, also reset the DB record for the reopened aspect
+                    if command_type in ["back", "prev", "previous"]:
+                        reopened_step = session.get_active_step()
+                        if reopened_step:
+                            db_steps = get_query_refinement_steps(db, query_id)
+                            db_step = next(
+                                (s for s in db_steps if s.aspect_name == reopened_step.refinement_aspect.name),
+                                None
+                            )
+                            if db_step:
+                                reset_refinement_step(db, step_id=db_step.id, clear_followup_history=True)
+                                logger.info(
+                                    f"[Query {query_id}] Reset DB record for reopened dimension: '{reopened_step.refinement_aspect.name}'",
+                                    extra={"query_id": query_id, "dimension": reopened_step.refinement_aspect.name}
+                                )
                 
                 # Reset DB record when dimension is cleared (maintain consistency)
                 if command_type == "clear":
@@ -915,14 +931,14 @@ async def submit_answer(
                     if active_step:
                         db_steps = get_query_refinement_steps(db, query_id)
                         db_step = next(
-                            (s for s in db_steps if s.aspect_name == active_step.refinement_aspect.aspect_name),
+                            (s for s in db_steps if s.aspect_name == active_step.refinement_aspect.name),
                             None
                         )
                         if db_step:
                             reset_refinement_step(db, step_id=db_step.id, clear_followup_history=True)
                             logger.info(
-                                f"[Query {query_id}] Reset DB record for cleared dimension: '{active_step.refinement_aspect.aspect_name}'",
-                                extra={"query_id": query_id, "dimension": active_step.refinement_aspect.aspect_name}
+                                f"[Query {query_id}] Reset DB record for cleared dimension: '{active_step.refinement_aspect.name}'",
+                                extra={"query_id": query_id, "dimension": active_step.refinement_aspect.name}
                             )
                 
                 # Save dimension final values to DB when skip or done commands are used
@@ -936,7 +952,7 @@ async def submit_answer(
                     if active_step and active_step.is_complete:
                         db_steps = get_query_refinement_steps(db, query_id)
                         db_step = next(
-                            (s for s in db_steps if s.aspect_name == active_step.refinement_aspect.aspect_name),
+                            (s for s in db_steps if s.aspect_name == active_step.refinement_aspect.name),
                             None
                         )
                         
@@ -944,8 +960,8 @@ async def submit_answer(
                             if command_type == "skip":
                                 mark_refinement_step_skipped(db, db_step.id)
                                 logger.info(
-                                    f"Marked dimension as skipped in DB: '{active_step.refinement_aspect.aspect_name}'",
-                                    extra={"query_id": query_id, "dimension": active_step.refinement_aspect.aspect_name}
+                                    f"Marked dimension as skipped in DB: '{active_step.refinement_aspect.name}'",
+                                    extra={"query_id": query_id, "dimension": active_step.refinement_aspect.name}
                                 )
                             elif command_type == "done":
                                 mark_refinement_step_user_ended_early(
@@ -954,8 +970,8 @@ async def submit_answer(
                                     final_value=active_step.normalized_value_as_str if active_step.normalized_value else None
                                 )
                                 logger.info(
-                                    f"Marked dimension as user-completed in DB: '{active_step.refinement_aspect.aspect_name}'",
-                                    extra={"query_id": query_id, "dimension": active_step.refinement_aspect.aspect_name}
+                                    f"Marked dimension as user-completed in DB: '{active_step.refinement_aspect.name}'",
+                                    extra={"query_id": query_id, "dimension": active_step.refinement_aspect.name}
                                 )
                 
                 session_manager.save_session(query_id, session)
@@ -983,7 +999,7 @@ async def submit_answer(
     
     # Add user's answer to follow-up history
     active_step.conversation_history.append({
-        'question': active_step.follow_up_question or active_step.refinement_aspect.aspect_name,
+        'question': active_step.follow_up_question or active_step.refinement_aspect.name,
         'response': user_input
     })
     
@@ -1022,7 +1038,7 @@ async def submit_answer(
     # Get the corresponding database refinement step
     db_steps = get_query_refinement_steps(db, query_id)
     db_step = next(
-        (s for s in db_steps if s.aspect_name == active_step.refinement_aspect.aspect_name),
+        (s for s in db_steps if s.aspect_name == active_step.refinement_aspect.name),
         None
     )
     
@@ -1036,7 +1052,7 @@ async def submit_answer(
     db_followup = create_followup(
         db,
         refinement_step_id=db_step.id,
-        question=active_step.follow_up_question or active_step.refinement_aspect.aspect_name,
+        question=active_step.follow_up_question or active_step.refinement_aspect.name,
         answer=user_input
     )
     
@@ -1055,8 +1071,8 @@ async def submit_answer(
             user_ended_early=False
         )
         logger.info(
-            f"Saved final value to DB for dimension '{active_step.refinement_aspect.aspect_name}'",
-            extra={"query_id": query_id, "dimension": active_step.refinement_aspect.aspect_name}
+            f"Saved final value to DB for dimension '{active_step.refinement_aspect.name}'",
+            extra={"query_id": query_id, "dimension": active_step.refinement_aspect.name}
         )
         
         # Trigger webhook: refinement.step_completed
@@ -1067,8 +1083,8 @@ async def submit_answer(
             )
             payload = build_refinement_step_completed_payload(
                 query_id=query_id,
-                dimension=active_step.refinement_aspect.aspect_name,
-                aspect=active_step.refinement_aspect.aspect_name,
+                dimension=active_step.refinement_aspect.name,
+                aspect=active_step.refinement_aspect.name,
                 answer=active_step.normalized_value_as_str
             )
             trigger_webhook_event(db, "refinement.step_completed", payload, user_id=current_user.id)
@@ -1079,12 +1095,12 @@ async def submit_answer(
     next_prompt = None
     if not is_complete:
         # Still need follow-up on same aspect
-        fallback_question = f"Please provide more details about {active_step.refinement_aspect.aspect_name}."
+        fallback_question = f"Please provide more details about {active_step.refinement_aspect.name}."
         next_prompt = {
             "aspect_id": active_step.refinement_aspect.id,
-            "aspect_name": active_step.refinement_aspect.aspect_name,
+            "name": active_step.refinement_aspect.name,
             "question": active_step.follow_up_question or fallback_question,
-            "description": active_step.refinement_aspect.aspect_description or "",
+            "description": active_step.refinement_aspect.description or "",
         }
     else:
         # Current aspect complete - auto-cascade through any subsequent immediately-complete aspects
@@ -1112,18 +1128,18 @@ async def submit_answer(
                 
                 # If not complete, we have a question - stop cascading
                 if not analysis_status['complete']:
-                    logger.info(f"Aspect '{next_step.refinement_aspect.aspect_name}' needs refinement - stopping auto-cascade")
+                    logger.info(f"Aspect '{next_step.refinement_aspect.name}' needs refinement - stopping auto-cascade")
                     break
                 
                 # Aspect is complete - log and save to database
-                logger.info(f"Aspect '{next_step.refinement_aspect.aspect_name}' marked complete immediately - auto-advancing")
+                logger.info(f"Aspect '{next_step.refinement_aspect.name}' marked complete immediately - auto-advancing")
                 
                 # Save final value to database
                 if next_step.normalized_value:
                     from query_refinement_module.db.crud import update_refinement_step_final_value
                     db_steps = get_query_refinement_steps(db, query_id)
                     db_step = next(
-                        (s for s in db_steps if s.aspect_name == next_step.refinement_aspect.aspect_name),
+                        (s for s in db_steps if s.aspect_name == next_step.refinement_aspect.name),
                         None
                     )
                     if db_step:
@@ -1264,7 +1280,7 @@ async def get_refinement_status(
         db_steps = get_query_refinement_steps(db, query_id)
         for db_step in db_steps:
             session_step = next(
-                (s for s in session.steps if s.refinement_aspect.aspect_name == db_step.aspect_name),
+                (s for s in session.steps if s.refinement_aspect.name == db_step.aspect_name),
                 None
             )
             if session_step:
@@ -1293,7 +1309,7 @@ async def get_refinement_status(
     aspects = [
         {
             "aspect_id": step.refinement_aspect.id,
-            "aspect_name": step.refinement_aspect.aspect_name,
+            "name": step.refinement_aspect.name,
             "is_complete": step.is_complete,
             "needs_review": step.needs_review,
             "was_skipped": step.was_skipped,
@@ -1321,7 +1337,7 @@ async def get_refinement_status(
                 "type": "question",
                 "content": qa.get('question', ''),
                 "aspectId": step.refinement_aspect.id,
-                "aspectName": step.refinement_aspect.aspect_name
+                "aspectName": step.refinement_aspect.name
             })
             if qa.get('response'):
                 conversation_history.append({
@@ -1338,7 +1354,7 @@ async def get_refinement_status(
             "user_id": current_user.id,
             "query_id": query_id,
             "is_complete": session.is_complete(),
-            "current_aspect": active_step.refinement_aspect.aspect_name if active_step else None,
+            "current_aspect": active_step.refinement_aspect.name if active_step else None,
             "ready_for_synthesis": ready_for_synthesis,
             "duration_ms": round(duration_ms, 2),
         },
@@ -1349,7 +1365,7 @@ async def get_refinement_status(
         original_query=db_query.original_query,
         refined_query=db_query.refined_query,
         is_complete=session.is_complete(),
-        current_aspect=active_step.refinement_aspect.aspect_name if active_step else None,
+        current_aspect=active_step.refinement_aspect.name if active_step else None,
         aspects_summary=summary,
         next_prompt=next_prompt,
         ready_for_synthesis=ready_for_synthesis,
@@ -1420,7 +1436,7 @@ async def synthesize_refined_query(
         for db_step in db_steps:
             # Find corresponding step in session
             session_step = next(
-                (s for s in session.steps if s.refinement_aspect.aspect_name == db_step.aspect_name),
+                (s for s in session.steps if s.refinement_aspect.name == db_step.aspect_name),
                 None
             )
             if session_step:

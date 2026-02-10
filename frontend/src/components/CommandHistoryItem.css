@@ -204,3 +204,180 @@
     background: linear-gradient(135deg, #6c757d 0%, #5a6268 100%);
     opacity: 0.8;
 }
+
+/* Framework Context Styles */
+.framework-context {
+    margin-bottom: 16px;
+    padding: 12px;
+    background: linear-gradient(135deg, #fff8e1 0%, #ffe082 100%);
+    border-radius: 8px;
+    border-left: 4px solid #ffa000;
+}
+
+.context-label {
+    display: flex;
+    align-items: center;
+    gap: 8px;
+    margin-bottom: 8px;
+    font-size: 13px;
+    color: #f57c00;
+}
+
+.context-icon {
+    font-size: 16px;
+}
+
+.context-details {
+    display: flex;
+    flex-wrap: wrap;
+    gap: 16px;
+    font-size: 12px;
+    margin-left: 24px;
+}
+
+.context-item {
+    color: #555;
+}
+
+.context-item strong {
+    color: #e65100;
+    margin-right: 4px;
+}
+
+/* Dimensions Detail Styles */
+.dimensions-detail {
+    margin-top: 16px;
+}
+
+.dimensions-header {
+    display: flex;
+    align-items: center;
+    gap: 8px;
+    margin-bottom: 12px;
+    font-size: 13px;
+    color: #667eea;
+}
+
+.dimensions-icon {
+    font-size: 16px;
+}
+
+.dimensions-list {
+    display: flex;
+    flex-direction: column;
+    gap: 10px;
+}
+
+.dimension-item {
+    padding: 12px;
+    background: #f8f9fa;
+    border-radius: 8px;
+    border-left: 4px solid #ddd;
+    transition: all 0.2s ease;
+}
+
+.dimension-item:hover {
+    background: #e9ecef;
+    transform: translateX(2px);
+}
+
+.dimension-item.active {
+    border-left-color: #667eea;
+    background: linear-gradient(135deg, #f0f4ff 0%, #e8f0ff 100%);
+    box-shadow: 0 2px 8px rgba(102, 126, 234, 0.15);
+}
+
+.dimension-item.complete {
+    border-left-color: #28a745;
+}
+
+.dimension-item.skipped {
+    border-left-color: #6c757d;
+    opacity: 0.7;
+}
+
+.dimension-item.needs_review {
+    border-left-color: #ffc107;
+    background: #fffbf0;
+}
+
+.dimension-header {
+    display: flex;
+    align-items: center;
+    gap: 10px;
+    margin-bottom: 8px;
+}
+
+.dimension-item .dimension-icon {
+    font-size: 18px;
+}
+
+.dimension-name {
+    font-weight: 600;
+    color: #333;
+    flex: 1;
+}
+
+.dimension-badge {
+    font-size: 10px;
+    padding: 3px 8px;
+    border-radius: 10px;
+    background: #e9ecef;
+    color: #666;
+    text-transform: capitalize;
+    font-weight: 600;
+    letter-spacing: 0.3px;
+}
+
+.dimension-badge.complete {
+    background: #28a745;
+    color: white;
+}
+
+.dimension-badge.active,
+.dimension-badge.in_progress {
+    background: #667eea;
+    color: white;
+}
+
+.dimension-badge.needs_review {
+    background: #ffc107;
+    color: #333;
+}
+
+.dimension-badge.skipped {
+    background: #6c757d;
+    color: white;
+}
+
+.dimension-value {
+    margin: 8px 0 4px 28px;
+    font-size: 12px;
+    color: #555;
+    line-height: 1.5;
+}
+
+.dimension-value strong {
+    color: #667eea;
+    margin-right: 6px;
+}
+
+.dimension-followups {
+    display: flex;
+    align-items: center;
+    gap: 6px;
+    margin: 4px 0 0 28px;
+    font-size: 11px;
+    color: #888;
+}
+
+.followup-icon {
+    font-size: 12px;
+}
+
+.dimension-skipped {
+    margin: 4px 0 0 28px;
+    font-size: 11px;
+    color: #6c757d;
+    font-style: italic;
+}

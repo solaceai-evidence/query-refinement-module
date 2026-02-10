@@ -175,8 +175,8 @@ class CompletedDimension(BaseModel):
         """Create from a RefinementDimension with its assembled value."""
         return cls(
             id=dimension.id,
-            name=dimension.aspect_name,
-            description=dimension.aspect_description,
+            name=dimension.name,
+            description=dimension.description,
             assembled_value=value,
             was_skipped=was_skipped
         )
@@ -189,45 +189,26 @@ class RefinementDimension(BaseModel):
     Replaces the dataclass-based RefinementAspect with a Pydantic model
     for better validation, serialization, and type safety.
     
-    Field aliases:
-        - name → aspect_name (YAML uses 'name')
-        - description → aspect_description (YAML uses 'description')
-        - evaluator → evaluation_instructions (YAML uses 'evaluator')
-        - criteria → evaluation_criteria (YAML uses 'criteria')
-        - response_strategy → assembly_rules (legacy compatibility)
+    This model directly matches the YAML structure where dimensions use:
+    - 'name': dimension name
+    - 'description': dimension description  
+    - 'specifications': evaluation instructions
     """
     model_config = ConfigDict(
         extra="allow",
         validate_assignment=True,
-        populate_by_name=True,  # Allow both alias and field name
+        populate_by_name=True,
     )
     
-    # Required fields
+    # Required fields (match YAML structure)
     id: str = Field(description="Unique identifier for this dimension")
-    aspect_name: str = Field(
-        description="Human-readable dimension name",
-        validation_alias="name"
-    )
-    aspect_description: str = Field(
-        description="Brief description of what this dimension refines",
-        validation_alias="description"
-    )
+    name: str = Field(description="Human-readable dimension name")
+    description: str = Field(description="Brief description of what this dimension refines")
     
-    # Evaluation content (accepts YAML field names as aliases)
-    evaluation_instructions: str = Field(
+    # Evaluation content
+    specifications: str = Field(
         default="", 
-        description="Instructions for evaluating this dimension",
-        validation_alias="evaluator"
-    )
-    evaluation_criteria: str = Field(
-        default="", 
-        description="Criteria for evaluating this dimension",
-        validation_alias="criteria"
-    )
-    assembly_rules: Optional[str] = Field(
-        default=None,
-        description="Examples showing what 'current' field should look like for this dimension",
-        validation_alias="response_strategy"  # Allow legacy YAML files to work
+        description="Instructions for evaluating this dimension"
     )
     
     # Examples for few-shot learning
@@ -239,41 +220,12 @@ class RefinementDimension(BaseModel):
     # User context (attached by registry loader)
     user_context: Optional[UserContext] = Field(default=None, description="User adaptation profile")
     
-    # Legacy/optional fields
+    # Optional fields
     system_prompt: Optional[str] = Field(default=None, description="DEPRECATED: Use global system prompt")
     response_format: Optional[Dict[str, Any]] = Field(default=None, description="Response format config")
     allow_follow_up: bool = Field(default=True, description="Whether follow-ups are allowed")
     max_follow_ups: int = Field(default=50, description="Max follow-up limit")
     metadata: Dict[str, Any] = Field(default_factory=dict, description="Additional metadata")
-    
-    @field_validator('assembly_rules', mode='before')
-    @classmethod
-    def parse_assembly_rules(cls, v):
-        """Convert list of dicts/strings to formatted string, or pass through string."""
-        if v is None:
-            return None
-        if isinstance(v, str):
-            return v
-        if isinstance(v, list):
-            # Convert list to string format
-            lines = []
-            for item in v:
-                if isinstance(item, dict):
-                    for key, value in item.items():
-                        lines.append(f"- **{key}:** {value}")
-                elif isinstance(item, str):
-                    lines.append(f"- {item}")
-            return "\n".join(lines) if lines else None
-        return str(v)
-    
-    def model_post_init(self, __context: Any) -> None:
-        """Merge evaluation_criteria into evaluation_instructions after init."""
-        # Merge evaluation_criteria into evaluation_instructions
-        if self.evaluation_criteria and not self.evaluation_instructions:
-            object.__setattr__(self, 'evaluation_instructions', self.evaluation_criteria)
-        elif self.evaluation_criteria and self.evaluation_instructions:
-            combined = f"{self.evaluation_instructions}\n\n{self.evaluation_criteria}"
-            object.__setattr__(self, 'evaluation_instructions', combined)
     
     @field_validator('examples', mode='before')
     @classmethod
@@ -304,7 +256,7 @@ class RefinementDimension(BaseModel):
     
     def get_evaluation_content(self) -> str:
         """Get the full evaluation content (criteria + strategies)."""
-        return self.evaluation_instructions
+        return self.specifications
     
     def has_examples(self) -> bool:
         """Check if this dimension has any examples."""
@@ -347,8 +299,8 @@ class RefinementDimension(BaseModel):
         if self.system_prompt and self.system_prompt.strip():
             import warnings
             warnings.warn(
-                f"system_prompt for aspect '{self.aspect_name}' is deprecated and ignored. "
-                "Move dimension-specific content to evaluation_instructions and examples. "
+                f"system_prompt for aspect '{self.name}' is deprecated and ignored. "
+                "Move dimension-specific content to specifications and examples. "
                 "System prompts must be static for LLM caching to work.",
                 DeprecationWarning,
                 stacklevel=2
@@ -366,14 +318,14 @@ class RefinementDimension(BaseModel):
         """
         prompt_parts = []
         
-        # Check if evaluation_instructions contains placeholders
-        if "{input}" in self.evaluation_instructions or "{statement}" in self.evaluation_instructions or "{query}" in self.evaluation_instructions:
+        # Check if specifications contains placeholders
+        if "{input}" in self.specifications or "{statement}" in self.specifications or "{query}" in self.specifications:
             prompt_parts.append(
-                self.evaluation_instructions.format(query=statement, statement=statement, input=statement)
+                self.specifications.format(query=statement, statement=statement, input=statement)
             )
         else:
             prompt_parts.append(f"** Research input:** {statement}.\n")
-            prompt_parts.append(self.evaluation_instructions)
+            prompt_parts.append(self.specifications)
         
         # Inject examples if available
         if self.examples:
@@ -476,9 +428,9 @@ class RefinementDimension(BaseModel):
     # Unified prompt building methods (backward compatible)
     # =========================================================================
     
-    UNIFIED_ANALYSIS_PROMPT: ClassVar[str] = """You are analyzing the '{aspect_name}' dimension.
+    UNIFIED_ANALYSIS_PROMPT: ClassVar[str] = """You are analyzing the '{name}' dimension.
 
-**Aspect Description:** {aspect_description}
+**Description:** {description}
 
 **Original Research Input:** {original_input}
 
@@ -514,8 +466,8 @@ class RefinementDimension(BaseModel):
         output_format_section = self._build_output_format_section()
         
         return self.UNIFIED_ANALYSIS_PROMPT.format(
-            aspect_name=self.aspect_name,
-            aspect_description=self.aspect_description,
+            name=self.name,
+            description=self.description,
             original_input=original_input,
             conversation_section=conversation_section,
             dependency_section=dependency_section,
