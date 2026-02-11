@@ -1,4 +1,4 @@
-import { useState, useEffect, useRef } from 'react';
+import { useState, useEffect, useRef, useCallback } from 'react';
 import apiClient from '../services/api';
 import { logger } from '../utils/logger';
 
@@ -22,15 +22,23 @@ export function useProgressTracking(queryId, pollInterval = 1500) {
     const intervalRef = useRef(null);
     const mountedRef = useRef(true);
 
+    const stopPolling = useCallback(() => {
+        if (intervalRef.current) {
+            clearInterval(intervalRef.current);
+            intervalRef.current = null;
+        }
+        setIsPolling(false);
+    }, []);
+
     useEffect(() => {
         mountedRef.current = true;
         return () => {
             mountedRef.current = false;
             stopPolling();
         };
-    }, []);
+    }, [stopPolling]);
 
-    const fetchProgress = async () => {
+    const fetchProgress = useCallback(async () => {
         if (!queryId) return;
 
         try {
@@ -69,10 +77,10 @@ export function useProgressTracking(queryId, pollInterval = 1500) {
                 stopPolling();
             }
         }
-    };
+    }, [queryId, stopPolling]);
 
-    const startPolling = () => {
-        if (!queryId || isPolling) return;
+    const startPolling = useCallback(() => {
+        if (!queryId || intervalRef.current) return;
 
         logger.info('Starting progress tracking', { queryId, pollInterval });
         setIsPolling(true);
@@ -83,26 +91,19 @@ export function useProgressTracking(queryId, pollInterval = 1500) {
 
         // Start polling
         intervalRef.current = setInterval(fetchProgress, pollInterval);
-    };
-
-    const stopPolling = () => {
-        if (intervalRef.current) {
-            clearInterval(intervalRef.current);
-            intervalRef.current = null;
-        }
-        setIsPolling(false);
-    };
+    }, [fetchProgress, pollInterval, queryId]);
 
     // Auto-start/stop based on queryId changes
     useEffect(() => {
-        if (queryId && !isPolling) {
+        if (queryId) {
+            // eslint-disable-next-line react-hooks/set-state-in-effect
             startPolling();
-        } else if (!queryId && isPolling) {
+        } else {
             stopPolling();
         }
 
         return () => stopPolling();
-    }, [queryId]);
+    }, [queryId, startPolling, stopPolling]);
 
     return {
         progress,

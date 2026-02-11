@@ -1,4 +1,4 @@
-import { createContext, useContext, useState, useEffect } from 'react';
+import { createContext, useContext, useState } from 'react';
 import { authUtils } from '../utils/auth';
 import apiClient from '../services/api';
 import { logger } from '../utils/logger';
@@ -6,17 +6,8 @@ import { logger } from '../utils/logger';
 const AuthContext = createContext(null);
 
 export const AuthProvider = ({ children }) => {
-    const [user, setUser] = useState(null);
-    const [loading, setLoading] = useState(true);
-
-    useEffect(() => {
-        // Check if user is already authenticated
-        if (authUtils.isAuthenticated()) {
-            const userInfo = authUtils.getUserInfo();
-            setUser(userInfo);
-        }
-        setLoading(false);
-    }, []);
+    const [user, setUser] = useState(() => (authUtils.isAuthenticated() ? authUtils.getUserInfo() : null));
+    const [loading] = useState(false);
 
     const login = async (username, password) => {
         try {
@@ -111,6 +102,7 @@ export const AuthProvider = ({ children }) => {
     );
 };
 
+// eslint-disable-next-line react-refresh/only-export-components
 export const useAuth = () => {
     const context = useContext(AuthContext);
     if (!context) {

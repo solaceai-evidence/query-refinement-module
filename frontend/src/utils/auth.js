@@ -36,7 +36,7 @@ export const authUtils = {
             const decoded = jwtDecode(token);
             const currentTime = Date.now() / 1000;
             return decoded.exp < currentTime;
-        } catch (error) {
+        } catch {
             return true;
         }
     },
@@ -54,7 +54,7 @@ export const authUtils = {
 
         try {
             return jwtDecode(token);
-        } catch (error) {
+        } catch {
             return null;
         }
     }

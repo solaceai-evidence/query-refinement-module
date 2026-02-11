@@ -5,6 +5,7 @@ import os
 import pytest
 from sqlalchemy import create_engine
 from sqlalchemy.orm import sessionmaker
+from sqlalchemy.pool import StaticPool
 
 from query_refinement_module.db.database import Base
 
@@ -12,7 +13,9 @@ from query_refinement_module.db.database import Base
 @pytest.fixture(scope="session")
 def test_database_url():
     """Database URL for testing (in-memory SQLite)."""
-    return "sqlite:///:memory:"
+    # Use a single in-memory database shared across threads via StaticPool.
+    # This is required for FastAPI TestClient, which runs requests in a different thread.
+    return "sqlite://"
 
 
 @pytest.fixture(scope="function")
@@ -20,9 +23,10 @@ def test_db_engine(test_database_url):
     """Create a fresh database engine for each test."""
     # Add check_same_thread=False for SQLite to work with FastAPI TestClient's threading
     engine = create_engine(
-        test_database_url, 
+        test_database_url,
         echo=False,
-        connect_args={"check_same_thread": False}
+        connect_args={"check_same_thread": False},
+        poolclass=StaticPool,
     )
     Base.metadata.create_all(engine)
     yield engine

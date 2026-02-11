@@ -5,8 +5,19 @@ from functools import lru_cache
 from typing import List, Optional
 
 import json
-from pydantic import Field, model_validator, field_validator
+from pydantic import Field, model_validator
 from pydantic_settings import BaseSettings, SettingsConfigDict
+
+
+def _env_json_loads(value):
+    if isinstance(value, str):
+        stripped = value.strip()
+        if not stripped:
+            return []
+        if stripped.startswith("["):
+            return json.loads(stripped)
+        return [origin.strip() for origin in stripped.split(",") if origin.strip()]
+    return value
 
 
 class Settings(BaseSettings):
@@ -53,30 +64,15 @@ class Settings(BaseSettings):
     
     # CORS Configuration (environment-specific)
     # Development: localhost origins
-    # Production: Add your frontend domains, e.g., ["https://yourdomain.com", "https://app.yourdomain.com"]
-    allowed_origins: List[str] = Field(
-        default=["http://localhost:3000", "http://localhost:5173", "http://localhost:8000"],
+    # Production: Add your frontend domains, e.g., "https://yourdomain.com,https://app.yourdomain.com"
+    allowed_origins_raw: str = Field(
+        default="http://localhost:3000,http://localhost:5173,http://localhost:8000",
         description="CORS allowed origins (comma-separated in env: ALLOWED_ORIGINS=https://app.com,https://www.app.com)"
     )
 
-    @field_validator("allowed_origins", mode="before")
-    @classmethod
-    def parse_allowed_origins(cls, value):
-        if isinstance(value, list):
-            return value
-        if isinstance(value, str):
-            stripped = value.strip()
-            if not stripped:
-                return []
-            if stripped.startswith("["):
-                try:
-                    parsed = json.loads(stripped)
-                    if isinstance(parsed, list):
-                        return parsed
-                except json.JSONDecodeError:
-                    pass
-            return [origin.strip() for origin in stripped.split(",") if origin.strip()]
-        return value
+    @property
+    def allowed_origins(self) -> List[str]:
+        return _env_json_loads(self.allowed_origins_raw)
     cors_allow_credentials: bool = Field(default=True, description="Allow credentials in CORS requests")
     cors_allow_methods: List[str] = Field(default=["GET", "POST", "PUT", "DELETE", "OPTIONS"], description="Allowed HTTP methods")
     cors_allow_headers: List[str] = Field(default=["*"], description="Allowed headers")
@@ -136,7 +132,8 @@ class Settings(BaseSettings):
         env_file=".env",
         env_file_encoding="utf-8",
         case_sensitive=False,  # DATABASE_URL or database_url both work
-        extra="ignore"  # Ignore extra fields from .env that aren't defined here
+        extra="ignore",  # Ignore extra fields from .env that aren't defined here
+        env_json_loads=_env_json_loads,
     )
 
 

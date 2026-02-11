@@ -204,6 +204,6 @@ export function getCommandIcon(commandType) {
  */
 export function getCommandsByCategory(category) {
     return Object.entries(COMMAND_METADATA)
-        .filter(([_, meta]) => meta.category === category)
+        .filter(([, meta]) => meta.category === category)
         .map(([command, metadata]) => ({ command, metadata }));
 }

@@ -523,10 +523,15 @@ def create_feedback(
     query_id: Optional[int] = None,
     rating: Optional[int] = None,
     comments: Optional[str] = None,
+    additional_metadata: Optional[Dict[str, Any]] = None,
 ) -> Feedback:
     """Create a new feedback entry."""
     feedback = Feedback(
-        user_id=user_id, query_id=query_id, rating=rating, comments=comments
+        user_id=user_id,
+        query_id=query_id,
+        rating=rating,
+        comments=comments,
+        additional_metadata=additional_metadata,
     )
     db.add(feedback)
     db.commit()

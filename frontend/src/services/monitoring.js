@@ -49,7 +49,7 @@ export const monitoringService = {
             const health = await this.getLLMHealth();
             const provider = health.providers?.[providerName];
             return provider?.is_healthy === true;
-        } catch (err) {
+        } catch {
             // If monitoring fails, assume healthy to avoid blocking
             return true;
         }

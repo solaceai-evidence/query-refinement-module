@@ -14,7 +14,7 @@ class ErrorBoundary extends React.Component {
 
     static getDerivedStateFromError(error) {
         // Update state so the next render will show the fallback UI
-        return { hasError: true };
+        return { hasError: true, error };
     }
 
     componentDidCatch(error, errorInfo) {
@@ -35,8 +35,8 @@ class ErrorBoundary extends React.Component {
         // Clear any potentially corrupt state
         try {
             localStorage.removeItem('refinement_session');
-        } catch (e) {
-            // Ignore localStorage errors
+        } catch (err) {
+            logger.debug('Failed to clear refinement_session from localStorage', { err });
         }
         window.location.reload();
     };
@@ -45,8 +45,8 @@ class ErrorBoundary extends React.Component {
         // Clear state and go to home
         try {
             localStorage.removeItem('refinement_session');
-        } catch (e) {
-            // Ignore localStorage errors
+        } catch (err) {
+            logger.debug('Failed to clear refinement_session from localStorage', { err });
         }
         window.location.href = '/';
     };

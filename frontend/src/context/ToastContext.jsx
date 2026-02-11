@@ -4,6 +4,7 @@ import { registerToastHandlers } from '../utils/toast';
 
 const ToastContext = createContext();
 
+// eslint-disable-next-line react-refresh/only-export-components
 export const useToast = () => {
     const context = useContext(ToastContext);
     if (!context) {
@@ -14,6 +15,10 @@ export const useToast = () => {
 
 export const ToastProvider = ({ children }) => {
     const [toasts, setToasts] = useState([]);
+
+    const removeToast = useCallback((id) => {
+        setToasts(prev => prev.filter(toast => toast.id !== id));
+    }, []);
 
     const showToast = useCallback((message, type = 'info', duration = 5000) => {
         const id = Date.now() + Math.random();
@@ -29,11 +34,7 @@ export const ToastProvider = ({ children }) => {
         }
 
         return id;
-    }, []);
-
-    const removeToast = useCallback((id) => {
-        setToasts(prev => prev.filter(toast => toast.id !== id));
-    }, []);
+    }, [removeToast]);
 
     const showInfo = useCallback((message, duration) => showToast(message, 'info', duration), [showToast]);
     const showSuccess = useCallback((message, duration) => showToast(message, 'success', duration), [showToast]);

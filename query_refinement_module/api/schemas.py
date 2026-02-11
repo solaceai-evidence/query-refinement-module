@@ -228,6 +228,18 @@ class FeedbackCreate(BaseModel):
     query_id: Optional[int] = Field(None, gt=0, description="Optional query ID this feedback is about")
     rating: Optional[int] = Field(None, ge=1, le=5, description="Optional rating (not used for research feedback)")
     comments: Optional[str] = Field(None, max_length=5000, description="Research feedback on dissertation refinement experience")
+    consent_to_use_data: bool = Field(
+        False,
+        description=(
+            "Explicit consent for the project team to retain and use this query session data "
+            "and feedback for research/analysis. If false, workflow can still complete but the "
+            "associated query remains unconsented and may be deleted by retention policies."
+        ),
+    )
+    additional_metadata: Optional[Dict[str, Any]] = Field(
+        None,
+        description="Optional structured feedback payload (e.g., Likert responses, time saved, confidence before/after)."
+    )
     
     @field_validator('comments')
     @classmethod
@@ -247,4 +259,5 @@ class FeedbackResponse(BaseModel):
     query_id: Optional[int] = None
     rating: Optional[int] = None
     comments: Optional[str] = None
+    additional_metadata: Optional[Dict[str, Any]] = None
     created_at: datetime

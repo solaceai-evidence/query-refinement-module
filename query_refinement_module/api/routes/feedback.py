@@ -32,7 +32,11 @@ def submit_feedback(
     - **query_id**: Optional ID of the query being reviewed
     - **rating**: Optional rating (1-5)
     - **comments**: Optional text feedback
-    """
+        Notes:
+        - Workflow completion (one-workflow limit) is triggered when feedback is submitted for a query.
+        - Data consent is explicit via `consent_to_use_data`.
+            If consent is false, the query remains unconsented and may be removed by retention policies.
+        """
     # If query_id provided, verify it belongs to user
     if feedback_data.query_id:
         query = get_query(db, query_id=feedback_data.query_id)
@@ -43,13 +47,14 @@ def submit_feedback(
         if session.user_id != current_user.id:
             raise HTTPException(status_code=status.HTTP_403_FORBIDDEN, detail="Access denied")
         
-        # Mark query as consented (user gave feedback = consent to use data)
-        query.consent_given = True
-        query.consent_given_at = datetime.now(timezone.utc)
-        
         # Mark user workflow complete (unless superuser)
         if not current_user.is_superuser:
             current_user.has_completed_workflow = True
+
+        # Mark query as consented only if explicit consent was provided
+        if feedback_data.consent_to_use_data:
+            query.consent_given = True
+            query.consent_given_at = datetime.now(timezone.utc)
         
         db.commit()
     
@@ -58,7 +63,8 @@ def submit_feedback(
         user_id=current_user.id,
         query_id=feedback_data.query_id,
         rating=feedback_data.rating,
-        comments=feedback_data.comments
+        comments=feedback_data.comments,
+        additional_metadata=feedback_data.additional_metadata,
     )
     return feedback
 

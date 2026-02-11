@@ -9,11 +9,9 @@ import './ProgressIndicator.css';
  * @param {boolean} props.compact - Compact mode (show only bar)
  */
 const ProgressIndicator = ({ progress, compact = false }) => {
-    if (!progress) return null;
-
-    const percentage = Math.round((progress.progress || 0) * 100);
-    const stage = progress.stage || 'unknown';
-    const message = progress.message || 'Processing...';
+    const percentage = Math.round(((progress?.progress) || 0) * 100);
+    const stage = progress?.stage || 'unknown';
+    const message = progress?.message || 'Processing...';
 
     // Format stage for display
     const displayStage = useMemo(() => {
@@ -22,6 +20,8 @@ const ProgressIndicator = ({ progress, compact = false }) => {
             .map(word => word.charAt(0).toUpperCase() + word.slice(1))
             .join(' ');
     }, [stage]);
+
+    if (!progress) return null;
 
     // Get stage color
     const getStageColor = () => {

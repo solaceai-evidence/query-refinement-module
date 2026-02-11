@@ -215,7 +215,13 @@ export interface RefinementService {
     getQuery(queryId: number): Promise<any>;
     getStatus(queryId: number): Promise<GetRefinementStatusResponse>;
     listQueries(skip?: number, limit?: number): Promise<any[]>;
-    submitFeedback(queryId: number, rating: number, comments?: string): Promise<any>;
+    submitFeedback(
+        queryId: number,
+        rating: number | null,
+        comments: string | null,
+        metadata?: Record<string, any> | null,
+        consentToUseData?: boolean
+    ): Promise<any>;
 }
 
 // ============================================================

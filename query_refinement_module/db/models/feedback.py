@@ -1,7 +1,13 @@
-"""
+"""query_refinement_module.db.models.feedback
+
 Feedback model for collecting user feedback on queries and results.
+
+Supports both:
+- free-text comments (qualitative research feedback)
+- optional structured metadata (quantitative/structured survey responses)
 """
-from sqlalchemy import Column, Integer, Text, DateTime, ForeignKey
+
+from sqlalchemy import Column, Integer, Text, DateTime, ForeignKey, JSON
 from sqlalchemy.orm import relationship
 from .user import Base, _utcnow
 
@@ -14,6 +20,7 @@ class Feedback(Base):
     query_id = Column(Integer, ForeignKey("queries.id"), nullable=True)
     rating = Column(Integer, nullable=True)
     comments = Column(Text, nullable=True)
+    additional_metadata = Column(JSON, nullable=True)
     created_at = Column(DateTime, default=_utcnow)
 
     user = relationship("User", backref="feedback")

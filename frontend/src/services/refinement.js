@@ -178,16 +178,25 @@ export const refinementService = {
 
     /**
      * Submit feedback for a query
+     *
+     * Backend behavior:
+     * - submitting feedback for a query marks the workflow as complete
+     * - data consent is explicit via consent_to_use_data
+     *
      * @param {number} queryId - Query ID
-     * @param {number} rating - Rating (1-5)
-     * @param {string | null} [comments=null] - Optional comments
+     * @param {number|null} rating - Rating (1-5)
+     * @param {string|null} comments - Required free-text comments
+     * @param {object|null} metadata - Optional structured survey responses
+     * @param {boolean} consentToUseData - Explicit consent to retain/use data
      * @returns {Promise<any>}
      */
-    async submitFeedback(queryId, rating, comments = null) {
+    async submitFeedback(queryId, rating, comments = null, metadata = null, consentToUseData = false) {
         const response = await apiClient.post('/feedback', {
             query_id: queryId,
             rating,
-            comments
+            comments,
+            additional_metadata: metadata,
+            consent_to_use_data: consentToUseData,
         });
         return response.data;
     },

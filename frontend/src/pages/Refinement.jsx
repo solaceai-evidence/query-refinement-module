@@ -39,8 +39,8 @@ const Refinement = () => {
     const [loading, setLoading] = useState(false);
     const [error, setError] = useState(null);
     const [conversationHistory, setConversationHistory] = useState([]);
-    const [commandResult, setCommandResult] = useState(null);
-    const [readyForSynthesis, setReadyForSynthesis] = useState(false);
+    const [, setCommandResult] = useState(null);
+    const [, setReadyForSynthesis] = useState(false);
     const [confirmationDialog, setConfirmationDialog] = useState({
         isOpen: false,
         title: '',
@@ -57,7 +57,7 @@ const Refinement = () => {
 
     // Check for saved session but don't auto-restore
     const [savedSessionData, setSavedSessionData] = useState(null);
-    const [userStatus, setUserStatus] = useState(null);
+    const [, setUserStatus] = useState(null);
     const [workflowLimitReached, setWorkflowLimitReached] = useState(false);
 
     useEffect(() => {
@@ -197,7 +197,7 @@ const Refinement = () => {
 
                 if (health.overall_health === 'degraded') {
                     const degradedProviders = Object.entries(health.providers || {})
-                        .filter(([_, data]) => !data.is_healthy)
+                        .filter(([, data]) => !data.is_healthy)
                         .map(([name]) => name);
 
                     logger.error(`${operation} failed due to LLM service issues`, {
