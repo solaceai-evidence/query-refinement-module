@@ -6,13 +6,16 @@ import SynthesisResult from '../components/SynthesisResult';
 import CommandButtons from '../components/CommandButtons';
 import CommandHistoryItem from '../components/CommandHistoryItem';
 import ConfirmationDialog from '../components/ConfirmationDialog';
+import ProgressIndicator from '../components/ProgressIndicator';
 import { refinementService } from '../services/refinement';
+import { monitoringService } from '../services/monitoring';
 import { useAuth } from '../context/AuthContext';
 import { useToast } from '../context/ToastContext';
 import { isCommandResponse, createHistoryItem } from '../types';
 import { isUserCommand } from '../constants/commands';
 import { logger } from '../utils/logger';
 import { setLogSessionId, logUserAction } from '../utils/logForwarder';
+import { useProgressTracking } from '../hooks/useProgressTracking';
 import './Refinement.css';
 
 /**
@@ -47,6 +50,9 @@ const Refinement = () => {
     const { logout } = useAuth();
     const navigate = useNavigate();
     const { showSuccess, showInfo, showWarning, showError } = useToast();
+
+    // Progress tracking hook
+    const { progress, isPolling } = useProgressTracking(queryId);
 
     // Check for saved session but don't auto-restore
     const [savedSessionData, setSavedSessionData] = useState(null);
@@ -151,6 +157,87 @@ const Refinement = () => {
         localStorage.removeItem('refinement_session');
     };
 
+    // ==========================================
+    // Helper Functions - Error Handling & Health Checks
+    // ==========================================
+
+    /**
+     * Check service health quietly (non-blocking warning)
+     */
+    const checkServiceHealthQuietly = async () => {
+        try {
+            const health = await monitoringService.getLLMHealth();
+            if (health.overall_health === 'degraded') {
+                showWarning(
+                    'LLM services are currently experiencing issues. ' +
+                    'Operations may take longer or require retries.'
+                );
+            }
+        } catch (err) {
+            // Silently ignore - monitoring is optional
+            logger.debug('Service health check failed (non-critical)', err);
+        }
+    };
+
+    /**
+     * Enhanced error handler with circuit breaker diagnostics
+     * @param {Error} error - The error object
+     * @param {string} operation - Description of failed operation
+     * @returns {Promise<string>} - User-friendly error message
+     */
+    const handleRefinementError = async (error, operation = 'operation') => {
+        const status = error.response?.status;
+        const baseDetail = error.response?.data?.detail || error.message;
+
+        // Check for LLM-related errors
+        if (status === 503 || status === 502 || baseDetail?.toLowerCase().includes('llm')) {
+            try {
+                const health = await monitoringService.getLLMHealth();
+
+                if (health.overall_health === 'degraded') {
+                    const degradedProviders = Object.entries(health.providers || {})
+                        .filter(([_, data]) => !data.is_healthy)
+                        .map(([name]) => name);
+
+                    logger.error(`${operation} failed due to LLM service issues`, {
+                        degradedProviders,
+                        status
+                    });
+
+                    return (
+                        `Unable to ${operation} - LLM services are temporarily unavailable. ` +
+                        `Affected providers: ${degradedProviders.join(', ')}. ` +
+                        `Please try again in a few moments.`
+                    );
+                }
+            } catch (healthErr) {
+                logger.debug('Could not check LLM health during error handling', healthErr);
+            }
+        }
+
+        // Check for rate limiting
+        if (status === 429) {
+            return `Rate limit exceeded. Please wait a moment before trying again.`;
+        }
+
+        // Check for authentication issues
+        if (status === 401 || status === 403) {
+            return `Authentication error. Please log in again.`;
+        }
+
+        // Check for validation errors
+        if (status === 400 || status === 422) {
+            return baseDetail || `Invalid request. Please check your input and try again.`;
+        }
+
+        // Generic fallback
+        return baseDetail || `Failed to ${operation}. Please try again.`;
+    };
+
+    // ==========================================
+    // Event Handlers
+    // ==========================================
+
     const handleFrameworkSelect = (framework) => {
         if (workflowLimitReached) {
             setError('You have already completed one workflow. Thank you for your participation!');
@@ -168,6 +255,20 @@ const Refinement = () => {
         setError(null);
 
         try {
+            // Check LLM health before starting (non-blocking)
+            try {
+                const health = await monitoringService.getLLMHealth();
+                if (health.overall_health === 'degraded') {
+                    showWarning(
+                        'LLM services are experiencing issues. Your refinement may take longer than usual or require retries.'
+                    );
+                    logger.warn('Starting refinement with degraded LLM health', { health });
+                }
+            } catch (healthErr) {
+                // Don't block if monitoring is unavailable
+                logger.debug('Health check unavailable, proceeding anyway', healthErr);
+            }
+
             logger.info('Starting refinement session', {
                 framework: selectedFramework,
                 queryLength: initialQuery.length
@@ -242,7 +343,10 @@ const Refinement = () => {
             ]);
         } catch (err) {
             logger.error('Failed to start refinement', err, { framework: selectedFramework });
-            setError(err.response?.data?.detail || 'Failed to start refinement');
+
+            // Enhanced error handling with circuit breaker check
+            const errorDetail = await handleRefinementError(err, 'start refinement');
+            setError(errorDetail);
         } finally {
             setLoading(false);
         }
@@ -271,6 +375,9 @@ const Refinement = () => {
             setError('Session not initialized. Please start a new refinement.');
             return;
         }
+
+        // Quick health check for circuit breaker issues (non-blocking)
+        checkServiceHealthQuietly();
 
         setLoading(true);
         setError(null);
@@ -585,7 +692,10 @@ const Refinement = () => {
             console.error('[ERROR] Error response:', err.response);
             console.error('[ERROR] Error response data:', err.response?.data);
             console.error('[ERROR] ======================================');
-            setError(err.response?.data?.detail || err.message || 'Failed to process answer');
+
+            // Enhanced error handling with circuit breaker check
+            const errorDetail = await handleRefinementError(err, 'process answer');
+            setError(errorDetail);
         } finally {
             console.log('[TRACE] handleAnswer complete, setting loading to false');
             setLoading(false);
@@ -821,9 +931,9 @@ const Refinement = () => {
             console.error('[handleSynthesis] Error response:', err.response?.data);
             console.error('[handleSynthesis] Error status:', err.response?.status);
 
-            const errorMessage = err.response?.data?.detail || err.message || 'Failed to synthesize query';
-            console.error('[handleSynthesis] Setting error:', errorMessage);
-            setError(errorMessage);
+            // Enhanced error handling with circuit breaker check
+            const errorDetail = await handleRefinementError(err, 'synthesize query');
+            setError(errorDetail);
         } finally {
             setLoading(false);
             console.log('[handleSynthesis] Loading state cleared');
@@ -1103,6 +1213,11 @@ const Refinement = () => {
                 {stage === 'synthesis' && synthesis && (
                     <div className="refinement-interface">
                         <div className="refinement-main">
+                            {/* Progress indicator during synthesis */}
+                            {isPolling && progress && (
+                                <ProgressIndicator progress={progress} />
+                            )}
+
                             {conversationHistory.length > 0 && (
                                 <div className="history-panel">
                                     <div className="history-panel-header">Conversation History</div>
