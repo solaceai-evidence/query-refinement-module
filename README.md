@@ -85,7 +85,7 @@ Key environment variables (see `.env.example`):
 
 ```bash
 # LLM Settings
-QUERY_REFINEMENT_LLM_MODEL=gpt-4o-mini
+QUERY_REFINEMENT_LLM_MODEL=anthropic/claude-sonnet-4-20250514
 QUERY_REFINEMENT_LLM_API_KEY=your-api-key
 
 # Database
@@ -117,10 +117,10 @@ Set path: `export REFINEMENT_FRAMEWORK_PATH=/path/to/frameworks.yaml`
 
 ```bash
 # Production deployment
-docker-compose -f docker-compose.fullstack.yml up -d
+docker compose -f docker-compose.yml -f docker-compose.prod.yml up -d
 
 # Run migrations
-docker-compose exec backend alembic upgrade head
+docker compose -f docker-compose.yml -f docker-compose.prod.yml exec api alembic upgrade head
 ```
 
 ## Testing
@@ -146,7 +146,7 @@ query_refinement_module/   # Main package
 ├── providers/             # LLM provider abstraction
 └── core.py                # Session management logic
 
-frontend/                  # Vue.js web application
+frontend/                  # React web application
 refinement_frameworks/     # YAML framework definitions
 tests/                     # Unit, integration, and API tests
 docs/                      # Additional documentation
@@ -154,11 +154,10 @@ docs/                      # Additional documentation
 
 ## Documentation
 
-- [docs/api_integration_guide.md](docs/api_integration_guide.md) - API usage guide
-- [docs/custom_schemas.md](docs/custom_schemas.md) - Creating frameworks
-- [docs/user_commands.md](docs/user_commands.md) - Command reference
-- [docs/database_migrations.md](docs/database_migrations.md) - DB migrations
-- [docs/production_deployment.md](docs/production_deployment.md) - Production setup
+- [docs/DEPLOYMENT.md](docs/DEPLOYMENT.md) - Deployment and environment setup
+- [docs/API.md](docs/API.md) - API endpoints and commands
+- [docs/FRAMEWORKS.md](docs/FRAMEWORKS.md) - Framework authoring
+- [docs/OPERATIONS.md](docs/OPERATIONS.md) - Migrations, backups, and checks
 
 ## License
 
