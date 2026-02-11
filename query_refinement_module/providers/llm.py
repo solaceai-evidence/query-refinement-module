@@ -12,6 +12,7 @@ from typing import Any, Dict, List, Optional, Type, Union
 from query_refinement_module.tracing import get_request_id, get_trace_id
 
 from ..interfaces import LLMCompletionResult, LLMProviderInterface, RateLimitConfig, RateLimitExceeded
+from .circuit_breaker import CircuitBreakerRegistry, CircuitBreakerConfig, CircuitBreakerOpen
 
 # Optional dependencies
 try:
@@ -28,7 +29,7 @@ logger = logging.getLogger(__name__)
 
 
 class LiteLLMProvider(LLMProviderInterface):
-    """Generic LLM provider backed by `litellm` for multi-vendor support."""
+    """Generic LLM provider backed by `litellm` for multi-vendor support with circuit breaker protection."""
 
     def __init__(
         self,
@@ -38,6 +39,8 @@ class LiteLLMProvider(LLMProviderInterface):
         api_base: Optional[str] = None,
         default_completion_kwargs: Optional[Dict[str, Any]] = None,
         enable_prompt_caching: bool = True,
+        enable_circuit_breaker: bool = True,
+        circuit_breaker_config: Optional[CircuitBreakerConfig] = None,
     ) -> None:
         if litellm is None:
             raise RuntimeError(
@@ -57,6 +60,35 @@ class LiteLLMProvider(LLMProviderInterface):
         self._max_concurrent = 20  # Store for logging
         self._semaphore = asyncio.Semaphore(self._max_concurrent)  # Max 20 concurrent calls
         
+        # Circuit breaker for protecting against provider outages
+        self._enable_circuit_breaker = enable_circuit_breaker
+        if enable_circuit_breaker:
+            # Configure circuit breaker to exclude rate limit errors
+            # (rate limits are temporary throttling, not service outages)
+            cb_config = circuit_breaker_config or CircuitBreakerConfig()
+            
+            # Define exceptions that should trigger circuit breaker
+            # Excludes: RateLimitExceeded (temporary throttling)
+            # Includes: TimeoutError, ConnectionError, 5xx errors, etc.
+            cb_config.counted_exceptions = (
+                TimeoutError,
+                ConnectionError,
+                RuntimeError,  # LiteLLM uses RuntimeError for API errors
+                # Note: RateLimitExceeded is explicitly NOT included
+            )
+            
+            self._circuit_breaker_registry = CircuitBreakerRegistry(cb_config)
+            
+            logger.info(
+                "Circuit breaker enabled for LLM provider",
+                extra={
+                    "failure_threshold": cb_config.failure_threshold,
+                    "recovery_timeout": cb_config.recovery_timeout,
+                }
+            )
+        else:
+            self._circuit_breaker_registry = None
+        
         # Initialize persistent HTTP client for connection pooling (if httpx available)
         self._http_client: Optional[Any] = None
         if httpx is not None:
@@ -69,6 +101,39 @@ class LiteLLMProvider(LLMProviderInterface):
                 timeout=httpx.Timeout(60.0),
             )
             logger.debug("Initialized HTTP connection pool for LiteLLM provider (max_connections=40)")
+    
+    def _extract_provider_from_model(self, model: str) -> str:
+        """
+        Extract provider name from model string for circuit breaker tracking.
+        
+        Args:
+            model: Model identifier (e.g., "gpt-4", "claude-3-opus", "gemini-pro")
+            
+        Returns:
+            Provider name (e.g., "openai", "anthropic", "google")
+        """
+        model_lower = model.lower()
+        
+        # Common provider patterns
+        if "gpt" in model_lower or "o1" in model_lower or "text-davinci" in model_lower:
+            return "openai"
+        elif "claude" in model_lower:
+            return "anthropic"
+        elif "gemini" in model_lower or "palm" in model_lower:
+            return "google"
+        elif "llama" in model_lower:
+            return "meta"
+        elif "mistral" in model_lower or "mixtral" in model_lower:
+            return "mistral"
+        elif "command" in model_lower:
+            return "cohere"
+        elif "bedrock" in model_lower:
+            return "aws-bedrock"
+        elif "azure" in model_lower:
+            return "azure"
+        else:
+            # Use model prefix as provider name (handles custom models)
+            return model.split("/")[0] if "/" in model else "unknown"
 
     async def complete_async(
         self,
@@ -245,20 +310,51 @@ class LiteLLMProvider(LLMProviderInterface):
         max_retries = 3
         base_delay = 1.0
         
+        # Get circuit breaker for this provider
+        circuit_breaker = None
+        provider_name = None
+        if self._enable_circuit_breaker and self._circuit_breaker_registry:
+            provider_name = self._extract_provider_from_model(target_model)
+            circuit_breaker = await self._circuit_breaker_registry.get_breaker(provider_name)
+        
         for attempt in range(max_retries + 1):
             try:
                 # Track LLM call timing
                 llm_start = time.time()
                 
-                # Use async acompletion 
-                response = await litellm.acompletion(
-                    model=target_model,
-                    messages=messages_list,
-                    api_key=self._api_key,
-                    api_base=self._api_base,
-                    client=self._http_client,  # Use persistent HTTP client if available
-                    **completion_kwargs,
-                )
+                # Define the LLM call as an async function for circuit breaker wrapping
+                async def make_llm_call():
+                    return await litellm.acompletion(
+                        model=target_model,
+                        messages=messages_list,
+                        api_key=self._api_key,
+                        api_base=self._api_base,
+                        client=self._http_client,  # Use persistent HTTP client if available
+                        **completion_kwargs,
+                    )
+                
+                # Execute with circuit breaker protection if enabled
+                if circuit_breaker:
+                    try:
+                        response = await circuit_breaker.call(make_llm_call)
+                    except CircuitBreakerOpen as cb_error:
+                        # Circuit breaker is open - fail fast
+                        logger.error(
+                            "Circuit breaker OPEN for provider %s",
+                            provider_name,
+                            extra={
+                                "provider": provider_name,
+                                "model": target_model,
+                                "request_id": request_id,
+                                "trace_id": trace_id,
+                            }
+                        )
+                        raise RuntimeError(
+                            f"LLM provider '{provider_name}' is temporarily unavailable. {str(cb_error)}"
+                        ) from cb_error
+                else:
+                    # No circuit breaker - direct call
+                    response = await make_llm_call()
                 
                 llm_duration = (time.time() - llm_start) * 1000  # Convert to milliseconds
 
@@ -343,9 +439,16 @@ class LiteLLMProvider(LLMProviderInterface):
                     metadata=metadata,
                 )
                 
+            except CircuitBreakerOpen:
+                # Circuit breaker is open - don't retry, fail immediately
+                raise
             except Exception as e:
                 # Check if this is a rate limit error
                 is_rate_limit_error = self._is_rate_limit_error(e)
+                
+                # Rate limit errors should NOT trigger circuit breaker
+                # (they're temporary throttling, not service outages)
+                # The circuit breaker in the try block already handles provider failures
                 
                 if is_rate_limit_error and attempt < max_retries:
                     # Extract retry_after from error or use exponential backoff
@@ -753,3 +856,18 @@ class LiteLLMProvider(LLMProviderInterface):
                 pass
         
         return rate_limit_info
+    
+    def get_circuit_breaker_metrics(self) -> Dict[str, Any]:
+        """
+        Get metrics for all circuit breakers.
+        
+        Returns:
+            Dict mapping provider name to circuit breaker metrics
+        """
+        if not self._enable_circuit_breaker or not self._circuit_breaker_registry:
+            return {"circuit_breaker_enabled": False}
+        
+        return {
+            "circuit_breaker_enabled": True,
+            "providers": self._circuit_breaker_registry.get_all_metrics()
+        }

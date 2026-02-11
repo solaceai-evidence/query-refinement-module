@@ -33,6 +33,11 @@ class APIVersionMiddleware(BaseHTTPMiddleware):
         Returns:
             Response with version headers added
         """
+        # Skip version validation for meta endpoints
+        # /api/version is for version discovery, not a versioned API path
+        if request.url.path == '/api/version':
+            return await call_next(request)
+        
         # Extract version from path (e.g., /api/v1/refinement -> v1)
         path_parts = request.url.path.split('/')
         version = None

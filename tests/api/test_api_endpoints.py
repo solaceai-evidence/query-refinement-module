@@ -8,7 +8,7 @@ import os
 import time
 from typing import Dict
 
-BASE_URL = "http://localhost:8000"
+BASE_URL = "http://localhost:8000/api/v1"
 DB_PATH = "query_refinement.db"
 
 # Store test data

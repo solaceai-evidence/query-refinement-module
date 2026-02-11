@@ -5,7 +5,7 @@ import requests
 import time
 
 # Test configuration
-BASE_URL = "http://localhost:8000"
+BASE_URL = "http://localhost:8000/api/v1"
 
 
 def check_api_health() -> bool:

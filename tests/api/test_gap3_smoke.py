@@ -11,7 +11,7 @@ Run with: poetry run pytest tests/api/test_gap3_smoke.py -v
 import requests
 import time
 
-BASE_URL = "http://localhost:8000"
+BASE_URL = "http://localhost:8000/api/v1"
 
 # Test user credentials
 ADMIN_USER = {
@@ -78,8 +78,8 @@ def test_api_is_running():
 def test_admin_cache_endpoints_require_auth():
     """Admin endpoints require authentication."""
     endpoints = [
-        "/api/admin/cache/sessions",
-        "/api/admin/cache/stats",
+        "/api/v1/admin/cache/sessions",
+        "/api/v1/admin/cache/stats",
     ]
     
     for endpoint in endpoints:

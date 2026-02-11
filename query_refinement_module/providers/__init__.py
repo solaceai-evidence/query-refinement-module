@@ -27,6 +27,15 @@ from .storage import (
 # Re-export LLM provider
 from .llm import LiteLLMProvider
 
+# Re-export circuit breaker classes
+from .circuit_breaker import (
+    CircuitBreaker,
+    CircuitBreakerConfig,
+    CircuitBreakerOpen,
+    CircuitBreakerRegistry,
+    CircuitState,
+)
+
 __all__ = [
     # Tracing providers
     "NoOpTracingProvider",
@@ -39,4 +48,10 @@ __all__ = [
     "ConcurrentSessionStorage",
     # LLM provider
     "LiteLLMProvider",
+    # Circuit breaker
+    "CircuitBreaker",
+    "CircuitBreakerConfig",
+    "CircuitBreakerOpen",
+    "CircuitBreakerRegistry",
+    "CircuitState",
 ]

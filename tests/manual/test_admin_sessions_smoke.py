@@ -7,7 +7,7 @@ behavior and debugging session reconstruction issues.
 import requests
 import json
 
-BASE_URL = "http://localhost:8000"
+BASE_URL = "http://localhost:8000/api/v1"
 
 
 def test_admin_sessions_smoke():

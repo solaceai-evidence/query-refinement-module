@@ -65,7 +65,7 @@ def auth_user_and_token(db: Session):
     
     client = TestClient(app)
     response = client.post(
-        "/api/auth/login",
+        "/api/v1/auth/login",
         data={"username": "cmdtest@test.com", "password": "CmdTest123!"}
     )
     assert response.status_code == 200
@@ -120,7 +120,7 @@ class TestCommandHistoryEndpoint:
         
         client = TestClient(app)
         response = client.get(
-            f"/api/refinement/queries/{db_query.id}/command-history",
+            f"/api/v1/refinement/queries/{db_query.id}/command-history",
             headers={"Authorization": f"Bearer {token}"}
         )
         
@@ -138,7 +138,7 @@ class TestCommandHistoryEndpoint:
         
         # Execute /status command
         answer_response = client.post(
-            f"/api/refinement/queries/{db_query.id}/answer",
+            f"/api/v1/refinement/queries/{db_query.id}/answer",
             json={"answer": "/status"},
             headers={"Authorization": f"Bearer {token}"}
         )
@@ -146,7 +146,7 @@ class TestCommandHistoryEndpoint:
         
         # Check command history
         history_response = client.get(
-            f"/api/refinement/queries/{db_query.id}/command-history",
+            f"/api/v1/refinement/queries/{db_query.id}/command-history",
             headers={"Authorization": f"Bearer {token}"}
         )
         
@@ -169,7 +169,7 @@ class TestCommandHistoryEndpoint:
         
         # Execute /skip command
         answer_response = client.post(
-            f"/api/refinement/queries/{db_query.id}/answer",
+            f"/api/v1/refinement/queries/{db_query.id}/answer",
             json={"answer": "/skip"},
             headers={"Authorization": f"Bearer {token}"}
         )
@@ -177,7 +177,7 @@ class TestCommandHistoryEndpoint:
         
         # Check command history
         history_response = client.get(
-            f"/api/refinement/queries/{db_query.id}/command-history",
+            f"/api/v1/refinement/queries/{db_query.id}/command-history",
             headers={"Authorization": f"Bearer {token}"}
         )
         
@@ -214,7 +214,7 @@ class TestCommandHistoryEndpoint:
         
         # Execute /back command
         answer_response = client.post(
-            f"/api/refinement/queries/{db_query.id}/answer",
+            f"/api/v1/refinement/queries/{db_query.id}/answer",
             json={"answer": "/back", "force": True},
             headers={"Authorization": f"Bearer {token}"}
         )
@@ -222,7 +222,7 @@ class TestCommandHistoryEndpoint:
         
         # Check command history
         history_response = client.get(
-            f"/api/refinement/queries/{db_query.id}/command-history",
+            f"/api/v1/refinement/queries/{db_query.id}/command-history",
             headers={"Authorization": f"Bearer {token}"}
         )
         
@@ -242,7 +242,7 @@ class TestCommandHistoryEndpoint:
         
         # Execute /restart command
         answer_response = client.post(
-            f"/api/refinement/queries/{db_query.id}/answer",
+            f"/api/v1/refinement/queries/{db_query.id}/answer",
             json={"answer": "/restart", "force": True},
             headers={"Authorization": f"Bearer {token}"}
         )
@@ -250,7 +250,7 @@ class TestCommandHistoryEndpoint:
         
         # Check command history
         history_response = client.get(
-            f"/api/refinement/queries/{db_query.id}/command-history",
+            f"/api/v1/refinement/queries/{db_query.id}/command-history",
             headers={"Authorization": f"Bearer {token}"}
         )
         
@@ -272,14 +272,14 @@ class TestCommandHistoryEndpoint:
         commands = ["/status", "/help", "/steps"]
         for cmd in commands:
             client.post(
-                f"/api/refinement/queries/{db_query.id}/answer",
+                f"/api/v1/refinement/queries/{db_query.id}/answer",
                 json={"answer": cmd},
                 headers={"Authorization": f"Bearer {token}"}
             )
         
         # Request history with limit
         history_response = client.get(
-            f"/api/refinement/queries/{db_query.id}/command-history?limit=2",
+            f"/api/v1/refinement/queries/{db_query.id}/command-history?limit=2",
             headers={"Authorization": f"Bearer {token}"}
         )
         
@@ -297,14 +297,14 @@ class TestCommandHistoryEndpoint:
         commands = ["/status", "/help", "/steps"]
         for cmd in commands:
             client.post(
-                f"/api/refinement/queries/{db_query.id}/answer",
+                f"/api/v1/refinement/queries/{db_query.id}/answer",
                 json={"answer": cmd},
                 headers={"Authorization": f"Bearer {token}"}
             )
         
         # Get history
         history_response = client.get(
-            f"/api/refinement/queries/{db_query.id}/command-history",
+            f"/api/v1/refinement/queries/{db_query.id}/command-history",
             headers={"Authorization": f"Bearer {token}"}
         )
         
@@ -326,7 +326,7 @@ class TestCommandHistoryEndpoint:
         
         # Test without authentication
         response = client.get(
-            f"/api/refinement/queries/{db_query.id}/command-history"
+            f"/api/v1/refinement/queries/{db_query.id}/command-history"
         )
         assert response.status_code == 401
         
@@ -340,13 +340,13 @@ class TestCommandHistoryEndpoint:
         )
         
         login_response = client.post(
-            "/api/auth/login",
+            "/api/v1/auth/login",
             data={"username": "other@test.com", "password": "Other123!"}
         )
         other_token = login_response.json()["access_token"]
         
         response = client.get(
-            f"/api/refinement/queries/{db_query.id}/command-history",
+            f"/api/v1/refinement/queries/{db_query.id}/command-history",
             headers={"Authorization": f"Bearer {other_token}"}
         )
         assert response.status_code == 404
@@ -359,14 +359,14 @@ class TestCommandHistoryEndpoint:
         
         # Execute command
         client.post(
-            f"/api/refinement/queries/{db_query.id}/answer",
+            f"/api/v1/refinement/queries/{db_query.id}/answer",
             json={"answer": "/status"},
             headers={"Authorization": f"Bearer {token}"}
         )
         
         # Get history
         history_response = client.get(
-            f"/api/refinement/queries/{db_query.id}/command-history",
+            f"/api/v1/refinement/queries/{db_query.id}/command-history",
             headers={"Authorization": f"Bearer {token}"}
         )
         
@@ -391,7 +391,7 @@ class TestCommandAuditLogging:
         
         # Execute /clear command
         response = client.post(
-            f"/api/refinement/queries/{db_query.id}/answer",
+            f"/api/v1/refinement/queries/{db_query.id}/answer",
             json={"answer": "/clear"},
             headers={"Authorization": f"Bearer {token}"}
         )
@@ -435,14 +435,14 @@ class TestCommandAuditLogging:
         
         # Execute /goto command
         response = client.post(
-            f"/api/refinement/queries/{db_query.id}/answer",
+            f"/api/v1/refinement/queries/{db_query.id}/answer",
             json={"answer": "/goto Population", "force": True},
             headers={"Authorization": f"Bearer {token}"}
         )
         
         # Get command history
         history_response = client.get(
-            f"/api/refinement/queries/{db_query.id}/command-history",
+            f"/api/v1/refinement/queries/{db_query.id}/command-history",
             headers={"Authorization": f"Bearer {token}"}
         )
         
@@ -477,14 +477,14 @@ class TestCommandAuditLogging:
         
         # Execute /back WITHOUT force (should need confirmation)
         response = client.post(
-            f"/api/refinement/queries/{db_query.id}/answer",
+            f"/api/v1/refinement/queries/{db_query.id}/answer",
             json={"answer": "/back", "force": False},
             headers={"Authorization": f"Bearer {token}"}
         )
         
         # Get command history
         history_response = client.get(
-            f"/api/refinement/queries/{db_query.id}/command-history",
+            f"/api/v1/refinement/queries/{db_query.id}/command-history",
             headers={"Authorization": f"Bearer {token}"}
         )
         

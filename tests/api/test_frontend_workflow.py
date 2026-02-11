@@ -8,7 +8,7 @@ import json
 import sys
 import time
 
-BASE_URL = "http://localhost:8000"
+BASE_URL = "http://localhost:8000/api/v1"
 
 def print_section(title):
     print(f"\n{'='*80}")

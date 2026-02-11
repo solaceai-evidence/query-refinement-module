@@ -19,7 +19,7 @@ export const refinementService = {
      * @returns {Promise<string[]>}
      */
     async getFrameworks() {
-        const response = await apiClient.get('/api/refinement/frameworks');
+        const response = await apiClient.get('/refinement/frameworks');
         return response.data;
     },
 
@@ -30,7 +30,7 @@ export const refinementService = {
      * @returns {Promise<StartRefinementResponse>}
      */
     async startRefinement(frameworkName, initialQuery) {
-        const response = await apiClient.post('/api/refinement/start', {
+        const response = await apiClient.post('/refinement/start', {
             framework_name: frameworkName,
             original_query: initialQuery
         });
@@ -46,7 +46,7 @@ export const refinementService = {
      * @returns {Promise<ContinueRefinementResponse>}
      */
     async continueRefinement(sessionId, queryId, userResponse, force = false) {
-        const url = `/api/refinement/queries/${queryId}/answer`;
+        const url = `/refinement/queries/${queryId}/answer`;
         const isCommand = userResponse.startsWith('/');
 
         console.log('[SERVICE v2.0] === STARTING continueRefinement ===');
@@ -104,7 +104,7 @@ export const refinementService = {
         logger.info('Getting synthesis', { queryId });
 
         try {
-            const response = await apiClient.post('/api/refinement/synthesize', {
+            const response = await apiClient.post('/refinement/synthesize', {
                 query_id: queryId
             });
 
@@ -147,7 +147,7 @@ export const refinementService = {
      * @returns {Promise<any>}
      */
     async getQuery(queryId) {
-        const response = await apiClient.get(`/api/queries/${queryId}`);
+        const response = await apiClient.get(`/queries/${queryId}`);
         return response.data;
     },
 
@@ -157,7 +157,7 @@ export const refinementService = {
      * @returns {Promise<GetRefinementStatusResponse>}
      */
     async getStatus(queryId) {
-        const response = await apiClient.get(`/api/refinement/queries/${queryId}/status`, {
+        const response = await apiClient.get(`/refinement/queries/${queryId}/status`, {
             timeout: 10000 // 10 second timeout for status checks (should be fast)
         });
         return response.data;
@@ -170,7 +170,7 @@ export const refinementService = {
      * @returns {Promise<any[]>}
      */
     async listQueries(skip = 0, limit = 50) {
-        const response = await apiClient.get('/api/queries', {
+        const response = await apiClient.get('/queries', {
             params: { skip, limit }
         });
         return response.data;
@@ -184,7 +184,7 @@ export const refinementService = {
      * @returns {Promise<any>}
      */
     async submitFeedback(queryId, rating, comments = null) {
-        const response = await apiClient.post('/api/feedback', {
+        const response = await apiClient.post('/feedback', {
             query_id: queryId,
             rating,
             comments
@@ -197,7 +197,7 @@ export const refinementService = {
      * @returns {Promise<any>}
      */
     async getUserStatus() {
-        const response = await apiClient.get('/api/auth/me/status');
+        const response = await apiClient.get('/auth/me/status');
         return response.data;
     },
 
@@ -211,7 +211,7 @@ export const refinementService = {
         logger.info('Abandoning session', { sessionId });
 
         try {
-            const response = await apiClient.post('/api/refinement/sessions/abandon', {
+            const response = await apiClient.post('/refinement/sessions/abandon', {
                 session_id: sessionId
             });
 

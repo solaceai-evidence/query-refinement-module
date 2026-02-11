@@ -71,7 +71,7 @@ def client():
 def test_user(client):
     """Create a test user and return auth token."""
     # Register user
-    response = client.post('/api/auth/register', json={
+    response = client.post('/api/v1/auth/register', json={
         'username': f'webhooktest_{int(time.time())}',
         'password': 'testpass123',
         'email': f'webhook{int(time.time())}@test.com'
@@ -79,7 +79,7 @@ def test_user(client):
     assert response.status_code == 201
     
     # Login
-    response = client.post('/api/auth/login', data={
+    response = client.post('/api/v1/auth/login', data={
         'username': response.json()['username'],
         'password': 'testpass123'
     })
@@ -93,7 +93,7 @@ class TestWebhookCRUD:
     
     def test_get_event_types(self, client):
         """Test getting available event types."""
-        response = client.get('/api/webhooks/event-types')
+        response = client.get('/api/v1/webhooks/event-types')
         assert response.status_code == 200
         
         data = response.json()
@@ -167,7 +167,7 @@ class TestWebhookCRUD:
         
         # Get details
         response = client.get(
-            f'/api/webhooks/{webhook_id}',
+            f'/api/v1/webhooks/{webhook_id}',
             headers={'Authorization': f'Bearer {test_user}'}
         )
         
@@ -194,7 +194,7 @@ class TestWebhookCRUD:
         
         # Update webhook
         response = client.put(
-            f'/api/webhooks/{webhook_id}',
+            f'/api/v1/webhooks/{webhook_id}',
             headers={'Authorization': f'Bearer {test_user}'},
             json={
                 'events': ['refinement.started', 'refinement.complete'],
@@ -225,7 +225,7 @@ class TestWebhookCRUD:
         
         # Delete webhook
         response = client.delete(
-            f'/api/webhooks/{webhook_id}',
+            f'/api/v1/webhooks/{webhook_id}',
             headers={'Authorization': f'Bearer {test_user}'}
         )
         
@@ -233,7 +233,7 @@ class TestWebhookCRUD:
         
         # Verify it's gone
         response = client.get(
-            f'/api/webhooks/{webhook_id}',
+            f'/api/v1/webhooks/{webhook_id}',
             headers={'Authorization': f'Bearer {test_user}'}
         )
         assert response.status_code == 404
@@ -254,7 +254,7 @@ class TestWebhookCRUD:
         
         # Regenerate secret
         response = client.post(
-            f'/api/webhooks/{webhook_id}/regenerate-secret',
+            f'/api/v1/webhooks/{webhook_id}/regenerate-secret',
             headers={'Authorization': f'Bearer {test_user}'}
         )
         
@@ -288,7 +288,7 @@ class TestWebhookDelivery:
         
         # Test webhook
         response = client.post(
-            f'/api/webhooks/{webhook_id}/test',
+            f'/api/v1/webhooks/{webhook_id}/test',
             headers={'Authorization': f'Bearer {test_user}'},
             json={'test_data': {'hello': 'world'}}
         )
@@ -335,13 +335,13 @@ class TestWebhookDelivery:
         
         # Send test delivery
         client.post(
-            f'/api/webhooks/{webhook_id}/test',
+            f'/api/v1/webhooks/{webhook_id}/test',
             headers={'Authorization': f'Bearer {test_user}'}
         )
         
         # Get delivery history
         response = client.get(
-            f'/api/webhooks/{webhook_id}/deliveries',
+            f'/api/v1/webhooks/{webhook_id}/deliveries',
             headers={'Authorization': f'Bearer {test_user}'}
         )
         
@@ -376,22 +376,22 @@ class TestWebhookSecurity:
     def test_webhook_ownership(self, client, webhook_server):
         """Test that users can only access their own webhooks."""
         # Create two users
-        user1_response = client.post('/api/auth/register', json={
+        user1_response = client.post('/api/v1/auth/register', json={
             'username': f'user1_{int(time.time())}',
             'password': 'pass123',
             'email': f'user1_{int(time.time())}@test.com'
         })
-        user1_token = client.post('/api/auth/login', data={
+        user1_token = client.post('/api/v1/auth/login', data={
             'username': user1_response.json()['username'],
             'password': 'pass123'
         }).json()['access_token']
         
-        user2_response = client.post('/api/auth/register', json={
+        user2_response = client.post('/api/v1/auth/register', json={
             'username': f'user2_{int(time.time())}',
             'password': 'pass123',
             'email': f'user2_{int(time.time())}@test.com'
         })
-        user2_token = client.post('/api/auth/login', data={
+        user2_token = client.post('/api/v1/auth/login', data={
             'username': user2_response.json()['username'],
             'password': 'pass123'
         }).json()['access_token']
@@ -409,7 +409,7 @@ class TestWebhookSecurity:
         
         # User 2 tries to access User 1's webhook
         response = client.get(
-            f'/api/webhooks/{webhook_id}',
+            f'/api/v1/webhooks/{webhook_id}',
             headers={'Authorization': f'Bearer {user2_token}'}
         )
         assert response.status_code == 403
@@ -450,7 +450,7 @@ class TestWebhookIntegration:
         
         # Start refinement workflow
         response = client.post(
-            '/api/refinement/start',
+            '/api/v1/refinement/start',
             headers={'Authorization': f'Bearer {test_user}'},
             json={
                 'original_query': 'test query for webhook',

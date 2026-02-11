@@ -22,7 +22,7 @@ export const AuthProvider = ({ children }) => {
         try {
             logger.info('User login attempt', { username });
 
-            const response = await apiClient.post('/api/auth/login',
+            const response = await apiClient.post('/auth/login',
                 new URLSearchParams({
                     username,
                     password,
@@ -70,7 +70,7 @@ export const AuthProvider = ({ children }) => {
                 ...(email && { email }) // Conditionally add email if it exists
             };
 
-            await apiClient.post('/api/auth/register', requestData);
+            await apiClient.post('/auth/register', requestData);
 
             logger.info('User registration successful', { username });
 

@@ -15,6 +15,9 @@ _ENV_TEMPERATURE = "QUERY_REFINEMENT_LLM_TEMPERATURE"
 _ENV_MAX_TOKENS = "QUERY_REFINEMENT_LLM_MAX_TOKENS"
 _ENV_COMPLETION_KWARGS = "QUERY_REFINEMENT_LLM_COMPLETION_KWARGS"
 _ENV_ENABLE_PROMPT_CACHING = "QUERY_REFINEMENT_ENABLE_PROMPT_CACHING"
+_ENV_ENABLE_CIRCUIT_BREAKER = "QUERY_REFINEMENT_ENABLE_CIRCUIT_BREAKER"
+_ENV_CIRCUIT_BREAKER_FAILURE_THRESHOLD = "QUERY_REFINEMENT_CIRCUIT_BREAKER_FAILURE_THRESHOLD"
+_ENV_CIRCUIT_BREAKER_RECOVERY_TIMEOUT = "QUERY_REFINEMENT_CIRCUIT_BREAKER_RECOVERY_TIMEOUT"
 
 
 def _parse_float(value: Optional[str], default: float) -> float:
@@ -73,6 +76,9 @@ class LLMSettings:
     max_tokens: Optional[int] = None
     completion_kwargs: Dict[str, Any] = field(default_factory=dict)
     enable_prompt_caching: bool = True
+    enable_circuit_breaker: bool = True
+    circuit_breaker_failure_threshold: int = 5
+    circuit_breaker_recovery_timeout: float = 60.0
     terminal_reinforcement_threshold: int = 3  # Hardcoded optimal value (data-driven from 3,777 dimensions)
 
     @classmethod
@@ -96,6 +102,9 @@ class LLMSettings:
         max_tokens = _parse_int(os.getenv(_ENV_MAX_TOKENS))
         completion_kwargs = _parse_completion_kwargs(os.getenv(_ENV_COMPLETION_KWARGS))
         enable_prompt_caching = _parse_bool(os.getenv(_ENV_ENABLE_PROMPT_CACHING), default=True)
+        enable_circuit_breaker = _parse_bool(os.getenv(_ENV_ENABLE_CIRCUIT_BREAKER), default=True)
+        circuit_breaker_failure_threshold = int(os.getenv(_ENV_CIRCUIT_BREAKER_FAILURE_THRESHOLD, "5"))
+        circuit_breaker_recovery_timeout = float(os.getenv(_ENV_CIRCUIT_BREAKER_RECOVERY_TIMEOUT, "60.0"))
 
         return cls(
             model=model,
@@ -105,18 +114,32 @@ class LLMSettings:
             max_tokens=max_tokens,
             completion_kwargs=completion_kwargs,
             enable_prompt_caching=enable_prompt_caching,
+            enable_circuit_breaker=enable_circuit_breaker,
+            circuit_breaker_failure_threshold=circuit_breaker_failure_threshold,
+            circuit_breaker_recovery_timeout=circuit_breaker_recovery_timeout,
             # terminal_reinforcement_threshold uses class default of 3 (data-driven optimal value)
         )
 
     def as_provider_kwargs(self) -> Dict[str, Any]:
         """Keyword arguments for ``LiteLLMProvider`` construction."""
-
+        from query_refinement_module.providers import CircuitBreakerConfig
+        
+        # Create circuit breaker config if enabled
+        circuit_breaker_config = None
+        if self.enable_circuit_breaker:
+            circuit_breaker_config = CircuitBreakerConfig(
+                failure_threshold=self.circuit_breaker_failure_threshold,
+                recovery_timeout=self.circuit_breaker_recovery_timeout,
+            )
+        
         return {
             "default_model": self.model,
             "api_key": self.api_key,
             "api_base": self.api_base,
             "default_completion_kwargs": copy.deepcopy(self.completion_kwargs),
             "enable_prompt_caching": self.enable_prompt_caching,
+            "enable_circuit_breaker": self.enable_circuit_breaker,
+            "circuit_breaker_config": circuit_breaker_config,
         }
 
     def as_analyzer_kwargs(self) -> Dict[str, Any]:

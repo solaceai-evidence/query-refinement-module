@@ -37,7 +37,8 @@ poetry run alembic upgrade head
 poetry run uvicorn query_refinement_module.api.main:app --reload
 ```
 
-Backend available at: http://localhost:8000 (API docs at /docs)
+Backend available at: http://localhost:8000 (API docs at /docs)  
+**API Endpoints:** All endpoints use `/api/v1/` prefix (e.g., `/api/v1/refinement/start`)
 
 ### 2. Frontend Setup
 

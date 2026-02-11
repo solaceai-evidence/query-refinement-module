@@ -16,7 +16,7 @@
 import { getRequestId, getTraceId } from './logger';
 import { authUtils } from './auth';
 
-const API_ENDPOINT = '/api/logs/frontend';
+const API_ENDPOINT = '/logs/frontend';
 const BATCH_SIZE = 100;
 const BATCH_INTERVAL_MS = 30000; // 30 seconds
 const MAX_QUEUE_SIZE = 500;
@@ -351,7 +351,7 @@ class FrontendLogForwarder {
                 const duration = Math.round(performance.now() - startTime);
 
                 // Don't log our own log forwarding requests
-                if (!url.includes('/api/logs/frontend')) {
+                if (!url.includes('/logs/frontend')) {
                     this.addNetworkLog(url, method, response.status, duration);
                 }
 
@@ -378,7 +378,7 @@ class FrontendLogForwarder {
             this.addEventListener('loadend', () => {
                 const duration = Math.round(performance.now() - this._loggedStartTime);
                 // Don't log our own log forwarding requests
-                if (!this._loggedUrl.includes('/api/logs/frontend')) {
+                if (!this._loggedUrl.includes('/logs/frontend')) {
                     logForwarder.addNetworkLog(
                         this._loggedUrl,
                         this._loggedMethod,

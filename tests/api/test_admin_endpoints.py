@@ -68,7 +68,7 @@ def superuser_token(db: Session) -> str:
     
     client = TestClient(app)
     response = client.post(
-        "/api/auth/login",
+        "/api/v1/auth/login",
         data={"username": "admin@test.com", "password": "SuperSecret123!"}
     )
     assert response.status_code == 200
@@ -88,7 +88,7 @@ def regular_user_token(db: Session) -> str:
     
     client = TestClient(app)
     response = client.post(
-        "/api/auth/login",
+        "/api/v1/auth/login",
         data={"username": "user@test.com", "password": "UserSecret123!"}
     )
     assert response.status_code == 200
@@ -135,7 +135,7 @@ class TestCacheManagementEndpoints:
         """Regular users cannot access cache list endpoint."""
         client = TestClient(app)
         response = client.get(
-            "/api/admin/cache/sessions",
+            "/api/v1/admin/cache/sessions",
             headers={"Authorization": f"Bearer {regular_user_token}"}
         )
         assert response.status_code == 403
@@ -145,7 +145,7 @@ class TestCacheManagementEndpoints:
         """Superuser can list cached sessions."""
         client = TestClient(app)
         response = client.get(
-            "/api/admin/cache/sessions",
+            "/api/v1/admin/cache/sessions",
             headers={"Authorization": f"Bearer {superuser_token}"}
         )
         assert response.status_code == 200
@@ -164,7 +164,7 @@ class TestCacheManagementEndpoints:
         """Superuser can inspect specific cached session."""
         client = TestClient(app)
         response = client.get(
-            f"/api/admin/cache/sessions/{sample_query_with_cache.id}",
+            f"/api/v1/admin/cache/sessions/{sample_query_with_cache.id}",
             headers={"Authorization": f"Bearer {superuser_token}"}
         )
         assert response.status_code == 200
@@ -179,7 +179,7 @@ class TestCacheManagementEndpoints:
         """Inspect returns 404 for non-existent session."""
         client = TestClient(app)
         response = client.get(
-            "/api/admin/cache/sessions/99999",
+            "/api/v1/admin/cache/sessions/99999",
             headers={"Authorization": f"Bearer {superuser_token}"}
         )
         assert response.status_code == 404
@@ -194,7 +194,7 @@ class TestCacheManagementEndpoints:
         
         # Clear session
         response = client.delete(
-            f"/api/admin/cache/sessions/{sample_query_with_cache.id}",
+            f"/api/v1/admin/cache/sessions/{sample_query_with_cache.id}",
             headers={"Authorization": f"Bearer {superuser_token}"}
         )
         assert response.status_code == 200
@@ -209,7 +209,7 @@ class TestCacheManagementEndpoints:
         """Clear returns success with deleted=false for non-existent session."""
         client = TestClient(app)
         response = client.delete(
-            "/api/admin/cache/sessions/99999",
+            "/api/v1/admin/cache/sessions/99999",
             headers={"Authorization": f"Bearer {superuser_token}"}
         )
         assert response.status_code == 200
@@ -225,7 +225,7 @@ class TestCacheManagementEndpoints:
         
         # Flush cache
         response = client.post(
-            "/api/admin/cache/flush",
+            "/api/v1/admin/cache/flush",
             headers={"Authorization": f"Bearer {superuser_token}"}
         )
         assert response.status_code == 200
@@ -240,7 +240,7 @@ class TestCacheManagementEndpoints:
         """Superuser can retrieve cache statistics."""
         client = TestClient(app)
         response = client.get(
-            "/api/admin/cache/stats",
+            "/api/v1/admin/cache/stats",
             headers={"Authorization": f"Bearer {superuser_token}"}
         )
         assert response.status_code == 200
@@ -269,7 +269,7 @@ class TestIntegrityValidationEndpoints:
         """Regular users cannot access integrity check endpoint."""
         client = TestClient(app)
         response = client.get(
-            "/api/admin/integrity/check",
+            "/api/v1/admin/integrity/check",
             headers={"Authorization": f"Bearer {regular_user_token}"}
         )
         assert response.status_code == 403
@@ -287,7 +287,7 @@ class TestIntegrityValidationEndpoints:
         )
         
         response = client.get(
-            "/api/admin/integrity/check",
+            "/api/v1/admin/integrity/check",
             headers={"Authorization": f"Bearer {superuser_token}"}
         )
         assert response.status_code == 200
@@ -326,7 +326,7 @@ class TestIntegrityValidationEndpoints:
         assert not session_manager.session_exists(db_query.id)
         
         response = client.get(
-            "/api/admin/integrity/check",
+            "/api/v1/admin/integrity/check",
             headers={"Authorization": f"Bearer {superuser_token}"}
         )
         assert response.status_code == 200
@@ -371,7 +371,7 @@ class TestIntegrityValidationEndpoints:
         assert not session_manager.session_exists(db_query.id)
         
         response = client.get(
-            "/api/admin/integrity/orphaned-steps",
+            "/api/v1/admin/integrity/orphaned-steps",
             headers={"Authorization": f"Bearer {superuser_token}"}
         )
         assert response.status_code == 200
@@ -415,7 +415,7 @@ class TestIntegrityValidationEndpoints:
         
         # Dry run repair
         response = client.post(
-            "/api/admin/integrity/repair",
+            "/api/v1/admin/integrity/repair",
             json={"dry_run": True},
             headers={"Authorization": f"Bearer {superuser_token}"}
         )
@@ -457,7 +457,7 @@ class TestIntegrityValidationEndpoints:
         
         # Execute repair
         response = client.post(
-            "/api/admin/integrity/repair",
+            "/api/v1/admin/integrity/repair",
             json={"dry_run": False},
             headers={"Authorization": f"Bearer {superuser_token}"}
         )
@@ -483,11 +483,11 @@ class TestAdminAuthorization:
         client = TestClient(app)
         
         endpoints = [
-            ("GET", "/api/admin/cache/sessions"),
-            ("GET", "/api/admin/cache/sessions/1"),
-            ("DELETE", "/api/admin/cache/sessions/1"),
-            ("POST", "/api/admin/cache/flush"),
-            ("GET", "/api/admin/cache/stats"),
+            ("GET", "/api/v1/admin/cache/sessions"),
+            ("GET", "/api/v1/admin/cache/sessions/1"),
+            ("DELETE", "/api/v1/admin/cache/sessions/1"),
+            ("POST", "/api/v1/admin/cache/flush"),
+            ("GET", "/api/v1/admin/cache/stats"),
         ]
         
         for method, path in endpoints:
@@ -506,9 +506,9 @@ class TestAdminAuthorization:
         client = TestClient(app)
         
         endpoints = [
-            ("GET", "/api/admin/integrity/check"),
-            ("GET", "/api/admin/integrity/orphaned-steps"),
-            ("POST", "/api/admin/integrity/repair"),
+            ("GET", "/api/v1/admin/integrity/check"),
+            ("GET", "/api/v1/admin/integrity/orphaned-steps"),
+            ("POST", "/api/v1/admin/integrity/repair"),
         ]
         
         for method, path in endpoints:
@@ -524,5 +524,5 @@ class TestAdminAuthorization:
         """Unauthenticated requests are rejected."""
         client = TestClient(app)
         
-        response = client.get("/api/admin/cache/sessions")
+        response = client.get("/api/v1/admin/cache/sessions")
         assert response.status_code == 401  # Unauthorized
