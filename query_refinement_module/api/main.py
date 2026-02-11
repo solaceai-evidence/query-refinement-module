@@ -39,6 +39,8 @@ from query_refinement_module.api.routes import (
 from query_refinement_module.api.exceptions import QueryRefinementException
 from query_refinement_module.api.rate_limit import RateLimitMiddleware
 from query_refinement_module.logging.middleware import RequestLoggingMiddleware
+from query_refinement_module.api.versioning import get_version_info, get_api_prefix, APIVersion
+from query_refinement_module.api.version_middleware import APIVersionMiddleware
 
 
 @asynccontextmanager
@@ -89,7 +91,10 @@ app = FastAPI(
     lifespan=lifespan,
 )
 
-# Add request logging middleware (first, so it wraps everything)
+# Add request logging middleware (first, so 
+
+# Add API version validation middleware
+app.add_middleware(APIVersionMiddleware)it wraps everything)
 app.add_middleware(RequestLoggingMiddleware)
 
 # Configure CORS with environment-specific settings
@@ -216,14 +221,41 @@ async def readiness_check():
 # Root endpoint
 @app.get("/", tags=["Root"])
 async def root():
-    """API root endpoint with service information."""
+    version_info = get_version_info()
     return {
         "service": settings.app_name,
         "version": settings.app_version,
         "environment": settings.environment,
-        "docs": "/docs",
-        "health": "/health",
-        "ready": "/ready"
+        "api_version": version_info.current_version,
+        "api_versions": {
+            "current": version_info.current_version,
+            "latest": version_info.latest_version,
+            "supported": version_info.supported_versions,
+            "deprecated": version_info.deprecated_versions
+        }, with API versioning
+# Version 1 (current stable)
+API_V1_PREFIX = get_api_prefix(APIVersion.V1)
+
+app.include_router(auth.router, prefix=API_V1_PREFIX)
+app.include_router(queries.router, prefix=API_V1_PREFIX)
+app.include_router(feedback.router, prefix=API_V1_PREFIX)
+app.include_router(refinement.router, prefix=API_V1_PREFIX)
+app.include_router(audit.router, prefix=API_V1_PREFIX)
+app.include_router(frontend_logs.router, prefix=API_V1_PREFIX)
+app.include_router(admin.router, prefix=API_V1_PREFIX)
+app.include_router(webhooks.router, prefix=API_V1_PREFIX)
+
+# Admin endpoints (versioned for consistency)
+app.include_router(admin_sessions.router, prefix=API_V1_PREFIX)
+app.include_router(admin_frameworks.router, prefix=API_V1_PREFIX)
+app.include_router(admin_analytics.router, prefix=API_V1_PREFIX
+async def api_version():
+    """
+    Get API version information.
+    
+    Returns details about supported API versions, deprecations, and breaking changes.
+    """
+    return get_version_info()   "ready": "/ready"
     }
 
 

@@ -68,7 +68,9 @@ The **`POST /refinement/queries/{query_id}/forward-to-qa`** endpoint forwards th
 
 ### API Endpoint
 
-**POST `/refinement/queries/{query_id}/forward-to-qa`**
+**POST `/api/v1/refinement/queries/{query_id}/forward-to-qa`**
+
+> **Note:** All API endpoints are now versioned. Always use `/api/v1/...` prefix.
 
 **Prerequisites:**
 - Query refinement must be complete (synthesis done)
@@ -154,7 +156,7 @@ def refine_and_query(user_query: str, framework: str = "pico_advanced"):
     """
     headers = {"Authorization": f"Bearer {AUTH_TOKEN}"}
     
-    # 1. Start refinement
+    # 1. Start refinementapi/v1/
     response = requests.post(
         f"{REFINEMENT_API}/refinement/start",
         json={"original_query": user_query, "framework_name": framework},
@@ -166,7 +168,7 @@ def refine_and_query(user_query: str, framework: str = "pico_advanced"):
     # 2. User goes through multi-turn refinement
     # (Your frontend handles this - asking questions, getting user answers)
     while not is_refinement_complete(query_id):
-        # Get next question
+        # Get next questionapi/v1/
         status = requests.get(
             f"{REFINEMENT_API}/refinement/status/{query_id}",
             headers=headers
@@ -177,21 +179,21 @@ def refine_and_query(user_query: str, framework: str = "pico_advanced"):
         
         # Submit answer
         requests.post(
-            f"{REFINEMENT_API}/refinement/submit-answer",
+            f"{REFINEMENT_API}/api/v1/refinement/submit-answer",
             json={"query_id": query_id, "answer": user_answer},
             headers=headers
         )
     
     # 3. Synthesis (final refinement)
     requests.post(
-        f"{REFINEMENT_API}/refinement/synthesize",
+        f"{REFINEMENT_API}/api/v1/refinement/synthesize",
         json={"query_id": query_id},
         headers=headers
     )
     
     # 4. Forward to QA system (NEW ENDPOINT)
     response = requests.post(
-        f"{REFINEMENT_API}/refinement/queries/{query_id}/forward-to-qa",
+        f"{REFINEMENT_API}/api/v1/refinement/queries/{query_id}/forward-to-qa",
         json={
             "qa_system_url": QA_SYSTEM_URL,
             "qa_system_auth": {"Authorization": "Bearer qa-token"},
