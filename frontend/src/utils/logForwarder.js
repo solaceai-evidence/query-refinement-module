@@ -16,7 +16,8 @@
 import { getRequestId, getTraceId } from './logger';
 import { authUtils } from './auth';
 
-const API_ENDPOINT = '/logs/frontend';
+const API_BASE_URL = import.meta.env.VITE_API_BASE_URL || 'http://localhost:8000/api/v1';
+const API_ENDPOINT = `${API_BASE_URL}/logs/frontend`;
 const BATCH_SIZE = 100;
 const BATCH_INTERVAL_MS = 30000; // 30 seconds
 const MAX_QUEUE_SIZE = 500;

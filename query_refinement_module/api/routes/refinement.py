@@ -671,7 +671,7 @@ async def start_refinement(
         await tracker.create(
             query_id=str(db_query.id),
             initial_stage=ProgressStage.EXTRACTING_ASPECTS,
-            initial_message=f"Analyzing query structure with {framework.name} framework..."
+            initial_message=f"Analyzing query structure with {request.framework_name} framework..."
         )
     except Exception as progress_err:
         # Log but don't fail if progress tracking fails
@@ -691,7 +691,7 @@ async def start_refinement(
         stage=ProgressStage.ASPECTS_EXTRACTED,
         message=f"Identified {len(session.steps)} aspects to refine",
         aspects_count=len(session.steps),
-        details={"framework": framework.name}
+        details={"framework": request.framework_name}
     )
     
     # Update progress: Generating suggestions

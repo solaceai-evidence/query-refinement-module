@@ -12,7 +12,7 @@ from query_refinement_module.providers import LiteLLMProvider
 
 logger = logging.getLogger(__name__)
 
-router = APIRouter(tags=["Monitoring"])
+router = APIRouter(prefix="/monitoring", tags=["Monitoring"])
 
 
 @router.get("/circuit-breakers")
@@ -62,7 +62,8 @@ async def get_circuit_breaker_status(
 
 @router.get("/llm-health")
 async def get_llm_health(
-    llm_provider: LiteLLMProvider = Depends(get_llm_provider)
+    llm_provider: LiteLLMProvider = Depends(get_llm_provider),
+    test_connection: bool = False
 ) -> Dict[str, Any]:
     """
     Get LLM provider health summary.
@@ -70,11 +71,62 @@ async def get_llm_health(
     Combines circuit breaker status with provider configuration
     to give a comprehensive health overview.
     
+    Query Parameters:
+        test_connection: If true, makes a minimal test call to verify API key and credits
+    
     Returns:
         LLM health status and configuration
     """
     try:
         cb_metrics = llm_provider.get_circuit_breaker_metrics()
+        
+        # Optionally test actual LLM connection
+        connection_test_result = None
+        if test_connection:
+            try:
+                # Make a minimal test call to verify API key and credits
+                test_result = await llm_provider.complete_async(
+                    user_prompt="Test",
+                    system_prompt="Reply with OK",
+                    max_tokens=5
+                )
+                connection_test_result = {
+                    "success": True,
+                    "message": "API key valid and credits available",
+                    "response": test_result.context[:50] if test_result.context else None
+                }
+            except Exception as test_error:
+                error_str = str(test_error).lower()
+                
+                # Check for specific error types
+                if "credit" in error_str or "insufficient" in error_str or "quota" in error_str:
+                    connection_test_result = {
+                        "success": False,
+                        "error_type": "insufficient_credits",
+                        "message": "API credits exhausted or insufficient balance",
+                        "details": str(test_error)
+                    }
+                elif "api key" in error_str or "authentication" in error_str or "unauthorized" in error_str:
+                    connection_test_result = {
+                        "success": False,
+                        "error_type": "authentication_failed",
+                        "message": "API key invalid or authentication failed",
+                        "details": str(test_error)
+                    }
+                elif "rate limit" in error_str:
+                    connection_test_result = {
+                        "success": False,
+                        "error_type": "rate_limited",
+                        "message": "Rate limit exceeded (temporary)",
+                        "details": str(test_error)
+                    }
+                else:
+                    connection_test_result = {
+                        "success": False,
+                        "error_type": "connection_failed",
+                        "message": "Failed to connect to LLM provider",
+                        "details": str(test_error)
+                    }
         
         # Determine overall health status
         if cb_metrics.get("circuit_breaker_enabled", False):
@@ -104,12 +156,23 @@ async def get_llm_health(
             overall_status = "healthy"
             message = "Circuit breaker disabled - health monitoring limited"
         
-        return {
+        # Override status if connection test failed
+        if connection_test_result and not connection_test_result["success"]:
+            overall_status = "unhealthy"
+            message = connection_test_result["message"]
+        
+        response = {
             "status": overall_status,
             "message": message,
             "circuit_breakers": cb_metrics,
             "timestamp": None  # Could add timestamp if needed
         }
+        
+        if connection_test_result:
+            response["connection_test"] = connection_test_result
+        
+        return response
+        
     except Exception as e:
         logger.error(
             "Failed to retrieve LLM health",

@@ -27,7 +27,7 @@ import './Refinement.css';
  */
 
 const Refinement = () => {
-    const [stage, setStage] = useState('framework-selection'); // framework-selection, initial-query, refinement, synthesis
+    const [stage, setStage] = useState('framework-selection'); // framework-selection, initial-query, refinement, review, synthesis
     const [selectedFramework, setSelectedFramework] = useState(null);
     const [initialQuery, setInitialQuery] = useState('');
     const [sessionId, setSessionId] = useState(null);
@@ -40,6 +40,7 @@ const Refinement = () => {
     const [error, setError] = useState(null);
     const [conversationHistory, setConversationHistory] = useState([]);
     const [commandResult, setCommandResult] = useState(null);
+    const [readyForSynthesis, setReadyForSynthesis] = useState(false);
     const [confirmationDialog, setConfirmationDialog] = useState({
         isOpen: false,
         title: '',
@@ -312,9 +313,10 @@ const Refinement = () => {
 
             // Check if all aspects are immediately complete (ready for synthesis)
             if (response.ready_for_synthesis && !response.next_prompt) {
-                logger.info('All aspects complete immediately - triggering synthesis');
-                setStage('synthesis');
-                await handleSynthesis();
+                logger.info('All aspects complete immediately - ready for manual synthesis');
+                setReadyForSynthesis(true);
+                setStage('review');
+                showSuccess('All dimensions complete! Review your answers and click "Generate Refined Query" to proceed.');
             } else {
                 setStage('refinement');
             }
@@ -482,6 +484,12 @@ const Refinement = () => {
                         console.log('[COMMAND RESPONSE] Updating current question state');
                         setCurrentQuestion(response.next_prompt);
                         setCurrentAspectId(response.next_prompt.aspect_id);
+
+                        // Transition back to refinement stage if we were in review
+                        if (stage === 'review') {
+                            setStage('refinement');
+                            setReadyForSynthesis(false);
+                        }
                     } else {
                         // next_prompt exists but question is null - preserve current state
                         console.log('[COMMAND RESPONSE] next_prompt.question is null - preserving current state');
@@ -663,6 +671,12 @@ const Refinement = () => {
                     setCurrentQuestion(response.next_prompt);
                     setCurrentAspectId(response.next_prompt.aspect_id);
 
+                    // Transition back to refinement stage if we were in review
+                    if (stage === 'review') {
+                        setStage('refinement');
+                        setReadyForSynthesis(false);
+                    }
+
                     // Show success toast for answer submitted
                     showSuccess('Answer submitted');
                 } else {
@@ -676,9 +690,10 @@ const Refinement = () => {
 
                     // Check ready_for_synthesis flag
                     if (response.ready_for_synthesis) {
-                        logger.info('All aspects complete - triggering synthesis');
-                        showSuccess('All dimensions complete!');
-                        await handleSynthesis();
+                        logger.info('All aspects complete - ready for manual synthesis');
+                        setReadyForSynthesis(true);
+                        setStage('review');
+                        showSuccess('All dimensions complete! Review your answers and click "Generate Refined Query" to proceed.');
                     }
                 }
 
@@ -983,8 +998,9 @@ const Refinement = () => {
 
             // Check if ready for synthesis
             if (status.ready_for_synthesis && !status.next_prompt) {
-                setStage('synthesis');
-                await handleSynthesis();
+                setReadyForSynthesis(true);
+                setStage('review');
+                showSuccess('All dimensions complete! Review your answers and click "Generate Refined Query" to proceed.');
             } else {
                 setCurrentQuestion(status.next_prompt);
                 setCurrentAspectId(status.next_prompt?.aspect_id);
@@ -1206,6 +1222,89 @@ const Refinement = () => {
                                     />
                                 </div>
                             )}
+                        </div>
+                    </div>
+                )}
+
+                {stage === 'review' && (
+                    <div className="refinement-interface">
+                        <div className="refinement-main">
+                            <div className="review-stage">
+                                <div className="review-header">
+                                    <h2>✓ All Dimensions Complete</h2>
+                                    <p>Review your refined dimensions below. You can still use commands like <code>/back</code> or <code>/clear</code> to make changes.</p>
+                                </div>
+
+                                {conversationHistory.length > 0 && (
+                                    <div className="history-panel">
+                                        <div className="history-panel-header">Conversation History</div>
+                                        <div className="conversation-history">
+                                            {conversationHistory.map((item, index) => {
+                                                if (item.type === 'command') {
+                                                    return (
+                                                        <CommandHistoryItem
+                                                            key={`${item.timestamp}-${index}`}
+                                                            command={item.content}
+                                                            result={item.result}
+                                                        />
+                                                    );
+                                                }
+                                                return (
+                                                    <div key={`${item.timestamp}-${index}`} className={`history-item ${item.type}`}>
+                                                        <div className="history-label">
+                                                            {item.type === 'query' ? '📝 Initial Query' :
+                                                                item.type === 'question' ? `❓ Question${item.aspectName ? ` (${item.aspectName})` : ''}` :
+                                                                    '💬 Your Answer'}
+                                                        </div>
+                                                        <div className="history-content">{item.content}</div>
+                                                    </div>
+                                                );
+                                            })}
+                                        </div>
+                                    </div>
+                                )}
+
+                                {aspects && aspects.length > 0 && (
+                                    <div className="aspects-summary">
+                                        <h3>Refined Dimensions Summary</h3>
+                                        <div className="aspects-list">
+                                            {aspects.map((aspect, index) => (
+                                                <div key={index} className={`aspect-item ${aspect.is_complete ? 'complete' : 'incomplete'}`}>
+                                                    <div className="aspect-name">
+                                                        {aspect.is_complete ? '✓' : '○'} {aspect.aspect_name}
+                                                    </div>
+                                                    {aspect.normalized_value && (
+                                                        <div className="aspect-value">{aspect.normalized_value}</div>
+                                                    )}
+                                                    {aspect.was_skipped && (
+                                                        <div className="aspect-skipped">(Skipped)</div>
+                                                    )}
+                                                </div>
+                                            ))}
+                                        </div>
+                                    </div>
+                                )}
+
+                                <div className="review-actions">
+                                    <button
+                                        className="btn-primary btn-synthesis"
+                                        onClick={async () => {
+                                            logger.info('User manually triggered synthesis from review stage');
+                                            setStage('synthesis');
+                                            await handleSynthesis();
+                                        }}
+                                        disabled={loading}
+                                    >
+                                        {loading ? 'Generating...' : 'Generate Refined Query'}
+                                    </button>
+                                    <p className="review-hint">Or use commands to make changes: <code>/back</code>, <code>/clear [dimension]</code>, <code>/status</code></p>
+                                </div>
+
+                                <CommandButtons
+                                    onCommand={handleCommand}
+                                    disabled={loading}
+                                />
+                            </div>
                         </div>
                     </div>
                 )}

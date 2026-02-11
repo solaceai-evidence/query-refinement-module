@@ -882,3 +882,141 @@ input:focus {
 .checkmark-icon {
     animation: checkmark 0.5s ease-out;
 }
+
+/* Review Stage Styles */
+.review-stage {
+    max-width: 1000px;
+    margin: 0 auto;
+}
+
+.review-header {
+    background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
+    color: white;
+    padding: 30px 40px;
+    border-radius: 10px;
+    margin-bottom: 30px;
+    box-shadow: 0 4px 12px rgba(102, 126, 234, 0.3);
+}
+
+.review-header h2 {
+    margin: 0 0 10px 0;
+    font-size: 28px;
+    font-weight: 600;
+}
+
+.review-header p {
+    margin: 0;
+    font-size: 16px;
+    opacity: 0.95;
+    line-height: 1.5;
+}
+
+.review-header code {
+    background: rgba(255, 255, 255, 0.2);
+    padding: 2px 8px;
+    border-radius: 4px;
+    font-size: 14px;
+}
+
+.aspects-summary {
+    background: white;
+    padding: 30px;
+    border-radius: 10px;
+    margin-bottom: 30px;
+    box-shadow: 0 2px 8px rgba(0, 0, 0, 0.1);
+}
+
+.aspects-summary h3 {
+    margin: 0 0 20px 0;
+    font-size: 20px;
+    color: #333;
+    border-bottom: 2px solid #667eea;
+    padding-bottom: 10px;
+}
+
+.aspects-list {
+    display: flex;
+    flex-direction: column;
+    gap: 15px;
+}
+
+.aspect-item {
+    padding: 15px 20px;
+    border-radius: 8px;
+    border-left: 4px solid #e5e7eb;
+    background: #f9fafb;
+    transition: all 0.2s ease;
+}
+
+.aspect-item.complete {
+    border-left-color: #10b981;
+    background: #f0fdf4;
+}
+
+.aspect-item.incomplete {
+    border-left-color: #f59e0b;
+    background: #fffbeb;
+}
+
+.aspect-name {
+    font-weight: 600;
+    font-size: 16px;
+    color: #1f2937;
+    margin-bottom: 8px;
+}
+
+.aspect-value {
+    color: #4b5563;
+    font-size: 14px;
+    line-height: 1.5;
+    padding-left: 20px;
+}
+
+.aspect-skipped {
+    color: #9ca3af;
+    font-size: 13px;
+    font-style: italic;
+    padding-left: 20px;
+}
+
+.review-actions {
+    background: white;
+    padding: 30px;
+    border-radius: 10px;
+    box-shadow: 0 2px 8px rgba(0, 0, 0, 0.1);
+    text-align: center;
+    margin-bottom: 20px;
+}
+
+.btn-synthesis {
+    font-size: 18px;
+    padding: 16px 48px;
+    margin-bottom: 15px;
+    min-width: 300px;
+    background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
+    box-shadow: 0 4px 12px rgba(102, 126, 234, 0.4);
+    transition: all 0.3s ease;
+}
+
+.btn-synthesis:hover:not(:disabled) {
+    transform: translateY(-2px);
+    box-shadow: 0 6px 16px rgba(102, 126, 234, 0.5);
+}
+
+.btn-synthesis:active:not(:disabled) {
+    transform: translateY(0);
+}
+
+.review-hint {
+    margin: 0;
+    color: #6b7280;
+    font-size: 14px;
+}
+
+.review-hint code {
+    background: #f3f4f6;
+    padding: 2px 6px;
+    border-radius: 3px;
+    font-size: 13px;
+    color: #667eea;
+}

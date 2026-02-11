@@ -29,5 +29,5 @@ echo ""
 
 # Start the server with Poetry
 echo "Starting server with Poetry..."
-poetry run uvicorn query_refinement_module.api.main:app --reload --host 0.0.0.0 --port 8000
+poetry run uvicorn query_refinement_module.api.main:app --host 0.0.0.0 --port 8000
 
