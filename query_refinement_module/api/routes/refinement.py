@@ -48,6 +48,8 @@ from query_refinement_module.core import (
     UserCommand,
 )
 from query_refinement_module.tracing import generate_request_id, get_logger, set_request_id
+from query_refinement_module.services.progress_tracker import get_progress_tracker, track_progress
+from query_refinement_module.models.progress import ProgressStage
 
 from pydantic import BaseModel, Field, field_validator
 
@@ -663,6 +665,18 @@ async def start_refinement(
     db_session = create_query_session(db, user_id=current_user.id, framework_name=request.framework_name)
     db_query = create_query(db, session_id=db_session.id, original_query=request.original_query)
     
+    # Initialize progress tracking
+    tracker = get_progress_tracker()
+    try:
+        await tracker.create(
+            query_id=str(db_query.id),
+            initial_stage=ProgressStage.EXTRACTING_ASPECTS,
+            initial_message=f"Analyzing query structure with {framework.name} framework..."
+        )
+    except Exception as progress_err:
+        # Log but don't fail if progress tracking fails
+        logger.error(f"Failed to create progress tracking: {progress_err}", exc_info=True)
+    
     # Create refinement steps in database
     for step in session.steps:
         create_refinement_step(
@@ -670,6 +684,24 @@ async def start_refinement(
             query_id=db_query.id,
             aspect_name=step.refinement_aspect.name
         )
+    
+    # Update progress: aspects extracted
+    await track_progress(
+        query_id=str(db_query.id),
+        stage=ProgressStage.ASPECTS_EXTRACTED,
+        message=f"Identified {len(session.steps)} aspects to refine",
+        aspects_count=len(session.steps),
+        details={"framework": framework.name}
+    )
+    
+    # Update progress: Generating suggestions
+    await track_progress(
+        query_id=str(db_query.id),
+        stage=ProgressStage.GENERATING_SUGGESTIONS,
+        message="Generating refinement suggestions...",
+        turn_number=1,
+        total_turns=len(session.steps)
+    )
     
     # Generate question on-demand, looping until we find an aspect that needs refinement
     # This auto-cascade continues through aspects that are immediately complete
@@ -680,6 +712,9 @@ async def start_refinement(
     while current_step and attempts < max_attempts:
         attempts += 1
         try:
+            # Increment LLM call counter before generating question
+            await tracker.increment_llm_calls(str(db_query.id))
+            
             # Generate question with retry logic
             result = await _generate_question_with_retry(
                 manager=manager,
@@ -742,6 +777,29 @@ async def start_refinement(
     
     # Check if all aspects are complete (ready for synthesis)
     ready_for_synthesis = next_prompt is None and session.is_complete()
+    
+    # Update progress: Suggestions ready or waiting for user
+    if next_prompt:
+        suggestions_count = len([s for s in session.steps if not s.is_complete])
+        await track_progress(
+            query_id=str(db_query.id),
+            stage=ProgressStage.SUGGESTIONS_READY,
+            message="Refinement suggestions ready",
+            suggestions_count=suggestions_count
+        )
+        await track_progress(
+            query_id=str(db_query.id),
+            stage=ProgressStage.WAITING_FOR_USER,
+            message=f"Waiting for your input on '{next_prompt.get('name', 'aspect')}'",
+            details={"current_aspect": next_prompt.get('name')}
+        )
+    elif ready_for_synthesis:
+        # All aspects complete, ready for synthesis
+        await track_progress(
+            query_id=str(db_query.id),
+            stage=ProgressStage.SUGGESTIONS_READY,
+            message="All aspects refined, ready for synthesis"
+        )
     
     # Save session to Redis for subsequent requests
     session_manager.save_session(db_query.id, session)
@@ -1101,8 +1159,20 @@ async def submit_answer(
         'response': user_input
     })
     
+    # Update progress: user refining
+    await track_progress(
+        query_id=str(query_id),
+        stage=ProgressStage.USER_REFINING,
+        message=f"Processing your input for '{active_step.refinement_aspect.name}'...",
+        details={"aspect": active_step.refinement_aspect.name}
+    )
+    
     # Analyze the user's answer with LLM (single call, not a loop)
     try:
+        # Update progress: calling LLM
+        tracker = get_progress_tracker()
+        await tracker.increment_llm_calls(str(query_id))
+        
         # Call LLM once to analyze if dimension is complete or needs more clarification
         analysis_result = await manager.get_analysis_prompts(
             session=session,
@@ -1549,6 +1619,15 @@ async def synthesize_refined_query(
                 if session_step.conversation_history:
                     session_step.is_complete = True
     
+    # Update progress: Starting synthesis
+    tracker = get_progress_tracker()
+    await track_progress(
+        query_id=str(request.query_id),
+        stage=ProgressStage.SYNTHESIZING,
+        message="Synthesizing final refined query...",
+        details={"framework": framework_name}
+    )
+    
     # Trigger webhook: synthesis.started
     try:
         from query_refinement_module.services.webhook_service import (
@@ -1565,8 +1644,17 @@ async def synthesize_refined_query(
     
     # Synthesize refined query
     try:
+        # Increment LLM call counter before synthesis
+        await tracker.increment_llm_calls(str(request.query_id))
         synthesis_result = await manager.synthesize_refined_query(session)
     except Exception as e:
+        # Update progress: Failed
+        await track_progress(
+            query_id=str(request.query_id),
+            stage=ProgressStage.FAILED,
+            message="Synthesis failed",
+            error=str(e)
+        )
         raise HTTPException(
             status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
             detail=f"Failed to synthesize query: {str(e)}"
@@ -1690,6 +1778,13 @@ async def synthesize_refined_query(
         }
     )
     
+    # Update progress: Synthesis complete
+    await track_progress(
+        query_id=str(request.query_id),
+        stage=ProgressStage.SYNTHESIS_COMPLETE,
+        message="Synthesis completed successfully"
+    )
+    
     # Trigger webhook: synthesis.complete
     try:
         from query_refinement_module.services.webhook_service import (
@@ -1706,6 +1801,14 @@ async def synthesize_refined_query(
         logger.error(f"Failed to trigger synthesis.complete webhook: {e}", exc_info=True)
     
     # Delete session from Redis (workflow complete)
+    session_manager.delete_session(request.query_id)
+    
+    # Update progress: Completed
+    await track_progress(
+        query_id=str(request.query_id),
+        stage=ProgressStage.COMPLETED,
+        message="Refinement completed successfully"
+    )
     session_manager.delete_session(request.query_id)
     
     duration_ms = (time.time() - start_time) * 1000
@@ -2323,4 +2426,97 @@ async def abandon_session(
             status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
             detail=f"Failed to abandon session: {str(e)}"
         )
+
+
+# ============================================================
+# REAL-TIME PROGRESS TRACKING
+# ============================================================
+
+@router.get("/queries/{query_id}/progress")
+async def get_query_progress(
+    query_id: str,
+    current_user = Depends(get_current_user),
+    db: Session = Depends(get_db)
+):
+    """
+    Get real-time progress for a refinement query.
+    
+    This endpoint provides polling-based progress tracking for long-running
+    refinement operations. Poll this endpoint every 1-2 seconds to get
+    live status updates.
+    
+    Args:
+        query_id: Unique query identifier
+        
+    Returns:
+        ProgressStatus with current stage, progress percentage, and metadata
+        
+    Example response:
+        {
+            "query_id": "query_abc123",
+            "stage": "generating_suggestions",
+            "progress": 0.4,
+            "message": "Generating refinement suggestions (turn 2 of 3)...",
+            "started_at": "2026-02-11T10:30:00Z",
+            "updated_at": "2026-02-11T10:30:08Z",
+            "elapsed_seconds": 8.2,
+            "turn_number": 2,
+            "total_turns": 3,
+            "llm_calls_made": 2
+        }
+    """
+    from query_refinement_module.services.progress_tracker import get_progress_tracker
+    
+    request_id = generate_request_id()
+    set_request_id(request_id)
+    
+    # Verify query exists and belongs to user
+    query = get_query(db, query_id)
+    if not query:
+        raise HTTPException(
+            status_code=status.HTTP_404_NOT_FOUND,
+            detail=f"Query {query_id} not found"
+        )
+    
+    # For queries created via API (with session), verify ownership
+    if query.session_id:
+        from query_refinement_module.db.crud import get_query_session
+        query_session = get_query_session(db, query.session_id)
+        if query_session and query_session.user_id != current_user.id:
+            raise HTTPException(
+                status_code=status.HTTP_403_FORBIDDEN,
+                detail="Not authorized to view this query's progress"
+            )
+    
+    # Get progress from tracker
+    tracker = get_progress_tracker()
+    progress = await tracker.get(query_id)
+    
+    if not progress:
+        # No progress tracked - query might be complete or very old
+        # Return a synthetic progress based on query state
+        from query_refinement_module.models.progress import ProgressStage, ProgressStatus
+        from datetime import datetime
+        
+        # Determine stage from query state
+        if query.refined_query:
+            stage = ProgressStage.COMPLETED
+            message = "Refinement completed"
+            progress_pct = 1.0
+        else:
+            stage = ProgressStage.WAITING_FOR_USER
+            message = "Waiting for user interaction"
+            progress_pct = 0.5
+        
+        progress = ProgressStatus(
+            query_id=query_id,
+            stage=stage,
+            progress=progress_pct,
+            message=message,
+            started_at=query.created_at,
+            updated_at=query.updated_at or query.created_at,
+            elapsed_seconds=(datetime.utcnow() - query.created_at).total_seconds()
+        )
+    
+    return progress
 

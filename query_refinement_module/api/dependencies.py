@@ -49,6 +49,20 @@ def get_refinement_manager() -> QueryRefinementManager:
 
 
 @lru_cache()
+def get_llm_provider() -> LiteLLMProvider:
+    """
+    Get or create a singleton LiteLLMProvider instance.
+    
+    This dependency provides direct access to the LLM provider for:
+    - Circuit breaker metrics
+    - Provider health checks
+    - Direct LLM API access where needed
+    """
+    llm_settings = LLMSettings.from_env(require_model=False)
+    return LiteLLMProvider(**llm_settings.as_provider_kwargs())
+
+
+@lru_cache()
 def get_session_manager() -> SessionManager:
     """
     Get or create a singleton SessionManager instance.
