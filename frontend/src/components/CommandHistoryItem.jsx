@@ -1,3 +1,4 @@
+import { useState } from 'react';
 import './CommandHistoryItem.css';
 import { getCommandIcon } from '../constants/commands';
 
@@ -6,6 +7,102 @@ import { getCommandIcon } from '../constants/commands';
  * @typedef {import('../types/api').CommandResult} CommandResult
  * @typedef {import('../types/api').StepListItem} StepListItem
  */
+
+/**
+ * Expandable dimension card component
+ */
+const DimensionCard = ({ dimension }) => {
+    const [isExpanded, setIsExpanded] = useState(false);
+
+    return (
+        <div
+            className={`dimension-item ${dimension.status} ${dimension.is_active ? 'active' : ''} ${isExpanded ? 'expanded' : ''}`}
+        >
+            <div
+                className="dimension-header clickable"
+                onClick={() => setIsExpanded(!isExpanded)}
+                role="button"
+                tabIndex={0}
+                onKeyPress={(e) => e.key === 'Enter' && setIsExpanded(!isExpanded)}
+            >
+                <span className="expand-icon">{isExpanded ? '▼' : '▶'}</span>
+                <span className="dimension-icon">{dimension.status_icon}</span>
+                <span className="dimension-name">{dimension.name}</span>
+                <span className={`dimension-badge ${dimension.status}`}>
+                    {dimension.status.replace('_', ' ')}
+                </span>
+            </div>
+
+            {/* Always visible summary */}
+            {dimension.assembled_value && (
+                <div className="dimension-value">
+                    <strong>Assembled:</strong> {dimension.assembled_value}
+                </div>
+            )}
+            {dimension.follow_up_count > 0 && (
+                <div className="dimension-followups">
+                    <span className="followup-icon">💬</span>
+                    {dimension.follow_up_count} follow-up{dimension.follow_up_count !== 1 ? 's' : ''}
+                </div>
+            )}
+            {dimension.was_skipped && (
+                <div className="dimension-skipped">
+                    <em>Dimension skipped - no specification provided</em>
+                </div>
+            )}
+
+            {/* Expanded details */}
+            {isExpanded && (
+                <div className="dimension-expanded-content">
+                    {dimension.assembled_value && (
+                        <div className="dimension-assembled-expanded">
+                            <strong>Assembled Specification:</strong>
+                            <p className="assembled-value-text">{dimension.assembled_value}</p>
+                        </div>
+                    )}
+
+                    {dimension.description && (
+                        <div className="dimension-description">
+                            <strong>Description:</strong>
+                            <p>{dimension.description}</p>
+                        </div>
+                    )}
+
+                    {dimension.depends_on && dimension.depends_on.length > 0 && (
+                        <div className="dimension-dependencies">
+                            <strong>Dependencies:</strong>
+                            <div className="dependency-list">
+                                {dimension.depends_on.map((dep, idx) => (
+                                    <span key={idx} className="dependency-tag">{dep}</span>
+                                ))}
+                            </div>
+                        </div>
+                    )}
+
+                    {dimension.conversation_history && dimension.conversation_history.length > 0 && (
+                        <div className="dimension-conversation">
+                            <strong>Conversation History:</strong>
+                            <div className="conversation-list">
+                                {dimension.conversation_history.map((exchange, idx) => (
+                                    <div key={idx} className="conversation-exchange">
+                                        <div className="conversation-question">
+                                            <span className="exchange-label">Q{idx + 1}:</span>
+                                            <span className="exchange-text">{exchange.question}</span>
+                                        </div>
+                                        <div className="conversation-response">
+                                            <span className="exchange-label">A{idx + 1}:</span>
+                                            <span className="exchange-text">{exchange.response}</span>
+                                        </div>
+                                    </div>
+                                ))}
+                            </div>
+                        </div>
+                    )}
+                </div>
+            )}
+        </div>
+    );
+};
 
 /**
  * Component for displaying executed command in conversation history
@@ -102,34 +199,7 @@ const CommandHistoryItem = ({ command, result }) => {
                                     </div>
                                     <div className="dimensions-list">
                                         {result.step_summary.dimensions.map((dim, idx) => (
-                                            <div
-                                                key={idx}
-                                                className={`dimension-item ${dim.status} ${dim.is_active ? 'active' : ''}`}
-                                            >
-                                                <div className="dimension-header">
-                                                    <span className="dimension-icon">{dim.status_icon}</span>
-                                                    <span className="dimension-name">{dim.aspect_name}</span>
-                                                    <span className={`dimension-badge ${dim.status}`}>
-                                                        {dim.status.replace('_', ' ')}
-                                                    </span>
-                                                </div>
-                                                {dim.assembled_value && (
-                                                    <div className="dimension-value">
-                                                        <strong>Assembled:</strong> {dim.assembled_value}
-                                                    </div>
-                                                )}
-                                                {dim.follow_up_count > 0 && (
-                                                    <div className="dimension-followups">
-                                                        <span className="followup-icon">💬</span>
-                                                        {dim.follow_up_count} follow-up{dim.follow_up_count !== 1 ? 's' : ''}
-                                                    </div>
-                                                )}
-                                                {dim.was_skipped && (
-                                                    <div className="dimension-skipped">
-                                                        <em>Dimension skipped - no specification provided</em>
-                                                    </div>
-                                                )}
-                                            </div>
+                                            <DimensionCard key={idx} dimension={dim} />
                                         ))}
                                     </div>
                                 </div>
@@ -147,7 +217,7 @@ const CommandHistoryItem = ({ command, result }) => {
                                         className={`step-badge ${step.is_active ? 'active' : ''} ${step.status === 'completed' ? 'complete' : ''}`}
                                     >
                                         <span className="step-number">{idx + 1}</span>
-                                        <span className="step-name">{step.aspect_name}</span>
+                                        <span className="step-name">{step.name}</span>
                                         <span className="step-status">{step.status}</span>
                                     </div>
                                 ))}

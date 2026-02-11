@@ -59,14 +59,14 @@ class SessionCommands:
         return {"success": False, "message": f"Command {command.name} not implemented"}
     
     def go_back(self) -> Dict[str, Any]:
-        """Navigate to previous aspect, truncating all subsequent aspects."""
+        """Navigate to previous refinement dimension, recreating truncated dimensions as placeholders."""
         active = self.session.get_active_step()
         if not active:
             return {"success": False, "message": "No active step to go back from"}
         
         active_idx = self.session.steps.index(active)
         if active_idx == 0:
-            return {"success": False, "message": "Already at first aspect. Use /restart to start over."}
+            return {"success": False, "message": "Already at first refinement dimension. Use /restart to start over."}
         
         # Get previous step
         prev_step = self.session.steps[active_idx - 1]
@@ -77,16 +77,44 @@ class SessionCommands:
             for step in self.session.steps[active_idx:]
         ]
         
-        # Truncate session.steps - remove current and all subsequent aspects
+        # Truncate session.steps - remove current and all subsequent dimensions
         self.session.steps = self.session.steps[:active_idx]
         
-        # Reopen the previous step
+        # Reopen the previous step - clear its state completely for fresh re-refinement
         prev_step.is_complete = False
         prev_step.needs_review = False
+        prev_step.follow_up_question = None
+        prev_step.conversation_history = []
+        prev_step.normalized_value = None
+        prev_step.reasoning = None
+        prev_step.was_skipped = False
+        
+        # Recreate truncated dimensions as fresh placeholders from the complete framework
+        # This ensures they reappear in /status and can be refined as user progresses forward
+        if self.session._complete_framework:
+            # Build a map of existing step aspect IDs for quick lookup
+            existing_aspect_ids = {step.refinement_aspect.id for step in self.session.steps}
+            
+            # Recreate missing dimensions from the complete framework in original order
+            for aspect in self.session._complete_framework:
+                if aspect.id not in existing_aspect_ids:
+                    # Create a fresh placeholder step for this dimension
+                    from query_refinement_module.session_models import AspectRefinementState
+                    new_step = AspectRefinementState(
+                        refinement_aspect=aspect,
+                        conversation_history=[],
+                        is_complete=False,
+                        needs_review=False,
+                        was_skipped=False,
+                        reasoning=None,
+                        follow_up_question=None,
+                        normalized_value=None
+                    )
+                    self.session.steps.append(new_step)
         
         message = f"Moved back to: {prev_step.refinement_aspect.name}"
         if cleared_aspects:
-            message += f"\n⚠️  Cleared {len(cleared_aspects)} aspect(s): {', '.join(cleared_aspects)}"
+            message += f"\n⚠️  Cleared {len(cleared_aspects)} refinement dimension(s): {', '.join(cleared_aspects)}"
             message += "\nThey will be regenerated based on your updated answers."
         
         return {
@@ -98,25 +126,42 @@ class SessionCommands:
         }
     
     def restart(self) -> Dict[str, Any]:
-        """Restart the entire refinement session, clearing all aspects."""
-        # Track all aspects being cleared for DB cascade delete
+        """Restart the entire refinement session, recreating all dimensions as fresh placeholders."""
+        # Track all refinement dimensions being cleared for DB cascade delete
         cleared_aspects = [
             step.refinement_aspect.name
             for step in self.session.steps
         ]
         cleared_count = len(self.session.steps)
         
+        # Clear all steps
         self.session.steps = []
         self.session.synthesis_requested = False
         
+        # Recreate all dimensions as fresh placeholders from the complete framework
+        if self.session._complete_framework:
+            from query_refinement_module.session_models import AspectRefinementState
+            for aspect in self.session._complete_framework:
+                new_step = AspectRefinementState(
+                    refinement_aspect=aspect,
+                    conversation_history=[],
+                    is_complete=False,
+                    needs_review=False,
+                    was_skipped=False,
+                    reasoning=None,
+                    follow_up_question=None,
+                    normalized_value=None
+                )
+                self.session.steps.append(new_step)
+        
         return {
             "success": True,
-            "message": f"Session restarted. All {cleared_count} aspect(s) cleared.",
+            "message": f"Session restarted. All {cleared_count} refinement dimension(s) cleared.",
             "cleared_aspects": cleared_aspects,
         }
     
     def skip_current(self) -> Dict[str, Any]:
-        """Skip the current refinement aspect, clearing all data."""
+        """Skip the current refinement dimension, clearing all data."""
         active = self.session.get_active_step()
         if not active:
             return {"success": False, "message": "No active step to skip"}
@@ -135,12 +180,12 @@ class SessionCommands:
         }
     
     def clear_current(self) -> Dict[str, Any]:
-        """Clear current aspect's answers and restart it."""
+        """Clear current refinement dimension's answers and restart it."""
         active = self.session.get_active_step()
         if not active:
             return {"success": False, "message": "No active step to clear"}
         
-        # Clear all data for current aspect
+        # Clear all data for current refinement dimension
         active.conversation_history = []
         active.normalized_value = None
         active.is_complete = False
@@ -161,7 +206,7 @@ class SessionCommands:
         if not active:
             return {"success": False, "message": "No active step to finish"}
         
-        message = f"Completed refinement aspect: {active.refinement_aspect.name}"
+        message = f"Completed refinement dimension: {active.refinement_aspect.name}"
         if not active.normalized_value:
             message += " (no additional details provided)."
         
@@ -190,7 +235,7 @@ class SessionCommands:
         active = self.session.get_active_step()
         summary = self.session.get_step_summary()
         
-        # Calculate remaining aspects
+        # Calculate remaining refinement dimensions
         total_aspects = len(self.session.refinement_framework)
         processed_count = len(self.session.steps)
         remaining_count = total_aspects - processed_count
@@ -208,9 +253,9 @@ class SessionCommands:
             status_lines.append(f"  Current: Step {active_idx} - {active.refinement_aspect.name}{status_tag}")
         else:
             if processed_count == total_aspects:
-                status_lines.append("  Current: All aspects processed")
+                status_lines.append("  Current: All refinement dimensions processed")
             else:
-                status_lines.append(f"  Current: Ready for next aspect ({remaining_count} remaining)")
+                status_lines.append(f"  Current: Ready for next refinement dimension ({remaining_count} remaining)")
         
         # Build detailed dimension status
         dimension_details = []
@@ -237,6 +282,14 @@ class SessionCommands:
             if step.normalized_value_as_str and not step.was_skipped:
                 assembled_value = step.normalized_value_as_str
             
+            # Get dependency information
+            depends_on = step.refinement_aspect.depends_on or []
+            dependency_names = []
+            for dep_id in depends_on:
+                dep_step = next((s for s in self.session.steps if s.refinement_aspect.id == dep_id), None)
+                if dep_step:
+                    dependency_names.append(dep_step.refinement_aspect.name)
+            
             # Add dimension detail
             dimension_details.append({
                 "name": step.refinement_aspect.name,
@@ -247,6 +300,8 @@ class SessionCommands:
                 "follow_up_count": step.follow_up_count,
                 "assembled_value": assembled_value,
                 "was_skipped": step.was_skipped,
+                "conversation_history": step.conversation_history,
+                "depends_on": dependency_names,
             })
         
         # Enhanced summary with additional metrics
@@ -271,7 +326,7 @@ class SessionCommands:
         total_aspects = len(self.session.refinement_framework)
         processed_count = len(self.session.steps)
         
-        lines = [f"Processed Steps ({processed_count}/{total_aspects} total aspects):"]
+        lines = [f"Processed Steps ({processed_count}/{total_aspects} total refinement dimensions):"]
         for i, step in enumerate(self.session.steps, 1):
             if step.was_skipped:
                 status = "skipped"
@@ -286,7 +341,7 @@ class SessionCommands:
             lines.append(f"  {i}. [{status}] {step.refinement_aspect.name}{followups}")
         
         if processed_count < total_aspects:
-            lines.append(f"\n  ... {total_aspects - processed_count} more aspect(s) will be generated on-demand")
+            lines.append(f"\n  ... {total_aspects - processed_count} more refinement dimension(s) will be generated on-demand")
         
         return {
             "success": True,

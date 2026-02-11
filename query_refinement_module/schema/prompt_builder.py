@@ -177,7 +177,7 @@ class PromptBuilder:
         dep_dicts = None
         if dependencies:
             dep_dicts = [
-                {"name": dep.aspect_name, "id": dep.id}
+                {"name": dep.name, "id": dep.id}
                 for dep in dependencies
                 if dep.id in completed_ids_with_values  # Only include if has actual value
             ]
@@ -222,10 +222,9 @@ class PromptBuilder:
             has_examples = dimension.has_examples()
         
         return self._dimension_template.render(
-            aspect_name=dimension.aspect_name,
-            aspect_description=dimension.aspect_description,
-            evaluation_criteria=dimension.get_evaluation_content(),
-            assembly_rules=dimension.assembly_rules,
+            name=dimension.name,
+            description=dimension.description,
+            specifications=dimension.specifications,
             examples=examples_dict,
             examples_section=has_examples
         )
@@ -279,7 +278,7 @@ class PromptBuilder:
             if dim:
                 # [SKIPPED] if None or empty
                 display_value = value if value else "[SKIPPED]"
-                lines.append(f"**{dim.aspect_name}** ({dim.aspect_description}): {display_value}")
+                lines.append(f"**{dim.name}** ({dim.description}): {display_value}")
             else:
                 display_value = value if value else "[SKIPPED]"
                 lines.append(f"**{dim_id}**: {display_value}")
@@ -448,9 +447,9 @@ class PromptBuilder:
             })
             
             logger.info(
-                f"Terminal reinforcement added for {dimension.aspect_name} (turn {len(conversation_history)})",
+                f"Terminal reinforcement added for {dimension.name} (turn {len(conversation_history)})",
                 extra={
-                    "dimension": dimension.aspect_name,
+                    "dimension": dimension.name,
                     "turn_count": len(conversation_history),
                     "threshold": terminal_reinforcement_threshold
                 }

@@ -17,27 +17,16 @@ DIMENSION_REFINEMENT_TEMPLATE = """
 
 ## DIMENSION SPECIFICATION
 
-**Dimension:** {{ aspect_name }} 
-**Description:** {{ aspect_description }}
+**Dimension:** {{ name }} 
+**Description:** {{ description }}
 
 ---
 
 ### Specification
 
-{{ evaluation_criteria }}
+{{ specifications }}
 
----
 
-{% if assembly_rules %}
-### Assembly Rules for "current" Field
-
-Examples of how to format the `current` field for this dimension:
-
-{{ assembly_rules }}
-
----
-
-{% endif %}
 {% if examples_section %}
 ### Examples
 

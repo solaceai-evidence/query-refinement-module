@@ -701,3 +701,184 @@
     font-weight: 600;
     margin-top: 24px;
 }
+
+/* ============================================
+   ANIMATIONS AND TRANSITIONS
+   ============================================ */
+
+/* Fade-in animation for new questions */
+@keyframes fadeInUp {
+    from {
+        opacity: 0;
+        transform: translateY(20px);
+    }
+
+    to {
+        opacity: 1;
+        transform: translateY(0);
+    }
+}
+
+/* Fade-in animation for content */
+@keyframes fadeIn {
+    from {
+        opacity: 0;
+    }
+
+    to {
+        opacity: 1;
+    }
+}
+
+/* Slide in from right */
+@keyframes slideInRight {
+    from {
+        opacity: 0;
+        transform: translateX(30px);
+    }
+
+    to {
+        opacity: 1;
+        transform: translateX(0);
+    }
+}
+
+/* Pulse animation for success feedback */
+@keyframes pulse {
+    0% {
+        transform: scale(1);
+    }
+
+    50% {
+        transform: scale(1.05);
+    }
+
+    100% {
+        transform: scale(1);
+    }
+}
+
+/* Apply fade-in to question renderer */
+.question-container {
+    animation: fadeInUp 0.4s ease-out;
+}
+
+/* Apply fade-in to command history items */
+.command-history-item {
+    animation: fadeIn 0.3s ease-out;
+}
+
+/* Smooth transitions for buttons */
+.command-btn,
+.btn-primary,
+.btn-secondary,
+.btn-link {
+    transition: all 0.2s ease;
+}
+
+.command-btn:hover:not(:disabled) {
+    transform: translateY(-2px);
+    box-shadow: 0 4px 8px rgba(0, 0, 0, 0.15);
+}
+
+.command-btn:active:not(:disabled) {
+    transform: translateY(0);
+}
+
+/* Success pulse on dimension complete */
+.aspect-status.completed {
+    animation: pulse 0.5s ease;
+}
+
+/* Loading spinner animation */
+@keyframes spin {
+    from {
+        transform: rotate(0deg);
+    }
+
+    to {
+        transform: rotate(360deg);
+    }
+}
+
+/* Smooth height transitions */
+.refinement-conversation,
+.refinement-workspace {
+    transition: height 0.3s ease;
+}
+
+/* Error banner slide in */
+.error-banner {
+    animation: slideInRight 0.3s ease-out;
+}
+
+/* Synthesis result fade in */
+.synthesis-result {
+    animation: fadeIn 0.5s ease-out;
+}
+
+/* Command button group stagger effect */
+.command-button-group .command-btn:nth-child(1) {
+    animation-delay: 0s;
+}
+
+.command-button-group .command-btn:nth-child(2) {
+    animation-delay: 0.05s;
+}
+
+.command-button-group .command-btn:nth-child(3) {
+    animation-delay: 0.1s;
+}
+
+.command-button-group .command-btn:nth-child(4) {
+    animation-delay: 0.15s;
+}
+
+/* Confirmation dialog fade in */
+.confirmation-dialog-overlay {
+    animation: fadeIn 0.2s ease-out;
+}
+
+.confirmation-dialog {
+    animation: fadeInUp 0.3s ease-out;
+}
+
+/* Smooth scrolling for conversation history */
+.refinement-conversation {
+    scroll-behavior: smooth;
+}
+
+/* Visual feedback on focus */
+textarea:focus,
+input:focus {
+    outline: none;
+    border-color: #667eea;
+    box-shadow: 0 0 0 3px rgba(102, 126, 234, 0.1);
+    transition: all 0.2s ease;
+}
+
+/* Loading state pulse */
+.loading-indicator {
+    animation: pulse 1.5s ease-in-out infinite;
+}
+
+/* Success checkmark animation */
+@keyframes checkmark {
+    0% {
+        transform: scale(0);
+        opacity: 0;
+    }
+
+    50% {
+        transform: scale(1.2);
+    }
+
+    100% {
+        transform: scale(1);
+        opacity: 1;
+    }
+}
+
+.checkmark-icon {
+    animation: checkmark 0.5s ease-out;
+}

@@ -326,7 +326,7 @@ async def get_framework_details(
     for aspect in aspects:
         aspect_details.append({
             "id": aspect.id,
-            "name": aspect.aspect_name,
+            "name": aspect.name,
             "description": aspect.description,
             "system_prompt_length": len(aspect.system_prompt) if aspect.system_prompt else 0,
             "user_prompt_length": len(aspect.user_prompt_template) if aspect.user_prompt_template else 0,

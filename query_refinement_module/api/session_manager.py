@@ -198,7 +198,7 @@ class SessionManager:
             log.info(
                 f"Successfully loaded session for query_id={query_id} "
                 f"(steps={len(session.steps)}, "
-                f"active_step={session.get_active_step().refinement_aspect.name if session.get_active_step() else 'None')}")
+                f"active_step={session.get_active_step().refinement_aspect.name if session.get_active_step() else 'None'}"
             )
             return session
             
@@ -273,7 +273,8 @@ class SessionManager:
         return {
             "original_query": session.original_query,
             "synthesis_requested": session.synthesis_requested,
-            "steps": [self._serialize_step(step) for step in session.steps]
+            "steps": [self._serialize_step(step) for step in session.steps],
+            "complete_framework_ids": [aspect.id for aspect in session._complete_framework]
         }
     
     def _serialize_step(self, step: AspectRefinementState) -> Dict[str, Any]:
@@ -318,6 +319,18 @@ class SessionManager:
         # Reconstruct session
         session = RefinementSession(original_query=data["original_query"])
         session.synthesis_requested = data.get("synthesis_requested", False)
+        
+        # Reconstruct complete framework (for /back command dimension recreation)
+        framework_ids = data.get("complete_framework_ids", [])
+        if framework_ids:
+            # Reconstruct framework in original order from stored IDs
+            session._complete_framework = [
+                aspect_map[aspect_id] for aspect_id in framework_ids 
+                if aspect_id in aspect_map
+            ]
+        else:
+            # Fallback: use entire framework if not stored (backwards compatibility)
+            session._complete_framework = list(refinement_framework)
         
         # Reconstruct steps
         for step_data in data["steps"]:

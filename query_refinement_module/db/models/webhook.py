@@ -27,6 +27,7 @@ class WebhookEventType:
     # Query events
     QUERY_CREATED = "query.created"
     QUERY_UPDATED = "query.updated"
+    QUERY_FORWARDED = "query.forwarded"  # Forwarded to external QA system
     
     # Session events
     SESSION_CREATED = "session.created"

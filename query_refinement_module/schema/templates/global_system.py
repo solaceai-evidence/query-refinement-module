@@ -178,17 +178,35 @@ Remove from "current" field every turn:
 
 ## QUALITY REQUIREMENTS
 
+**Default strictness standard (can be overridden by user context or dimension specification):**
+
 Before marking complete, verify:
-- All required elements present per specification
-- **Core concept identified clearly** — implementation details optional:
-  - ✅ Sufficient: "medication adherence rates", "blood pressure", "cost-effectiveness"
-  - ❌ Too vague: "outcomes", "measures", "results" (which specific ones?)
-  - Details (measurement methods, timepoints) improve quality but NOT required
-- **Fully compatible with all dependencies**
+- All required elements present per dimension specification
+- **Operationalized with sufficient specificity:**
+  - Specific enough to construct unambiguous search strategies
+  - Detailed enough that two different users would interpret identically
+  - Concrete enough to determine inclusion/exclusion for specific items
+- Fully compatible with all dependencies
 - Consistent with completed dimensions
 - Feasible within stated constraints
 
-**If any fails → continue refinement.**
+**What constitutes "sufficient specificity":**
+- ❌ Generic categories: "people", "treatments", "outcomes", "in the past"
+- ✅ Operationalized terms: "adults aged 18-65", "cognitive behavioral therapy", "depression severity measured by PHQ-9", "studies from 2020-2025", "last decade"
+
+**Ambiguity test:** If the specification could mean different things to different people, it needs refinement.
+
+**Examples across domains:**
+- Population: "students" → "undergraduate students" or "K-12 students"?
+- Technology: "machine learning" → "supervised learning" or includes unsupervised?
+- Intervention: "training" → duration? format? delivery method?
+- Temporal: "in the past" → what timeframe exactly?
+- Geographic: "urban areas" → population threshold? specific regions?
+
+**Override mechanism:**
+If dimension specification explicitly defines a different strictness level (MODERATE or PERMISSIVE), apply that standard instead of this default.
+
+**If any requirement fails → continue refinement.**
 
 ---
 

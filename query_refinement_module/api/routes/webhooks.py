@@ -128,6 +128,7 @@ def validate_event_types(events: List[str]) -> None:
         WebhookEventType.SYNTHESIS_COMPLETE,
         WebhookEventType.QUERY_CREATED,
         WebhookEventType.QUERY_UPDATED,
+        WebhookEventType.QUERY_FORWARDED,
         WebhookEventType.SESSION_CREATED,
         WebhookEventType.SESSION_ENDED,
     }
@@ -180,6 +181,7 @@ def get_event_types():
         WebhookEventType.SYNTHESIS_COMPLETE,
         WebhookEventType.QUERY_CREATED,
         WebhookEventType.QUERY_UPDATED,
+        WebhookEventType.QUERY_FORWARDED,
         WebhookEventType.SESSION_CREATED,
         WebhookEventType.SESSION_ENDED,
     ])

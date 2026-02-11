@@ -520,6 +520,9 @@ class QueryRefinementManager:
             # Create session
             session = RefinementSession(original_query=original_query)
             
+            # Store the complete framework for potential reconstruction (e.g., after /back command)
+            session._complete_framework = list(refinement_framework)
+            
             # Add all aspects as steps WITHOUT running analysis
             for aspect in refinement_framework:
                 step = session.add_step(aspect)
@@ -725,7 +728,7 @@ class QueryRefinementManager:
         Returns:
             Dict with successful response.
         """
-        question_text = step.follow_up_question or aspect.aspect_name
+        question_text = step.follow_up_question or aspect.name
         step.add_follow_up(question=question_text, response=response_text)
         step.is_complete = True
         
@@ -746,7 +749,7 @@ class QueryRefinementManager:
         
         return {
             "aspect_id": aspect.id,
-            "aspect_name": aspect.aspect_name,
+            "aspect_name": aspect.name,
             "question": question_text,
             "response": response_text,
             **({"structured_payload": parsed_payload} if parsed_payload is not None else {}),

@@ -19,12 +19,14 @@ export const USER_COMMANDS = {
     // Control commands
     SKIP: '/skip',
     DONE: '/done',
+    CLEAR: '/clear',
     SUBMIT: '/submit',
     END: '/end',
 
     // Information commands
     STATUS: '/status',
-    STEPS: '/steps'
+    STEPS: '/steps',
+    HELP: '/help'
 };
 
 /**
@@ -67,6 +69,13 @@ export const COMMAND_METADATA = {
         category: 'info',
         behavior: 'informational' // Don't change flow state
     },
+    [USER_COMMANDS.HELP]: {
+        label: 'Help',
+        icon: '❓',
+        hint: 'Show all available commands',
+        category: 'info',
+        behavior: 'informational' // Don't change flow state
+    },
     [USER_COMMANDS.SKIP]: {
         label: 'Skip This Dimension',
         icon: '⏭️',
@@ -78,6 +87,13 @@ export const COMMAND_METADATA = {
         label: 'Dimension Complete',
         icon: '✅',
         hint: 'Finish this dimension and move to next',
+        category: 'control',
+        behavior: 'navigation' // Changes current question
+    },
+    [USER_COMMANDS.CLEAR]: {
+        label: 'Restart Current',
+        icon: '🔃',
+        hint: 'Clear answers and restart this dimension',
         category: 'control',
         behavior: 'navigation' // Changes current question
     },

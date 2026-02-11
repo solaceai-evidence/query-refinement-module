@@ -175,6 +175,45 @@ class SynthesizeQueryResponse(BaseModel):
     structured_output: Optional[Dict[str, Any]] = None
 
 
+class ForwardToQARequest(BaseModel):
+    """Request to forward refined query to external QA system."""
+    qa_system_url: str = Field(
+        ...,
+        description="URL of the external question-answering system",
+        min_length=1
+    )
+    qa_system_auth: Optional[Dict[str, str]] = Field(
+        None,
+        description="Authentication headers for the QA system (e.g., {'Authorization': 'Bearer token'})"
+    )
+    timeout_seconds: int = Field(
+        default=30,
+        ge=5,
+        le=120,
+        description="Request timeout in seconds"
+    )
+    include_refinement_metadata: bool = Field(
+        default=True,
+        description="Include refinement metadata in the request to QA system"
+    )
+    forward_original_query: bool = Field(
+        default=False,
+        description="Also include the original query alongside the refined query"
+    )
+
+
+class ForwardToQAResponse(BaseModel):
+    """Response from forwarding to external QA system."""
+    query_id: int
+    refined_query: str
+    original_query: Optional[str] = None
+    qa_system_url: str
+    qa_system_response: Dict[str, Any]
+    qa_system_status_code: int
+    response_time_ms: int
+    refinement_metadata: Optional[Dict[str, Any]] = None
+
+
 # ==========================================
 # Utility Functions
 # ==========================================
@@ -299,7 +338,7 @@ async def _build_next_prompt(manager, session) -> Optional[Dict[str, Any]]:
                     "question": status['next_question'],
                     "description": step.refinement_aspect.description or "",
                 }
-                logger.info(f"  -> Generated question for '{result['aspect_name']}', question: '{result['question'][:100]}...")
+                logger.info(f"  -> Generated question for '{result['name']}', question: '{result['question'][:100]}...")
                 return result
                 
         except Exception as e:
@@ -424,6 +463,59 @@ async def _build_command_response(
         logger.info(f"[_build_command_response] NAVIGATION command ({command_type}) - building next prompt")
         # Navigation commands - show new active step
         response.invalidated_aspects = payload.get("invalidated", [])
+        
+        # For back/goto/restart, explicitly generate question for reopened step
+        # Don't allow LLM to auto-complete it again
+        if command_type in ["back", "goto", "restart"]:
+            reopened_step = session.get_active_step()
+            if reopened_step and not reopened_step.follow_up_question:
+                # Force generate a question (don't auto-complete)
+                from query_refinement_module.schema.prompt_builder import PromptBuilder
+                prompt_builder = PromptBuilder()
+                aspect = reopened_step.refinement_aspect
+                
+                logger.info(f"[NAVIGATION] Generating fresh question for reopened dimension: {aspect.name}")
+                logger.info(f"[NAVIGATION] Conversation history length: {len(reopened_step.conversation_history)}")
+                logger.info(f"[NAVIGATION] Has normalized_value: {reopened_step.normalized_value is not None}")
+                
+                try:
+                    # Build messages for initial question generation
+                    messages = prompt_builder.build_messages(
+                        aspect=aspect,
+                        query=session.original_query,
+                        conversation_history=[],  # Force empty to ensure fresh question
+                        dependencies_context=session.get_dependency_context(aspect.id),
+                        mode="initial"
+                    )
+                    
+                    # Add explicit instruction to ALWAYS ask a clarifying question
+                    if messages and messages[-1].get("role") == "user":
+                        messages[-1]["content"] += "\n\nCRITICAL: The user has navigated back to review this dimension from scratch. The dimension has been completely reset with no previous values. You MUST ask a clarifying question as if this is the very first time asking about this dimension. Do NOT assume anything is already clear - treat this as a fresh initial question."
+                    
+                    logger.info(f"[NAVIGATION] Calling LLM to generate fresh question...")
+                    llm_response = await manager.llm_handler.generate_completion(
+                        messages=messages,
+                        temperature=manager.core_config.temperature
+                    )
+                    
+                    logger.info(f"[NAVIGATION] LLM response received, parsing...")
+                    parsed = manager.llm_handler.parse_generation_response(llm_response)
+                    logger.info(f"[NAVIGATION] Parsed status: {parsed.get('status')}")
+                    logger.info(f"[NAVIGATION] Has next_question: {bool(parsed.get('next_question'))}")
+                    
+                    if parsed.get("status") == "needs_clarification" and parsed.get("next_question"):
+                        reopened_step.follow_up_question = parsed["next_question"]
+                        logger.info(f"[NAVIGATION] ✓ Using LLM-generated question: {parsed['next_question'][:100]}...")
+                    else:
+                        # Fallback if LLM didn't generate a question properly
+                        logger.warning(f"[NAVIGATION] LLM did not generate proper question, using fallback")
+                        reopened_step.follow_up_question = f"Let's review {aspect.name} for your research query. What would you like to specify for this dimension?"
+                except Exception as e:
+                    logger.error(f"[NAVIGATION] Error generating question for reopened step: {e}")
+                    logger.exception(e)  # Full stack trace
+                    # Fallback question - neutral wording since we cleared previous values
+                    reopened_step.follow_up_question = f"Let's review {aspect.name} for your research query. What would you like to specify for this dimension?"
+        
         response.next_prompt = await _build_next_prompt(manager, session)
         logger.info(f"[_build_command_response] Next prompt: {'exists' if response.next_prompt else 'None'}")
         if response.next_prompt:
@@ -440,9 +532,15 @@ async def _build_command_response(
             if has_question:
                 logger.info(f"[_build_command_response]   -> Question preview: {response.next_prompt.get('question')[:100]}")
         else:
-            logger.info(f"[_build_command_response]   -> No next prompt (refinement may be complete)")
+            # No more dimensions - check if ready for synthesis
+            logger.info(f"[_build_command_response]   -> No next prompt, checking if session is complete")
+            if session.is_complete():
+                logger.info(f"[_build_command_response]   -> ✓ All dimensions complete - setting synthesis_ready=True")
+                response.synthesis_ready = True
+            else:
+                logger.warning(f"[_build_command_response]   -> ⚠️ No next prompt but session not complete - unexpected state")
     
-    logger.info(f"[_build_command_response] Response built successfully - next_prompt: {'yes' if response.next_prompt else 'no'}")
+    logger.info(f"[_build_command_response] Response built successfully - next_prompt: {'yes' if response.next_prompt else 'no'}, synthesis_ready: {response.synthesis_ready}")
     return response
 
 
@@ -1642,6 +1740,246 @@ async def synthesize_refined_query(
     )
     
     return response
+
+
+# ==========================================
+# QA System Forwarding Endpoint
+# ==========================================
+
+@router.post("/queries/{query_id}/forward-to-qa", response_model=ForwardToQAResponse)
+async def forward_to_qa_system(
+    query_id: int,
+    request: ForwardToQARequest,
+    current_user = Depends(get_current_user),
+    db: Session = Depends(get_db),
+):
+    """
+    Forward a completed refined query to an external question-answering system.
+    
+    This endpoint enables middleware integration by forwarding the refined query
+    to an external QA system AFTER the complete refinement process (with user
+    clarifications for all dimensions).
+    
+    Requirements:
+    - Query must exist and belong to the authenticated user
+    - Query must have a refined_query (synthesis must be complete)
+    - The refinement workflow must be finished (all dimensions clarified)
+    
+    The endpoint:
+    1. Validates query completion
+    2. Retrieves the refined query
+    3. Forwards it to the specified QA system
+    4. Returns both the refined query and QA system response
+    5. Triggers webhook event for monitoring
+    
+    Security:
+    - User authentication required
+    - Query ownership validated
+    - QA system authentication passed through
+    - Request timeout enforced
+    """
+    request_id_val = generate_request_id()
+    set_request_id(request_id_val)
+    request_logger = get_logger(__name__, request_id=request_id_val)
+    
+    start_time = time.time()
+    
+    request_logger.info(
+        "API: Forward to QA system request received",
+        extra={
+            "request_id": request_id_val,
+            "user_id": current_user.id,
+            "query_id": query_id,
+            "qa_system_url": request.qa_system_url,
+            "timeout_seconds": request.timeout_seconds,
+        },
+    )
+    
+    # Verify query exists and belongs to user
+    db_query = get_query(db, query_id=query_id)
+    if not db_query:
+        request_logger.warning(
+            "Query not found",
+            extra={"request_id": request_id_val, "query_id": query_id}
+        )
+        raise HTTPException(
+            status_code=status.HTTP_404_NOT_FOUND,
+            detail=f"Query {query_id} not found"
+        )
+    
+    # Verify ownership
+    if db_query.session.user_id != current_user.id:
+        request_logger.warning(
+            "Unauthorized access attempt",
+            extra={
+                "request_id": request_id_val,
+                "query_id": query_id,
+                "query_owner_id": db_query.session.user_id,
+                "requesting_user_id": current_user.id,
+            }
+        )
+        raise HTTPException(
+            status_code=status.HTTP_403_FORBIDDEN,
+            detail="You don't have permission to access this query"
+        )
+    
+    # Verify refinement is complete
+    if not db_query.refined_query or not db_query.refined_query.strip():
+        request_logger.warning(
+            "Attempted to forward incomplete refinement",
+            extra={
+                "request_id": request_id_val,
+                "query_id": query_id,
+                "has_refined_query": bool(db_query.refined_query),
+            }
+        )
+        raise HTTPException(
+            status_code=status.HTTP_400_BAD_REQUEST,
+            detail="Query refinement is not complete. Please complete the synthesis step first."
+        )
+    
+    # Prepare payload for QA system
+    qa_payload = {
+        "query": db_query.refined_query,
+    }
+    
+    if request.forward_original_query:
+        qa_payload["original_query"] = db_query.original_query
+    
+    if request.include_refinement_metadata:
+        # Gather refinement metadata
+        refinement_steps = get_query_refinement_steps(db, query_id=query_id)
+        qa_payload["refinement_metadata"] = {
+            "framework": db_query.session.framework_name if hasattr(db_query.session, 'framework_name') else None,
+            "total_steps": len(refinement_steps),
+            "dimensions_refined": [step.aspect_id for step in refinement_steps if step.is_refined],
+            "query_id": query_id,
+        }
+    
+    request_logger.info(
+        "Forwarding refined query to external QA system",
+        extra={
+            "request_id": request_id_val,
+            "query_id": query_id,
+            "refined_query_length": len(db_query.refined_query),
+            "payload_keys": list(qa_payload.keys()),
+        }
+    )
+    
+    # Forward to external QA system
+    import httpx
+    
+    qa_start_time = time.time()
+    try:
+        async with httpx.AsyncClient(timeout=request.timeout_seconds) as client:
+            headers = request.qa_system_auth or {}
+            headers["Content-Type"] = "application/json"
+            headers["X-Request-ID"] = request_id_val
+            
+            response = await client.post(
+                request.qa_system_url,
+                json=qa_payload,
+                headers=headers
+            )
+            
+            qa_response_time_ms = int((time.time() - qa_start_time) * 1000)
+            
+            # Try to parse JSON response
+            try:
+                qa_response_data = response.json()
+            except Exception:
+                qa_response_data = {"response": response.text}
+            
+            request_logger.info(
+                "Received response from QA system",
+                extra={
+                    "request_id": request_id_val,
+                    "query_id": query_id,
+                    "status_code": response.status_code,
+                    "response_time_ms": qa_response_time_ms,
+                }
+            )
+            
+            # Trigger webhook: query.forwarded (if webhook system supports it)
+            try:
+                from query_refinement_module.services.webhook_service import trigger_webhook_event
+                webhook_payload = {
+                    "query_id": query_id,
+                    "refined_query": db_query.refined_query,
+                    "qa_system_url": request.qa_system_url,
+                    "qa_status_code": response.status_code,
+                    "response_time_ms": qa_response_time_ms,
+                }
+                # Note: This event type might not exist yet in WebhookEventType
+                # It will be silently skipped if no webhooks are subscribed
+                trigger_webhook_event(db, "query.forwarded", webhook_payload, user_id=current_user.id)
+            except Exception as e:
+                request_logger.warning(f"Failed to trigger webhook for QA forwarding: {e}")
+            
+            # Prepare response
+            result = ForwardToQAResponse(
+                query_id=query_id,
+                refined_query=db_query.refined_query,
+                original_query=db_query.original_query if request.forward_original_query else None,
+                qa_system_url=request.qa_system_url,
+                qa_system_response=qa_response_data,
+                qa_system_status_code=response.status_code,
+                response_time_ms=qa_response_time_ms,
+                refinement_metadata=qa_payload.get("refinement_metadata") if request.include_refinement_metadata else None
+            )
+            
+            total_duration_ms = int((time.time() - start_time) * 1000)
+            request_logger.info(
+                "API: Forward to QA system completed",
+                extra={
+                    "request_id": request_id_val,
+                    "user_id": current_user.id,
+                    "query_id": query_id,
+                    "qa_status_code": response.status_code,
+                    "qa_response_time_ms": qa_response_time_ms,
+                    "total_duration_ms": total_duration_ms,
+                },
+            )
+            
+            return result
+            
+    except httpx.TimeoutException:
+        request_logger.error(
+            "QA system request timed out",
+            extra={
+                "request_id": request_id_val,
+                "query_id": query_id,
+                "timeout_seconds": request.timeout_seconds,
+            }
+        )
+        raise HTTPException(
+            status_code=status.HTTP_504_GATEWAY_TIMEOUT,
+            detail=f"QA system did not respond within {request.timeout_seconds} seconds"
+        )
+    except httpx.RequestError as e:
+        request_logger.error(
+            f"Failed to connect to QA system: {e}",
+            extra={
+                "request_id": request_id_val,
+                "query_id": query_id,
+                "qa_system_url": request.qa_system_url,
+            },
+            exc_info=True
+        )
+        raise HTTPException(
+            status_code=status.HTTP_502_BAD_GATEWAY,
+            detail=f"Failed to connect to QA system: {str(e)}"
+        )
+    except Exception as e:
+        request_logger.error(
+            f"Unexpected error during QA forwarding: {e}",
+            extra={"request_id": request_id_val, "query_id": query_id},
+            exc_info=True
+        )
+        raise HTTPException(
+            status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
+            detail=f"Failed to forward query to QA system: {str(e)}"
+        )
 
 
 # ==========================================

@@ -58,7 +58,7 @@ class SynthesisPromptBuilder:
             value = aspectID_value_mapping.get(aspect.id, "[NOT SET]")
             # Format: **AspectName** (description): value
             dimensions_lines.append(
-                f"**{aspect.aspect_name}** ({aspect.aspect_description}): {value}"
+                f"**{aspect.name}** ({aspect.description}): {value}"
             )
         
         dimensions_text = "\n".join(dimensions_lines)

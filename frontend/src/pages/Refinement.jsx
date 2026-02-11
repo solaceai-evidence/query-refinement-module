@@ -8,6 +8,7 @@ import CommandHistoryItem from '../components/CommandHistoryItem';
 import ConfirmationDialog from '../components/ConfirmationDialog';
 import { refinementService } from '../services/refinement';
 import { useAuth } from '../context/AuthContext';
+import { useToast } from '../context/ToastContext';
 import { isCommandResponse, createHistoryItem } from '../types';
 import { isUserCommand } from '../constants/commands';
 import { logger } from '../utils/logger';
@@ -45,6 +46,7 @@ const Refinement = () => {
     });
     const { logout } = useAuth();
     const navigate = useNavigate();
+    const { showSuccess, showInfo, showWarning, showError } = useToast();
 
     // Check for saved session but don't auto-restore
     const [savedSessionData, setSavedSessionData] = useState(null);
@@ -199,7 +201,7 @@ const Refinement = () => {
             if (response.next_prompt && !response.next_prompt.question) {
                 console.warn('[Refinement] Question is missing from next_prompt, may show fallback text', {
                     aspectId: response.next_prompt.aspect_id,
-                    aspectName: response.next_prompt.aspect_name
+                    name: response.next_prompt.name
                 });
             }
 
@@ -234,7 +236,7 @@ const Refinement = () => {
                     type: 'question',
                     content: response.next_prompt.question,
                     aspectId: response.next_prompt.aspect_id,
-                    aspectName: response.next_prompt.aspect_name,
+                    aspectName: response.next_prompt.name,
                     timestamp: new Date().toISOString()
                 }] : [])
             ]);
@@ -334,6 +336,10 @@ const Refinement = () => {
                 });
 
                 // Only update question if command provides next_prompt
+                console.log('[COMMAND RESPONSE] Checking for next_prompt...');
+                console.log('[COMMAND RESPONSE] response.next_prompt exists?', !!response.next_prompt);
+                console.log('[COMMAND RESPONSE] response.next_prompt value:', response.next_prompt);
+
                 if (response.next_prompt) {
                     try {
                         console.log('[COMMAND RESPONSE] next_prompt exists:', response.next_prompt);
@@ -359,7 +365,7 @@ const Refinement = () => {
                             setConversationHistory(prev => [...prev,
                             createHistoryItem('question', response.next_prompt.question, {
                                 aspectId: response.next_prompt.aspect_id,
-                                aspectName: response.next_prompt.aspect_name
+                                aspectName: response.next_prompt.name
                             })
                             ]);
                         } else {
@@ -376,19 +382,34 @@ const Refinement = () => {
                     }
                 } else {
                     // No next_prompt in response - check command behavior
+                    console.log('[COMMAND RESPONSE] No next_prompt in response');
+                    console.log('[COMMAND RESPONSE] Command type:', response.command_type);
+                    console.log('[COMMAND RESPONSE] Command answer:', answer);
+
                     const { isInformationalCommand } = await import('../constants/commands');
                     const isInfoCommand = isInformationalCommand(answer);
+
+                    console.log('[COMMAND RESPONSE] Is informational?', isInfoCommand);
 
                     if (isInfoCommand) {
                         // Informational commands don't change flow state - keep current question
                         console.log('[COMMAND RESPONSE] Informational command - preserving current question');
                         // currentQuestion and currentAspectId remain unchanged
                     } else {
-                        // Navigation/control commands without next_prompt trigger synthesis
-                        console.log('[COMMAND RESPONSE] No next_prompt - may trigger synthesis');
-                        setCurrentQuestion(null);
-                        setCurrentAspectId(null);
-                        await handleSynthesis();
+                        // Navigation/control commands without next_prompt
+                        console.warn('[COMMAND RESPONSE] ⚠️ No next_prompt for non-informational command');
+                        console.warn('[COMMAND RESPONSE] This might mean:');
+                        console.warn('[COMMAND RESPONSE]   1. All dimensions are complete (check synthesis_ready flag)');
+                        console.warn('[COMMAND RESPONSE]   2. Backend error generating next dimension');
+                        console.warn('[COMMAND RESPONSE]   3. No more dimensions available');
+
+                        // Check if we should trigger synthesis
+                        if (response.synthesis_ready) {
+                            console.log('[COMMAND RESPONSE] synthesis_ready=true, will trigger synthesis');
+                        } else {
+                            console.error('[COMMAND RESPONSE] ❌ Command succeeded but no next_prompt and not ready for synthesis');
+                            showError('Unable to load next dimension. Please try again or contact support.');
+                        }
                     }
                 }
 
@@ -415,6 +436,78 @@ const Refinement = () => {
                     }
                 }
 
+                // Check if synthesis is ready (/submit command)
+                if (response.synthesis_ready) {
+                    console.log('[COMMAND RESPONSE] synthesis_ready flag detected - triggering synthesis');
+                    logger.info('Synthesis requested via /submit command');
+                    showInfo('Generating your refined query...');
+                    await handleSynthesis();
+                    return; // Exit early, synthesis will handle its own state
+                }
+
+                // Show toast notifications for command results
+                if (response.success) {
+                    const { isInformationalCommand } = await import('../constants/commands');
+                    const isInfoCmd = isInformationalCommand(answer);
+
+                    if (isInfoCmd) {
+                        // Informational commands - show info toast
+                        if (response.command_type === 'status') {
+                            showInfo('Progress updated');
+                        } else if (response.command_type === 'steps') {
+                            showInfo('Steps listed');
+                        }
+                    } else {
+                        // Navigation/Control commands - show success toast with details
+                        if (response.command_type === 'skip') {
+                            showSuccess('Dimension skipped - moving to next');
+                        } else if (response.command_type === 'done') {
+                            showSuccess('Dimension completed - moving to next');
+                        } else if (response.command_type === 'clear') {
+                            showSuccess('Dimension cleared - question regenerated');
+                            // Clear OLD conversation history for the current dimension
+                            // Keep: /clear command, new question (added earlier at line 365), items from other dimensions
+                            // Remove: Old Q&A for this dimension that appear BEFORE the /clear command
+                            console.log('[CLEAR COMMAND] Clearing old conversation history for aspectId:', currentAspectId);
+                            setConversationHistory(prev => {
+                                // Find the /clear command index
+                                const clearCmdIdx = prev.findIndex((item, idx) =>
+                                    item.type === 'command' &&
+                                    item.content.trim() === '/clear' &&
+                                    // Use a recent index (commands are added to end)
+                                    idx >= prev.length - 5
+                                );
+
+                                if (clearCmdIdx === -1) {
+                                    console.warn('[CLEAR COMMAND] Could not find /clear command in history');
+                                    return prev;
+                                }
+
+                                // Keep everything except old Q&A for this dimension before /clear command
+                                const filtered = prev.filter((item, idx) => {
+                                    // Keep everything at or after /clear command
+                                    if (idx >= clearCmdIdx) return true;
+                                    // Keep items from other dimensions
+                                    if (item.aspectId !== currentAspectId) return true;
+                                    // Remove old Q&A for this dimension (before /clear)
+                                    return false;
+                                });
+
+                                console.log('[CLEAR COMMAND] Before:', prev.length, 'After:', filtered.length, 'Removed:', prev.length - filtered.length);
+                                return filtered;
+                            });
+                        } else if (response.command_type === 'back' || response.command_type === 'prev') {
+                            const cleared = response.invalidated_aspects?.length || 0;
+                            showSuccess(`Moved back - ${cleared} dimension(s) will be regenerated`);
+                        } else if (response.command_type === 'restart') {
+                            showSuccess('Session restarted');
+                        }
+                    }
+                } else {
+                    // Command failed - show error
+                    showError(response.message || 'Command failed');
+                }
+
                 // Update aspect status from command response data or fetch if needed
                 if (response.step_summary) {
                     // Use data from command response (avoid redundant API call)
@@ -438,7 +531,7 @@ const Refinement = () => {
                     if (!response.next_prompt.question) {
                         console.warn('[Refinement] Question missing in answer response', {
                             aspectId: response.next_prompt.aspect_id,
-                            aspectName: response.next_prompt.aspect_name
+                            aspectName: response.next_prompt.name
                         });
                     }
 
@@ -450,7 +543,7 @@ const Refinement = () => {
                         // Then add the next question
                         createHistoryItem('question', response.next_prompt.question, {
                             aspectId: response.next_prompt.aspect_id,
-                            aspectName: response.next_prompt.aspect_name
+                            aspectName: response.next_prompt.name
                         })
                         ]);
                     } else {
@@ -462,6 +555,9 @@ const Refinement = () => {
                     }
                     setCurrentQuestion(response.next_prompt);
                     setCurrentAspectId(response.next_prompt.aspect_id);
+
+                    // Show success toast for answer submitted
+                    showSuccess('Answer submitted');
                 } else {
                     console.log('[TRACE] No next_prompt - checking ready_for_synthesis flag');
                     // Add answer before synthesis
@@ -474,6 +570,7 @@ const Refinement = () => {
                     // Check ready_for_synthesis flag
                     if (response.ready_for_synthesis) {
                         logger.info('All aspects complete - triggering synthesis');
+                        showSuccess('All dimensions complete!');
                         await handleSynthesis();
                     }
                 }
@@ -523,8 +620,10 @@ const Refinement = () => {
         console.log('[COMMAND HANDLER] Current queryId:', queryId);
         console.log('[COMMAND HANDLER] Current aspectId:', currentAspectId);
 
+        const cmdTrimmed = command.trim();
+
         // Special handling for /skip command - confirm if there's existing data
-        if (command.trim() === '/skip') {
+        if (cmdTrimmed === '/skip') {
             // Check if there are any answers for the current dimension in history
             const currentDimensionAnswers = conversationHistory.filter(
                 item => item.type === 'answer' && item.aspectId === currentAspectId
@@ -532,7 +631,7 @@ const Refinement = () => {
 
             if (currentDimensionAnswers.length > 0) {
                 // Dimension has answers - show confirmation dialog
-                const dimensionName = currentQuestion?.aspect_name || 'this dimension';
+                const dimensionName = currentQuestion?.name || 'this dimension';
 
                 setConfirmationDialog({
                     isOpen: true,
@@ -542,11 +641,78 @@ const Refinement = () => {
                     onConfirm: async () => {
                         console.log('[COMMAND HANDLER] Skip confirmed by user');
                         setConfirmationDialog({ ...confirmationDialog, isOpen: false });
+                        // Set loading before calling handleAnswer (it also sets loading, but be explicit)
+                        setLoading(true);
                         await handleAnswer(command);
                     }
                 });
                 return; // Wait for user confirmation
             }
+        }
+
+        // Confirmation for /restart command
+        if (cmdTrimmed === '/restart') {
+            const completedCount = conversationHistory.filter(item => item.type === 'answer').length;
+            if (completedCount > 0) {
+                setConfirmationDialog({
+                    isOpen: true,
+                    title: 'Restart Session?',
+                    message: `This will clear all progress and start from the beginning.\n\nYou have provided ${completedCount} answer(s) so far.\n\nDo you want to restart?`,
+                    type: 'warning',
+                    onConfirm: async () => {
+                        console.log('[COMMAND HANDLER] Restart confirmed by user');
+                        setConfirmationDialog({ ...confirmationDialog, isOpen: false });
+                        setLoading(true);
+                        await handleAnswer(command);
+                        showInfo('Session restarted');
+                    }
+                });
+                return;
+            }
+        }
+
+        // Confirmation for /back command
+        if (cmdTrimmed === '/back' || cmdTrimmed === '/prev' || cmdTrimmed === '/previous') {
+            const activeIdx = aspects.findIndex(a => a.is_active);
+            if (activeIdx > 0) {
+                const currentDimension = aspects[activeIdx]?.aspect_name || 'current dimension';
+                const previousDimension = aspects[activeIdx - 1]?.aspect_name || 'previous dimension';
+
+                setConfirmationDialog({
+                    isOpen: true,
+                    title: 'Go Back?',
+                    message: `Going back will:\n• Clear "${previousDimension}" for fresh review\n• Remove "${currentDimension}" and all subsequent dimensions\n\nThey will be regenerated based on your updated answers.\n\nDo you want to go back?`,
+                    type: 'warning',
+                    onConfirm: async () => {
+                        console.log('[COMMAND HANDLER] Back confirmed by user');
+                        setConfirmationDialog({ ...confirmationDialog, isOpen: false });
+                        setLoading(true);
+                        showInfo('Processing...');
+                        await handleAnswer(command);
+                    }
+                });
+                return;
+            }
+        }
+
+        // Confirmation for /submit command
+        if (cmdTrimmed === '/submit' || cmdTrimmed === '/end') {
+            const completedDimensions = aspects.filter(a => a.status === 'completed').length;
+            const totalDimensions = aspects.length;
+
+            setConfirmationDialog({
+                isOpen: true,
+                title: 'Generate Final Query?',
+                message: `Ready to generate your refined query?\n\n${completedDimensions} of ${totalDimensions} dimension(s) completed.\n\nYou can continue refining or generate now with current answers.`,
+                type: 'info',
+                onConfirm: async () => {
+                    console.log('[COMMAND HANDLER] Submit confirmed by user');
+                    setConfirmationDialog({ ...confirmationDialog, isOpen: false });
+                    setLoading(true);
+                    await handleAnswer(command);
+                }
+            });
+            return;
         }
 
         // Commands are handled through handleAnswer
@@ -643,6 +809,9 @@ const Refinement = () => {
             setStage('synthesis');
             console.log('[handleSynthesis] ✓ Clearing session');
             clearSession(); // Clear saved session after completion
+
+            // Show success toast
+            showSuccess('Your refined query has been generated!');
 
             console.log('[handleSynthesis] ✓ Synthesis complete and displayed');
         } catch (err) {
@@ -916,7 +1085,7 @@ const Refinement = () => {
                                 <div className="question-input-fixed">
                                     <QuestionRenderer
                                         question={currentQuestion.question || 'Please wait while we generate your question...'}
-                                        aspectName={currentQuestion.aspect_name}
+                                        aspectName={currentQuestion.name}
                                         aspectDescription={currentQuestion.description}
                                         onAnswer={handleAnswer}
                                         loading={loading}

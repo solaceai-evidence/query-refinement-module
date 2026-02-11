@@ -246,7 +246,7 @@ def describe_framework(name: str) -> Dict[str, Any]:
         "name": name,
         "aspect_count": len(aspects),
         "aspect_ids": [a.id for a in aspects],
-        "aspect_names": [a.aspect_name for a in aspects],
+        "aspect_names": [a.name for a in aspects],
         "has_dependencies": any(a.depends_on for a in aspects),
     }
 

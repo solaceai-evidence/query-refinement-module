@@ -195,11 +195,17 @@ class RefinementSession:
     original_query: str
     steps: List[AspectRefinementState] = field(default_factory=list)
     synthesis_requested: bool = False
+    _complete_framework: List[RefinementAspect] = field(default_factory=list)
     
     @property
     def refinement_framework(self) -> List[RefinementAspect]:
         """Get the refinement framework from the steps."""
         return [step.refinement_aspect for step in self.steps]
+    
+    @property
+    def complete_framework(self) -> List[RefinementAspect]:
+        """Get the complete original framework (all dimensions)."""
+        return self._complete_framework
     
     def add_step(
         self,
@@ -345,7 +351,7 @@ class RefinementSession:
                 raw_value = dep_step.normalized_value
             elif dep_step.is_complete:
                 # Aspect was clear in original query
-                raw_value = f"[{aspect.aspect_name} is clear in original query: \"{self.original_query}\"]"
+                raw_value = f"[{aspect.name} is clear in original query: \"{self.original_query}\"]"
             
             # Format value based on type
             formatted_value = raw_value
@@ -365,8 +371,8 @@ class RefinementSession:
             
             if raw_value is not None:
                 context[dep_id] = {
-                    "name": aspect.aspect_name,
-                    "description": aspect.aspect_description,
+                    "name": aspect.name,
+                    "description": aspect.description,
                     "value": formatted_value,
                     "type": value_type,
                 }
@@ -376,7 +382,16 @@ class RefinementSession:
     def is_complete(self) -> bool:
         """
         Checks if all refinement steps are complete.
+        
+        For sequential refinement, this means:
+        1. All aspects in the framework have been processed (added to steps)
+        2. All processed steps are marked complete
         """
+        # Check if all framework aspects have been processed
+        if len(self.steps) < len(self.refinement_framework):
+            return False
+        
+        # Check if all processed steps are complete
         return all(step.is_complete for step in self.steps)
     
     def get_step_summary(self) -> Dict[str, Any]:
@@ -513,7 +528,7 @@ class RefinementSession:
         """
         return {
             "original_query": self.original_query,
-            "refinement_aspects": [aspect.aspect_name for aspect in self.refinement_framework],
+            "refinement_aspects": [aspect.name for aspect in self.refinement_framework],
             "steps": [
                 {
                     "refinement_aspect_id": step.refinement_aspect.id,
