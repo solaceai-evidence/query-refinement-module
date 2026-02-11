@@ -181,8 +181,8 @@ docker-compose --version  # Should be 2.0+
 ### 2. Configure Environment
 
 ```bash
-# Copy example file
-cp .env.production.example .env
+# Copy production template
+cp .env.prod .env
 
 # Edit for development (keep ENVIRONMENT=development)
 # Update:
@@ -273,7 +273,7 @@ git clone <repository-url> /opt/query-refinement
 cd /opt/query-refinement
 
 # Create production environment file
-cp .env.production.example .env
+cp .env.prod .env
 
 # Edit .env - CRITICAL SETTINGS:
 # - ENVIRONMENT=production
@@ -449,7 +449,7 @@ sudo systemctl restart redis
 
 ```bash
 # Create .env file
-cp .env.production.example .env
+cp .env.prod .env
 nano .env
 
 # Set DATABASE_URL:

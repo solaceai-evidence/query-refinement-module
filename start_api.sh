@@ -16,7 +16,7 @@ fi
 # Check if REFINEMENT_FRAMEWORK_PATH is set in .env
 if ! grep -q "^REFINEMENT_FRAMEWORK_PATH=" .env; then
     echo "Warning: REFINEMENT_FRAMEWORK_PATH not set in .env"
-    echo "   Using default: examples/pico_template.yaml"
+    echo "   Using default: refinement_frameworks/frameworks.yaml"
     echo ""
 fi
 

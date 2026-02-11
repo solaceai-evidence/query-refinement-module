@@ -25,11 +25,7 @@ poetry install
 # 3. Run database migrations (if any)
 poetry run alembic upgrade head
 
-# 4. Run tests
-poetry run pytest tests/api/test_versioning.py -v
-poetry run pytest tests/integration/test_versioned_migration.py -v
-
-# 5. Start backend
+# 4. Start backend
 poetry run uvicorn query_refinement_module.api.main:app --reload
 ```
 
@@ -38,7 +34,7 @@ poetry run uvicorn query_refinement_module.api.main:app --reload
 ```bash
 cd frontend
 
-# 1. Update .env or .env.production
+# 1. Update .env or .env.prod
 # Ensure: VITE_API_BASE_URL=https://your-domain.com/api/v1
 
 # 2. Install dependencies (if needed)
@@ -145,7 +141,7 @@ poetry run uvicorn query_refinement_module.api.main:app --reload
 ## 🚨 Known Issues & Mitigations
 
 ### Issue: Frontend build with old .env
-**Mitigation:** Verify `.env.production` has correct VITE_API_BASE_URL
+**Mitigation:** Verify `.env.prod` has correct VITE_API_BASE_URL
 
 ### Issue: Browser cache with old API calls
 **Mitigation:** Force cache clear with version bump in index.html

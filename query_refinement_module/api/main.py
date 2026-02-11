@@ -121,6 +121,13 @@ app.add_middleware(
 app.add_middleware(
     RateLimitMiddleware,
     requests_per_minute=settings.llm_rate_limit_rpm,
+    per_user_requests_per_minute=settings.llm_rate_limit_per_user_rpm,
+    backend=settings.rate_limiter_backend,
+    redis_url=settings.redis_url,
+    redis_key_prefix=settings.redis_rate_limit_prefix,
+    use_user_identifier=True,
+    secret_key=settings.secret_key,
+    algorithm=settings.algorithm,
     exempt_paths=["/docs", "/redoc", "/openapi.json", "/health", "/"]
 )
 

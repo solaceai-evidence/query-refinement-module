@@ -4,7 +4,8 @@ FastAPI application configuration and settings.
 from functools import lru_cache
 from typing import List, Optional
 
-from pydantic import Field, model_validator
+import json
+from pydantic import Field, model_validator, field_validator
 from pydantic_settings import BaseSettings, SettingsConfigDict
 
 
@@ -57,6 +58,25 @@ class Settings(BaseSettings):
         default=["http://localhost:3000", "http://localhost:5173", "http://localhost:8000"],
         description="CORS allowed origins (comma-separated in env: ALLOWED_ORIGINS=https://app.com,https://www.app.com)"
     )
+
+    @field_validator("allowed_origins", mode="before")
+    @classmethod
+    def parse_allowed_origins(cls, value):
+        if isinstance(value, list):
+            return value
+        if isinstance(value, str):
+            stripped = value.strip()
+            if not stripped:
+                return []
+            if stripped.startswith("["):
+                try:
+                    parsed = json.loads(stripped)
+                    if isinstance(parsed, list):
+                        return parsed
+                except json.JSONDecodeError:
+                    pass
+            return [origin.strip() for origin in stripped.split(",") if origin.strip()]
+        return value
     cors_allow_credentials: bool = Field(default=True, description="Allow credentials in CORS requests")
     cors_allow_methods: List[str] = Field(default=["GET", "POST", "PUT", "DELETE", "OPTIONS"], description="Allowed HTTP methods")
     cors_allow_headers: List[str] = Field(default=["*"], description="Allowed headers")

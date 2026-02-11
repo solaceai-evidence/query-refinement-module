@@ -10,8 +10,6 @@
 # - Async architecture with 50 concurrent LLM calls
 # - Production-grade logging and monitoring
 
-version: '3.8'
-
 services:
   # PostgreSQL - Production optimizations
   postgres:
@@ -88,7 +86,7 @@ services:
       SANITIZE_PII: "true"
     volumes:
       # Read-only mounts for security
-      - ./examples:/app/examples:ro
+      - ./refinement_frameworks:/app/refinement_frameworks:ro
       - ./logs:/app/logs:rw
     deploy:
       replicas: 1  # Can be increased for high availability
