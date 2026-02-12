@@ -251,6 +251,8 @@ export interface AspectStatusPanelProps {
 export interface SynthesisResultProps {
     queryId: number;
     synthesis: SynthesizeQueryResponse;
+    selectedFramework?: string | null;
+    aspects?: AspectSummary[];
 }
 
 export interface FrameworkSelectorProps {

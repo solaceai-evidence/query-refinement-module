@@ -134,7 +134,7 @@ class ProgressTracker:
                     "query_id": query_id,
                     "stage": update.stage.value,
                     "progress": update.progress,
-                    "message": update.message
+                    "progress_message": update.message
                 }
             )
             

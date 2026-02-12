@@ -1,4 +1,4 @@
-import { useState } from 'react';
+import { useMemo, useState, useEffect } from 'react';
 import { refinementService } from '../services/refinement';
 import './SynthesisResult.css';
 
@@ -27,20 +27,119 @@ const Likert5 = ({ name, value, onChange, leftLabel = 'Strongly disagree', right
     );
 };
 
-const SynthesisResult = ({ queryId, synthesis }) => {
+const SynthesisResult = ({ queryId, synthesis, selectedFramework = null, aspects = [] }) => {
     const [rating, setRating] = useState(0);
     const [confidenceBefore, setConfidenceBefore] = useState(0);
     const [confidenceAfter, setConfidenceAfter] = useState(0);
     const [questionQuality, setQuestionQuality] = useState(0);
     const [easeOfUse, setEaseOfUse] = useState(0);
     const [feltInControl, setFeltInControl] = useState(0);
+    const [toneSelection, setToneSelection] = useState('');
+    const [complexitySelection, setComplexitySelection] = useState('');
     const [timeSaved, setTimeSaved] = useState('');
     const [mostHelpful, setMostHelpful] = useState('');
     const [improvements, setImprovements] = useState('');
     const [otherComments, setOtherComments] = useState('');
-    const [consentToUseData, setConsentToUseData] = useState(false);
+    const [consentSelection, setConsentSelection] = useState('');
     const [submitError, setSubmitError] = useState('');
     const [feedbackSubmitted, setFeedbackSubmitted] = useState(false);
+
+    const toneOptions = useMemo(() => ([
+        {
+            value: 'educational',
+            label: 'Educational',
+            description: 'Encouraging, explains the rationale, and uses examples.'
+        },
+        {
+            value: 'professional',
+            label: 'Professional',
+            description: 'Direct, concise, and focused on clear specifications.'
+        },
+        {
+            value: 'pragmatic',
+            label: 'Pragmatic',
+            description: 'Practical, feasibility-focused, and action oriented.'
+        }
+    ]), []);
+
+    const complexityOptions = useMemo(() => ([
+        {
+            value: 'novice',
+            label: 'Novice',
+            description: 'Defines terms, keeps explanations simple, and checks understanding.'
+        },
+        {
+            value: 'intermediate',
+            label: 'Intermediate',
+            description: 'Uses standard research terms with brief context when needed.'
+        },
+        {
+            value: 'advanced',
+            label: 'Advanced',
+            description: 'Uses technical language and discusses tradeoffs.'
+        },
+        {
+            value: 'expert',
+            label: 'Expert',
+            description: 'Peer-level language with critical, methodological pushback.'
+        }
+    ]), []);
+
+    const frameworkConstraintStrings = useMemo(() => ({
+        pico_advanced: [
+            'Specificity check: Every dimension must have concrete, measurable definitions without ambiguous terms (reject \'elderly\', \'standard care\', \'improved outcomes\' unless operationalized)',
+            'Alignment check: All dimensions must be mutually compatible (intervention appropriate for population and condition, outcome measurable given design constraints)',
+            'Search-readiness check: Each element can be converted into specific database search terms, MeSH headings, or screening criteria',
+            'Completeness check: All critical PICO elements defined without circular dependencies (no \'depends on what studies we find\')',
+            'Synthesis-feasibility check: The combined dimensions define a coherent, comparable body of evidence rather than heterogeneous narrative-only collection',
+        ],
+        mph_dissertation: [
+            'Timeline: 6-12 months limits study designs (prospective cohorts and RCTs infeasible; cross-sectional, retrospective, or rapid reviews preferred)',
+            'Data access: Public datasets or institutional access required; primary data collection needs IRB approval (3-6 month timeline buffer)',
+            'Scope: Single focused research question; mixed methods and multi-phase designs rarely feasible within timeframe',
+            'Recruitment: Large primary surveys (n>200) and extensive qualitative samples typically exceed capacity; existing data preferred',
+        ],
+        legal_research: [
+            'Jurisdiction: Must specify applicable legal jurisdiction (federal vs state, specific circuit)',
+            'Precedent research: Need manageable scope for case law review within academic timeline',
+            'Legal standards: Must identify controlling statutes, regulations, or common law doctrines',
+            'Time period: Consider whether historical or contemporary legal framework applies',
+        ],
+    }), []);
+
+    const normalizedFrameworkKey = useMemo(() => {
+        if (!selectedFramework) return null;
+        return selectedFramework
+            .toLowerCase()
+            .replace(/[\s-]+/g, '_')
+            .replace(/[^a-z0-9_]/g, '');
+    }, [selectedFramework]);
+
+    const constraints = useMemo(() => {
+        const rawList = frameworkConstraintStrings[normalizedFrameworkKey] || [];
+        return rawList.slice(0, 4).map((text, index) => {
+            const [labelPart, ...rest] = text.split(':');
+            const label = labelPart?.trim() || `Constraint ${index + 1}`;
+            const description = rest.join(':').trim() || text;
+            const id = label.toLowerCase().replace(/[^a-z0-9]+/g, '_').replace(/^_|_$/g, '');
+            return { id: id || `constraint_${index + 1}`, label, description };
+        });
+    }, [frameworkConstraintStrings, normalizedFrameworkKey]);
+
+    const dimensionOptions = useMemo(() => {
+        const labels = (aspects || [])
+            .map((aspect) => aspect?.aspect_name || aspect?.name || aspect?.aspect_id || aspect?.id || null)
+            .filter(Boolean);
+        return Array.from(new Set(labels));
+    }, [aspects]);
+
+    const [constraintResponses, setConstraintResponses] = useState(() =>
+        constraints.map(() => ({ considered: '', dimensions: [] }))
+    );
+
+    useEffect(() => {
+        setConstraintResponses(constraints.map(() => ({ considered: '', dimensions: [] })));
+    }, [constraints]);
 
     // Safety check for synthesis object
     if (!synthesis || typeof synthesis !== 'object') {
@@ -84,6 +183,8 @@ const SynthesisResult = ({ queryId, synthesis }) => {
         try {
             setSubmitError('');
 
+            const consentToUseData = consentSelection === 'yes';
+
             const metadata = {
                 mph_survey_v1: {
                     time_saved: timeSaved || null,
@@ -92,6 +193,21 @@ const SynthesisResult = ({ queryId, synthesis }) => {
                     question_quality: questionQuality || null,
                     ease_of_use: easeOfUse || null,
                     felt_in_control: feltInControl || null,
+                    tone_selected: toneSelection || null,
+                    complexity_selected: complexitySelection || null,
+                },
+                constraint_feedback: {
+                    framework: selectedFramework || null,
+                    framework_key: normalizedFrameworkKey,
+                    constraints: constraints.map((constraint, index) => ({
+                        id: constraint.id,
+                        label: constraint.label,
+                        considered: constraintResponses[index]?.considered || null,
+                        dimensions: constraintResponses[index]?.dimensions || [],
+                    })),
+                },
+                consent: {
+                    selection: consentSelection || null,
                 },
                 free_text: {
                     most_helpful: mostHelpful.trim() || null,
@@ -118,6 +234,26 @@ const SynthesisResult = ({ queryId, synthesis }) => {
     };
 
     const isLikertValid = (value) => Number.isInteger(value) && value >= 1 && value <= 5;
+    const isSingleChoiceValid = (value) => typeof value === 'string' && value.length > 0;
+    const isYesNoAnswered = (value) => value === 'yes' || value === 'no';
+    const isConstraintValid = (response, isRequired) => {
+        if (!response) return !isRequired;
+        if (!isRequired && !isYesNoAnswered(response.considered)) {
+            return true;
+        }
+        if (!isYesNoAnswered(response.considered)) {
+            return false;
+        }
+        if (response.considered === 'yes') {
+            return Array.isArray(response.dimensions) && response.dimensions.length > 0;
+        }
+        return true;
+    };
+
+    const allConstraintsValid = constraints.every((constraint, index) => {
+        const isRequired = index < constraints.length - 1;
+        return isConstraintValid(constraintResponses[index], isRequired);
+    });
     const canSubmit =
         isLikertValid(rating) &&
         isLikertValid(confidenceBefore) &&
@@ -125,8 +261,38 @@ const SynthesisResult = ({ queryId, synthesis }) => {
         isLikertValid(questionQuality) &&
         isLikertValid(easeOfUse) &&
         isLikertValid(feltInControl) &&
+        isSingleChoiceValid(toneSelection) &&
+        isSingleChoiceValid(complexitySelection) &&
+        isSingleChoiceValid(consentSelection) &&
+        allConstraintsValid &&
         mostHelpful.trim().length > 0 &&
         improvements.trim().length > 0;
+
+    const updateConstraintConsidered = (index, value) => {
+        setConstraintResponses((prev) => {
+            const next = [...prev];
+            const current = next[index] || { considered: '', dimensions: [] };
+            next[index] = {
+                ...current,
+                considered: value,
+                dimensions: value === 'yes' ? current.dimensions : [],
+            };
+            return next;
+        });
+    };
+
+    const toggleConstraintDimension = (index, dimension) => {
+        setConstraintResponses((prev) => {
+            const next = [...prev];
+            const current = next[index] || { considered: '', dimensions: [] };
+            const hasDimension = current.dimensions.includes(dimension);
+            const updatedDimensions = hasDimension
+                ? current.dimensions.filter((item) => item !== dimension)
+                : [...current.dimensions, dimension];
+            next[index] = { ...current, dimensions: updatedDimensions };
+            return next;
+        });
+    };
 
     const copyToClipboard = (text, label = 'text') => {
         navigator.clipboard.writeText(text);
@@ -213,6 +379,54 @@ const SynthesisResult = ({ queryId, synthesis }) => {
                             </div>
 
                             <div className="feedback-field">
+                                <div className="feedback-field-title">Tone of the questions</div>
+                                <div className="feedback-option-group" role="radiogroup" aria-label="Question tone">
+                                    {toneOptions.map((option) => (
+                                        <label
+                                            key={option.value}
+                                            className={`feedback-option ${toneSelection === option.value ? 'selected' : ''}`}
+                                        >
+                                            <input
+                                                type="radio"
+                                                name="question_tone"
+                                                value={option.value}
+                                                checked={toneSelection === option.value}
+                                                onChange={() => setToneSelection(option.value)}
+                                            />
+                                            <div className="feedback-option-content">
+                                                <span className="feedback-option-title">{option.label}</span>
+                                                <span className="feedback-option-description">{option.description}</span>
+                                            </div>
+                                        </label>
+                                    ))}
+                                </div>
+                            </div>
+
+                            <div className="feedback-field">
+                                <div className="feedback-field-title">Complexity of the questions</div>
+                                <div className="feedback-option-group" role="radiogroup" aria-label="Question complexity">
+                                    {complexityOptions.map((option) => (
+                                        <label
+                                            key={option.value}
+                                            className={`feedback-option ${complexitySelection === option.value ? 'selected' : ''}`}
+                                        >
+                                            <input
+                                                type="radio"
+                                                name="question_complexity"
+                                                value={option.value}
+                                                checked={complexitySelection === option.value}
+                                                onChange={() => setComplexitySelection(option.value)}
+                                            />
+                                            <div className="feedback-option-content">
+                                                <span className="feedback-option-title">{option.label}</span>
+                                                <span className="feedback-option-description">{option.description}</span>
+                                            </div>
+                                        </label>
+                                    ))}
+                                </div>
+                            </div>
+
+                            <div className="feedback-field">
                                 <label className="feedback-field-title" htmlFor="timeSaved">How much time did this tool save you overall?</label>
                                 <select
                                     id="timeSaved"
@@ -228,6 +442,78 @@ const SynthesisResult = ({ queryId, synthesis }) => {
                                 </select>
                             </div>
                         </div>
+
+                        {constraints.length > 0 ? (
+                            <div className="feedback-questions">
+                                <p className="feedback-prompt">Constraints check (did the chatbot reference these when relevant?)</p>
+                                {constraints.map((constraint, index) => {
+                                    const response = constraintResponses[index] || { considered: '', dimensions: [] };
+                                    const isRequired = index < constraints.length - 1;
+                                    const showDimensionPicker = response.considered === 'yes';
+                                    return (
+                                        <div key={constraint.id} className="constraint-block">
+                                            <div className="constraint-header">
+                                                <div className="constraint-title">
+                                                    {constraint.label}{isRequired ? ' (required)' : ' (optional)'}
+                                                </div>
+                                                <div className="constraint-description">{constraint.description}</div>
+                                            </div>
+                                            <div className="constraint-yes-no" role="radiogroup" aria-label={`${constraint.label} considered`}>
+                                                <label className={`yes-no-option ${response.considered === 'yes' ? 'selected' : ''}`}>
+                                                    <input
+                                                        type="radio"
+                                                        name={`constraint_${constraint.id}`}
+                                                        value="yes"
+                                                        checked={response.considered === 'yes'}
+                                                        onChange={() => updateConstraintConsidered(index, 'yes')}
+                                                    />
+                                                    <span>Yes</span>
+                                                </label>
+                                                <label className={`yes-no-option ${response.considered === 'no' ? 'selected' : ''}`}>
+                                                    <input
+                                                        type="radio"
+                                                        name={`constraint_${constraint.id}`}
+                                                        value="no"
+                                                        checked={response.considered === 'no'}
+                                                        onChange={() => updateConstraintConsidered(index, 'no')}
+                                                    />
+                                                    <span>No</span>
+                                                </label>
+                                            </div>
+                                            {showDimensionPicker && (
+                                                <div className="constraint-dimensions">
+                                                    <div className="constraint-dimensions-title">Which dimension(s) reflected this constraint?</div>
+                                                    {dimensionOptions.length === 0 ? (
+                                                        <div className="constraint-empty">No dimensions available to select.</div>
+                                                    ) : (
+                                                        <div className="dimension-checklist" role="group" aria-label={`${constraint.label} dimensions`}>
+                                                            {dimensionOptions.map((dimension) => (
+                                                                <label key={dimension} className={`dimension-option ${response.dimensions.includes(dimension) ? 'selected' : ''}`}>
+                                                                    <input
+                                                                        type="checkbox"
+                                                                        value={dimension}
+                                                                        checked={response.dimensions.includes(dimension)}
+                                                                        onChange={() => toggleConstraintDimension(index, dimension)}
+                                                                    />
+                                                                    <span>{dimension}</span>
+                                                                </label>
+                                                            ))}
+                                                        </div>
+                                                    )}
+                                                </div>
+                                            )}
+                                        </div>
+                                    );
+                                })}
+                            </div>
+                        ) : (
+                            <div className="feedback-questions">
+                                <p className="feedback-prompt">Constraints check</p>
+                                <div className="constraint-empty">
+                                    No framework constraints available for this session.
+                                </div>
+                            </div>
+                        )}
 
                         <div className="feedback-field">
                             <label className="feedback-field-title" htmlFor="mostHelpful">What was the most helpful part of the experience? (required)</label>
@@ -262,18 +548,31 @@ const SynthesisResult = ({ queryId, synthesis }) => {
                         </div>
 
                         <div className="feedback-consent">
-                            <label className="feedback-consent-row">
-                                <input
-                                    type="checkbox"
-                                    checked={consentToUseData}
-                                    onChange={(e) => setConsentToUseData(e.target.checked)}
-                                />
-                                <span>
-                                    I consent for my query session data and this feedback to be retained and used for research/analysis.
-                                </span>
-                            </label>
+                            <div className="feedback-field-title">Consent to retain your data (required)</div>
+                            <div className="constraint-yes-no" role="radiogroup" aria-label="Consent to retain data">
+                                <label className={`yes-no-option ${consentSelection === 'yes' ? 'selected' : ''}`}>
+                                    <input
+                                        type="radio"
+                                        name="consent_to_use_data"
+                                        value="yes"
+                                        checked={consentSelection === 'yes'}
+                                        onChange={() => setConsentSelection('yes')}
+                                    />
+                                    <span>Yes, keep my data</span>
+                                </label>
+                                <label className={`yes-no-option ${consentSelection === 'no' ? 'selected' : ''}`}>
+                                    <input
+                                        type="radio"
+                                        name="consent_to_use_data"
+                                        value="no"
+                                        checked={consentSelection === 'no'}
+                                        onChange={() => setConsentSelection('no')}
+                                    />
+                                    <span>No, delete my data</span>
+                                </label>
+                            </div>
                             <div className="feedback-consent-note">
-                                If you do not consent, your feedback can still be submitted, but the study team may delete your session data.
+                                If you choose no, the system will delete your session data after submission.
                             </div>
                         </div>
 

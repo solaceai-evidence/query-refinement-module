@@ -35,6 +35,7 @@ const Refinement = () => {
     const [currentQuestion, setCurrentQuestion] = useState(null);
     const [currentAspectId, setCurrentAspectId] = useState(null);
     const [aspects, setAspects] = useState([]);
+    const [totalAspects, setTotalAspects] = useState(0);
     const [synthesis, setSynthesis] = useState(null);
     const [loading, setLoading] = useState(false);
     const [error, setError] = useState(null);
@@ -310,6 +311,7 @@ const Refinement = () => {
             setCurrentQuestion(response.next_prompt);
             setCurrentAspectId(response.next_prompt?.aspect_id);
             setAspects(response.summary?.aspects || []);
+            setTotalAspects(response.summary?.total_aspects || response.summary?.aspects?.length || 0);
 
             // Check if all aspects are immediately complete (ready for synthesis)
             if (response.ready_for_synthesis && !response.next_prompt) {
@@ -595,7 +597,7 @@ const Refinement = () => {
 
                                 if (clearCmdIdx === -1) {
                                     console.warn('[CLEAR COMMAND] Could not find /clear command in history');
-                                    return prev;
+                                    return prev.filter(item => item.aspectId !== currentAspectId);
                                 }
 
                                 // Keep everything except old Q&A for this dimension before /clear command
@@ -611,9 +613,11 @@ const Refinement = () => {
                                 console.log('[CLEAR COMMAND] Before:', prev.length, 'After:', filtered.length, 'Removed:', prev.length - filtered.length);
                                 return filtered;
                             });
+                            pruneHistoryFromAspect(currentAspectId);
                         } else if (response.command_type === 'back' || response.command_type === 'prev') {
                             const cleared = response.invalidated_aspects?.length || 0;
                             showSuccess(`Moved back - ${cleared} dimension(s) will be regenerated`);
+                            pruneHistoryFromAspect(response.next_prompt?.aspect_id ?? response.next_prompt?.name ?? currentAspectId);
                         } else if (response.command_type === 'restart') {
                             showSuccess('Session restarted');
                         }
@@ -726,12 +730,43 @@ const Refinement = () => {
         try {
             const status = await refinementService.getStatus(queryId);
             setAspects(status.aspects_summary?.aspects || []);
+            setTotalAspects(status.aspects_summary?.total_aspects || status.aspects_summary?.aspects?.length || 0);
         } catch (err) {
             // Silently fail - status updates are non-critical
             // Just log to console, don't block user interaction
             console.warn('Failed to update aspect status (non-critical):', err.message);
             logger.debug('Status update failed', { queryId, error: err.message });
         }
+    };
+
+    const getAspectKey = (aspect) =>
+        aspect?.aspect_id ?? aspect?.id ?? aspect?.aspectId ?? aspect?.aspect_name ?? aspect?.name ?? null;
+
+    const pruneHistoryFromAspect = (baseAspectKey) => {
+        if (!baseAspectKey) return;
+
+        const orderMap = new Map();
+        if (Array.isArray(aspects) && aspects.length > 0) {
+            aspects.forEach((aspect, index) => {
+                const key = getAspectKey(aspect);
+                if (key !== null && key !== undefined) {
+                    orderMap.set(key, index);
+                }
+            });
+        }
+
+        const baseIndex = orderMap.has(baseAspectKey) ? orderMap.get(baseAspectKey) : null;
+
+        setConversationHistory(prev => prev.filter(item => {
+            const itemKey = item?.aspectId ?? item?.aspectName ?? null;
+            if (!itemKey) return true;
+
+            if (baseIndex !== null && orderMap.has(itemKey)) {
+                return orderMap.get(itemKey) < baseIndex;
+            }
+
+            return itemKey !== baseAspectKey;
+        }));
     };
 
     /**
@@ -822,8 +857,8 @@ const Refinement = () => {
 
         // Confirmation for /submit command
         if (cmdTrimmed === '/submit' || cmdTrimmed === '/end') {
-            const completedDimensions = aspects.filter(a => a.status === 'completed').length;
-            const totalDimensions = aspects.length;
+            const completedDimensions = aspects.filter(a => a.status === 'completed' || a.is_complete === true).length;
+            const totalDimensions = totalAspects || aspects.length;
 
             setConfirmationDialog({
                 isOpen: true,
@@ -987,6 +1022,7 @@ const Refinement = () => {
 
             // Set aspects
             setAspects(status.aspects || []);
+            setTotalAspects(status.aspects_summary?.total_aspects || status.aspects?.length || 0);
 
             // Restore conversation history
             if (status.conversation_history && status.conversation_history.length > 0) {
@@ -1057,6 +1093,7 @@ const Refinement = () => {
         setCurrentQuestion(null);
         setCurrentAspectId(null);
         setAspects([]);
+        setTotalAspects(0);
         setSynthesis(null);
         setConversationHistory([]);
         setCommandResult(null);
@@ -1347,7 +1384,12 @@ const Refinement = () => {
                             )}
 
                             <div className="question-input-fixed">
-                                <SynthesisResult queryId={queryId} synthesis={synthesis} />
+                                <SynthesisResult
+                                    queryId={queryId}
+                                    synthesis={synthesis}
+                                    selectedFramework={selectedFramework}
+                                    aspects={aspects}
+                                />
                             </div>
                         </div>
                     </div>

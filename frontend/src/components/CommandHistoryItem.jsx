@@ -34,9 +34,9 @@ const DimensionCard = ({ dimension }) => {
             </div>
 
             {/* Always visible summary */}
-            {dimension.assembled_value && (
+            {dimension.assembled_value !== null && dimension.assembled_value !== undefined && (
                 <div className="dimension-value">
-                    <strong>Assembled:</strong> {dimension.assembled_value}
+                    <strong>Assembled:</strong> {String(dimension.assembled_value)}
                 </div>
             )}
             {dimension.follow_up_count > 0 && (
@@ -54,10 +54,10 @@ const DimensionCard = ({ dimension }) => {
             {/* Expanded details */}
             {isExpanded && (
                 <div className="dimension-expanded-content">
-                    {dimension.assembled_value && (
+                    {dimension.assembled_value !== null && dimension.assembled_value !== undefined && (
                         <div className="dimension-assembled-expanded">
                             <strong>Assembled Specification:</strong>
-                            <p className="assembled-value-text">{dimension.assembled_value}</p>
+                            <p className="assembled-value-text">{String(dimension.assembled_value)}</p>
                         </div>
                     )}
 

@@ -191,6 +191,49 @@
     border-color: #667eea;
 }
 
+.feedback-option-group {
+    display: flex;
+    flex-direction: column;
+    gap: 10px;
+}
+
+.feedback-option {
+    display: flex;
+    gap: 12px;
+    padding: 10px 12px;
+    border: 1px solid #e2e8f0;
+    border-radius: 8px;
+    background: #ffffff;
+    cursor: pointer;
+}
+
+.feedback-option input {
+    margin-top: 4px;
+}
+
+.feedback-option.selected {
+    border-color: #667eea;
+    box-shadow: 0 0 0 2px rgba(102, 126, 234, 0.15);
+}
+
+.feedback-option-content {
+    display: flex;
+    flex-direction: column;
+    gap: 4px;
+}
+
+.feedback-option-title {
+    font-weight: 600;
+    color: #2d3748;
+    font-size: 14px;
+}
+
+.feedback-option-description {
+    color: #4a5568;
+    font-size: 12px;
+    line-height: 1.4;
+}
+
 .likert {
     display: flex;
     flex-direction: column;
@@ -278,6 +321,98 @@
 
 .feedback-guide li {
     margin-bottom: 5px;
+}
+
+.constraint-block {
+    display: flex;
+    flex-direction: column;
+    gap: 12px;
+    padding: 14px;
+    border: 1px solid #e2e8f0;
+    border-radius: 8px;
+    background: #ffffff;
+}
+
+.constraint-header {
+    display: flex;
+    flex-direction: column;
+    gap: 6px;
+}
+
+.constraint-title {
+    font-weight: 600;
+    color: #2d3748;
+    font-size: 14px;
+}
+
+.constraint-description {
+    color: #4a5568;
+    font-size: 12px;
+    line-height: 1.5;
+}
+
+.constraint-yes-no {
+    display: flex;
+    gap: 12px;
+}
+
+.yes-no-option {
+    display: inline-flex;
+    align-items: center;
+    gap: 8px;
+    padding: 6px 12px;
+    border: 1px solid #e2e8f0;
+    border-radius: 20px;
+    cursor: pointer;
+    font-size: 13px;
+    color: #2d3748;
+    background: #f8fafc;
+}
+
+.yes-no-option.selected {
+    border-color: #667eea;
+    background: #eef2ff;
+}
+
+.constraint-dimensions {
+    display: flex;
+    flex-direction: column;
+    gap: 8px;
+}
+
+.constraint-dimensions-title {
+    font-size: 12px;
+    font-weight: 600;
+    color: #2d3748;
+}
+
+.constraint-empty {
+    font-size: 12px;
+    color: #718096;
+}
+
+.dimension-checklist {
+    display: flex;
+    flex-wrap: wrap;
+    gap: 10px;
+}
+
+.dimension-option {
+    display: inline-flex;
+    align-items: center;
+    gap: 6px;
+    padding: 6px 10px;
+    border: 1px solid #e2e8f0;
+    border-radius: 6px;
+    background: #ffffff;
+    font-size: 12px;
+    color: #2d3748;
+    cursor: pointer;
+}
+
+.dimension-option.selected {
+    border-color: #667eea;
+    background: #eef2ff;
 }
 
 .feedback-form textarea {
