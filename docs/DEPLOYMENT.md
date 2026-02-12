@@ -1,17 +1,33 @@
 # Deployment Guide
 
-This guide covers development and production deployment for the Query Refinement Module.
+This guide covers local development and production deployment for the Query Refinement Module, with a focus on VM-based microservice evaluation.
+
+## Canonical Production Topology
+
+Use this deployment path for production and external integrations:
+
+- `docker-compose.yml` (base services): `postgres`, `redis`, `api`
+- `docker-compose.prod.yml` (production overrides): adds `frontend`, `nginx`
+
+Routing model:
+
+- Client traffic enters via `nginx` on ports `80/443`
+- API traffic is proxied to `api:8000` under `/api/*`
+- Frontend traffic is proxied from `/` to the frontend container
+- Direct API port `8000` is also published by default for diagnostics
+
+`docker-compose.fullstack.yml` is an alternative topology (`backend` naming, different proxy assumptions). Use it only intentionally and do not mix with commands in this guide.
 
 ## Prerequisites
 
-- Docker and Docker Compose (recommended for production)
-- Python 3.12+ and Poetry (for local development)
-- Node.js 20+ (frontend development)
-- PostgreSQL 12+ and Redis 6+ (production services)
+- Docker Engine + Docker Compose plugin
+- VM with persistent disk for database/cache volumes
+- Network access to your LLM provider
+- Optional for local dev: Python 3.12+, Poetry, Node.js 20+
 
-## Environment Setup
+## Environment Configuration
 
-1. Copy the production template:
+1. Copy production template:
 
 ```bash
 cp .env.prod .env
@@ -24,14 +40,75 @@ cp .env.prod .env
 - `ALLOWED_ORIGINS`
 - `QUERY_REFINEMENT_LLM_API_KEY`
 
-3. Optional tuning:
+3. Strongly recommended production settings:
+
+- `ALLOW_REGISTRATION=false`
+- `LOG_FORMAT=json`
+- `ENVIRONMENT=production`
+
+4. Optional throughput tuning:
 
 - `LLM_RATE_LIMIT_RPM`
 - `LLM_RATE_LIMIT_PER_USER_RPM`
 - `LLM_MAX_CONCURRENT`
 - `LLM_MAX_CONCURRENT_PER_USER`
+- `WORKERS`
 
-## Local Development (API)
+## VM Microservice Deployment Runbook
+
+### Step 1: Host preflight
+
+- Ensure ports `80` and `443` are allowed inbound
+- Decide whether port `8000` should be externally reachable; restrict at firewall if not needed
+- Create writable directories: `./logs`, `./logs/nginx`
+
+### Step 2: Start stack
+
+```bash
+docker compose -f docker-compose.yml -f docker-compose.prod.yml up -d --build
+```
+
+### Step 3: Verify services and health
+
+```bash
+docker compose -f docker-compose.yml -f docker-compose.prod.yml ps
+curl -f http://localhost/health
+curl -f http://localhost:8000/ready
+```
+
+Interpretation:
+
+- `/health` confirms nginx→API liveness path
+- `/ready` confirms API dependency readiness (DB/Redis/etc.)
+
+### Step 4: Functional smoke checks
+
+```bash
+curl -i -X POST http://localhost/api/v1/auth/login
+curl -i -X POST http://localhost/api/v1/refinement/start \
+	-H 'Content-Type: application/json' \
+	-H 'Authorization: Bearer <token>' \
+	-d '{"original_query":"effects of aspirin","framework_name":"pico_advanced"}'
+```
+
+### Step 5: Observe runtime
+
+```bash
+docker compose -f docker-compose.yml -f docker-compose.prod.yml logs -f api
+docker compose -f docker-compose.yml -f docker-compose.prod.yml logs -f nginx
+```
+
+## External Integration Readiness Checklist
+
+- `/api/v1` routes are reachable from integrating systems
+- CORS origins in `ALLOWED_ORIGINS` include all browser-based callers
+- Forwarding target for `/forward-to-qa` is reachable from the API container
+- Timeout expectations are aligned (`timeout_seconds` allowed range: `5..120`)
+- Webhook endpoints are reachable from API container egress (if enabled)
+
+## Local Development
+
+### API
 
 ```bash
 poetry install
@@ -39,9 +116,9 @@ poetry run alembic upgrade head
 poetry run uvicorn query_refinement_module.api.main:app --reload
 ```
 
-API: http://localhost:8000
+API default: `http://localhost:8000`
 
-## Local Development (Frontend)
+### Frontend
 
 ```bash
 cd frontend
@@ -49,48 +126,28 @@ npm install
 npm run dev
 ```
 
-Frontend: http://localhost:5173
-
-## Production Deployment (Docker Compose)
-
-```bash
-docker compose -f docker-compose.yml -f docker-compose.prod.yml up -d
-```
-
-Check status and logs:
-
-```bash
-docker compose -f docker-compose.yml -f docker-compose.prod.yml ps
-docker compose -f docker-compose.yml -f docker-compose.prod.yml logs -f api
-```
-
-## VM Quick Start
-
-1. Install Docker and the Compose plugin.
-2. Clone the repo to the VM.
-3. Copy `.env.prod` to `.env` and fill required values.
-4. Start the stack with the compose command above.
-5. Verify:
-
-```bash
-curl http://localhost/health
-curl http://localhost/api/v1/auth/login
-```
+Frontend default: `http://localhost:5173`
 
 ## Migrations
+
+Migrations run automatically in the API container startup command (`alembic upgrade head`).
+For manual execution:
 
 ```bash
 poetry run alembic upgrade head
 ```
 
-## Health Checks
+## Rollback and Recovery
 
-- `/health` for liveness
-- `/ready` for dependency checks
-
-## Rollback
+Fast rollback to last built images:
 
 ```bash
 docker compose -f docker-compose.yml -f docker-compose.prod.yml down
 docker compose -f docker-compose.yml -f docker-compose.prod.yml up -d
 ```
+
+Recommended operational safeguards:
+
+- Keep regular Postgres backups of `postgres_data`
+- Keep Redis persistence enabled (already configured with AOF)
+- Store `.env` securely and version only templates, not secrets

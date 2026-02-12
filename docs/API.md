@@ -96,9 +96,17 @@ The frontend and API accept slash commands during refinement:
 
 Admin endpoints require a superuser account.
 
-- Core admin routes: `/api/v1/admin/...`
-- Session/admin-framework/admin-analytics routes: `/api/v1/api/admin/sessions/...`, `/api/v1/api/admin/frameworks/...`, `/api/v1/api/admin/analytics/...`
+- Core admin routes use: `/api/v1/admin/...`
+- Legacy admin routes (currently still active) use: `/api/v1/api/admin/...`
+
+Current split:
+
+- Sessions: `/api/v1/api/admin/sessions/...`
+- Frameworks: `/api/v1/api/admin/frameworks/...`
+- Analytics: `/api/v1/api/admin/analytics/...`
 
 Notable analytics endpoint:
 
 - `GET /api/v1/api/admin/analytics/dashboard`
+
+If you are building a new integration, prefer non-admin workflow routes under `/api/v1/refinement/*`, `/api/v1/queries/*`, and `/api/v1/webhooks/*` unless superuser-level operations are required.

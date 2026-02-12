@@ -1,13 +1,27 @@
 # Frontend Integration Guide - Progress Tracking & Circuit Breaker
 
-This document describes how to integrate the new real-time progress tracking and circuit breaker monitoring features into your frontend application.
+This document describes how frontend clients should integrate progress tracking and circuit breaker monitoring when running against the production microservice stack.
+
+## Deployment Context
+
+Canonical production routing:
+
+- Browser traffic enters through nginx on `http(s)://<host>`
+- API calls use `/api/v1/...` from that same origin
+- Avoid hardcoding direct `:8000` URLs in browser code for production
+
+Recommended frontend environment variable pattern:
+
+- `VITE_API_BASE_URL=/api/v1` (same-origin via nginx)
+
+This keeps CORS simpler and matches the deployment model in `docker-compose.yml + docker-compose.prod.yml`.
 
 ## Overview
 
-Two major operational features have been added to the backend:
+Two operational features are exposed by backend APIs:
 
-1. **Real-Time Progress Tracking** - Polling-based progress updates for long-running refinement operations
-2. **Circuit Breaker Monitoring** - LLM provider health status and circuit breaker metrics
+1. **Real-Time Progress Tracking** - Polling updates for long-running refinement operations
+2. **Circuit Breaker Monitoring** - LLM provider health and circuit-breaker state
 
 ## Progress Tracking Integration
 
@@ -27,6 +41,7 @@ const { progress, isPolling, error } = useProgressTracking(queryId);
 - Auto-stops on terminal states (completed, failed, cancelled)
 - 1.5 second poll interval (configurable)
 - Automatic cleanup on unmount
+- Works with authenticated API calls to `/api/v1/refinement/queries/{id}/progress`
 
 **Returns:**
 - `progress`: Current progress object (null if not started)
@@ -103,6 +118,8 @@ The progress tracker reports these stages:
 | `failed`                 | 100%       | Error occurred             |
 | `cancelled`              | 100%       | User cancelled             |
 
+Terminal states are: `completed`, `failed`, `cancelled`.
+
 ### 5. Example Progress Data
 
 ```json
@@ -140,6 +157,11 @@ const health = await monitoringService.getLLMHealth();
 // Check specific provider
 const isHealthy = await monitoringService.isProviderHealthy('openai');
 ```
+
+Backend endpoints used:
+
+- `GET /api/v1/monitoring/llm-health`
+- `GET /api/v1/monitoring/circuit-breakers`
 
 ### Use Cases
 
@@ -220,12 +242,15 @@ const checkHealthBeforeStart = async () => {
 - Display progress for operations taking >3 seconds
 - Keep progress visible until terminal state reached
 - Use compact mode in tight spaces
+- Surface graceful error messages for `502/504` when downstream QA forwarding fails
+- Keep polling requests authenticated and scoped to current user session
 
 ❌ **DON'T:**
 - Poll more frequently than 1 second (unnecessary load)
 - Show progress for instant operations
 - Block UI during progress tracking
 - Forget to handle `error` state
+- Assume `:8000` is publicly accessible in production VM environments
 
 ### Error Handling
 
@@ -293,6 +318,16 @@ test('starts polling when queryId provided', () => {
 - **Memory**: Hook cleans up intervals on unmount  
 - **Network**: Minimal overhead (~500 bytes per poll)
 - **Battery**: Polling stops automatically on completion
+
+## Microservice VM Operational Notes
+
+- Prefer relative API paths (`/api/v1/...`) so frontend works behind reverse proxy and TLS termination
+- If you run synthetic monitoring from the browser tier, monitor:
+    - `/health` for liveness
+    - `/api/v1/monitoring/llm-health` for model-provider status
+- Keep frontend retry logic bounded for long operations:
+    - retry transient network errors and `5xx` failures with backoff
+    - avoid retry loops on `4xx` authorization/validation failures
 
 ## Migration Checklist
 

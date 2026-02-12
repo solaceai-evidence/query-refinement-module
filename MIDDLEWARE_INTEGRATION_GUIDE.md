@@ -1,25 +1,34 @@
 # Middleware Integration Guide for External Q&A Systems
 
 ## Overview
-This guide describes how to integrate the Query Refinement Module as a middleware layer in front of an external Q&A system.
 
-The module runs a user-driven multi-turn refinement flow, synthesizes a refined query, and can forward the result to your external service.
+This guide describes how to use the Query Refinement Module as a middleware layer in front of an external Q&A service.
 
-All endpoints are versioned under `/api/v1`.
+The middleware:
 
-## Core Integration Flow
-1. User starts refinement.
-2. User answers follow-up questions across dimensions.
-3. Client triggers synthesis.
-4. Client calls forward-to-QA endpoint.
-5. Middleware returns external QA response and metadata.
+1. Collects clarifications across refinement dimensions
+2. Synthesizes a final integrated query
+3. Optionally forwards that query to your external Q&A endpoint
+4. Returns the downstream response with refinement metadata
 
-## Required Endpoints
+All API routes in this guide are under `/api/v1`.
+
+## End-to-End Flow
+
+1. Authenticate user
+2. Start refinement (`/refinement/start`)
+3. Repeat status/answer loop until `ready_for_synthesis=true`
+4. Synthesize (`/refinement/synthesize`)
+5. Forward to external QA (`/refinement/queries/{query_id}/forward-to-qa`)
+
+## Endpoint Contracts
 
 ### 1) Start refinement
+
 `POST /api/v1/refinement/start`
 
 Request:
+
 ```json
 {
   "original_query": "effects of aspirin",
@@ -27,10 +36,12 @@ Request:
 }
 ```
 
-### 2) Submit answers and commands
+### 2) Submit answer (or slash command)
+
 `POST /api/v1/refinement/queries/{query_id}/answer`
 
 Request:
+
 ```json
 {
   "answer": "adults over 65",
@@ -38,23 +49,44 @@ Request:
 }
 ```
 
+Notes:
+
+- `answer` may be natural language or a slash command (for example `/back`, `/status`)
+- Use `force=true` only for commands that explicitly require confirmation
+
 ### 3) Check status
+
 `GET /api/v1/refinement/queries/{query_id}/status`
 
-### 4) Synthesize refined query
+Integration-critical fields:
+
+- `ready_for_synthesis` (boolean gate for synthesize call)
+- `next_prompt` (next question payload)
+- `is_complete` (workflow status)
+
+### 4) Synthesize
+
 `POST /api/v1/refinement/synthesize`
 
 Request:
+
 ```json
 {
   "query_id": 123
 }
 ```
 
+Response includes:
+
+- `integrated_statement` (canonical refined output)
+- `structured_output` (optional JSON decomposition when available)
+
 ### 5) Forward to external QA
+
 `POST /api/v1/refinement/queries/{query_id}/forward-to-qa`
 
 Request:
+
 ```json
 {
   "qa_system_url": "https://your-qa-system.com/api/query",
@@ -67,7 +99,14 @@ Request:
 }
 ```
 
+Validation constraints:
+
+- `timeout_seconds` must be between `5` and `120`
+- Forwarding requires synthesis to be complete (`refined_query` present)
+- Query ownership is enforced per authenticated user
+
 Response:
+
 ```json
 {
   "query_id": 123,
@@ -88,14 +127,26 @@ Response:
 }
 ```
 
-## Error Handling
-- `400`: refinement not complete or invalid request
-- `403`: unauthorized query access
-- `404`: query not found
-- `502`: external QA system unreachable
-- `504`: external QA timeout
+## Error and Retry Strategy
 
-## Minimal Python Example
+### API status behavior
+
+- `400`: incomplete synthesis or invalid payload
+- `403`: authenticated user does not own this query
+- `404`: query not found
+- `502`: downstream QA system connection/request failure
+- `504`: downstream QA timeout
+- `500`: unexpected middleware failure
+
+### Recommended client retry policy
+
+- Do not retry `400`, `403`, `404`
+- Retry `502`/`504` with exponential backoff and jitter
+- Use bounded retries (`2..3` attempts) and log correlation IDs
+- Make downstream Q&A endpoint idempotent when possible
+
+## Minimal Python Integration Example
+
 ```python
 import requests
 
@@ -103,37 +154,42 @@ API = "http://localhost:8000/api/v1"
 TOKEN = "your-token"
 HEADERS = {"Authorization": f"Bearer {TOKEN}"}
 
-# 1) Start
+# 1) Start refinement
 start = requests.post(
     f"{API}/refinement/start",
     json={"original_query": "effects of aspirin", "framework_name": "pico_advanced"},
     headers=HEADERS,
-).json()
-query_id = start["query_id"]
+)
+start.raise_for_status()
+query_id = start.json()["query_id"]
 
-# 2) Iterative refinement loop (example)
+# 2) Iterate until ready_for_synthesis
 while True:
-    status = requests.get(f"{API}/refinement/queries/{query_id}/status", headers=HEADERS).json()
-    if status.get("ready_for_synthesis"):
+    status = requests.get(f"{API}/refinement/queries/{query_id}/status", headers=HEADERS)
+    status.raise_for_status()
+    state = status.json()
+
+    if state.get("ready_for_synthesis"):
         break
 
-    prompt = status.get("next_prompt")
-    if not prompt:
-        break
+    next_prompt = state.get("next_prompt")
+    if not next_prompt:
+        raise RuntimeError("No next prompt and not ready_for_synthesis")
 
-    user_answer = "example user answer"
-    requests.post(
+    answer_res = requests.post(
         f"{API}/refinement/queries/{query_id}/answer",
-        json={"answer": user_answer, "force": False},
+        json={"answer": "example user answer", "force": False},
         headers=HEADERS,
     )
+    answer_res.raise_for_status()
 
 # 3) Synthesize
-requests.post(
+synth = requests.post(
     f"{API}/refinement/synthesize",
     json={"query_id": query_id},
     headers=HEADERS,
 )
+synth.raise_for_status()
 
 # 4) Forward to external QA
 forward = requests.post(
@@ -146,16 +202,21 @@ forward = requests.post(
         "forward_original_query": False,
     },
     headers=HEADERS,
-).json()
+)
+forward.raise_for_status()
+data = forward.json()
 
-print(forward["refined_query"])
-print(forward["qa_system_response"])
+print(data["refined_query"])
+print(data["qa_system_status_code"])
+print(data["qa_system_response"])
 ```
 
-## Webhooks (Optional)
-Webhook APIs are available at `/api/v1/webhooks` for event-driven integrations.
+## Webhooks (Optional, Event-Driven Integration)
 
-Typical events for this flow:
+Webhook management endpoints are under `/api/v1/webhooks`.
+
+Typical event sequence for this workflow:
+
 - `refinement.started`
 - `refinement.step_completed`
 - `refinement.complete`
@@ -163,9 +224,11 @@ Typical events for this flow:
 - `synthesis.complete`
 - `query.forwarded`
 
-## Production Notes
-- Use `/api/v1` consistently in clients and scripts.
-- Use `ALLOW_REGISTRATION=false` when credentials are provisioned by admins.
-- Ensure `ALLOWED_ORIGINS` includes frontend and middleware callers.
-- Set `LOG_FORMAT=json` and `LOG_FILE` for operational visibility.
-- Keep `timeout_seconds` conservative when forwarding to external systems.
+## Production Integration Notes
+
+- Use `/api/v1` consistently across all clients and middleware adapters
+- Keep `ALLOW_REGISTRATION=false` when users are provisioned administratively
+- Set `ALLOWED_ORIGINS` to all browser-based callers
+- Verify QA system URL is reachable from inside the API container network path
+- Keep `timeout_seconds` conservative to avoid thread/worker starvation
+- Persist logs in JSON format for observability (`LOG_FORMAT=json`)
