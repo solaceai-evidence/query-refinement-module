@@ -4,11 +4,12 @@ Admin endpoints for advanced analytics and usage statistics.
 Provides aggregated metrics on refinement completion rates, dimension usage,
 command patterns, and LLM performance.
 """
-from typing import List, Dict, Any, Optional
+from typing import List, Dict, Any, Optional, Iterable
 from fastapi import APIRouter, Depends, Query as QueryParam
 from sqlalchemy.orm import Session
 from sqlalchemy import func, case, and_, or_
 from datetime import datetime, timedelta
+import re
 
 from query_refinement_module.api.auth import get_current_user
 from query_refinement_module.api.routes.admin import require_superuser
@@ -17,11 +18,39 @@ from query_refinement_module.db.models.query_session import QuerySession
 from query_refinement_module.db.models.query import Query as QueryModel
 from query_refinement_module.db.models.refinement_step import RefinementStep
 from query_refinement_module.db.models.followup_history import FollowUpHistory
-from query_refinement_module.db.models.audit_log import AuditLog
+from query_refinement_module.db.models.audit_log import AuditLog, AuditSeverity
+from query_refinement_module.db.models.frontend_log import FrontendLog
 from query_refinement_module.db.session import get_db
 from query_refinement_module.tracing import get_request_id
 
 router = APIRouter(prefix="/api/admin/analytics", tags=["admin", "analytics"])
+
+
+def _percentile(values: Iterable[int], percentile: float) -> Optional[float]:
+    items = sorted(v for v in values if v is not None)
+    if not items:
+        return None
+    if percentile <= 0:
+        return float(items[0])
+    if percentile >= 100:
+        return float(items[-1])
+    k = (len(items) - 1) * (percentile / 100.0)
+    f = int(k)
+    c = min(f + 1, len(items) - 1)
+    if f == c:
+        return float(items[f])
+    d0 = items[f] * (c - k)
+    d1 = items[c] * (k - f)
+    return float(d0 + d1)
+
+
+def _normalize_endpoint(url: Optional[str]) -> Optional[str]:
+    if not url:
+        return None
+    path = url.split("?", 1)[0]
+    path = re.sub(r"/queries/\d+", "/queries/:id", path)
+    path = re.sub(r"/sessions/\d+", "/sessions/:id", path)
+    return path
 
 
 @router.get("/completion-rates", response_model=Dict[str, Any])
@@ -471,4 +500,93 @@ async def get_llm_performance(
         "period_days": days,
         "request_id": request_id,
         "timestamp": datetime.utcnow().isoformat()
+    }
+
+
+@router.get("/dashboard", response_model=Dict[str, Any])
+async def get_evaluation_dashboard(
+    days: int = QueryParam(7, ge=1, le=365, description="Number of days to analyze"),
+    error_limit: int = QueryParam(50, ge=1, le=500, description="Max errors to return"),
+    current_user: User = Depends(require_superuser),
+    db: Session = Depends(get_db)
+):
+    """
+    Summary dashboard for production evaluation.
+
+    **Admin Only**
+    """
+    cutoff_date = datetime.utcnow() - timedelta(days=days)
+    request_id = get_request_id()
+
+    total_sessions = db.query(func.count(QuerySession.id))\
+        .filter(QuerySession.created_at >= cutoff_date)\
+        .scalar() or 0
+
+    completed_sessions = db.query(func.count(func.distinct(QuerySession.id)))\
+        .join(QueryModel, QueryModel.query_session_id == QuerySession.id)\
+        .filter(QuerySession.created_at >= cutoff_date)\
+        .filter(QueryModel.refined_query.isnot(None))\
+        .scalar() or 0
+
+    active_sessions = max(total_sessions - completed_sessions, 0)
+
+    audit_errors = db.query(AuditLog)\
+        .filter(AuditLog.timestamp >= cutoff_date)\
+        .filter(AuditLog.severity.in_([AuditSeverity.ERROR, AuditSeverity.CRITICAL]))\
+        .order_by(AuditLog.timestamp.desc())\
+        .limit(error_limit)\
+        .all()
+
+    frontend_errors = db.query(FrontendLog)\
+        .filter(FrontendLog.timestamp >= cutoff_date)\
+        .filter(FrontendLog.level == "error")\
+        .order_by(FrontendLog.timestamp.desc())\
+        .limit(error_limit)\
+        .all()
+
+    network_logs = db.query(FrontendLog)\
+        .filter(FrontendLog.timestamp >= cutoff_date)\
+        .filter(FrontendLog.log_type == "network")\
+        .filter(FrontendLog.network_duration_ms.isnot(None))\
+        .all()
+
+    latency_by_endpoint: Dict[str, List[int]] = {}
+    for entry in network_logs:
+        endpoint = _normalize_endpoint(entry.network_url)
+        if not endpoint:
+            continue
+        latency_by_endpoint.setdefault(endpoint, []).append(entry.network_duration_ms)
+
+    latency_stats = []
+    for endpoint, durations in latency_by_endpoint.items():
+        if not durations:
+            continue
+        latency_stats.append({
+            "endpoint": endpoint,
+            "count": len(durations),
+            "avg_ms": round(sum(durations) / len(durations), 2),
+            "p50_ms": _percentile(durations, 50),
+            "p95_ms": _percentile(durations, 95),
+        })
+
+    latency_stats.sort(key=lambda item: item["count"], reverse=True)
+
+    return {
+        "workflow_counts": {
+            "total_sessions": total_sessions,
+            "completed_sessions": completed_sessions,
+            "active_sessions": active_sessions,
+            "completion_rate": round((completed_sessions / total_sessions * 100), 2) if total_sessions else 0.0,
+        },
+        "recent_errors": {
+            "audit": [entry.to_dict() for entry in audit_errors],
+            "frontend": [entry.to_dict() for entry in frontend_errors],
+        },
+        "latency": {
+            "source": "frontend network logs",
+            "endpoints": latency_stats,
+        },
+        "period_days": days,
+        "request_id": request_id,
+        "timestamp": datetime.utcnow().isoformat(),
     }

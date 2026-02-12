@@ -52,7 +52,7 @@ Frontend available at: http://localhost:5173
 
 ### 3. Use the Application
 
-1. Register/login at http://localhost:5173
+1. Login at http://localhost:5173 with provided credentials
 2. Select a refinement framework
 3. Enter your research query
 4. Answer clarifying questions
@@ -93,8 +93,26 @@ DATABASE_URL=sqlite:///query_refinement.db
 
 # Session Security
 SECRET_KEY=change-this-in-production
+ALLOW_REGISTRATION=false
 ```
 
+## User Management (No Self-Registration)
+
+Create users and superusers programmatically:
+
+```bash
+# Create a user (password auto-generated if omitted)
+poetry run python scripts/create_user.py --username alice --email alice@example.com
+
+# Create a superuser
+poetry run python scripts/create_user.py --username admin --superuser
+
+# Promote an existing user to superuser
+poetry run python scripts/make_superuser.py alice
+
+# Bulk import users from generated credentials
+poetry run python scripts/import_credentials.py scripts/credentials.csv
+```
 ## Custom Frameworks
 
 Define frameworks in YAML:

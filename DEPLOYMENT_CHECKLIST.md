@@ -7,6 +7,8 @@ Use this as a quick deployment checklist. For details, see docs/DEPLOYMENT.md.
 - [ ] Fill `.env` from `.env.prod` with real values
 - [ ] Set `SECRET_KEY` and `QUERY_REFINEMENT_LLM_API_KEY`
 - [ ] Set `DATABASE_URL` and `ALLOWED_ORIGINS`
+- [ ] Set `ALLOW_REGISTRATION=false` for credential-only access
+- [ ] Optional: set `LOG_FILE` for persisted backend logs
 - [ ] Confirm Docker and Docker Compose are installed
 
 ## Deploy
@@ -18,7 +20,8 @@ docker compose -f docker-compose.yml -f docker-compose.prod.yml up -d
 ## Verify
 
 - [ ] `curl http://localhost/health`
-- [ ] `curl http://localhost/api/v1/auth/login` returns 401/422
+- [ ] `curl -i -X POST http://localhost/api/v1/auth/login` returns 401/422
+- [ ] `curl -i -X POST http://localhost/api/v1/auth/register -H 'Content-Type: application/json' -d '{"username":"u","password":"x"}'` returns 403 when registration is disabled
 - [ ] Frontend loads and can log in
 
 ## Post-Deployment

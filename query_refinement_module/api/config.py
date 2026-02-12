@@ -49,6 +49,7 @@ class Settings(BaseSettings):
     
     # Security
     secret_key: str = Field(default="your-secret-key-change-this-in-production")
+    allow_registration: bool = Field(default=True, description="Allow self-service user registration")
     
     @model_validator(mode='after')
     def validate_secret_key_in_production(self) -> 'Settings':
