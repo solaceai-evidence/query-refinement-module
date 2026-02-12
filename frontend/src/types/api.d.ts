@@ -9,7 +9,8 @@
 
 export interface NextPrompt {
     aspect_id: string;
-    aspect_name: string;
+    name: string;
+    aspect_name?: string;
     question: string;
     description: string;
 }
@@ -115,7 +116,12 @@ export interface GetRefinementStatusResponse {
     refined_query: string | null;
     is_complete: boolean;
     current_aspect: string | null;
+    next_prompt?: NextPrompt | null;
+    ready_for_synthesis?: boolean;
+    aspects?: AspectSummary[];
+    conversation_history?: ConversationHistoryItem[];
     aspects_summary: {
+        total_aspects?: number;
         aspects: AspectSummary[];
         [key: string]: any;
     };
@@ -210,11 +216,13 @@ export type ConversationHistoryItem =
 export interface RefinementService {
     getFrameworks(): Promise<string[]>;
     startRefinement(frameworkName: string, initialQuery: string): Promise<StartRefinementResponse>;
-    continueRefinement(sessionId: number, queryId: number, userResponse: string): Promise<ContinueRefinementResponse>;
+    continueRefinement(sessionId: number, queryId: number, userResponse: string, force?: boolean): Promise<ContinueRefinementResponse>;
     getSynthesis(queryId: number): Promise<SynthesizeQueryResponse>;
     getQuery(queryId: number): Promise<any>;
     getStatus(queryId: number): Promise<GetRefinementStatusResponse>;
     listQueries(skip?: number, limit?: number): Promise<any[]>;
+    getUserStatus(): Promise<any>;
+    abandonSession(sessionId: number): Promise<any>;
     submitFeedback(
         queryId: number,
         rating: number | null,

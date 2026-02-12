@@ -39,10 +39,11 @@ class TestSynthesisTemplateAlignment:
         
         for field_name, field_info in model_fields.items():
             if field_info.is_required():
-                # Use validation_alias if present, otherwise use field name
                 llm_field_name = field_info.validation_alias or field_name
-                assert f'"{llm_field_name}"' in SYNTHESIS_TEMPLATE, \
-                    f"Required field '{field_name}' (LLM name: '{llm_field_name}') missing from synthesis template"
+                assert (
+                    f'"{field_name}"' in SYNTHESIS_TEMPLATE
+                    or f'"{llm_field_name}"' in SYNTHESIS_TEMPLATE
+                ), f"Required field '{field_name}' missing from synthesis template"
     
     def test_synthesis_example_responses_validate(self):
         """Verify template uses LLM field names throughout."""
@@ -110,24 +111,18 @@ class TestResponseModelFieldNaming:
     """Verify consistent field naming across response models."""
     
     def test_no_ambiguous_field_names(self):
-        """Ensure model uses Python/DB field names, not LLM field names."""
-        # QueryRefinementResponse should use Python/DB field names
+        """Ensure model uses canonical synthesis field names."""
         model_fields = QueryRefinementResponse.model_fields
         field_names = set(model_fields.keys())
         
-        # Should have synthesized_statement (Python/DB name)
-        assert "synthesized_statement" in field_names, \
-            "Model should have 'synthesized_statement' field for Python code access"
+        assert "integrated_statement" in field_names, \
+            "Model should expose 'integrated_statement' as canonical field"
         
-        # Should have refined_dimensions (Python/DB name)
-        assert "refined_dimensions" in field_names, \
-            "Model should have 'refined_dimensions' field for Python code access"
+        assert "dimensions_specifications" in field_names, \
+            "Model should expose 'dimensions_specifications' as canonical field"
         
-        # Should NOT have LLM field names as actual field names
-        assert "integrated_statement" not in field_names, \
-            "Model should not have 'integrated_statement' as field name (only as alias)"
-        assert "dimensions_specifications" not in field_names, \
-            "Model should not have 'dimensions_specifications' as field name (only as alias)"
+        assert "synthesized_statement" not in field_names
+        assert "refined_dimensions" not in field_names
     
     def test_dimension_response_field_consistency(self):
         """Ensure DimensionEvaluationResponse uses consistent field names."""
@@ -170,8 +165,8 @@ class TestTemplateToModelIntegration:
         
         # Map LLM field names to model field names
         field_mapping = {
-            "integrated_statement": "synthesized_statement",
-            "dimensions_specifications": "refined_dimensions",
+            "integrated_statement": "integrated_statement",
+            "dimensions_specifications": "dimensions_specifications",
         }
         
         # Check that template fields map to model fields (accounting for aliases)
@@ -210,13 +205,13 @@ class TestTemplateToModelIntegration:
         # Parse with Pydantic model
         response = QueryRefinementResponse(**llm_response)
         
-        # Verify Python code can access via DB field names
-        assert response.synthesized_statement == "Test research statement"
-        assert response.refined_dimensions == {"population": "adults", "condition": "diabetes"}
+        # Verify code can access canonical names
+        assert response.integrated_statement == "Test research statement"
+        assert response.dimensions_specifications == {"population": "adults", "condition": "diabetes"}
         
         # Verify the aliases worked
-        assert hasattr(response, 'synthesized_statement')
-        assert hasattr(response, 'refined_dimensions')
+        assert hasattr(response, 'integrated_statement')
+        assert hasattr(response, 'dimensions_specifications')
 
 
 if __name__ == "__main__":

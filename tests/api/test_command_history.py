@@ -17,7 +17,6 @@ from query_refinement_module.db.crud import (
     create_user,
     create_query_session,
     create_query,
-    create_refinement_step,
 )
 from query_refinement_module.schema.registry import get_framework
 from query_refinement_module.core import RefinementSession
@@ -40,16 +39,20 @@ def db(test_db_session):
 
 @pytest.fixture
 def session_manager():
-    """Create a SessionManager instance for testing."""
+    """Get shared SessionManager and isolate Redis keys for deterministic tests."""
     from query_refinement_module.api.dependencies import get_session_manager
-    manager = SessionManager(redis_url="redis://localhost:6379/1")  # Use test DB
-    
-    def override_get_session_manager():
-        return manager
-    
-    app.dependency_overrides[get_session_manager] = override_get_session_manager
+    manager = get_session_manager()
+
+    pattern = f"{manager.key_prefix}*"
+    keys = manager.redis_client.keys(pattern)
+    if keys:
+        manager.redis_client.delete(*keys)
+
     yield manager
-    app.dependency_overrides.clear()
+
+    keys = manager.redis_client.keys(pattern)
+    if keys:
+        manager.redis_client.delete(*keys)
 
 
 @pytest.fixture
@@ -80,21 +83,22 @@ def query_with_session(db: Session, auth_user_and_token, session_manager):
     user, token = auth_user_and_token
     
     # Create session and query
-    db_session = create_query_session(db, user_id=user.id)
+    db_session = create_query_session(db, user_id=user.id, framework_name="pico_advanced")
     db_query = create_query(
         db,
-        user_id=user.id,
         session_id=db_session.id,
         original_query="Test query for commands",
-        framework_name="pico_advanced"
     )
     
     # Create refinement session
     framework = get_framework("pico_advanced")
     refinement_session = RefinementSession(
-        original_query="Test query for commands",
-        refinement_framework=framework.aspects
+        original_query="Test query for commands"
     )
+
+    for aspect in framework:
+        refinement_session.add_step(aspect)
+    refinement_session._complete_framework = list(framework)
     
     # Answer first dimension to enable navigation commands
     active_step = refinement_session.get_active_step()
@@ -104,7 +108,6 @@ def query_with_session(db: Session, auth_user_and_token, session_manager):
             'response': 'Adults aged 18-65'
         })
         active_step.is_complete = True
-        refinement_session.advance_to_next_step()
     
     session_manager.save_session(db_query.id, refinement_session)
     
@@ -206,7 +209,6 @@ class TestCommandHistoryEndpoint:
                     'response': f'Answer {i}'
                 })
                 active.is_complete = True
-                session.advance_to_next_step()
         
         session_manager.save_session(db_query.id, session)
         
@@ -427,7 +429,6 @@ class TestCommandAuditLogging:
                     'response': f'A{i}'
                 })
                 active.is_complete = True
-                session.advance_to_next_step()
         
         session_manager.save_session(db_query.id, session)
         
@@ -469,7 +470,6 @@ class TestCommandAuditLogging:
                     'response': f'A{i}'
                 })
                 active.is_complete = True
-                session.advance_to_next_step()
         
         session_manager.save_session(db_query.id, session)
         

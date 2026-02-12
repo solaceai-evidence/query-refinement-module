@@ -8,9 +8,9 @@ from query_refinement_module.schema import RefinementAspect
 def make_aspect(**overrides) -> RefinementAspect:
     base_kwargs = {
         "id": "demo",
-        "aspect_name": "Demo Aspect",
-        "aspect_description": "Tracks demo behaviour",
-        "evaluation_instructions": "Review this query: {query}",
+        "name": "Demo Aspect",
+        "description": "Tracks demo behaviour",
+        "specifications": "Review this query: {query}",
     }
     base_kwargs.update(overrides)
     return RefinementAspect(**base_kwargs)
@@ -20,9 +20,9 @@ def test_refinement_aspect_injects_query_when_no_placeholder():
     """Test that query is injected at the beginning if {query} placeholder is missing."""
     aspect = RefinementAspect(
         id="demo",
-        aspect_name="Missing Placeholder",
-        aspect_description="No placeholder in prompt",
-        evaluation_instructions="Evaluate the demographic characteristics.",
+        name="Missing Placeholder",
+        description="No placeholder in prompt",
+        specifications="Evaluate the demographic characteristics.",
     )
     
     user_prompt = aspect.get_evaluation_instructions_prompt("What is the effect of exercise?")
@@ -37,9 +37,9 @@ def test_refinement_aspect_uses_placeholder_when_present():
     """Test that query placeholder is properly substituted when present in analysis_prompt."""
     aspect = RefinementAspect(
         id="demo",
-        aspect_name="With Placeholder",
-        aspect_description="Has placeholder in prompt",
-        evaluation_instructions="Analyze this query: {query}\n\nConsider all aspects.",
+        name="With Placeholder",
+        description="Has placeholder in prompt",
+        specifications="Analyze this query: {query}\n\nConsider all aspects.",
     )
     
     user_prompt = aspect.get_evaluation_instructions_prompt("What is the effect of exercise?")

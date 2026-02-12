@@ -2152,7 +2152,7 @@ def get_command_history(
     
     # Verify query ownership
     query = get_query(db, query_id)
-    if not query or query.user_id != current_user.id:
+    if not query or query.session.user_id != current_user.id:
         raise HTTPException(
             status_code=status.HTTP_404_NOT_FOUND,
             detail="Query not found"

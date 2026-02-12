@@ -21,21 +21,21 @@ def sample_aspects():
     return [
         RefinementAspect(
             id="population",
-            aspect_name="Population",
-            aspect_description="The target population being studied",
-            evaluation_criteria="Check population is specific",
+            name="Population",
+            description="The target population being studied",
+            specifications="Check population is specific",
         ),
         RefinementAspect(
             id="intervention",
-            aspect_name="Intervention",
-            aspect_description="The intervention being evaluated",
-            evaluation_criteria="Check intervention is defined",
+            name="Intervention",
+            description="The intervention being evaluated",
+            specifications="Check intervention is defined",
         ),
         RefinementAspect(
             id="outcome",
-            aspect_name="Outcome",
-            aspect_description="The outcome being measured",
-            evaluation_criteria="Check outcome is measurable",
+            name="Outcome",
+            description="The outcome being measured",
+            specifications="Check outcome is measurable",
         ),
     ]
 
@@ -189,7 +189,7 @@ class TestSynthesisResponseValidation:
         
         # Should not raise
         result = validate_synthesis_response(response)
-        assert result.synthesized_statement == "A refined research question"
+        assert result.integrated_statement == "A refined research question"
     
     def test_valid_response_without_optional_fields(self):
         """Test valid synthesis response with optional fields omitted."""
@@ -224,7 +224,7 @@ class TestSynthesisResponseValidation:
         
         # Should not raise
         result = validate_synthesis_response(response)
-        assert result.synthesized_statement == "A refined research question"
+        assert result.integrated_statement == "A refined research question"
         assert result.search_optimized.grey_literature is None
         assert result.terminology.primary_terms is None
         assert result.terminology.domain_specific is None

@@ -12,6 +12,7 @@ Tests cover:
 """
 import requests
 import time
+import pytest
 from typing import Dict, Any, Optional
 
 # Test configuration
@@ -33,6 +34,12 @@ def check_api_health() -> bool:
         return False
 
 
+def setup_module(module):
+    """Skip this integration suite when API server is not running."""
+    if not check_api_health():
+        pytest.skip("Integration API server not available at http://localhost:8000", allow_module_level=True)
+
+
 def register_and_login() -> str:
     """Register a test user and return access token."""
     import time
@@ -49,10 +56,13 @@ def register_and_login() -> str:
     
     # Register new user
     register_response = requests.post(
-        f"{BASE_URL}/api/auth/register",
+        f"{BASE_URL}/auth/register",
         json=test_user_unique
     )
-    
+
+    if register_response.status_code == 403:
+        pytest.skip("Registration is disabled (ALLOW_REGISTRATION=false); skipping integration registration-based tests")
+
     if register_response.status_code not in [200, 201]:
         # Print detailed error for debugging
         print(f"Registration failed: {register_response.status_code}")
@@ -61,7 +71,7 @@ def register_and_login() -> str:
     
     # Login with the new user
     login_response = requests.post(
-        f"{BASE_URL}/api/auth/login",
+        f"{BASE_URL}/auth/login",
         data={
             "username": username,
             "password": test_user_unique["password"]
@@ -80,7 +90,7 @@ def create_test_session(token: str, framework: str = "pico_advanced") -> Dict[st
     """Create a test refinement session and return session data."""
     headers = {"Authorization": f"Bearer {token}"}
     response = requests.post(
-        f"{BASE_URL}/api/refinement/start",
+        f"{BASE_URL}/refinement/start",
         json={
             "original_query": "effects of aspirin on stroke prevention in elderly patients",
             "framework_name": framework
@@ -95,7 +105,7 @@ def submit_command(token: str, query_id: int, command: str, force: bool = False)
     """Submit a command and return response data."""
     headers = {"Authorization": f"Bearer {token}"}
     response = requests.post(
-        f"{BASE_URL}/api/refinement/queries/{query_id}/answer",
+        f"{BASE_URL}/refinement/queries/{query_id}/answer",
         json={"answer": command, "force": force},
         headers=headers
     )
@@ -107,7 +117,7 @@ def submit_answer(token: str, query_id: int, answer: str) -> Dict[str, Any]:
     """Submit a regular answer and return response data."""
     headers = {"Authorization": f"Bearer {token}"}
     response = requests.post(
-        f"{BASE_URL}/api/refinement/queries/{query_id}/answer",
+        f"{BASE_URL}/refinement/queries/{query_id}/answer",
         json={"answer": answer},
         headers=headers
     )
@@ -119,7 +129,7 @@ def get_session_status(token: str, query_id: int) -> Dict[str, Any]:
     """Get session status via API endpoint."""
     headers = {"Authorization": f"Bearer {token}"}
     response = requests.get(
-        f"{BASE_URL}/api/refinement/queries/{query_id}/status",
+        f"{BASE_URL}/refinement/queries/{query_id}/status",
         headers=headers
     )
     assert response.status_code == 200, f"Failed to get status: {response.text}"
@@ -646,7 +656,7 @@ def test_submit_then_synthesize():
     
     # Try synthesis
     response = requests.post(
-        f"{BASE_URL}/api/refinement/synthesize",
+        f"{BASE_URL}/refinement/synthesize",
         json={"query_id": query_id},
         headers=headers
     )

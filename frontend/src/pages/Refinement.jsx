@@ -183,7 +183,7 @@ const Refinement = () => {
 
     /**
      * Enhanced error handler with circuit breaker diagnostics
-     * @param {Error} error - The error object
+        * @param {any} error - The error object
      * @param {string} operation - Description of failed operation
      * @returns {Promise<string>} - User-friendly error message
      */

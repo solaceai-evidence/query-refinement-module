@@ -7,8 +7,20 @@ import requests
 import json
 import sys
 import time
+import pytest
 
 BASE_URL = "http://localhost:8000/api/v1"
+
+
+def _api_available() -> bool:
+    try:
+        return requests.get("http://localhost:8000/health", timeout=3).status_code == 200
+    except requests.exceptions.RequestException:
+        return False
+
+
+if not _api_available():
+    pytest.skip("Live API server not available for frontend workflow test", allow_module_level=True)
 
 def print_section(title):
     print(f"\n{'='*80}")
@@ -37,7 +49,7 @@ def register_and_login():
     }
     
     print(f"Registering user: {username}")
-    response = requests.post(f"{BASE_URL}/api/auth/register", json=register_data)
+    response = requests.post(f"{BASE_URL}/auth/register", json=register_data)
     print_response(response, show_body=False)
     
     if response.status_code not in [200, 201]:
@@ -52,7 +64,7 @@ def register_and_login():
     }
     
     print(f"\nLogging in...")
-    response = requests.post(f"{BASE_URL}/api/auth/login", data=login_data)
+    response = requests.post(f"{BASE_URL}/auth/login", data=login_data)
     print_response(response)
     
     if response.status_code != 200:
@@ -86,7 +98,7 @@ def test_workflow(token):
     
     # Step 1: Get frameworks
     print_section("2. Get Available Frameworks")
-    response = requests.get(f"{BASE_URL}/api/refinement/frameworks", headers=headers)
+    response = requests.get(f"{BASE_URL}/refinement/frameworks", headers=headers)
     print_response(response)
     
     if response.status_code != 200:
@@ -105,7 +117,7 @@ def test_workflow(token):
     }
     
     print(f"Starting refinement with: {start_data}")
-    response = requests.post(f"{BASE_URL}/api/refinement/start", json=start_data, headers=headers)
+    response = requests.post(f"{BASE_URL}/refinement/start", json=start_data, headers=headers)
     print_response(response)
     
     if response.status_code != 201:
@@ -124,7 +136,7 @@ def test_workflow(token):
     if next_prompt:
         print(f"\nNext prompt details:")
         print(f"  - aspect_id: {next_prompt.get('aspect_id')}")
-        print(f"  - aspect_name: {next_prompt.get('aspect_name')}")
+        print(f"  - name: {next_prompt.get('name')}")
         print(f"  - question: {next_prompt.get('question')}")
         print(f"  - description: {next_prompt.get('description')[:100]}..." if next_prompt.get('description') else "  - description: None")
     
@@ -136,7 +148,7 @@ def test_workflow(token):
     
     print(f"Submitting answer: {answer_data['answer']}")
     response = requests.post(
-        f"{BASE_URL}/api/refinement/queries/{query_id}/answer",
+        f"{BASE_URL}/refinement/queries/{query_id}/answer",
         json=answer_data,
         headers=headers
     )
@@ -155,7 +167,7 @@ def test_workflow(token):
     if next_prompt:
         print(f"\nNext prompt details:")
         print(f"  - aspect_id: {next_prompt.get('aspect_id')}")
-        print(f"  - aspect_name: {next_prompt.get('aspect_name')}")
+        print(f"  - name: {next_prompt.get('name')}")
         print(f"  - question: {next_prompt.get('question')}")
         print(f"  - question is None: {next_prompt.get('question') is None}")
         print(f"  - question is empty: {next_prompt.get('question') == ''}")
@@ -166,7 +178,7 @@ def test_workflow(token):
     
     # Step 4: Get status
     print_section("5. Get Status")
-    response = requests.get(f"{BASE_URL}/api/refinement/queries/{query_id}/status", headers=headers)
+    response = requests.get(f"{BASE_URL}/refinement/queries/{query_id}/status", headers=headers)
     print_response(response)
     
     if response.status_code == 200:
@@ -182,7 +194,7 @@ def test_workflow(token):
     command_data = {"answer": "/status"}
     
     response = requests.post(
-        f"{BASE_URL}/api/refinement/queries/{query_id}/answer",
+        f"{BASE_URL}/refinement/queries/{query_id}/answer",
         json=command_data,
         headers=headers
     )

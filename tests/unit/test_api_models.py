@@ -12,9 +12,9 @@ from query_refinement_module.schema import RefinementAspect
 def make_aspect(aspect_id="aspect", name="Aspect"):
     return RefinementAspect(
         id=aspect_id,
-        aspect_name=name,
-        aspect_description=f"Description for {name}",
-        evaluation_instructions="Analyze {query}",
+        name=name,
+        description=f"Description for {name}",
+        specifications="Analyze {query}",
         depends_on=[],
     )
 

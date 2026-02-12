@@ -14,9 +14,9 @@ def sample_aspect():
     """Create a sample RefinementAspect for testing."""
     return RefinementAspect(
         id='test_aspect',
-        aspect_name='Test Aspect',
-        aspect_description='A test aspect for validation',
-        evaluation_instructions='Extract the {query} details carefully.',
+        name='Test Aspect',
+        description='A test aspect for validation',
+        specifications='Extract the {query} details carefully.',
         response_format={'type': 'json'},
         examples=[]
     )
@@ -50,9 +50,9 @@ def test_dependency_section_with_completed_aspects():
     """Should format completed dependency values with markers."""
     aspect = RefinementAspect(
         id='outcome',
-        aspect_name='Outcome',
-        aspect_description='Study outcome',
-        evaluation_instructions='Test',
+        name='Outcome',
+        description='Study outcome',
+        specifications='Test',
         response_format={'type': 'json'},
         depends_on=['population', 'intervention']  # This aspect depends on these
     )
@@ -90,9 +90,9 @@ def test_evaluation_instructions_uses_aspect_field():
     """Should use aspect.evaluation_instructions field."""
     aspect = RefinementAspect(
         id='test',
-        aspect_name='Test',
-        aspect_description='Testing',
-        evaluation_instructions='Extract the {query} details carefully.',
+        name='Test',
+        description='Testing',
+        specifications='Extract the {query} details carefully.',
         response_format={'type': 'json'}
     )
     
@@ -105,9 +105,9 @@ def test_evaluation_instructions_empty_when_not_provided():
     """Should return empty string when evaluation_instructions not provided."""
     aspect = RefinementAspect(
         id='test',
-        aspect_name='Test',
-        aspect_description='Testing',
-        evaluation_instructions='',
+        name='Test',
+        description='Testing',
+        specifications='',
         response_format={'type': 'json'}
     )
     
@@ -122,9 +122,9 @@ def test_examples_section_formats_all_categories(sample_aspect):
     """Should format examples into clear categories."""
     aspect = RefinementAspect(
         id='test',
-        aspect_name='Test',
-        aspect_description='Testing',
-        evaluation_instructions='Test instructions',
+        name='Test',
+        description='Testing',
+        specifications='Test instructions',
         response_format={'type': 'json'},
         examples={
             'clear': [
@@ -155,9 +155,9 @@ def test_examples_section_empty_when_no_examples(sample_aspect):
     """Should return empty string when no examples provided."""
     aspect = RefinementAspect(
         id='test',
-        aspect_name='Test',
-        aspect_description='Testing',
-        evaluation_instructions='Test instructions',
+        name='Test',
+        description='Testing',
+        specifications='Test instructions',
         response_format={'type': 'json'}
     )
     
@@ -170,9 +170,9 @@ def test_unified_prompt_formats_correctly():
     """Should format complete unified prompt with all sections."""
     aspect = RefinementAspect(
         id='population',
-        aspect_name='Population',
-        aspect_description='Target population for study',
-        evaluation_instructions='Identify specific demographics from {query}.',
+        name='Population',
+        description='Target population for study',
+        specifications='Identify specific demographics from {query}.',
         response_format={'type': 'json'},
         examples={
             'clear': [

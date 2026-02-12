@@ -17,7 +17,7 @@ def test_message_structure_with_user_context():
     """Test that messages include user context after global directive with cache markers."""
     # Load framework with user context (force reload from specific file)
     import os
-    os.environ["REFINEMENT_FRAMEWORK_PATH"] = "refinement_frameworks/pico_advanced_complete.yaml"
+    os.environ["REFINEMENT_FRAMEWORK_PATH"] = "refinement_frameworks/frameworks.yaml"
     registry.reload_from_env()
     
     aspects = registry.get_framework("pico_advanced")
@@ -52,11 +52,11 @@ def test_message_structure_with_user_context():
     # 3. Find dimension specification
     dimension_msg = None
     for msg in messages[2:]:
-        if msg["role"] == "system" and aspect.aspect_name in msg["content"]:
+        if msg["role"] == "system" and aspect.name in msg["content"]:
             dimension_msg = msg
             break
     assert dimension_msg is not None, "Should contain current dimension specification"
-    assert aspect.aspect_description in dimension_msg["content"], "Should include dimension description"
+    assert aspect.description in dimension_msg["content"], "Should include dimension description"
     
     # 4. Last message should be user query
     assert messages[-1]["role"] == "user", "Last message should be user query"
@@ -67,7 +67,7 @@ def test_message_structure_with_dependencies():
     """Test that completed dimensions and dependencies are included correctly."""
     # Load framework
     import os
-    os.environ["REFINEMENT_FRAMEWORK_PATH"] = "refinement_frameworks/pico_advanced_complete.yaml"
+    os.environ["REFINEMENT_FRAMEWORK_PATH"] = "refinement_frameworks/frameworks.yaml"
     registry.reload_from_env()
     
     aspects = registry.get_framework("pico_advanced")
@@ -120,7 +120,7 @@ def test_message_structure_with_conversation_history():
     """Test that conversation history is appended correctly."""
     # Load framework
     import os
-    os.environ["REFINEMENT_FRAMEWORK_PATH"] = "refinement_frameworks/pico_advanced_complete.yaml"
+    os.environ["REFINEMENT_FRAMEWORK_PATH"] = "refinement_frameworks/frameworks.yaml"
     registry.reload_from_env()
     
     aspects = registry.get_framework("pico_advanced")
@@ -176,7 +176,7 @@ def test_no_user_context_when_not_specified():
         id="test_dim",
         name="Test Dimension",
         description="Test dimension without user context",
-        evaluation_criteria="Evaluate something",
+        specifications="Evaluate something",
         allow_follow_up=True,
         max_follow_ups=3
     )
@@ -196,7 +196,7 @@ def test_no_user_context_when_not_specified():
     
     # Second should be dimension (not user context)
     assert messages[1]["role"] == "system"
-    assert dimension.aspect_name in messages[1]["content"]
+    assert dimension.name in messages[1]["content"]
     
     # Third should be query
     assert messages[2]["role"] == "user"
@@ -207,7 +207,7 @@ def test_cache_markers_only_on_first_two_system_messages():
     """Test that _cache markers are only applied to global and user context."""
     # Load framework with user context
     import os
-    os.environ["REFINEMENT_FRAMEWORK_PATH"] = "refinement_frameworks/pico_advanced_complete.yaml"
+    os.environ["REFINEMENT_FRAMEWORK_PATH"] = "refinement_frameworks/frameworks.yaml"
     registry.reload_from_env()
     
     aspects = registry.get_framework("pico_advanced")

@@ -3,6 +3,7 @@ Tests for the refinement workflow API endpoints.
 """
 import requests
 import time
+import pytest
 
 # Test configuration
 BASE_URL = "http://localhost:8000/api/v1"
@@ -15,6 +16,10 @@ def check_api_health() -> bool:
         return response.status_code == 200
     except requests.exceptions.RequestException:
         return False
+
+
+if not check_api_health():
+    pytest.skip("API server is not available at http://localhost:8000", allow_module_level=True)
 
 
 def register_and_login() -> str:
@@ -31,16 +36,19 @@ def register_and_login() -> str:
     
     # Register new user
     register_response = requests.post(
-        f"{BASE_URL}/api/auth/register",
+        f"{BASE_URL}/auth/register",
         json=test_user_unique
     )
+
+    if register_response.status_code == 403:
+        pytest.skip("Self-service registration is disabled in this environment")
     
     if register_response.status_code not in [200, 201]:
         raise Exception(f"Failed to register user: {register_response.text}")
     
     # Login with the new user
     login_response = requests.post(
-        f"{BASE_URL}/api/auth/login",
+        f"{BASE_URL}/auth/login",
         data={
             "username": username,
             "password": test_user_unique["password"]
@@ -64,7 +72,7 @@ def test_get_available_frameworks():
     headers = {"Authorization": f"Bearer {token}"}
     
     response = requests.get(
-        f"{BASE_URL}/api/refinement/frameworks",
+        f"{BASE_URL}/refinement/frameworks",
         headers=headers
     )
     
@@ -83,7 +91,7 @@ def test_start_refinement_workflow():
     
     # Start refinement with a simple medical query
     response = requests.post(
-        f"{BASE_URL}/api/refinement/start",
+        f"{BASE_URL}/refinement/start",
         json={
             "original_query": "effects of aspirin on stroke prevention",
             "framework_name": "pico_advanced"
@@ -110,7 +118,7 @@ def test_start_refinement_workflow():
     # Verify next_prompt structure
     if data["next_prompt"]:
         next_prompt = data["next_prompt"]
-        assert "aspect_name" in next_prompt
+        assert "name" in next_prompt
         assert "question" in next_prompt
     
     print(f"✓ Started refinement - Query ID: {data['query_id']}, Session ID: {data['session_id']}")
@@ -126,7 +134,7 @@ def test_get_refinement_status():
     
     # Start a refinement first
     start_response = requests.post(
-        f"{BASE_URL}/api/refinement/start",
+        f"{BASE_URL}/refinement/start",
         json={
             "original_query": "diabetes treatment in elderly patients",
             "framework_name": "pico_advanced"
@@ -139,7 +147,7 @@ def test_get_refinement_status():
     
     # Get status
     response = requests.get(
-        f"{BASE_URL}/api/refinement/queries/{query_id}/status",
+        f"{BASE_URL}/refinement/queries/{query_id}/status",
         headers=headers
     )
     
@@ -163,7 +171,7 @@ def test_submit_answer():
     
     # Start a refinement first
     start_response = requests.post(
-        f"{BASE_URL}/api/refinement/start",
+        f"{BASE_URL}/refinement/start",
         json={
             "original_query": "hypertension medication effectiveness",
             "framework_name": "pico_advanced"
@@ -182,7 +190,7 @@ def test_submit_answer():
     
     # Submit an answer
     response = requests.post(
-        f"{BASE_URL}/api/refinement/queries/{query_id}/answer",
+        f"{BASE_URL}/refinement/queries/{query_id}/answer",
         json={
             "answer": "Adults over 65 years old with diagnosed hypertension"
         },
@@ -211,7 +219,7 @@ def test_synthesize_query():
     
     # Start a refinement first
     start_response = requests.post(
-        f"{BASE_URL}/api/refinement/start",
+        f"{BASE_URL}/refinement/start",
         json={
             "original_query": "cancer screening methods",
             "framework_name": "pico_advanced"
@@ -224,7 +232,7 @@ def test_synthesize_query():
     
     # Synthesize (this will work even without answers - returns original query)
     response = requests.post(
-        f"{BASE_URL}/api/refinement/synthesize",
+        f"{BASE_URL}/refinement/synthesize",
         json={
             "query_id": query_id
         },
@@ -235,11 +243,11 @@ def test_synthesize_query():
     if response.status_code == 200:
         data = response.json()
         assert data["query_id"] == query_id
-        assert "refined_query" in data
+        assert "integrated_statement" in data
         assert "used_llm" in data
         assert "structured_output" in data
         print(f"✓ Synthesized query - Used LLM: {data['used_llm']}")
-        print(f"  Refined: {data['refined_query'][:100]}...")
+        print(f"  Refined: {data['integrated_statement'][:100]}...")
     elif response.status_code in [500, 400]:
         # Expected if LLM provider not configured
         print(f"⚠ Query synthesis requires LLM configuration: {response.status_code}")
@@ -251,7 +259,7 @@ def test_unauthorized_access():
     """Test that endpoints require authentication."""
     # Try to start refinement without token
     response = requests.post(
-        f"{BASE_URL}/api/refinement/start",
+        f"{BASE_URL}/refinement/start",
         json={
             "original_query": "test query",
             "framework_name": "pico_advanced"
@@ -268,7 +276,7 @@ def test_invalid_framework():
     headers = {"Authorization": f"Bearer {token}"}
     
     response = requests.post(
-        f"{BASE_URL}/api/refinement/start",
+        f"{BASE_URL}/refinement/start",
         json={
             "original_query": "test query",
             "framework_name": "nonexistent_framework"
@@ -290,7 +298,7 @@ def test_command_status():
     
     # Start a refinement session
     start_response = requests.post(
-        f"{BASE_URL}/api/refinement/start",
+        f"{BASE_URL}/refinement/start",
         json={
             "original_query": "effects of aspirin on stroke prevention",
             "framework_name": "pico_advanced"
@@ -302,7 +310,7 @@ def test_command_status():
     
     # Send /status command
     response = requests.post(
-        f"{BASE_URL}/api/refinement/queries/{query_id}/answer",
+        f"{BASE_URL}/refinement/queries/{query_id}/answer",
         json={"answer": "/status"},
         headers=headers
     )
@@ -333,7 +341,7 @@ def test_command_steps():
     
     # Start a refinement session
     start_response = requests.post(
-        f"{BASE_URL}/api/refinement/start",
+        f"{BASE_URL}/refinement/start",
         json={
             "original_query": "effects of aspirin on stroke prevention",
             "framework_name": "pico_advanced"
@@ -345,7 +353,7 @@ def test_command_steps():
     
     # Send /steps command
     response = requests.post(
-        f"{BASE_URL}/api/refinement/queries/{query_id}/answer",
+        f"{BASE_URL}/refinement/queries/{query_id}/answer",
         json={"answer": "/steps"},
         headers=headers
     )
@@ -370,7 +378,7 @@ def test_command_help():
     
     # Start a refinement session
     start_response = requests.post(
-        f"{BASE_URL}/api/refinement/start",
+        f"{BASE_URL}/refinement/start",
         json={
             "original_query": "effects of aspirin on stroke prevention",
             "framework_name": "pico_advanced"
@@ -382,7 +390,7 @@ def test_command_help():
     
     # Send /help command
     response = requests.post(
-        f"{BASE_URL}/api/refinement/queries/{query_id}/answer",
+        f"{BASE_URL}/refinement/queries/{query_id}/answer",
         json={"answer": "/help"},
         headers=headers
     )
@@ -406,7 +414,7 @@ def test_command_skip():
     
     # Start a refinement session
     start_response = requests.post(
-        f"{BASE_URL}/api/refinement/start",
+        f"{BASE_URL}/refinement/start",
         json={
             "original_query": "effects of aspirin on stroke prevention",
             "framework_name": "pico_advanced"
@@ -419,7 +427,7 @@ def test_command_skip():
     
     # Send /skip command
     response = requests.post(
-        f"{BASE_URL}/api/refinement/queries/{query_id}/answer",
+        f"{BASE_URL}/refinement/queries/{query_id}/answer",
         json={"answer": "/skip"},
         headers=headers
     )
@@ -445,7 +453,7 @@ def test_command_submit():
     
     # Start a refinement session
     start_response = requests.post(
-        f"{BASE_URL}/api/refinement/start",
+        f"{BASE_URL}/refinement/start",
         json={
             "original_query": "effects of aspirin on stroke prevention",
             "framework_name": "pico_advanced"
@@ -457,7 +465,7 @@ def test_command_submit():
     
     # Send /submit command
     response = requests.post(
-        f"{BASE_URL}/api/refinement/queries/{query_id}/answer",
+        f"{BASE_URL}/refinement/queries/{query_id}/answer",
         json={"answer": "/submit"},
         headers=headers
     )
@@ -481,7 +489,7 @@ def test_command_back_after_answer():
     
     # Start a refinement session
     start_response = requests.post(
-        f"{BASE_URL}/api/refinement/start",
+        f"{BASE_URL}/refinement/start",
         json={
             "original_query": "effects of aspirin on stroke prevention",
             "framework_name": "pico_advanced"
@@ -494,7 +502,7 @@ def test_command_back_after_answer():
     
     # Answer first question
     answer_response = requests.post(
-        f"{BASE_URL}/api/refinement/queries/{query_id}/answer",
+        f"{BASE_URL}/refinement/queries/{query_id}/answer",
         json={"answer": "Adults over 50 years old"},
         headers=headers
     )
@@ -506,7 +514,7 @@ def test_command_back_after_answer():
         if second_aspect != first_aspect:
             # Send /back command
             back_response = requests.post(
-                f"{BASE_URL}/api/refinement/queries/{query_id}/answer",
+                f"{BASE_URL}/refinement/queries/{query_id}/answer",
                 json={"answer": "/back", "force": True},  # Use force to bypass confirmation
                 headers=headers
             )
@@ -532,7 +540,7 @@ def test_command_invalid():
     
     # Start a refinement session
     start_response = requests.post(
-        f"{BASE_URL}/api/refinement/start",
+        f"{BASE_URL}/refinement/start",
         json={
             "original_query": "effects of aspirin on stroke prevention",
             "framework_name": "pico_advanced"
@@ -544,7 +552,7 @@ def test_command_invalid():
     
     # Send invalid command
     response = requests.post(
-        f"{BASE_URL}/api/refinement/queries/{query_id}/answer",
+        f"{BASE_URL}/refinement/queries/{query_id}/answer",
         json={"answer": "/invalid"},
         headers=headers
     )
@@ -566,7 +574,7 @@ def test_command_force_confirmation():
     
     # Start a refinement session with framework that has dependencies
     start_response = requests.post(
-        f"{BASE_URL}/api/refinement/start",
+        f"{BASE_URL}/refinement/start",
         json={
             "original_query": "effects of aspirin on stroke prevention",
             "framework_name": "pico_advanced_complete"  # Has dependencies
@@ -584,14 +592,14 @@ def test_command_force_confirmation():
     
     # Answer first question to move forward
     requests.post(
-        f"{BASE_URL}/api/refinement/queries/{query_id}/answer",
+        f"{BASE_URL}/refinement/queries/{query_id}/answer",
         json={"answer": "Adults over 50 years old"},
         headers=headers
     )
     
     # Try /restart without force flag
     response = requests.post(
-        f"{BASE_URL}/api/refinement/queries/{query_id}/answer",
+        f"{BASE_URL}/refinement/queries/{query_id}/answer",
         json={"answer": "/restart", "force": False},
         headers=headers
     )
@@ -605,7 +613,7 @@ def test_command_force_confirmation():
         
         # Now send with force=true
         force_response = requests.post(
-            f"{BASE_URL}/api/refinement/queries/{query_id}/answer",
+            f"{BASE_URL}/refinement/queries/{query_id}/answer",
             json={"answer": "/restart", "force": True},
             headers=headers
         )

@@ -6,6 +6,7 @@ import requests
 import json
 import os
 import time
+import pytest
 from typing import Dict
 
 BASE_URL = "http://localhost:8000/api/v1"
@@ -48,6 +49,10 @@ def check_api_health():
         return False
 
 
+if not check_api_health():
+    pytest.skip("API server is not available at http://localhost:8000", allow_module_level=True)
+
+
 def print_response(step: str, response: requests.Response):
     """Print formatted response."""
     print(f"\n{'=' * 60}")
@@ -81,10 +86,10 @@ def test_1_register_user():
         "name": "Test User",
         "password": "TestPass123!"
     }
-    response = requests.post(f"{BASE_URL}/api/auth/register", json=payload)
+    response = requests.post(f"{BASE_URL}/auth/register", json=payload)
     result = print_response("1. Register User", response)
     
-    if response.status_code == 200:
+    if response.status_code in (200, 201):
         data = response.json()
         test_data["user_id"] = data.get("id")
     return result
@@ -97,7 +102,7 @@ def test_2_login():
         "password": "TestPass123!"
     }
     response = requests.post(
-        f"{BASE_URL}/api/auth/login",
+        f"{BASE_URL}/auth/login",
         data=payload,  # Form data, not JSON
         headers={"Content-Type": "application/x-www-form-urlencoded"}
     )
@@ -113,7 +118,7 @@ def test_2_login():
 def test_3_get_current_user():
     """Test getting current user info."""
     response = requests.get(
-        f"{BASE_URL}/api/auth/me",
+        f"{BASE_URL}/auth/me",
         headers=get_auth_headers()
     )
     return print_response("3. Get Current User (/me)", response)
@@ -122,7 +127,7 @@ def test_3_get_current_user():
 def test_4_create_session():
     """Test creating a query session."""
     response = requests.post(
-        f"{BASE_URL}/api/queries/sessions",
+        f"{BASE_URL}/queries/sessions",
         headers=get_auth_headers()
     )
     result = print_response("4. Create Query Session", response)
@@ -136,7 +141,7 @@ def test_4_create_session():
 def test_5_list_sessions():
     """Test listing user's sessions."""
     response = requests.get(
-        f"{BASE_URL}/api/queries/sessions",
+        f"{BASE_URL}/queries/sessions",
         headers=get_auth_headers()
     )
     return print_response("5. List Sessions", response)
@@ -149,7 +154,7 @@ def test_6_get_session():
         return None
     
     response = requests.get(
-        f"{BASE_URL}/api/queries/sessions/{test_data['session_id']}",
+        f"{BASE_URL}/queries/sessions/{test_data['session_id']}",
         headers=get_auth_headers()
     )
     return print_response("6. Get Session Details", response)
@@ -166,7 +171,7 @@ def test_7_create_query():
         "original_query": "What are the effects of exercise on mental health in adults?"
     }
     response = requests.post(
-        f"{BASE_URL}/api/queries/",
+        f"{BASE_URL}/queries/",
         json=payload,
         headers=get_auth_headers()
     )
@@ -185,7 +190,7 @@ def test_8_get_query():
         return None
     
     response = requests.get(
-        f"{BASE_URL}/api/queries/{test_data['query_id']}",
+        f"{BASE_URL}/queries/{test_data['query_id']}",
         headers=get_auth_headers()
     )
     return print_response("8. Get Query Details", response)
@@ -201,7 +206,7 @@ def test_9_update_query():
         "refined_query": "What are the psychological and emotional effects of regular aerobic exercise on mental health outcomes in adults aged 18-65?"
     }
     response = requests.put(
-        f"{BASE_URL}/api/queries/{test_data['query_id']}",
+        f"{BASE_URL}/queries/{test_data['query_id']}",
         json=payload,
         headers=get_auth_headers()
     )
@@ -219,7 +224,7 @@ def test_10_create_refinement_step():
         "aspect_name": "Population"
     }
     response = requests.post(
-        f"{BASE_URL}/api/queries/refinement-steps",
+        f"{BASE_URL}/queries/refinement-steps",
         json=payload,
         headers=get_auth_headers()
     )
@@ -238,7 +243,7 @@ def test_11_list_refinement_steps():
         return None
     
     response = requests.get(
-        f"{BASE_URL}/api/queries/{test_data['query_id']}/refinement-steps",
+        f"{BASE_URL}/queries/{test_data['query_id']}/refinement-steps",
         headers=get_auth_headers()
     )
     return print_response("11. List Refinement Steps", response)
@@ -256,7 +261,7 @@ def test_12_create_followup():
         "answer": "Adults aged 18-65 years"
     }
     response = requests.post(
-        f"{BASE_URL}/api/queries/followups",
+        f"{BASE_URL}/queries/followups",
         json=payload,
         headers=get_auth_headers()
     )
@@ -278,7 +283,7 @@ def test_13_update_followup():
         "answer": "Adults aged 18-65 years, excluding those with severe mental illness"
     }
     response = requests.put(
-        f"{BASE_URL}/api/queries/followups/{test_data['followup_id']}",
+        f"{BASE_URL}/queries/followups/{test_data['followup_id']}",
         json=payload,
         headers=get_auth_headers()
     )
@@ -297,7 +302,7 @@ def test_14_submit_feedback():
         "comments": "The refinement process was very helpful and intuitive!"
     }
     response = requests.post(
-        f"{BASE_URL}/api/feedback/",
+        f"{BASE_URL}/feedback/",
         json=payload,
         headers=get_auth_headers()
     )
@@ -312,7 +317,7 @@ def test_14_submit_feedback():
 def test_15_get_my_feedback():
     """Test getting user's feedback."""
     response = requests.get(
-        f"{BASE_URL}/api/feedback/my-feedback",
+        f"{BASE_URL}/feedback/my-feedback",
         headers=get_auth_headers()
     )
     return print_response("15. Get My Feedback", response)
@@ -325,7 +330,7 @@ def test_16_get_query_feedback():
         return None
     
     response = requests.get(
-        f"{BASE_URL}/api/feedback/query/{test_data['query_id']}",
+        f"{BASE_URL}/feedback/query/{test_data['query_id']}",
         headers=get_auth_headers()
     )
     return print_response("16. Get Query Feedback", response)
@@ -338,7 +343,7 @@ def test_17_end_session():
         return None
     
     response = requests.post(
-        f"{BASE_URL}/api/queries/sessions/{test_data['session_id']}/end",
+        f"{BASE_URL}/queries/sessions/{test_data['session_id']}/end",
         headers=get_auth_headers()
     )
     return print_response("17. End Session", response)

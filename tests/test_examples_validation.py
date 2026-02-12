@@ -7,9 +7,9 @@ def _build_aspect(examples):
     """Create a minimal RefinementAspect for testing examples validation."""
     return RefinementAspect(
         id="demo",
-        aspect_name="Demo",
-        aspect_description="Demo description",
-        evaluation_instructions="Evaluate {query}",
+        name="Demo",
+        description="Demo description",
+        specifications="Evaluate {query}",
         examples=examples,
     )
 

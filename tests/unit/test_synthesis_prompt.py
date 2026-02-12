@@ -14,21 +14,21 @@ def sample_aspects():
     return [
         RefinementAspect(
             id="population",
-            aspect_name="Target Population",
-            aspect_description="Who are the subjects?",
-            evaluation_instructions="Identify the population in the query: {query}",
+            name="Target Population",
+            description="Who are the subjects?",
+            specifications="Identify the population in the query: {query}",
         ),
         RefinementAspect(
             id="intervention",
-            aspect_name="Intervention",
-            aspect_description="What is being tested?",
-            evaluation_instructions="Identify the intervention in the query: {query}",
+            name="Intervention",
+            description="What is being tested?",
+            specifications="Identify the intervention in the query: {query}",
         ),
         RefinementAspect(
             id="outcome",
-            aspect_name="Outcome",
-            aspect_description="What is being measured?",
-            evaluation_instructions="Identify the outcome in the query: {query}",
+            name="Outcome",
+            description="What is being measured?",
+            specifications="Identify the outcome in the query: {query}",
         ),
     ]
 

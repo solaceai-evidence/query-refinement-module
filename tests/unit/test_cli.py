@@ -120,9 +120,9 @@ def test_run_cli_handles_missing_framework(monkeypatch, capsys):
 class StubStep:
     def __init__(self, name="Aspect", question: Optional[str] = None):
         self.refinement_aspect = SimpleNamespace(
-            aspect_name=name, 
+            name=name,
             id="aspect",
-            aspect_description="Test aspect description"
+            description="Test aspect description"
         )
         self.analysis_suggested_question = question
         self.refinement_question = question
@@ -210,7 +210,7 @@ class StubManager:
         }
 
     async def synthesize_refined_query(self, session):
-        return {"refined_query": "refined", "used_llm": True}
+        return {"integrated_statement": "refined", "used_llm": True}
 
 
 def test_run_cli_processes_answer(monkeypatch, capsys):

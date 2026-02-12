@@ -6,8 +6,20 @@ behavior and debugging session reconstruction issues.
 """
 import requests
 import json
+import pytest
 
 BASE_URL = "http://localhost:8000/api/v1"
+
+
+def _api_available() -> bool:
+    try:
+        return requests.get("http://localhost:8000/health", timeout=3).status_code == 200
+    except requests.exceptions.RequestException:
+        return False
+
+
+if not _api_available():
+    pytest.skip("Live API server not available for manual smoke test", allow_module_level=True)
 
 
 def test_admin_sessions_smoke():
@@ -20,7 +32,7 @@ def test_admin_sessions_smoke():
     # Step 1: Create test user
     print("\n[1/8] Creating test user...")
     response = requests.post(
-        f"{BASE_URL}/api/auth/register",
+        f"{BASE_URL}/auth/register",
         json={
             "username": "admin_test_user",
             "email": "admin_test@example.com",
@@ -37,7 +49,7 @@ def test_admin_sessions_smoke():
     # Step 2: Login
     print("\n[2/8] Logging in...")
     response = requests.post(
-        f"{BASE_URL}/api/auth/login",
+        f"{BASE_URL}/auth/login",
         data={
             "username": "admin_test_user",
             "password": "AdminTest123!"
@@ -57,7 +69,7 @@ def test_admin_sessions_smoke():
     # Step 4: Create a session and query for testing
     print("\n[4/8] Creating test session and query...")
     response = requests.post(
-        f"{BASE_URL}/api/queries/sessions",
+        f"{BASE_URL}/queries/sessions",
         json={"framework_name": "pico_advanced"},
         headers=headers
     )
@@ -67,7 +79,7 @@ def test_admin_sessions_smoke():
     print(f"✓ Session created (ID: {session_id})")
     
     response = requests.post(
-        f"{BASE_URL}/api/queries",
+        f"{BASE_URL}/queries",
         json={
             "session_id": session_id,
             "original_query": "What are the effects of exercise on depression?"

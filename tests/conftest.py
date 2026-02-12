@@ -2,12 +2,29 @@
 Pytest configuration and shared fixtures for the Query Refinement Module tests.
 """
 import os
+import logging
 import pytest
 from sqlalchemy import create_engine
 from sqlalchemy.orm import sessionmaker
 from sqlalchemy.pool import StaticPool
 
 from query_refinement_module.db.database import Base
+
+# Ensure logging internals do not raise during late interpreter/test teardown.
+# Some third-party cleanup hooks emit logs after pytest capture streams close.
+logging.raiseExceptions = False
+logging.getLogger("asyncio").setLevel(logging.WARNING)
+
+
+@pytest.fixture(scope="session", autouse=True)
+def configure_test_logging():
+    """Stabilize logging during pytest teardown.
+
+    Some third-party libraries (e.g., litellm cleanup hooks) may emit late asyncio
+    debug logs while pytest is closing capture streams, which can surface as
+    ValueError("I/O operation on closed file") from logging internals.
+    """
+    yield
 
 
 @pytest.fixture(scope="session")

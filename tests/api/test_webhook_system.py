@@ -8,6 +8,7 @@ import time
 import hmac
 import hashlib
 import json
+import uuid
 from fastapi.testclient import TestClient
 from http.server import HTTPServer, BaseHTTPRequestHandler
 from threading import Thread
@@ -56,7 +57,7 @@ def webhook_server():
     thread = Thread(target=server.serve_forever, daemon=True)
     thread.start()
     
-    yield 'http://localhost:8888/webhook'
+    yield 'http://127.0.0.1:8888/webhook'
     
     server.shutdown()
 
@@ -70,18 +71,21 @@ def client():
 @pytest.fixture
 def test_user(client):
     """Create a test user and return auth token."""
-    # Register user
+    # Register user (collision-safe)
+    unique = uuid.uuid4().hex[:12]
+    username = f'webhooktest_{unique}'
+    password = 'TestPass123!'
     response = client.post('/api/v1/auth/register', json={
-        'username': f'webhooktest_{int(time.time())}',
-        'password': 'testpass123',
-        'email': f'webhook{int(time.time())}@test.com'
+        'username': username,
+        'password': password,
+        'email': f'webhook{unique}@test.com'
     })
     assert response.status_code == 201
     
     # Login
     response = client.post('/api/v1/auth/login', data={
-        'username': response.json()['username'],
-        'password': 'testpass123'
+        'username': username,
+        'password': password
     })
     assert response.status_code == 200
     
@@ -100,12 +104,12 @@ class TestWebhookCRUD:
         assert 'event_types' in data
         assert 'refinement.started' in data['event_types']
         assert 'synthesis.complete' in data['event_types']
-        assert len(data['event_types']) == 9
+        assert len(data['event_types']) == 10
     
     def test_create_webhook(self, client, test_user, webhook_server):
         """Test creating a webhook."""
         response = client.post(
-            '/api/webhooks',
+            '/api/v1/webhooks',
             headers={'Authorization': f'Bearer {test_user}'},
             json={
                 'url': webhook_server,
@@ -128,7 +132,7 @@ class TestWebhookCRUD:
         """Test listing user's webhooks."""
         # Create a webhook first
         create_response = client.post(
-            '/api/webhooks',
+            '/api/v1/webhooks',
             headers={'Authorization': f'Bearer {test_user}'},
             json={
                 'url': webhook_server,
@@ -140,7 +144,7 @@ class TestWebhookCRUD:
         
         # List webhooks
         response = client.get(
-            '/api/webhooks',
+            '/api/v1/webhooks',
             headers={'Authorization': f'Bearer {test_user}'}
         )
         
@@ -155,7 +159,7 @@ class TestWebhookCRUD:
         """Test getting webhook details."""
         # Create webhook
         create_response = client.post(
-            '/api/webhooks',
+            '/api/v1/webhooks',
             headers={'Authorization': f'Bearer {test_user}'},
             json={
                 'url': webhook_server,
@@ -182,7 +186,7 @@ class TestWebhookCRUD:
         """Test updating webhook configuration."""
         # Create webhook
         create_response = client.post(
-            '/api/webhooks',
+            '/api/v1/webhooks',
             headers={'Authorization': f'Bearer {test_user}'},
             json={
                 'url': webhook_server,
@@ -213,7 +217,7 @@ class TestWebhookCRUD:
         """Test deleting a webhook."""
         # Create webhook
         create_response = client.post(
-            '/api/webhooks',
+            '/api/v1/webhooks',
             headers={'Authorization': f'Bearer {test_user}'},
             json={
                 'url': webhook_server,
@@ -242,7 +246,7 @@ class TestWebhookCRUD:
         """Test regenerating webhook secret."""
         # Create webhook
         create_response = client.post(
-            '/api/webhooks',
+            '/api/v1/webhooks',
             headers={'Authorization': f'Bearer {test_user}'},
             json={
                 'url': webhook_server,
@@ -276,7 +280,7 @@ class TestWebhookDelivery:
         
         # Create webhook
         create_response = client.post(
-            '/api/webhooks',
+            '/api/v1/webhooks',
             headers={'Authorization': f'Bearer {test_user}'},
             json={
                 'url': webhook_server,
@@ -308,8 +312,9 @@ class TestWebhookDelivery:
         assert received['body']['data']['hello'] == 'world'
         
         # Verify signature
-        assert 'x-webhook-signature' in received['headers']
-        signature_header = received['headers']['x-webhook-signature']
+        normalized_headers = {k.lower(): v for k, v in received['headers'].items()}
+        assert 'x-webhook-signature' in normalized_headers
+        signature_header = normalized_headers['x-webhook-signature']
         
         payload_bytes = json.dumps(received['body'], separators=(',', ':')).encode()
         expected_sig = hmac.new(
@@ -324,7 +329,7 @@ class TestWebhookDelivery:
         """Test viewing delivery history."""
         # Create webhook
         create_response = client.post(
-            '/api/webhooks',
+            '/api/v1/webhooks',
             headers={'Authorization': f'Bearer {test_user}'},
             json={
                 'url': webhook_server,
@@ -363,14 +368,14 @@ class TestWebhookSecurity:
     def test_unauthorized_access(self, client, webhook_server):
         """Test that webhook endpoints require authentication."""
         # Try to create without auth
-        response = client.post('/api/webhooks', json={
+        response = client.post('/api/v1/webhooks', json={
             'url': webhook_server,
             'events': ['refinement.complete']
         })
         assert response.status_code == 401
         
         # Try to list without auth
-        response = client.get('/api/webhooks')
+        response = client.get('/api/v1/webhooks')
         assert response.status_code == 401
     
     def test_webhook_ownership(self, client, webhook_server):
@@ -378,27 +383,27 @@ class TestWebhookSecurity:
         # Create two users
         user1_response = client.post('/api/v1/auth/register', json={
             'username': f'user1_{int(time.time())}',
-            'password': 'pass123',
+            'password': 'Pass123!Aa',
             'email': f'user1_{int(time.time())}@test.com'
         })
         user1_token = client.post('/api/v1/auth/login', data={
             'username': user1_response.json()['username'],
-            'password': 'pass123'
+            'password': 'Pass123!Aa'
         }).json()['access_token']
         
         user2_response = client.post('/api/v1/auth/register', json={
             'username': f'user2_{int(time.time())}',
-            'password': 'pass123',
+            'password': 'Pass123!Aa',
             'email': f'user2_{int(time.time())}@test.com'
         })
         user2_token = client.post('/api/v1/auth/login', data={
             'username': user2_response.json()['username'],
-            'password': 'pass123'
+            'password': 'Pass123!Aa'
         }).json()['access_token']
         
         # User 1 creates webhook
         create_response = client.post(
-            '/api/webhooks',
+            '/api/v1/webhooks',
             headers={'Authorization': f'Bearer {user1_token}'},
             json={
                 'url': webhook_server,
@@ -417,7 +422,7 @@ class TestWebhookSecurity:
     def test_invalid_event_types(self, client, test_user, webhook_server):
         """Test that invalid event types are rejected."""
         response = client.post(
-            '/api/webhooks',
+            '/api/v1/webhooks',
             headers={'Authorization': f'Bearer {test_user}'},
             json={
                 'url': webhook_server,
@@ -439,7 +444,7 @@ class TestWebhookIntegration:
         
         # Create webhook subscribed to refinement.started
         create_response = client.post(
-            '/api/webhooks',
+            '/api/v1/webhooks',
             headers={'Authorization': f'Bearer {test_user}'},
             json={
                 'url': webhook_server,
@@ -458,7 +463,7 @@ class TestWebhookIntegration:
             }
         )
         
-        assert response.status_code == 200
+        assert response.status_code == 201
         query_id = response.json()['query_id']
         
         # Wait for webhook delivery

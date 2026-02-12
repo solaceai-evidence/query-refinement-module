@@ -13,9 +13,9 @@ def test_reload_from_env_loads_framework(monkeypatch, tmp_path):
         """
         demo:
           - id: aspect_a
-            aspect_name: Aspect A
-            aspect_description: Test aspect
-            evaluation_instructions: |
+            name: Aspect A
+            description: Test aspect
+            specifications: |
               Analyze {query}
             examples:
               clear:
@@ -87,9 +87,9 @@ def test_list_frameworks_multiple(monkeypatch, tmp_path):
         """
         framework_one:
           - id: aspect_1
-            aspect_name: Aspect 1
-            aspect_description: First framework aspect
-            evaluation_instructions: |
+            name: Aspect 1
+            description: First framework aspect
+            specifications: |
               Analyze {query}
             response_format:
               type: json
@@ -99,9 +99,9 @@ def test_list_frameworks_multiple(monkeypatch, tmp_path):
         """
         framework_two:
           - id: aspect_2
-            aspect_name: Aspect 2
-            aspect_description: Second framework aspect
-            evaluation_instructions: |
+            name: Aspect 2
+            description: Second framework aspect
+            specifications: |
               Analyze {query}
             response_format:
               type: json
@@ -134,9 +134,9 @@ def test_get_last_load_error(monkeypatch, tmp_path):
         """
         framework_ok:
           - id: aspect_ok
-            aspect_name: Aspect OK
-            aspect_description: Valid aspect
-            evaluation_instructions: |
+            name: Aspect OK
+            description: Valid aspect
+            specifications: |
               Analyze {query}
             response_format:
               type: json

@@ -42,9 +42,9 @@ def make_aspect(
 ) -> RefinementAspect:
     return RefinementAspect(
         id=aspect_id,
-        aspect_name=name,
-        aspect_description=description,
-        evaluation_instructions=analysis_prompt,
+        name=name,
+        description=description,
+        specifications=analysis_prompt,
         system_prompt=system_prompt,
         response_format=response_format,
         examples=examples,
@@ -594,7 +594,7 @@ async def test_synthesize_refined_query_without_clarifications():
 
     result = await manager.synthesize_refined_query(session)
     assert not result["used_llm"]
-    assert result["refined_query"] == "original"
+    assert result["integrated_statement"] == "original"
 
 
 @pytest.mark.asyncio
@@ -638,7 +638,7 @@ async def test_synthesize_refined_query_with_clarifications():
 
     result = await manager.synthesize_refined_query(session)
     assert result["used_llm"]
-    assert result["refined_query"] == "Refined query for adults 18-65"
+    assert result["integrated_statement"] == "Refined query for adults 18-65"
     call = manager.llm_provider.calls[0]
     assert "original query" in call["user_prompt"].lower()
     assert "Adults 18-65" in call["user_prompt"]

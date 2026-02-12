@@ -32,13 +32,13 @@ class TestPydanticModels:
         """Test creating a basic RefinementDimension."""
         dim = RefinementDimension(
             id="test_dim",
-            aspect_name="Test Dimension",
-            aspect_description="A test dimension",
-            evaluation_criteria="Test criteria"
+            name="Test Dimension",
+            description="A test dimension",
+            specifications="Test criteria"
         )
         assert dim.id == "test_dim"
-        assert dim.aspect_name == "Test Dimension"
-        assert dim.evaluation_criteria == "Test criteria"
+        assert dim.name == "Test Dimension"
+        assert dim.specifications == "Test criteria"
     
     def test_refinement_aspect_is_alias(self):
         """Test that RefinementAspect is an alias for RefinementDimension."""
@@ -148,9 +148,9 @@ class TestPromptBuilder:
         builder = PromptBuilder()
         dim = RefinementDimension(
             id="test",
-            aspect_name="Test Dimension",
-            aspect_description="Test description",
-            evaluation_criteria="Test criteria"
+            name="Test Dimension",
+            description="Test description",
+            specifications="Test criteria"
         )
         rendered = builder.render_dimension_prompt(dim)
         assert "Test Dimension" in rendered
@@ -177,9 +177,9 @@ class TestPromptBuilder:
         builder = PromptBuilder()
         dim = RefinementDimension(
             id="test",
-            aspect_name="Test Dimension",
-            aspect_description="Test description",
-            evaluation_criteria="Test criteria",
+            name="Test Dimension",
+            description="Test description",
+            specifications="Test criteria",
             user_context=UserContext(
                 user_type="student",
                 context="Academic research",
@@ -249,7 +249,7 @@ class TestIntegration:
         
         # Should contain key sections
         assert "Research Query Refinement" in prompt
-        assert dim.aspect_name in prompt
+        assert dim.name in prompt
         
         # Should be substantial
         assert len(prompt) > 5000

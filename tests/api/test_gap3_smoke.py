@@ -10,6 +10,7 @@ Run with: poetry run pytest tests/api/test_gap3_smoke.py -v
 """
 import requests
 import time
+import pytest
 
 BASE_URL = "http://localhost:8000/api/v1"
 
@@ -36,10 +37,16 @@ def check_api_health():
         return False
 
 
+if not check_api_health():
+    pytest.skip("API server is not available at http://localhost:8000", allow_module_level=True)
+
+
 def create_user(user_data):
     """Register a user."""
     try:
-        requests.post(f"{BASE_URL}/api/auth/register", json=user_data)
+        response = requests.post(f"{BASE_URL}/auth/register", json=user_data)
+        if response.status_code == 403:
+            pytest.skip("Self-service registration is disabled in this environment")
     except:
         pass  # User may already exist
 
@@ -47,7 +54,7 @@ def create_user(user_data):
 def login_user(username, password):
     """Login and get token."""
     response = requests.post(
-        f"{BASE_URL}/api/auth/login",
+        f"{BASE_URL}/auth/login",
         data={"username": username, "password": password}
     )
     if response.status_code == 200:
@@ -78,8 +85,8 @@ def test_api_is_running():
 def test_admin_cache_endpoints_require_auth():
     """Admin endpoints require authentication."""
     endpoints = [
-        "/api/v1/admin/cache/sessions",
-        "/api/v1/admin/cache/stats",
+        "/admin/cache/sessions",
+        "/admin/cache/stats",
     ]
     
     for endpoint in endpoints:
@@ -96,7 +103,7 @@ def test_admin_cache_list_requires_superuser():
     
     # Try to access admin endpoint
     response = requests.get(
-        f"{BASE_URL}/api/admin/cache/sessions",
+        f"{BASE_URL}/admin/cache/sessions",
         headers={"Authorization": f"Bearer {token}"}
     )
     
@@ -117,7 +124,7 @@ def test_admin_cache_stats():
     
     # Get cache stats
     response = requests.get(
-        f"{BASE_URL}/api/admin/cache/stats",
+        f"{BASE_URL}/admin/cache/stats",
         headers={"Authorization": f"Bearer {token}"}
     )
     
@@ -148,7 +155,7 @@ def test_admin_integrity_check():
     
     # Check integrity
     response = requests.get(
-        f"{BASE_URL}/api/admin/integrity/check",
+        f"{BASE_URL}/admin/integrity/check",
         headers={"Authorization": f"Bearer {token}"}
     )
     
@@ -176,7 +183,7 @@ def test_command_history_endpoint():
     
     # Start a refinement session
     start_response = requests.post(
-        f"{BASE_URL}/api/refinement/start",
+        f"{BASE_URL}/refinement/start",
         json={
             "original_query": "Command history test query",
             "framework_name": "pico_advanced"
@@ -184,7 +191,7 @@ def test_command_history_endpoint():
         headers={"Authorization": f"Bearer {token}"}
     )
     
-    if start_response.status_code != 200:
+    if start_response.status_code != 201:
         print(f"⚠️  Could not start refinement: {start_response.text}")
         return
     
@@ -192,7 +199,7 @@ def test_command_history_endpoint():
     
     # Execute a command
     cmd_response = requests.post(
-        f"{BASE_URL}/api/refinement/queries/{query_id}/answer",
+        f"{BASE_URL}/refinement/queries/{query_id}/answer",
         json={"answer": "/status"},
         headers={"Authorization": f"Bearer {token}"}
     )
@@ -201,7 +208,7 @@ def test_command_history_endpoint():
     
     # Get command history
     history_response = requests.get(
-        f"{BASE_URL}/api/refinement/queries/{query_id}/command-history",
+        f"{BASE_URL}/refinement/queries/{query_id}/command-history",
         headers={"Authorization": f"Bearer {token}"}
     )
     
@@ -234,7 +241,7 @@ def test_command_audit_logging():
     assert token is not None
     
     start_response = requests.post(
-        f"{BASE_URL}/api/refinement/start",
+        f"{BASE_URL}/refinement/start",
         json={
             "original_query": "Audit logging test",
             "framework_name": "pico_advanced"  
@@ -242,7 +249,7 @@ def test_command_audit_logging():
         headers={"Authorization": f"Bearer {token}"}
     )
     
-    if start_response.status_code != 200:
+    if start_response.status_code != 201:
         print(f"⚠️  Could not start refinement")
         return
     
@@ -252,7 +259,7 @@ def test_command_audit_logging():
     commands = ["/status", "/help", "/steps"]
     for cmd in commands:
         requests.post(
-            f"{BASE_URL}/api/refinement/queries/{query_id}/answer",
+            f"{BASE_URL}/refinement/queries/{query_id}/answer",
             json={"answer": cmd},
             headers={"Authorization": f"Bearer {token}"}
         )
@@ -260,7 +267,7 @@ def test_command_audit_logging():
     
     # Get command history
     history_response = requests.get(
-        f"{BASE_URL}/api/refinement/queries/{query_id}/command-history",
+        f"{BASE_URL}/refinement/queries/{query_id}/command-history",
         headers={"Authorization": f"Bearer {token}"}
     )
     

@@ -6,7 +6,7 @@ import './ProgressIndicator.css';
  * 
  * @param {object} props
  * @param {object|null} props.progress - Progress data from API
- * @param {boolean} props.compact - Compact mode (show only bar)
+ * @param {boolean} [props.compact] - Compact mode (show only bar)
  */
 const ProgressIndicator = ({ progress, compact = false }) => {
     const percentage = Math.round(((progress?.progress) || 0) * 100);

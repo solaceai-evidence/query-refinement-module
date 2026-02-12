@@ -1,4 +1,4 @@
-import { useMemo, useState, useEffect } from 'react';
+import { useMemo, useState } from 'react';
 import { refinementService } from '../services/refinement';
 import './SynthesisResult.css';
 
@@ -136,10 +136,6 @@ const SynthesisResult = ({ queryId, synthesis, selectedFramework = null, aspects
     const [constraintResponses, setConstraintResponses] = useState(() =>
         constraints.map(() => ({ considered: '', dimensions: [] }))
     );
-
-    useEffect(() => {
-        setConstraintResponses(constraints.map(() => ({ considered: '', dimensions: [] })));
-    }, [constraints]);
 
     // Safety check for synthesis object
     if (!synthesis || typeof synthesis !== 'object') {

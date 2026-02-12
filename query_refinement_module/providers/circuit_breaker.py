@@ -129,6 +129,9 @@ class CircuitBreaker:
         
         # Failure tracking with timestamps for windowing
         self._failure_timestamps: list[float] = []
+
+        # Track active probe call in HALF_OPEN state (for concurrent request gating)
+        self._half_open_probe_in_flight = False
         
     @property
     def state(self) -> CircuitState:
@@ -237,14 +240,17 @@ class CircuitBreaker:
             recovery_time = self._metrics.opened_at + self.config.recovery_timeout
             raise CircuitBreakerOpen(self.name, recovery_time)
         
-        # Allow only one request through in half-open state
+        # Allow only one in-flight probe request in half-open state
+        probe_call = False
         if self._state == CircuitState.HALF_OPEN:
             async with self._lock:
                 # If another request is already testing, reject this one
-                if self._metrics.success_count > 0 and self._metrics.success_count < self.config.success_threshold:
+                if self._half_open_probe_in_flight:
                     self._metrics.rejected_calls += 1
                     recovery_time = time.time() + self.config.recovery_timeout
                     raise CircuitBreakerOpen(self.name, recovery_time)
+                self._half_open_probe_in_flight = True
+                probe_call = True
         
         # Execute function with error tracking
         try:
@@ -256,6 +262,10 @@ class CircuitBreaker:
             if isinstance(e, self.config.counted_exceptions):
                 await self._on_failure(e)
             raise
+        finally:
+            if probe_call:
+                async with self._lock:
+                    self._half_open_probe_in_flight = False
     
     async def _on_success(self):
         """Record successful call."""
@@ -264,8 +274,9 @@ class CircuitBreaker:
             self._metrics.last_success_time = time.time()
             
             if self._state == CircuitState.HALF_OPEN:
-                # Check if we can close the circuit
-                await self._check_and_update_state()
+                # Check if we can close the circuit (avoid nested lock acquisition)
+                if self._metrics.success_count >= self.config.success_threshold:
+                    await self._transition_to_closed()
             
             logger.debug(
                 f"Circuit breaker success for {self.name}",
@@ -298,8 +309,10 @@ class CircuitBreaker:
             if self._state == CircuitState.HALF_OPEN:
                 await self._transition_to_open()
             else:
-                # Check if we need to open circuit
-                await self._check_and_update_state()
+                # Check if we need to open circuit (avoid nested lock acquisition)
+                self._clean_old_failures()
+                if self._state == CircuitState.CLOSED and len(self._failure_timestamps) >= self.config.failure_threshold:
+                    await self._transition_to_open()
 
 
 class CircuitBreakerRegistry:

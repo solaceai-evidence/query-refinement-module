@@ -25,9 +25,9 @@ class DummyLLMProvider(LLMProviderInterface):
 def make_aspect(id="aspect", allow_follow_up=True, max_follow_ups=2):
     return RefinementAspect(
         id=id,
-        aspect_name="Test Aspect",
-        aspect_description="desc",
-        evaluation_instructions="Analyze {query}",
+        name="Test Aspect",
+        description="desc",
+        specifications="Analyze {query}",
         allow_follow_up=allow_follow_up,
         max_follow_ups=max_follow_ups,
     )
