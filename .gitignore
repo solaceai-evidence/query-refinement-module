@@ -242,3 +242,6 @@ frontend/.env
 frontend/.env.local
 frontend/.env.production.local
 frontend/.vite/
+
+# Research paper
+QueryRefinementPaper*
