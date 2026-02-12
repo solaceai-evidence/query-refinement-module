@@ -4,7 +4,7 @@ All endpoints are versioned under `/api/v1` unless noted.
 
 ## Authentication
 
-- `POST /api/v1/auth/register`
+- `POST /api/v1/auth/register` (available only when `ALLOW_REGISTRATION=true`; returns 403 when disabled)
 - `POST /api/v1/auth/login`
 - `GET /api/v1/auth/me`
 - `GET /api/v1/auth/me/status`
@@ -94,4 +94,11 @@ The frontend and API accept slash commands during refinement:
 
 ## Admin Endpoints
 
-Admin endpoints exist under `/api/v1/admin`, `/api/v1/admin/sessions`, and `/api/v1/admin/frameworks` and require a superuser account. Use these for cache inspection, repairs, and framework validation.
+Admin endpoints require a superuser account.
+
+- Core admin routes: `/api/v1/admin/...`
+- Session/admin-framework/admin-analytics routes: `/api/v1/api/admin/sessions/...`, `/api/v1/api/admin/frameworks/...`, `/api/v1/api/admin/analytics/...`
+
+Notable analytics endpoint:
+
+- `GET /api/v1/api/admin/analytics/dashboard`
