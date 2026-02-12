@@ -1766,6 +1766,11 @@ async def synthesize_refined_query(
     
     # Update database
     update_refined_query(db, request.query_id, integrated_statement)
+
+    # Mark workflow complete after synthesis (unless superuser)
+    if not current_user.is_superuser:
+        current_user.has_completed_workflow = True
+        db.commit()
     
     # Verify database update
     db.refresh(db_query)

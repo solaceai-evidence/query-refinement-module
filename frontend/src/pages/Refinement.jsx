@@ -243,6 +243,13 @@ const Refinement = () => {
     const handleFrameworkSelect = (framework) => {
         if (workflowLimitReached) {
             setError('You have already completed one workflow. Thank you for your participation!');
+            setConfirmationDialog({
+                isOpen: true,
+                title: 'Workflow Limit Reached',
+                message: 'You have already completed one refinement workflow. For evaluation purposes, only one workflow per participant is allowed. If this is unexpected, please contact the study team.',
+                type: 'warning',
+                onConfirm: () => setConfirmationDialog(prev => ({ ...prev, isOpen: false }))
+            });
             return;
         }
         setSelectedFramework(framework);
