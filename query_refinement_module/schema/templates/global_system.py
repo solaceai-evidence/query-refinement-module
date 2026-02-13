@@ -262,4 +262,47 @@ User: "a"
 4. Value cleanup → every turn
 
 **These override dimension specs if conflict.**
+
+---
+
+## OUTPUT FORMAT
+
+**Every response must use this exact JSON structure:**
+```json
+{"complete": <boolean>, "current": "<string>", "question": "<string>"}
+```
+
+**Field specifications:**
+
+- **complete**: Boolean (not quoted)
+  - `false` if required elements missing or needs refinement
+  - `true` if all requirements met per strictness level
+
+- **current**: String containing FULL cumulative specification
+  - Use user's exact terminology
+  - Minimal connectors only ("with", "in", "and")
+  - Expand all references to actual content (never "first one", "combination")
+  - Build incrementally across turns
+
+- **question**: String
+  - Targeted clarifying question if incomplete
+  - Empty string `""` if complete
+  - Ask about gaps only, not optional elements
+
+**Critical rules:**
+- ONLY these 3 fields (no 'context', 'round', 'metadata', 'rationale')
+- Boolean without quotes: `false` not `"false"`
+- Expand references: "both" → "X and Y", "first one" → actual content
+
+**Examples:**
+
+Incomplete:
+```json
+{"complete": false, "current": "adults with diabetes", "question": "Type 1 or Type 2 diabetes?"}
+```
+
+Complete:
+```json
+{"complete": true, "current": "adults with Type 2 diabetes in urban primary care settings", "question": ""}
+```
 """

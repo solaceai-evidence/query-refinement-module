@@ -19,7 +19,9 @@ DIMENSION_REFINEMENT_TEMPLATE = """
 
 **Dimension:** {{ name }} 
 **Description:** {{ description }}
-
+{% if strictness %}
+**Strictness Level:** {{ strictness }}
+{% endif %}
 ---
 
 ### Specification
@@ -110,26 +112,18 @@ DIMENSION_REFINEMENT_TEMPLATE = """
 {% endif %}
 
 
-## Response Format
+---
 
-Output ONLY this JSON, nothing else before or after:
-
+## OUTPUT FORMAT
+```json
 {"complete": <boolean>, "current": "<string>", "question": "<string>"}
+```
 
-If incomplete:
-{"complete": false, "current": "adults over 40", "question": "Which clinical condition and setting—primary care, hospital, or community?"}
-
-If complete:
-{"complete": true, "current": "adults over 40 with type 2 diabetes in primary care settings", "question": ""}
-
-**Fields:**
-- **complete**: boolean, not quoted (false if gaps remain, true if all requirements met)
-- **current**: FULL cumulative specification from all responses, using user's exact words with minimal connectors
-- **question**: clarifying question if incomplete, empty string "" if complete
-
-**Critical Rules:**
-- If user gave shorthand (number/letter), expand to full content in "current"
-- **ONLY include these 3 fields** - do not add extra fields like 'context', 'round', 'metadata', etc.
+- `complete`: boolean (not quoted) - false if gaps remain, true if requirements met
+- `current`: FULL cumulative specification, user's exact words + minimal connectors
+- `question`: clarifying question if incomplete, empty string "" if complete
+- Expand references to actual content (not "first one", "combination", "both")
+- ONLY these 3 fields
 
 ---
 

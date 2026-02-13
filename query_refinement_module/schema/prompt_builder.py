@@ -224,6 +224,7 @@ class PromptBuilder:
         return self._dimension_template.render(
             name=dimension.name,
             description=dimension.description,
+            strictness=getattr(dimension, "strictness", None),
             specifications=dimension.specifications,
             examples=examples_dict,
             examples_section=has_examples

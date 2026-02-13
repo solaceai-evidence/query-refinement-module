@@ -14,6 +14,7 @@ pico_advanced:
   - id: population
     name: Population
     description: The group of individuals, communities, or entities to whom the research applies, defined by demographic characteristics, geographic context, and relevant inclusion criteria.
+    strictness: "moderate" #(moderatere | permissive | strict)
     specifications: |
       **Task:** Evaluate and assemble population specification.
 
@@ -64,6 +65,7 @@ pico_advanced:
   - id: intervention
     name: Intervention
     description: The healthcare action, exposure, or strategy being evaluated, specified in sufficient detail to allow replication, including modality, intensity, duration, and delivery context
+    strictness: "moderate" #(moderatere | permissive | strict)
     depends_on:
       - population
       - clinical_condition
@@ -116,6 +118,7 @@ pico_advanced:
   - id: comparator
     name: Comparator
     description: The alternative intervention, standard of care, placebo, or no-intervention condition against which the intervention is assessed, providing the reference for effect estimation
+    strictness: "moderate" #(moderatere | permissive | strict)
     depends_on:
       - population
       - intervention
@@ -174,6 +177,7 @@ pico_advanced:
   - id: outcome
     name: Outcome
     description: The measurable indicators, endpoints, or phenomena used to assess results, including health metrics, behavioral indicators, or descriptive findings.
+    strictness: "moderate" #(moderatere | permissive | strict)
     depends_on:
       - population
       - intervention
@@ -252,6 +256,7 @@ pico_advanced:
   - id: study_type
     name: Study Type
     description: The category of research methodology used to evaluate the intervention-outcome relationship, classified by study type, which guides eligibility, evidence synthesis, and interpretation
+    strictness: "moderate" #(moderatere | permissive | strict)
     depends_on:
       - population
       - intervention
@@ -326,6 +331,7 @@ pico_advanced:
   - id: clinical_condition
     name: Clinical Condition
     description: The health condition or disease under study, including its stage, severity, and relevant comorbidities, which defines eligibility criteria and contextualizes outcome relevance for the target population.
+    strictness: "moderate" #(moderatere | permissive | strict)
     depends_on:
       - population
     specifications: |
@@ -389,13 +395,16 @@ mph_dissertation:
       complexity: "intermediate" # (novice, intermediate, advanced, expert)
       examples_from: "public health"
       constraints:
-        - "Timeline: 6-12 months limits study designs (prospective cohorts and RCTs infeasible; cross-sectional, retrospective, or rapid reviews preferred)"
-        - "Data access: Public datasets or institutional access required; primary data collection needs IRB approval (3-6 month timeline buffer)"
-        - "Scope: Single focused research question; mixed methods and multi-phase designs rarely feasible within timeframe"
-        - "Recruitment: Large primary surveys (n>200) and extensive qualitative samples typically exceed capacity; existing data preferred"
+        - "Timeline: 6-12 months limits study designs (prospective cohorts, RCTs, and longitudinal designs infeasible; cross-sectional, retrospective, or rapid reviews preferred)"
+        - "Ethics approval: Primary data collection requires ethics committee approval (2-3 months expedited, 4-6 months full review); NHS ethics for patient data adds further complexity"
+        - "Sample size: Primary data collection >200 (surveys) or >100 (in-person) or >30 (clinical) typically exceeds capacity; secondary data (UK Data Service, ONS, CPRD) or smaller qualitative samples (15-25) preferred"
+        - "Scope and methods: Single focused research question; mixed methods with equal weighting or novel instrument development rarely feasible within timeframe"
+        - "Data access: UK datasets requiring application (CPRD, HES, longitudinal cohorts) take 1-3 months approval; publicly available datasets (Health Survey for England, Understanding Society) or institutional data preferred"
+        - "Resources: Projects requiring substantial budget (participant incentives, professional transcription, proprietary software, travel) may need funding applications; low-cost or unfunded approaches preferred"
   - id: mph_research_domain
     name: "MPH research domain"
     description: the public health topic or health issue under investigation
+    strictness: "moderate" #(moderatere | permissive | strict)
     specifications: |
       **Task:** Evaluate and assemble the public health domain specification for MPH dissertation research.
 
@@ -457,6 +466,7 @@ mph_dissertation:
   - id: mph_research_focus
     name: "MPH research focus"
     description: "what the student specifically wants to investigate, examine, or understand about their topic"
+    strictness: "moderate" #(moderatere | permissive | strict)
     depends_on:
       - mph_research_domain
     specifications: |
@@ -521,6 +531,7 @@ mph_dissertation:
   - id: mph_study_design
     name: MPH study design
     description: the research methodology and study design appropriate for the research question
+    strictness: "moderate" #(moderatere | permissive | strict)
     depends_on:
       - mph_research_focus
     specifications: |
@@ -610,6 +621,7 @@ mph_dissertation:
   - id: mph_data_source
     name: MPH data sources and access
     description: the data sources the student plans to use and their access to them
+    strictness: "moderate" #(moderatere | permissive | strict)
     depends_on:
       - mph_research_focus
       - mph_study_design
@@ -686,6 +698,7 @@ mph_dissertation:
   - id: mph_sampling_strategy
     name: MPH sampling strategy and sample size
     description: the sampling approach and planned sample size for data collection
+    strictness: "moderate" #(moderatere | permissive | strict)
     depends_on:
       - mph_research_focus
       - mph_data_source
@@ -780,6 +793,7 @@ mph_dissertation:
   - id: population
     name: Population
     description: The group of individuals, communities, or entities to whom the research applies, defined by demographic characteristics, geographic context, and relevant inclusion specifications.
+    strictness: "moderate" #(moderatere | permissive | strict)
     specifications: |
       **Task:** Evaluate and assemble population specification.
 
@@ -837,6 +851,7 @@ mph_dissertation:
   - id: outcome
     name: Outcome
     description: The measurable indicators, endpoints, or phenomena used to assess results, including health metrics, behavioral indicators, or descriptive findings.
+    strictness: "moderate" #(moderatere | permissive | strict)
     depends_on:
       - population
     specifications: |
@@ -899,6 +914,7 @@ legal_research:
   - id: legal_issue
     name: Legal Issue
     description: The specific legal question, doctrine, or area of law under examination, including the nature of the dispute or legal problem
+    strictness: "moderate" #(moderatere | permissive | strict)
     specifications: |
       **Task:** Evaluate and assemble legal issue specification.
 
@@ -954,6 +970,7 @@ legal_research:
   - id: jurisdiction
     name: Jurisdiction
     description: The applicable legal jurisdiction, including sovereign authority, court system, and geographic scope
+    strictness: "moderate" #(moderatere | permissive | strict)
     depends_on:
       - legal_issue
     specifications: |
@@ -998,6 +1015,7 @@ legal_research:
   - id: parties
     name: Parties and Relationships
     description: The legal actors involved, their relationships, and their roles in the legal question
+    strictness: "moderate" #(moderatere | permissive | strict)
     depends_on:
       - legal_issue
     specifications: |
@@ -1042,6 +1060,7 @@ legal_research:
   - id: legal_standard
     name: Legal Standard or Test
     description: The applicable legal standard, test, level of scrutiny, or burden of proof that governs the legal issue
+    strictness: "moderate" #(moderatere | permissive | strict)
     depends_on:
       - legal_issue
       - jurisdiction
@@ -1086,6 +1105,7 @@ legal_research:
   - id: remedy_or_outcome
     name: Remedy or Legal Outcome
     description: The legal relief, remedy, or outcome sought or at issue in the legal question
+    strictness: "moderate" #(moderatere | permissive | strict)
     depends_on:
       - legal_issue
       - parties
