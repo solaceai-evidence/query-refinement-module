@@ -128,6 +128,7 @@ class AspectRefinementState:
         self,
         query: str,
         dependency_context: Optional[Dict[str, Dict[str, str]]] = None,
+        completed_context: Optional[List[Dict[str, Any]]] = None,
         terminal_reinforcement_threshold: Optional[int] = None,
         **kwargs
     ) -> List[Dict[str, str]]:
@@ -156,6 +157,7 @@ class AspectRefinementState:
             query=query,
             conversation_history=self.conversation_history,
             dependency_context=dependency_context,
+            completed_context=completed_context,
             terminal_reinforcement_threshold=threshold
         )
     
@@ -376,6 +378,45 @@ class RefinementSession:
                     "value": formatted_value,
                     "type": value_type,
                 }
+
+        return context
+
+    def get_completed_context(self, target_refinement_aspect_id: str) -> List[Dict[str, Any]]:
+        """
+        Build completed-dimensions context (all prior completed dimensions) for a target aspect.
+
+        Includes skipped dimensions as value '[SKIPPED]' so downstream prompt logic
+        can explicitly reflect intentional omission.
+        """
+        step_index = {step.refinement_aspect.id: idx for idx, step in enumerate(self.steps)}
+        target_idx = step_index.get(target_refinement_aspect_id)
+        if target_idx is None:
+            return []
+
+        context: List[Dict[str, Any]] = []
+        for idx, step in enumerate(self.steps):
+            if idx >= target_idx:
+                break
+            if not step.is_complete:
+                continue
+
+            aspect = step.refinement_aspect
+            if step.was_skipped:
+                value = "[SKIPPED]"
+            elif step.normalized_value is not None:
+                value = step.normalized_value_as_str or ""
+            else:
+                value = f"[{aspect.name} is clear in original query: \"{self.original_query}\"]"
+
+            context.append(
+                {
+                    "id": aspect.id,
+                    "name": aspect.name,
+                    "description": aspect.description,
+                    "value": value,
+                    "was_skipped": step.was_skipped,
+                }
+            )
 
         return context
     

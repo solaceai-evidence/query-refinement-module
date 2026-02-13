@@ -417,9 +417,11 @@ class QueryRefinementManager:
         
         # Build messages array
         dependency_context = session.get_dependency_context(aspect_id)
+        completed_context = session.get_completed_context(aspect_id)
         messages = step.get_messages(
             query=session.original_query,
             dependency_context=dependency_context,
+            completed_context=completed_context,
             terminal_reinforcement_threshold=self.terminal_reinforcement_threshold
         )
         
@@ -666,6 +668,7 @@ class QueryRefinementManager:
         messages = step.get_messages(
             query=session.original_query,
             dependency_context=dependency_context,
+            completed_context=session.get_completed_context(aspect.id),
             terminal_reinforcement_threshold=self.terminal_reinforcement_threshold
         )
         

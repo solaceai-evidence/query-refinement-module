@@ -154,7 +154,6 @@ class PromptBuilder:
         """
         # Convert to dicts for template
         completed_dicts = []
-        completed_ids_with_values = set()
         
         for dim in completed_dimensions:
             if hasattr(dim, 'model_dump'):
@@ -166,22 +165,15 @@ class PromptBuilder:
             
             completed_dicts.append(dim_dict)
             
-            # Track which dependencies have actual values (not skipped, not empty)
-            was_skipped = dim_dict.get('was_skipped', False) if isinstance(dim_dict, dict) else getattr(dim, 'was_skipped', False)
-            assembled_value = dim_dict.get('assembled_value', '') if isinstance(dim_dict, dict) else getattr(dim, 'assembled_value', '')
-            
-            if hasattr(dim, 'id') and assembled_value and not was_skipped:
-                completed_ids_with_values.add(dim.id)
-        
-        # Filter dependencies to only include those with clarified, non-skipped values
+        # Preserve dependency list as provided by caller for ✓ marking
         dep_dicts = None
         if dependencies:
-            dep_dicts = [
-                {"name": dep.name, "id": dep.id}
-                for dep in dependencies
-                if dep.id in completed_ids_with_values  # Only include if has actual value
-            ]
-            # Only pass deps if there are valid ones
+            dep_dicts = []
+            for dep in dependencies:
+                if isinstance(dep, dict):
+                    dep_dicts.append({"name": dep.get("name", dep.get("id", "")), "id": dep.get("id", "")})
+                else:
+                    dep_dicts.append({"name": dep.name, "id": dep.id})
             if not dep_dicts:
                 dep_dicts = None
         
@@ -343,6 +335,7 @@ class PromptBuilder:
         query: str,
         conversation_history: List[Dict[str, str]],
         dependency_context: Optional[Dict[str, Dict[str, str]]] = None,
+        completed_context: Optional[List[Dict[str, Any]]] = None,
         terminal_reinforcement_threshold: int = 3  # Default kept here as final safety net
     ) -> List[Dict[str, str]]:
         """
@@ -388,31 +381,48 @@ class PromptBuilder:
                 '_cache': True
             })
         
-        # 3. System message: Previously clarified dimensions (dependencies)
-        # Uses existing render_completed_dimensions() method with CompletedDimension models
-        if dependency_context and dimension.depends_on:
-            completed_deps = []
+        # 3. System message: Previously clarified dimensions (all completed) + dependency markers
+        completed_dims_for_context: List[CompletedDimension] = []
+
+        if completed_context:
+            for entry in completed_context:
+                was_skipped = bool(entry.get("was_skipped", False))
+                assembled_value = "[SKIPPED]" if was_skipped else str(entry.get("value", "") or "")
+                completed_dims_for_context.append(
+                    CompletedDimension(
+                        id=entry.get("id", ""),
+                        name=entry.get("name") or entry.get("id", ""),
+                        description=entry.get("description", ""),
+                        assembled_value=assembled_value,
+                        was_skipped=was_skipped,
+                    )
+                )
+        elif dependency_context and dimension.depends_on:
             for dep_id in dimension.depends_on:
                 entry = dependency_context.get(dep_id)
                 if entry and entry.get("value"):
-                    # CompletedDimension already imported at module level
-                    completed_dep = CompletedDimension(
-                        id=dep_id,
-                        name=entry.get("name") or dep_id.replace("_", " ").title(),
-                        description=entry.get("description", ""),
-                        assembled_value=entry["value"],
-                        was_skipped=False
+                    completed_dims_for_context.append(
+                        CompletedDimension(
+                            id=dep_id,
+                            name=entry.get("name") or dep_id.replace("_", " ").title(),
+                            description=entry.get("description", ""),
+                            assembled_value=entry["value"],
+                            was_skipped=False,
+                        )
                     )
-                    completed_deps.append(completed_dep)
-            
-            if completed_deps:
-                messages.append({
-                    'role': 'system',
-                    'content': self.render_completed_dimensions(
-                        completed_dimensions=completed_deps,
-                        dependencies=None  # Dependencies list not needed here
-                    )
-                })
+
+        if completed_dims_for_context:
+            dependency_defs = [
+                {"id": dep_id, "name": dep_id.replace("_", " ").title()}
+                for dep_id in (dimension.depends_on or [])
+            ]
+            messages.append({
+                'role': 'system',
+                'content': self.render_completed_dimensions(
+                    completed_dimensions=completed_dims_for_context,
+                    dependencies=dependency_defs,
+                )
+            })
         
         # 4. System message: Current dimension specification
         messages.append({
@@ -580,6 +590,7 @@ def build_refinement_messages(
     query: str,
     conversation_history: List[Dict[str, str]],
     dependency_context: Optional[Dict[str, Dict[str, str]]] = None,
+    completed_context: Optional[List[Dict[str, Any]]] = None,
     terminal_reinforcement_threshold: int = 3  # Delegates to method, inherits same default
 ) -> List[Dict[str, str]]:
     """
@@ -590,6 +601,7 @@ def build_refinement_messages(
         query: The original query
         conversation_history: Q&A history for THIS dimension
         dependency_context: Completed dependency values
+        completed_context: All completed prior dimensions with values/skip status
         terminal_reinforcement_threshold: Add reinforcement after N turns (default: 3 from LLMSettings)
         
     Returns:
@@ -600,6 +612,7 @@ def build_refinement_messages(
         query=query,
         conversation_history=conversation_history,
         dependency_context=dependency_context,
+        completed_context=completed_context,
         terminal_reinforcement_threshold=terminal_reinforcement_threshold
     )
 

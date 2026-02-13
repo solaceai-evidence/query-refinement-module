@@ -363,6 +363,23 @@ async def _build_next_prompt(manager, session) -> Optional[Dict[str, Any]]:
     return None
 
 
+def _get_active_prompt(session) -> Optional[Dict[str, Any]]:
+    """Return the currently active question if it already exists in session state."""
+    active_step = session.get_active_step()
+    if not active_step:
+        return None
+
+    if active_step.follow_up_question:
+        return {
+            "aspect_id": active_step.refinement_aspect.id,
+            "name": active_step.refinement_aspect.name,
+            "question": active_step.follow_up_question,
+            "description": active_step.refinement_aspect.description or "",
+        }
+
+    return None
+
+
 async def _build_command_response(
     manager,
     command_type: str,
@@ -404,7 +421,7 @@ async def _build_command_response(
     # If command failed or needs force confirmation, preserve current prompt
     if not success or force_confirmation_needed:
         logger.info(f"[_build_command_response] Command failed or needs confirmation, preserving current prompt")
-        response.next_prompt = await _build_next_prompt(manager, session)
+        response.next_prompt = _get_active_prompt(session) or await _build_next_prompt(manager, session)
         if force_confirmation_needed:
             response.force_required = True
             response.invalidated_aspects = payload.get("invalidated", [])
@@ -414,7 +431,7 @@ async def _build_command_response(
     if command_type in ["status"]:
         logger.info(f"[_build_command_response] STATUS command - adding step summary")
         response.step_summary = payload.get("summary")
-        response.next_prompt = await _build_next_prompt(manager, session)
+        response.next_prompt = _get_active_prompt(session) or await _build_next_prompt(manager, session)
     
     elif command_type in ["steps"]:
         logger.info(f"[_build_command_response] STEPS command - building step list")
@@ -441,12 +458,12 @@ async def _build_command_response(
                 for step in steps
             ]
             logger.info(f"[_build_command_response] Built step list with {len(response.step_list)} steps")
-        response.next_prompt = await _build_next_prompt(manager, session)
+        response.next_prompt = _get_active_prompt(session) or await _build_next_prompt(manager, session)
     
     elif command_type in ["help"]:
         logger.info(f"[_build_command_response] HELP command - showing help text")
         # Help message is in 'message' field, show current prompt
-        response.next_prompt = await _build_next_prompt(manager, session)
+        response.next_prompt = _get_active_prompt(session) or await _build_next_prompt(manager, session)
     
     elif command_type in ["submit", "end"]:
         logger.info(f"[_build_command_response] SUBMIT/END command - marking synthesis ready")
@@ -1132,14 +1149,20 @@ async def submit_answer(
                 
                 session_manager.save_session(query_id, session)
         
-        # Build and return command response
-        return await _build_command_response(
+        # Build command response
+        command_response = await _build_command_response(
             manager=manager,
             command_type=command_type,
             payload=command_payload,
             session=session,
             force_confirmation_needed=force_confirmation_needed
         )
+
+        # Persist active question context if a prompt is present in command response
+        if command_response.next_prompt and command_response.next_prompt.get("question"):
+            session_manager.save_session(query_id, session)
+
+        return command_response
     
     # ============================================================
     # REGULAR ANSWER PROCESSING (not a command)
@@ -1470,7 +1493,11 @@ async def get_refinement_status(
     active_step = session.get_active_step()
     
     # Build next prompt and check if ready for synthesis
-    next_prompt = await _build_next_prompt(manager, session)
+    next_prompt = _get_active_prompt(session) or await _build_next_prompt(manager, session)
+
+    # Persist in case next prompt was generated during this status request
+    session_manager.save_session(query_id, session)
+
     ready_for_synthesis = next_prompt is None and session.is_complete()
     
     # Build aspects list for frontend

@@ -140,8 +140,8 @@ DIMENSIONS_CLARIFIED_AND_DEPENDENCIES_TEMPLATE = """
 ### Completed Dimensions
 
 {% for dim in completed_dimensions %}
-{% if dependencies and dim.id in dependencies|map(attribute='id')|list %}✓ **{{ dim.name }}**: {{ dim.assembled_value }}
-{% else %}**{{ dim.name }}**: {{ dim.assembled_value }}
+{% if dependencies and dim.id in dependencies|map(attribute='id')|list %}✓ **{{ dim.name }}{% if dim.description %} ({{ dim.description }}){% endif %}:** {{ dim.assembled_value }}
+{% else %}**{{ dim.name }}{% if dim.description %} ({{ dim.description }}){% endif %}:** {{ dim.assembled_value }}
 {% endif %}
 {% endfor %}
 

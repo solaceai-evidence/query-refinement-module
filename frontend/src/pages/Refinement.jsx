@@ -12,7 +12,8 @@ import { monitoringService } from '../services/monitoring';
 import { useAuth } from '../context/AuthContext';
 import { useToast } from '../context/ToastContext';
 import { isCommandResponse, createHistoryItem } from '../types';
-import { isUserCommand } from '../constants/commands';
+import { isUserCommand, isInformationalCommand } from '../constants/commands';
+import { formatFrameworkDisplayName } from '../utils/frameworkDisplay';
 import { logger } from '../utils/logger';
 import { setLogSessionId, logUserAction } from '../utils/logForwarder';
 import { useProgressTracking } from '../hooks/useProgressTracking';
@@ -510,7 +511,6 @@ const Refinement = () => {
                     console.log('[COMMAND RESPONSE] Command type:', response.command_type);
                     console.log('[COMMAND RESPONSE] Command answer:', answer);
 
-                    const { isInformationalCommand } = await import('../constants/commands');
                     const isInfoCommand = isInformationalCommand(answer);
 
                     console.log('[COMMAND RESPONSE] Is informational?', isInfoCommand);
@@ -571,7 +571,6 @@ const Refinement = () => {
 
                 // Show toast notifications for command results
                 if (response.success) {
-                    const { isInformationalCommand } = await import('../constants/commands');
                     const isInfoCmd = isInformationalCommand(answer);
 
                     if (isInfoCmd) {
@@ -640,7 +639,6 @@ const Refinement = () => {
                     console.log('[COMMAND RESPONSE] Updating aspects from step_summary');
                     // Extract aspects from step_summary if available
                     // For now, only fetch if it's not an informational command
-                    const { isInformationalCommand } = await import('../constants/commands');
                     if (!isInformationalCommand(answer)) {
                         await updateAspectStatus();
                     }
@@ -1190,7 +1188,7 @@ const Refinement = () => {
                 {stage === 'initial-query' && (
                     <div className="initial-query-form">
                         <h2>Describe Your Research Dissertation Topic</h2>
-                        <p>Framework: <strong>{selectedFramework}</strong></p>
+                        <p>Framework: <strong>{formatFrameworkDisplayName(selectedFramework)}</strong></p>
                         <form onSubmit={handleInitialQuerySubmit}>
                             <textarea
                                 value={initialQuery}

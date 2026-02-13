@@ -1,5 +1,6 @@
 import { useState, useEffect } from 'react';
 import { refinementService } from '../services/refinement';
+import { formatFrameworkDisplayName } from '../utils/frameworkDisplay';
 import './FrameworkSelector.css';
 
 const FrameworkSelector = ({ onSelect }) => {
@@ -46,7 +47,7 @@ const FrameworkSelector = ({ onSelect }) => {
                         className="framework-card"
                         onClick={() => onSelect(framework)}
                     >
-                        <h3>{framework}</h3>
+                        <h3>{formatFrameworkDisplayName(framework)}</h3>
                         <p>Click to start refinement</p>
                     </div>
                 ))}

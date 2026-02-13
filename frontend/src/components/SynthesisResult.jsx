@@ -216,12 +216,12 @@ const SynthesisResult = ({ queryId, synthesis, selectedFramework = null, aspects
             };
 
             const comments = [
-                `Most helpful: ${mostHelpful.trim()}`,
-                `Improvements: ${improvements.trim()}`,
+                mostHelpful.trim() ? `Most helpful: ${mostHelpful.trim()}` : null,
+                improvements.trim() ? `Improvements: ${improvements.trim()}` : null,
                 otherComments.trim() ? `Other: ${otherComments.trim()}` : null,
             ].filter(Boolean).join('\n');
 
-            await refinementService.submitFeedback(queryId, rating || null, comments, metadata, consentToUseData);
+            await refinementService.submitFeedback(queryId, rating || null, comments || null, metadata, consentToUseData);
             setFeedbackSubmitted(true);
         } catch (error) {
             console.error('Failed to submit feedback:', error);
@@ -229,40 +229,8 @@ const SynthesisResult = ({ queryId, synthesis, selectedFramework = null, aspects
         }
     };
 
-    const isLikertValid = (value) => Number.isInteger(value) && value >= 1 && value <= 5;
     const isSingleChoiceValid = (value) => typeof value === 'string' && value.length > 0;
-    const isYesNoAnswered = (value) => value === 'yes' || value === 'no';
-    const isConstraintValid = (response, isRequired) => {
-        if (!response) return !isRequired;
-        if (!isRequired && !isYesNoAnswered(response.considered)) {
-            return true;
-        }
-        if (!isYesNoAnswered(response.considered)) {
-            return false;
-        }
-        if (response.considered === 'yes') {
-            return Array.isArray(response.dimensions) && response.dimensions.length > 0;
-        }
-        return true;
-    };
-
-    const allConstraintsValid = constraints.every((constraint, index) => {
-        const isRequired = index < constraints.length - 1;
-        return isConstraintValid(constraintResponses[index], isRequired);
-    });
-    const canSubmit =
-        isLikertValid(rating) &&
-        isLikertValid(confidenceBefore) &&
-        isLikertValid(confidenceAfter) &&
-        isLikertValid(questionQuality) &&
-        isLikertValid(easeOfUse) &&
-        isLikertValid(feltInControl) &&
-        isSingleChoiceValid(toneSelection) &&
-        isSingleChoiceValid(complexitySelection) &&
-        isSingleChoiceValid(consentSelection) &&
-        allConstraintsValid &&
-        mostHelpful.trim().length > 0 &&
-        improvements.trim().length > 0;
+    const canSubmit = isSingleChoiceValid(consentSelection);
 
     const updateConstraintConsidered = (index, value) => {
         setConstraintResponses((prev) => {
@@ -444,13 +412,12 @@ const SynthesisResult = ({ queryId, synthesis, selectedFramework = null, aspects
                                 <p className="feedback-prompt">Constraints check (did the chatbot reference these when relevant?)</p>
                                 {constraints.map((constraint, index) => {
                                     const response = constraintResponses[index] || { considered: '', dimensions: [] };
-                                    const isRequired = index < constraints.length - 1;
                                     const showDimensionPicker = response.considered === 'yes';
                                     return (
                                         <div key={constraint.id} className="constraint-block">
                                             <div className="constraint-header">
                                                 <div className="constraint-title">
-                                                    {constraint.label}{isRequired ? ' (required)' : ' (optional)'}
+                                                    {constraint.label}
                                                 </div>
                                                 <div className="constraint-description">{constraint.description}</div>
                                             </div>
@@ -512,29 +479,27 @@ const SynthesisResult = ({ queryId, synthesis, selectedFramework = null, aspects
                         )}
 
                         <div className="feedback-field">
-                            <label className="feedback-field-title" htmlFor="mostHelpful">What was the most helpful part of the experience? (required)</label>
+                            <label className="feedback-field-title" htmlFor="mostHelpful">What was the most helpful part of the experience?</label>
                             <textarea
                                 id="mostHelpful"
                                 value={mostHelpful}
                                 onChange={(e) => setMostHelpful(e.target.value)}
                                 rows={4}
-                                required
                             />
                         </div>
 
                         <div className="feedback-field">
-                            <label className="feedback-field-title" htmlFor="improvements">What should we improve? (required)</label>
+                            <label className="feedback-field-title" htmlFor="improvements">What should we improve?</label>
                             <textarea
                                 id="improvements"
                                 value={improvements}
                                 onChange={(e) => setImprovements(e.target.value)}
                                 rows={4}
-                                required
                             />
                         </div>
 
                         <div className="feedback-field">
-                            <label className="feedback-field-title" htmlFor="otherComments">Anything else you’d like to add? (optional)</label>
+                            <label className="feedback-field-title" htmlFor="otherComments">Anything else you’d like to add?</label>
                             <textarea
                                 id="otherComments"
                                 value={otherComments}
@@ -544,7 +509,7 @@ const SynthesisResult = ({ queryId, synthesis, selectedFramework = null, aspects
                         </div>
 
                         <div className="feedback-consent">
-                            <div className="feedback-field-title">Consent to retain your data (required)</div>
+                            <div className="feedback-field-title">Consent to retain your data</div>
                             <div className="constraint-yes-no" role="radiogroup" aria-label="Consent to retain data">
                                 <label className={`yes-no-option ${consentSelection === 'yes' ? 'selected' : ''}`}>
                                     <input
