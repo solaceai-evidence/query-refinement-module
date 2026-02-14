@@ -13,6 +13,7 @@ Key Features:
 - Webhook event notifications for external integrations
 """
 import asyncio
+import json
 import logging
 import time
 from fastapi import APIRouter, Depends, HTTPException, status, Request
@@ -50,6 +51,7 @@ from query_refinement_module.core import (
 from query_refinement_module.tracing import generate_request_id, get_logger, set_request_id
 from query_refinement_module.services.progress_tracker import get_progress_tracker, track_progress
 from query_refinement_module.models.progress import ProgressStage
+from query_refinement_module.schema import DimensionEvaluationResponse
 
 from pydantic import BaseModel, Field, field_validator
 
@@ -499,12 +501,13 @@ async def _build_command_response(
                 
                 try:
                     # Build messages for initial question generation
-                    messages = prompt_builder.build_messages(
-                        aspect=aspect,
+                    messages = prompt_builder.build_refinement_messages(
+                        dimension=aspect,
                         query=session.original_query,
                         conversation_history=[],  # Force empty to ensure fresh question
-                        dependencies_context=session.get_dependency_context(aspect.id),
-                        mode="initial"
+                        dependency_context=session.get_dependency_context(aspect.id),
+                        completed_context=session.get_completed_context(aspect.id),
+                        terminal_reinforcement_threshold=getattr(manager, "terminal_reinforcement_threshold", 3),
                     )
                     
                     # Add explicit instruction to ALWAYS ask a clarifying question
@@ -512,21 +515,40 @@ async def _build_command_response(
                         messages[-1]["content"] += "\n\nCRITICAL: The user has navigated back to review this dimension from scratch. The dimension has been completely reset with no previous values. You MUST ask a clarifying question as if this is the very first time asking about this dimension. Do NOT assume anything is already clear - treat this as a fresh initial question."
                     
                     logger.info(f"[NAVIGATION] Calling LLM to generate fresh question...")
-                    llm_response = await manager.llm_handler.generate_completion(
+                    llm_result = await manager.llm_provider.complete_async(
                         messages=messages,
-                        temperature=manager.core_config.temperature
+                        temperature=0.0,
+                        response_format=DimensionEvaluationResponse,
+                        cache_system_prompt=True,
                     )
-                    
+
                     logger.info(f"[NAVIGATION] LLM response received, parsing...")
-                    parsed = manager.llm_handler.parse_generation_response(llm_response)
-                    logger.info(f"[NAVIGATION] Parsed status: {parsed.get('status')}")
-                    logger.info(f"[NAVIGATION] Has next_question: {bool(parsed.get('next_question'))}")
-                    
-                    if parsed.get("status") == "needs_clarification" and parsed.get("next_question"):
-                        reopened_step.follow_up_question = parsed["next_question"]
-                        logger.info(f"[NAVIGATION] ✓ Using LLM-generated question: {parsed['next_question'][:100]}...")
+                    llm_context = llm_result.context
+                    generated_question = None
+
+                    if isinstance(llm_context, DimensionEvaluationResponse):
+                        generated_question = llm_context.question
+                    elif isinstance(llm_context, dict):
+                        generated_question = llm_context.get("question") or llm_context.get("next_question")
+                    elif isinstance(llm_context, str):
+                        cleaned = llm_context.strip()
+                        if cleaned.startswith("```"):
+                            lines = cleaned.splitlines()
+                            body = lines[1:]
+                            if body and body[-1].startswith("```"):
+                                body = body[:-1]
+                            cleaned = "\n".join(body).strip()
+                        try:
+                            parsed = json.loads(cleaned)
+                            generated_question = parsed.get("question") or parsed.get("next_question")
+                        except Exception:
+                            generated_question = None
+
+                    if generated_question and isinstance(generated_question, str) and generated_question.strip():
+                        reopened_step.follow_up_question = generated_question.strip()
+                        logger.info(f"[NAVIGATION] ✓ Using LLM-generated question: {reopened_step.follow_up_question[:100]}...")
                     else:
-                        # Fallback if LLM didn't generate a question properly
+                        # Fallback if LLM didn't generate a usable question
                         logger.warning(f"[NAVIGATION] LLM did not generate proper question, using fallback")
                         reopened_step.follow_up_question = f"Let's review {aspect.name} for your research query. What would you like to specify for this dimension?"
                 except Exception as e:
@@ -778,7 +800,25 @@ async def start_refinement(
             
         except Exception as e:
             logger.error(f"Error generating question for aspect {current_step.refinement_aspect.name}: {e}", exc_info=True)
-            # Generate fallback question
+            # Surface provider-side failures explicitly instead of masking with generic fallback
+            error_str = str(e).lower()
+            if "credit balance" in error_str or "insufficient" in error_str:
+                raise HTTPException(
+                    status_code=status.HTTP_402_PAYMENT_REQUIRED,
+                    detail="LLM service credits exhausted. Please configure valid API credentials."
+                )
+            if "api key" in error_str or "authentication" in error_str:
+                raise HTTPException(
+                    status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
+                    detail="LLM service authentication error. Please check API configuration."
+                )
+            if "rate limit" in error_str:
+                raise HTTPException(
+                    status_code=status.HTTP_429_TOO_MANY_REQUESTS,
+                    detail="LLM service rate limit exceeded. Please try again later."
+                )
+
+            # Preserve fallback only for non-provider/transient parsing errors
             current_step.follow_up_question = f"Please provide details about {current_step.refinement_aspect.name}."
             break
     
@@ -1204,7 +1244,7 @@ async def submit_answer(
         )
         
         # Process the result
-        status = manager.process_analysis_result(
+        analysis_status = manager.process_analysis_result(
             session=session,
             aspect_id=active_step.refinement_aspect.id,
             result=analysis_result
@@ -1248,7 +1288,7 @@ async def submit_answer(
     )
     
     # Check if aspect is complete
-    is_complete = status.get('complete', False)
+    is_complete = analysis_status.get('complete', False)
     
     # If dimension is complete, save final value to database for evaluation
     if is_complete and active_step.normalized_value:
@@ -1493,12 +1533,16 @@ async def get_refinement_status(
     active_step = session.get_active_step()
     
     # Build next prompt and check if ready for synthesis
-    next_prompt = _get_active_prompt(session) or await _build_next_prompt(manager, session)
+    if session.synthesis_requested:
+        # Keep /status semantics aligned with /submit command behavior
+        next_prompt = None
+        ready_for_synthesis = True
+    else:
+        next_prompt = _get_active_prompt(session) or await _build_next_prompt(manager, session)
+        ready_for_synthesis = next_prompt is None and session.is_complete()
 
     # Persist in case next prompt was generated during this status request
     session_manager.save_session(query_id, session)
-
-    ready_for_synthesis = next_prompt is None and session.is_complete()
     
     # Build aspects list for frontend
     aspects = [
@@ -2342,6 +2386,7 @@ class AbandonSessionResponse(BaseModel):
 @router.post("/sessions/abandon", response_model=AbandonSessionResponse)
 async def abandon_session(
     request: AbandonSessionRequest,
+    http_request: Request,
     current_user = Depends(get_current_user),
     db: Session = Depends(get_db),
     session_manager: SessionManager = Depends(get_session_manager)
@@ -2396,12 +2441,16 @@ async def abandon_session(
         
         # Log audit event
         try:
-            audit_service.log_event(
+            audit_service.log_from_request(
                 db=db,
+                request=http_request,
                 event_type=AuditEventType.SESSION_ABANDONED,
-                user_id=current_user.id,
-                session_id=request.session_id,
-                metadata={
+                user=current_user,
+                resource_type="session",
+                resource_id=str(request.session_id),
+                action=f"Abandoned session {request.session_id}",
+                status="success",
+                details={
                     "deletion_counts": result["deletion_counts"],
                     "request_id": request_id,
                 }

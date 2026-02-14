@@ -543,30 +543,57 @@ const Refinement = () => {
                         `${response.message}\n\nAffected aspects: ${response.invalidated_aspects.join(', ')}\n\nDo you want to proceed?`
                     );
 
-                    if (confirmed) {
-                        // Re-submit command with force=true
-                        console.log('[COMMAND] Re-submitting with force=true');
-                        const forceResponse = await refinementService.continueRefinement(
-                            sessionId,
-                            queryId,
-                            answer,
-                            true // force flag
-                        );
-                        // Process the forced response (recursive call would be cleaner but this avoids complexity)
-                        if (forceResponse.next_prompt?.question) {
-                            setCurrentQuestion(forceResponse.next_prompt);
-                            setCurrentAspectId(forceResponse.next_prompt.aspect_id);
-                        }
+                    if (!confirmed) {
+                        showInfo('Action cancelled');
+                        return;
                     }
+
+                    // Re-submit command with force=true
+                    console.log('[COMMAND] Re-submitting with force=true');
+                    const forceResponse = await refinementService.continueRefinement(
+                        sessionId,
+                        queryId,
+                        answer,
+                        true
+                    );
+
+                    if (forceResponse.next_prompt?.question) {
+                        setCurrentQuestion(forceResponse.next_prompt);
+                        setCurrentAspectId(forceResponse.next_prompt.aspect_id);
+                        setConversationHistory(prev => {
+                            const latest = prev[prev.length - 1];
+                            const isDuplicate = latest?.type === 'question' && latest?.content === forceResponse.next_prompt.question;
+                            if (isDuplicate) return prev;
+                            return [...prev, createHistoryItem('question', forceResponse.next_prompt.question, {
+                                aspectId: forceResponse.next_prompt.aspect_id,
+                                aspectName: forceResponse.next_prompt.name
+                            })];
+                        });
+                    }
+
+                    if (forceResponse.synthesis_ready) {
+                        setReadyForSynthesis(true);
+                        setStage('review');
+                        setCurrentQuestion(null);
+                        setCurrentAspectId(null);
+                        showSuccess('All dimensions complete! Review your answers and click "Generate Refined Query" to proceed.');
+                    } else {
+                        showSuccess('Command applied successfully');
+                    }
+
+                    await updateAspectStatus();
+                    return;
                 }
 
-                // Check if synthesis is ready (/submit command)
+                // Synthesis is manual-only: when ready, move to review and let user click Generate
                 if (response.synthesis_ready) {
-                    console.log('[COMMAND RESPONSE] synthesis_ready flag detected - triggering synthesis');
-                    logger.info('Synthesis requested via /submit command');
-                    showInfo('Generating your refined query...');
-                    await handleSynthesis();
-                    return; // Exit early, synthesis will handle its own state
+                    console.log('[COMMAND RESPONSE] synthesis_ready flag detected - moving to review stage');
+                    logger.info('Synthesis ready via command; awaiting manual trigger from review stage');
+                    setReadyForSynthesis(true);
+                    setStage('review');
+                    setCurrentQuestion(null);
+                    setCurrentAspectId(null);
+                    showSuccess('All dimensions complete! Review your answers and click "Generate Refined Query" to proceed.');
                 }
 
                 // Show toast notifications for command results
@@ -1310,19 +1337,24 @@ const Refinement = () => {
                                     <div className="aspects-summary">
                                         <h3>Refined Dimensions Summary</h3>
                                         <div className="aspects-list">
-                                            {aspects.map((aspect, index) => (
-                                                <div key={index} className={`aspect-item ${aspect.is_complete ? 'complete' : 'incomplete'}`}>
-                                                    <div className="aspect-name">
-                                                        {aspect.is_complete ? '✓' : '○'} {aspect.aspect_name}
+                                            {aspects.map((aspect, index) => {
+                                                const aspectLabel = aspect.aspect_name || aspect.name || aspect.id || `Dimension ${index + 1}`;
+                                                const aspectValue = aspect.normalized_value || aspect.final_value;
+
+                                                return (
+                                                    <div key={index} className={`aspect-item ${aspect.is_complete ? 'complete' : 'incomplete'}`}>
+                                                        <div className="aspect-name">
+                                                            {aspect.is_complete ? '✓' : '○'} {aspectLabel}
+                                                        </div>
+                                                        {aspectValue && (
+                                                            <div className="aspect-value">{aspectValue}</div>
+                                                        )}
+                                                        {aspect.was_skipped && (
+                                                            <div className="aspect-skipped">(Skipped)</div>
+                                                        )}
                                                     </div>
-                                                    {aspect.normalized_value && (
-                                                        <div className="aspect-value">{aspect.normalized_value}</div>
-                                                    )}
-                                                    {aspect.was_skipped && (
-                                                        <div className="aspect-skipped">(Skipped)</div>
-                                                    )}
-                                                </div>
-                                            ))}
+                                                );
+                                            })}
                                         </div>
                                     </div>
                                 )}
@@ -1332,7 +1364,6 @@ const Refinement = () => {
                                         className="btn-primary btn-synthesis"
                                         onClick={async () => {
                                             logger.info('User manually triggered synthesis from review stage');
-                                            setStage('synthesis');
                                             await handleSynthesis();
                                         }}
                                         disabled={loading}
@@ -1351,7 +1382,7 @@ const Refinement = () => {
                     </div>
                 )}
 
-                {stage === 'synthesis' && synthesis && (
+                {stage === 'synthesis' && (
                     <div className="refinement-interface">
                         <div className="refinement-main">
                             {/* Progress indicator during synthesis */}
@@ -1389,12 +1420,19 @@ const Refinement = () => {
                             )}
 
                             <div className="question-input-fixed">
-                                <SynthesisResult
-                                    queryId={queryId}
-                                    synthesis={synthesis}
-                                    selectedFramework={selectedFramework}
-                                    aspects={aspects}
-                                />
+                                {synthesis ? (
+                                    <SynthesisResult
+                                        queryId={queryId}
+                                        synthesis={synthesis}
+                                        selectedFramework={selectedFramework}
+                                        aspects={aspects}
+                                    />
+                                ) : (
+                                    <div className="loading-state">
+                                        <div className="loading-spinner"></div>
+                                        <p>Generating your refined query...</p>
+                                    </div>
+                                )}
                             </div>
                         </div>
                     </div>

@@ -243,11 +243,12 @@ class FeedbackCreate(BaseModel):
     
     @field_validator('comments')
     @classmethod
-    def comments_required_and_not_empty(cls, v: Optional[str]) -> Optional[str]:
-        """Validate that comments are provided and not just whitespace."""
-        if v is None or v.strip() == "":
-            raise ValueError("Feedback comments are required for research purposes")
-        return v.strip()
+    def normalize_comments(cls, v: Optional[str]) -> Optional[str]:
+        """Treat comments as optional; trim non-empty values and normalize blank to None."""
+        if v is None:
+            return None
+        cleaned = v.strip()
+        return cleaned or None
 
 
 class FeedbackResponse(BaseModel):

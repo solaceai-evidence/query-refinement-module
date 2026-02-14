@@ -1530,9 +1530,14 @@ class QueryRefinementManager:
             aspect_info = {
                 "id": step.refinement_aspect.id,
                 "name": step.refinement_aspect.name,
+                "aspect_name": step.refinement_aspect.name,
                 "description": step.refinement_aspect.description,
-                "is_complete": step.is_complete
+                "is_complete": step.is_complete,
+                "was_skipped": step.was_skipped,
             }
+
+            if step.is_complete and step.normalized_value_as_str:
+                aspect_info["final_value"] = step.normalized_value_as_str
             
             # Add analysis details for aspects that are incomplete
             if not step.is_complete:

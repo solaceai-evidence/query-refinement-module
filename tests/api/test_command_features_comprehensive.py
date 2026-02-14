@@ -28,7 +28,8 @@ TEST_USER = {
 def check_api_health() -> bool:
     """Check if API server is running."""
     try:
-        response = requests.get(f"{BASE_URL}/health", timeout=5)
+        api_root = BASE_URL.replace("/api/v1", "")
+        response = requests.get(f"{api_root}/health", timeout=5)
         return response.status_code == 200
     except requests.exceptions.RequestException:
         return False
@@ -623,6 +624,26 @@ def test_submit_command_flags_synthesis():
     assert data["next_prompt"] is None
     
     print("✓ /submit flags session for synthesis")
+
+
+def test_submit_status_semantics_aligned():
+    """Test /status aligns with /submit by reporting ready_for_synthesis with no next_prompt."""
+    token = register_and_login()
+    try:
+        session_data = create_test_session(token)
+    except AssertionError as exc:
+        pytest.skip(f"Session start unavailable in current environment: {exc}")
+    query_id = session_data["query_id"]
+
+    submit_data = submit_command(token, query_id, "/submit")
+    assert submit_data["success"] is True
+    assert submit_data["synthesis_ready"] is True
+
+    status_data = get_session_status(token, query_id)
+    assert status_data["ready_for_synthesis"] is True
+    assert status_data.get("next_prompt") is None
+
+    print("✓ /status semantics align with /submit readiness")
 
 
 def test_end_alias_works():
