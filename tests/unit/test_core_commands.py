@@ -201,6 +201,60 @@ def test_handle_command_skip_clears_all_data():
     assert len(step.conversation_history) == 0  # All history cleared
 
 
+def test_back_works_when_all_steps_complete_and_no_active_step():
+    """/back should still work from review/completed state (no active step)."""
+    session = RefinementSession(original_query="Test query")
+
+    for i in range(3):
+        aspect = RefinementAspect(
+            id=f"aspect_{i}",
+            name=f"Aspect {i}",
+            description=f"Test aspect {i}",
+            specifications="Analyze {query}",
+        )
+        session.add_step(aspect)
+        session.steps[i].is_complete = True
+
+    session.synthesis_requested = True
+
+    payload = session.handle_command(parse_user_command("/back"))
+
+    assert payload["success"] is True
+    assert len(session.steps) == 2
+    assert session.steps[0].is_complete is True
+    assert session.steps[1].is_complete is False
+    assert session.synthesis_requested is False
+
+
+def test_clear_works_when_all_steps_complete_and_no_active_step():
+    """/clear should target the last completed step when no active step exists."""
+    session = RefinementSession(original_query="Test query")
+
+    for i in range(2):
+        aspect = RefinementAspect(
+            id=f"aspect_{i}",
+            name=f"Aspect {i}",
+            description=f"Test aspect {i}",
+            specifications="Analyze {query}",
+        )
+        step = session.add_step(aspect)
+        step.is_complete = True
+        step.add_follow_up(question="Q?", response="A")
+        step.normalized_value = "value"
+
+    session.synthesis_requested = True
+
+    payload = session.handle_command(parse_user_command("/clear"))
+
+    assert payload["success"] is True
+    assert payload["regenerate_question"] is True
+    last_step = session.steps[-1]
+    assert last_step.is_complete is False
+    assert last_step.normalized_value is None
+    assert last_step.conversation_history == []
+    assert session.synthesis_requested is False
+
+
 def test_handle_command_restart_truncates_all_steps():
     """
     Test /restart clears all steps for full regeneration.

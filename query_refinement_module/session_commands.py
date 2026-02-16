@@ -57,10 +57,21 @@ class SessionCommands:
         if handler:
             return handler()
         return {"success": False, "message": f"Command {command.name} not implemented"}
+
+    def _get_active_or_last_completed(self):
+        """Return active step, or last completed step when session is fully complete/reviewing."""
+        active = self.session.get_active_step()
+        if active:
+            return active
+
+        if self.session.steps and (self.session.synthesis_requested or all(step.is_complete for step in self.session.steps)):
+            return self.session.steps[-1]
+
+        return None
     
     def go_back(self) -> Dict[str, Any]:
         """Navigate to previous refinement dimension, recreating truncated dimensions as placeholders."""
-        active = self.session.get_active_step()
+        active = self._get_active_or_last_completed()
         if not active:
             return {"success": False, "message": "No active step to go back from"}
         
@@ -68,6 +79,9 @@ class SessionCommands:
         if active_idx == 0:
             return {"success": False, "message": "Already at first refinement dimension. Use /restart to start over."}
         
+        # Exiting synthesis-ready review state because user is modifying session
+        self.session.synthesis_requested = False
+
         # Get previous step
         prev_step = self.session.steps[active_idx - 1]
         
@@ -181,9 +195,12 @@ class SessionCommands:
     
     def clear_current(self) -> Dict[str, Any]:
         """Clear current refinement dimension's answers and restart it."""
-        active = self.session.get_active_step()
+        active = self._get_active_or_last_completed()
         if not active:
             return {"success": False, "message": "No active step to clear"}
+
+        # Exiting synthesis-ready review state because user is modifying session
+        self.session.synthesis_requested = False
         
         # Clear all data for current refinement dimension
         active.conversation_history = []

@@ -1274,9 +1274,17 @@ async def submit_answer(
     )
     
     if not db_step:
-        raise HTTPException(
-            status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
-            detail="Database refinement step not found"
+        logger.warning(
+            "Missing refinement_step row for active aspect; recreating",
+            extra={
+                "query_id": query_id,
+                "aspect": active_step.refinement_aspect.name,
+            },
+        )
+        db_step = create_refinement_step(
+            db,
+            query_id=query_id,
+            aspect_name=active_step.refinement_aspect.name,
         )
     
     # Store the follow-up in database
@@ -1373,15 +1381,28 @@ async def submit_answer(
                         (s for s in db_steps if s.aspect_name == next_step.refinement_aspect.name),
                         None
                     )
-                    if db_step:
-                        update_refinement_step_final_value(
-                            db,
-                            step_id=db_step.id,
-                            final_value=next_step.normalized_value_as_str,
-                            is_complete=True,
-                            was_skipped=False,
-                            user_ended_early=False
+                    if not db_step:
+                        logger.warning(
+                            "Missing refinement_step row during auto-cascade; recreating",
+                            extra={
+                                "query_id": query_id,
+                                "aspect": next_step.refinement_aspect.name,
+                            },
                         )
+                        db_step = create_refinement_step(
+                            db,
+                            query_id=query_id,
+                            aspect_name=next_step.refinement_aspect.name,
+                        )
+
+                    update_refinement_step_final_value(
+                        db,
+                        step_id=db_step.id,
+                        final_value=next_step.normalized_value_as_str,
+                        is_complete=True,
+                        was_skipped=False,
+                        user_ended_early=False
+                    )
                 
                 # Move to next aspect and continue cascading
                 next_step = session.get_next_unrefined_aspect()
