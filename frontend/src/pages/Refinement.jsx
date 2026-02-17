@@ -1143,7 +1143,7 @@ const Refinement = () => {
     return (
         <div className="refinement-page">
             <header className="refinement-header">
-                <h1>MPH Dissertation Research Advisor</h1>
+                <h1>Research Query Refinement Advisor</h1>
                 <div className="header-actions">
                     {savedSessionData && stage === 'framework-selection' && (
                         <button onClick={handleResumeSession} className="btn-link btn-resume" disabled={loading}>
