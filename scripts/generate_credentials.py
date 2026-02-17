@@ -9,7 +9,9 @@ import json
 import secrets
 import string
 from pathlib import Path
-from typing import List, Dict
+from typing import Any, List, Dict
+
+from query_refinement_module.schema.registry import list_frameworks
 
 
 def _infer_format(path: Path, explicit: str | None) -> str:
@@ -47,27 +49,51 @@ def _build_username(prefix: str, index: int, pad_width: int) -> str:
     return f"{prefix}{index}"
 
 
-def generate_records(count: int, prefix: str, start_index: int, pad_width: int, password_length: int) -> List[Dict[str, str]]:
-    records: List[Dict[str, str]] = []
+def generate_records(
+    count: int,
+    prefix: str,
+    start_index: int,
+    pad_width: int,
+    password_length: int,
+    frameworks: List[str],
+    include_superuser_field: bool,
+) -> List[Dict[str, Any]]:
+    records: List[Dict[str, Any]] = []
     for offset in range(count):
         index = start_index + offset
         username = _build_username(prefix, index, pad_width)
-        records.append({
+        record: Dict[str, Any] = {
             "username": username,
             "password": _generate_password(password_length),
-        })
+        }
+        if frameworks:
+            record["frameworks"] = list(frameworks)
+        if include_superuser_field:
+            record["superuser"] = False
+
+        records.append(record)
     return records
 
 
-def write_json(path: Path, records: List[Dict[str, str]]) -> None:
+def write_json(path: Path, records: List[Dict[str, Any]]) -> None:
     path.write_text(json.dumps(records, indent=2), encoding="utf-8")
 
 
-def write_csv(path: Path, records: List[Dict[str, str]]) -> None:
+def write_csv(path: Path, records: List[Dict[str, Any]]) -> None:
+    fieldnames = ["username", "password"]
+    if records and "frameworks" in records[0]:
+        fieldnames.append("frameworks")
+    if records and "superuser" in records[0]:
+        fieldnames.append("superuser")
+
     with path.open("w", newline="", encoding="utf-8") as handle:
-        writer = csv.DictWriter(handle, fieldnames=["username", "password"])
+        writer = csv.DictWriter(handle, fieldnames=fieldnames)
         writer.writeheader()
-        writer.writerows(records)
+        for record in records:
+            row = dict(record)
+            if "frameworks" in row and isinstance(row["frameworks"], list):
+                row["frameworks"] = ";".join(row["frameworks"])
+            writer.writerow(row)
 
 
 def parse_args() -> argparse.Namespace:
@@ -81,7 +107,28 @@ def parse_args() -> argparse.Namespace:
     parser.add_argument("--start-index", type=int, default=1, help="Starting numeric index")
     parser.add_argument("--pad-width", type=int, default=3, help="Zero padding width (0 disables padding)")
     parser.add_argument("--password-length", type=int, default=16, help="Password length")
+    parser.add_argument(
+        "--framework",
+        action="append",
+        default=[],
+        help="Include framework assignment in output (repeatable)",
+    )
+    parser.add_argument(
+        "--include-superuser-field",
+        action="store_true",
+        help="Include superuser=false in generated records for import tooling",
+    )
     return parser.parse_args()
+
+
+def _validate_frameworks(frameworks: List[str]) -> List[str]:
+    available = set(list_frameworks())
+    invalid = [name for name in frameworks if name not in available]
+    if invalid:
+        raise ValueError(
+            f"Unknown framework(s): {', '.join(invalid)}. Available: {', '.join(sorted(available))}"
+        )
+    return frameworks
 
 
 def main() -> None:
@@ -89,12 +136,16 @@ def main() -> None:
     output_path = args.output
     output_format = _infer_format(output_path, args.format) if output_path else None
 
+    requested_frameworks = _validate_frameworks(args.framework)
+
     records = generate_records(
         count=args.count,
         prefix=args.username_prefix,
         start_index=args.start_index,
         pad_width=args.pad_width,
         password_length=args.password_length,
+        frameworks=requested_frameworks,
+        include_superuser_field=args.include_superuser_field,
     )
 
     written: List[Path] = []

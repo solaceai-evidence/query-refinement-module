@@ -18,6 +18,7 @@ from query_refinement_module.db.models.refinement_step import RefinementStep
 from query_refinement_module.db.models.refinement_step_metadata import RefinementStepMetadata
 from query_refinement_module.db.models.followup_history import FollowUpHistory
 from query_refinement_module.db.models.feedback import Feedback
+from query_refinement_module.db.models.user_framework_access import UserFrameworkAccess
 from query_refinement_module.tracing import get_logger
 from passlib.context import CryptContext
 
@@ -107,6 +108,49 @@ def verify_user_password(db: Session, identifier: str, password: str) -> Optiona
         if pwd_context.verify(truncated_password, user.password_hash):
             return user
     return None
+
+
+def assign_user_framework_access(db: Session, user_id: int, framework_name: str) -> UserFrameworkAccess:
+    """Assign a framework to a user (idempotent)."""
+    existing = db.query(UserFrameworkAccess).filter(
+        UserFrameworkAccess.user_id == user_id,
+        UserFrameworkAccess.framework_name == framework_name,
+    ).first()
+    if existing:
+        return existing
+
+    mapping = UserFrameworkAccess(user_id=user_id, framework_name=framework_name)
+    db.add(mapping)
+    db.commit()
+    db.refresh(mapping)
+    return mapping
+
+
+def revoke_user_framework_access(db: Session, user_id: int, framework_name: str) -> bool:
+    """Revoke a framework assignment from a user."""
+    deleted = db.query(UserFrameworkAccess).filter(
+        UserFrameworkAccess.user_id == user_id,
+        UserFrameworkAccess.framework_name == framework_name,
+    ).delete(synchronize_session=False)
+    db.commit()
+    return deleted > 0
+
+
+def get_user_framework_names(db: Session, user_id: int) -> List[str]:
+    """Get all framework names assigned to a user."""
+    rows = db.query(UserFrameworkAccess.framework_name).filter(
+        UserFrameworkAccess.user_id == user_id
+    ).all()
+    return [row[0] for row in rows]
+
+
+def user_has_framework_access(db: Session, user_id: int, framework_name: str) -> bool:
+    """Check whether a user can access a framework."""
+    entry = db.query(UserFrameworkAccess.id).filter(
+        UserFrameworkAccess.user_id == user_id,
+        UserFrameworkAccess.framework_name == framework_name,
+    ).first()
+    return entry is not None
 
 
 # ==========================================

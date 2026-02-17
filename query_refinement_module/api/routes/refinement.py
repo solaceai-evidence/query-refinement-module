@@ -34,8 +34,11 @@ from query_refinement_module.db.crud import (
     delete_refinement_steps_by_aspects,
     reset_refinement_step,
     abandon_query_session,
+    get_user_framework_names,
+    user_has_framework_access,
 )
 from query_refinement_module.api.auth import get_current_user
+from query_refinement_module.api.config import get_settings
 from query_refinement_module.api.dependencies import get_refinement_manager, get_session_manager
 from query_refinement_module.schema.registry import get_framework, list_frameworks
 from query_refinement_module.api.session_manager import SessionManager
@@ -590,11 +593,18 @@ async def _build_command_response(
 # ==========================================
 
 @router.get("/frameworks")
-def get_available_frameworks():
+def get_available_frameworks(
+    current_user = Depends(get_current_user),
+    db: Session = Depends(get_db),
+):
     """
     List all available refinement frameworks.
     """
     frameworks = list_frameworks()
+    if not current_user.is_superuser:
+        allowed = set(get_user_framework_names(db, current_user.id))
+        frameworks = [name for name in frameworks if name in allowed]
+
     return {
         "frameworks": frameworks,
         "count": len(frameworks)
@@ -628,14 +638,24 @@ async def start_refinement(
     set_request_id(request_id)
     
     start_time = time.time()
+    settings = get_settings()
     
     # Check if user can start new workflow
-    if not current_user.is_superuser and current_user.has_completed_workflow:
+    if settings.enforce_workflow_limit and not current_user.is_superuser and current_user.has_completed_workflow:
         raise HTTPException(
             status_code=status.HTTP_403_FORBIDDEN,
             detail="You have already completed one refinement workflow. "
                    "For evaluation purposes, only one workflow per participant is allowed. "
                    "Thank you for your participation!"
+        )
+
+    if (
+        not current_user.is_superuser
+        and not user_has_framework_access(db, current_user.id, request.framework_name)
+    ):
+        raise HTTPException(
+            status_code=status.HTTP_403_FORBIDDEN,
+            detail=f"You are not authorized to use framework '{request.framework_name}'"
         )
     
     logger.info(
@@ -1860,7 +1880,8 @@ async def synthesize_refined_query(
     update_refined_query(db, request.query_id, integrated_statement)
 
     # Mark workflow complete after synthesis (unless superuser)
-    if not current_user.is_superuser:
+    settings = get_settings()
+    if settings.enforce_workflow_limit and not current_user.is_superuser:
         current_user.has_completed_workflow = True
         db.commit()
     

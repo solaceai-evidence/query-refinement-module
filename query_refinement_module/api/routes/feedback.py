@@ -16,6 +16,7 @@ from query_refinement_module.db.crud import (
 )
 from query_refinement_module.api.schemas import FeedbackCreate, FeedbackResponse
 from query_refinement_module.api.auth import get_current_user
+from query_refinement_module.api.config import get_settings
 
 router = APIRouter(prefix="/feedback", tags=["Feedback"])
 
@@ -48,7 +49,8 @@ def submit_feedback(
             raise HTTPException(status_code=status.HTTP_403_FORBIDDEN, detail="Access denied")
         
         # Mark user workflow complete (unless superuser)
-        if not current_user.is_superuser:
+        settings = get_settings()
+        if settings.enforce_workflow_limit and not current_user.is_superuser:
             current_user.has_completed_workflow = True
 
         # Mark query as consented only if explicit consent was provided

@@ -46,7 +46,17 @@ cp .env.prod .env
 - `LOG_FORMAT=json`
 - `ENVIRONMENT=production`
 
-4. Optional throughput tuning:
+4. Workflow limit mode:
+
+- `ENFORCE_WORKFLOW_LIMIT=true` limits non-superusers to one completed workflow
+- `ENFORCE_WORKFLOW_LIMIT=false` allows non-superusers to run unlimited workflows
+
+Recommended values by operating mode:
+
+- Controlled evaluation mode: `ENFORCE_WORKFLOW_LIMIT=true`
+- Open usage mode: `ENFORCE_WORKFLOW_LIMIT=false`
+
+5. Optional throughput tuning:
 
 - `LLM_RATE_LIMIT_RPM`
 - `LLM_RATE_LIMIT_PER_USER_RPM`

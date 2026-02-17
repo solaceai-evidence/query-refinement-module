@@ -10,6 +10,9 @@ For full detail, see `docs/DEPLOYMENT.md`.
 - [ ] Set required secrets: `SECRET_KEY`, `QUERY_REFINEMENT_LLM_API_KEY`
 - [ ] Set connectivity values: `DATABASE_URL`, `ALLOWED_ORIGINS`
 - [ ] Keep `ALLOW_REGISTRATION=false` in production unless self-signup is explicitly required
+- [ ] Set workflow mode with `ENFORCE_WORKFLOW_LIMIT`:
+	- [ ] `true` for one-workflow-per-user evaluation mode
+	- [ ] `false` for unlimited non-superuser workflows
 - [ ] Ensure host paths exist and are writable: `./logs`, `./logs/nginx`
 - [ ] Verify required inbound ports:
 	- [ ] `80` (HTTP via nginx)

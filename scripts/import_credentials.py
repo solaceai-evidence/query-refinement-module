@@ -12,6 +12,7 @@ from typing import Dict, Iterable, List
 
 from query_refinement_module.db.database import SessionLocal
 from query_refinement_module.db import crud
+from query_refinement_module.schema.registry import list_frameworks
 
 
 def _infer_format(path: Path, explicit: str | None) -> str:
@@ -46,6 +47,12 @@ def parse_args() -> argparse.Namespace:
     parser.add_argument("--input", type=Path, required=True, help="Input file path (.json or .csv)")
     parser.add_argument("--format", choices=["json", "csv"], help="Input format (defaults by file extension)")
     parser.add_argument("--on-duplicate", choices=["skip", "fail"], default="skip", help="Duplicate username handling")
+    parser.add_argument(
+        "--default-framework",
+        action="append",
+        default=[],
+        help="Framework assignment applied to every imported user (repeatable)",
+    )
     parser.add_argument("--dry-run", action="store_true", help="Validate without writing to the database")
     return parser.parse_args()
 
@@ -85,7 +92,45 @@ def normalize_record(record: Dict[str, str]) -> Dict[str, str]:
         normalized["email"] = email
     if name:
         normalized["name"] = name
+
+    # Optional booleans / assignments
+    superuser_raw = record.get("superuser")
+    if superuser_raw is not None:
+        normalized["superuser"] = str(superuser_raw).strip().lower() in {"1", "true", "yes", "y", "on"}
+
+    frameworks_raw = record.get("frameworks")
+    if frameworks_raw:
+        if isinstance(frameworks_raw, list):
+            frameworks = [str(item).strip() for item in frameworks_raw if str(item).strip()]
+        else:
+            text = str(frameworks_raw).strip()
+            delimiter = ";" if ";" in text else ","
+            frameworks = [part.strip() for part in text.split(delimiter) if part.strip()]
+        if frameworks:
+            normalized["frameworks"] = frameworks
+
     return normalized
+
+
+def validate_framework_assignments(records: List[Dict[str, str]], default_frameworks: List[str]) -> None:
+    available = set(list_frameworks())
+
+    invalid_defaults = [name for name in default_frameworks if name not in available]
+    if invalid_defaults:
+        raise ValueError(
+            f"Unknown default framework(s): {', '.join(invalid_defaults)}. Available: {', '.join(sorted(available))}"
+        )
+
+    all_requested = set(default_frameworks)
+    for record in records:
+        for framework_name in record.get("frameworks", []):
+            all_requested.add(framework_name)
+
+    invalid = sorted(name for name in all_requested if name not in available)
+    if invalid:
+        raise ValueError(
+            f"Unknown framework(s) in input: {', '.join(invalid)}. Available: {', '.join(sorted(available))}"
+        )
 
 
 def main() -> None:
@@ -94,6 +139,7 @@ def main() -> None:
     input_format = _infer_format(input_path, args.format)
 
     records = [normalize_record(record) for record in iter_records(input_path, input_format)]
+    validate_framework_assignments(records, args.default_framework)
 
     if args.dry_run:
         print(f"Validated {len(records)} records (dry run)")
@@ -102,27 +148,56 @@ def main() -> None:
     session = SessionLocal()
     created = 0
     skipped = 0
+    framework_assignments = 0
+    promoted_superusers = 0
     try:
         for record in records:
             existing = crud.get_user_by_username(session, record["username"])
             if existing:
                 if args.on_duplicate == "fail":
                     raise ValueError(f"Duplicate username: {record['username']}")
+
+                if record.get("superuser") and not existing.is_superuser:
+                    existing.is_superuser = True
+                    session.commit()
+                    promoted_superusers += 1
+
+                merged_frameworks = set(args.default_framework)
+                merged_frameworks.update(record.get("frameworks", []))
+                for framework_name in sorted(merged_frameworks):
+                    crud.assign_user_framework_access(session, existing.id, framework_name)
+                    framework_assignments += 1
+
                 skipped += 1
                 continue
 
-            crud.create_user(
+            user = crud.create_user(
                 session,
                 username=record["username"],
                 password=record["password"],
                 email=record.get("email"),
                 name=record.get("name"),
             )
+
+            if record.get("superuser"):
+                user.is_superuser = True
+                session.commit()
+                promoted_superusers += 1
+
+            merged_frameworks = set(args.default_framework)
+            merged_frameworks.update(record.get("frameworks", []))
+            for framework_name in sorted(merged_frameworks):
+                crud.assign_user_framework_access(session, user.id, framework_name)
+                framework_assignments += 1
+
             created += 1
     finally:
         session.close()
 
-    print(f"Created {created} users; skipped {skipped} duplicates")
+    print(
+        f"Created {created} users; skipped {skipped} duplicates; "
+        f"superuser grants {promoted_superusers}; framework assignments {framework_assignments}"
+    )
 
 
 if __name__ == "__main__":

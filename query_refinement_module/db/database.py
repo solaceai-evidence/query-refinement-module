@@ -186,6 +186,7 @@ from query_refinement_module.db.models.followup_history import FollowUpHistory
 from query_refinement_module.db.models.audit_log import AuditLog
 from query_refinement_module.db.models.webhook import Webhook, WebhookDelivery
 from query_refinement_module.db.models.frontend_log import FrontendLog
+from query_refinement_module.db.models.user_framework_access import UserFrameworkAccess
 
 # Create tables (for dev/testing; use Alembic for migrations in production)
 def init_db():

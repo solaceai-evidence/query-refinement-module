@@ -224,10 +224,17 @@ def get_user_status(current_user = Depends(get_current_user)):
     - has_completed_workflow: Whether user completed their one allowed workflow
     - can_start_new_workflow: Whether user is allowed to start a new workflow
     """
+    active_settings = get_settings()
+    can_start_new_workflow = (
+        True
+        if not active_settings.enforce_workflow_limit
+        else (current_user.is_superuser or not current_user.has_completed_workflow)
+    )
+
     return {
         "user_id": current_user.id,
         "username": current_user.username,
         "is_superuser": current_user.is_superuser,
         "has_completed_workflow": current_user.has_completed_workflow,
-        "can_start_new_workflow": current_user.is_superuser or not current_user.has_completed_workflow
+        "can_start_new_workflow": can_start_new_workflow
     }

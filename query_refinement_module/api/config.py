@@ -50,6 +50,10 @@ class Settings(BaseSettings):
     # Security
     secret_key: str = Field(default="your-secret-key-change-this-in-production")
     allow_registration: bool = Field(default=True, description="Allow self-service user registration")
+    enforce_workflow_limit: bool = Field(
+        default=True,
+        description="If true, non-superusers are limited to one completed workflow",
+    )
     
     @model_validator(mode='after')
     def validate_secret_key_in_production(self) -> 'Settings':

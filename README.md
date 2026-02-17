@@ -94,7 +94,13 @@ DATABASE_URL=sqlite:///query_refinement.db
 # Session Security
 SECRET_KEY=change-this-in-production
 ALLOW_REGISTRATION=false
+ENFORCE_WORKFLOW_LIMIT=true
 ```
+
+Workflow mode:
+
+- `ENFORCE_WORKFLOW_LIMIT=true`: non-superusers are limited to one completed workflow
+- `ENFORCE_WORKFLOW_LIMIT=false`: non-superusers can run unlimited workflows
 
 ## User Management (No Self-Registration)
 

@@ -8,6 +8,7 @@ from fastapi import APIRouter, Depends, HTTPException, status
 from sqlalchemy.orm import Session
 from sqlalchemy import func
 from datetime import datetime, timedelta
+from pydantic import BaseModel
 
 from query_refinement_module.api.auth import get_current_user
 from query_refinement_module.api.routes.admin import require_superuser
@@ -15,6 +16,12 @@ from query_refinement_module.db.models.user import User
 from query_refinement_module.db.models.query_session import QuerySession
 from query_refinement_module.db.models.query import Query
 from query_refinement_module.db.session import get_db
+from query_refinement_module.db.crud import (
+    get_user_by_id,
+    assign_user_framework_access,
+    revoke_user_framework_access,
+    get_user_framework_names,
+)
 from query_refinement_module.schema.registry import (
     list_frameworks, 
     get_framework, 
@@ -25,6 +32,78 @@ import os
 from pathlib import Path
 
 router = APIRouter(prefix="/api/admin/frameworks", tags=["admin", "frameworks"])
+
+
+class FrameworkAccessRequest(BaseModel):
+    framework_name: str
+
+
+class FrameworkAccessResponse(BaseModel):
+    user_id: int
+    framework_names: List[str]
+
+
+@router.get("/users/{user_id}/access", response_model=FrameworkAccessResponse)
+async def get_user_framework_access(
+    user_id: int,
+    current_user: User = Depends(require_superuser),
+    db: Session = Depends(get_db),
+):
+    """List framework assignments for a user (admin only)."""
+    user = get_user_by_id(db, user_id)
+    if not user:
+        raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="User not found")
+
+    return FrameworkAccessResponse(
+        user_id=user_id,
+        framework_names=sorted(get_user_framework_names(db, user_id)),
+    )
+
+
+@router.post("/users/{user_id}/access", response_model=FrameworkAccessResponse)
+async def assign_framework_to_user(
+    user_id: int,
+    request: FrameworkAccessRequest,
+    current_user: User = Depends(require_superuser),
+    db: Session = Depends(get_db),
+):
+    """Assign one framework to a user (admin only)."""
+    user = get_user_by_id(db, user_id)
+    if not user:
+        raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="User not found")
+
+    available_frameworks = set(list_frameworks())
+    framework_name = request.framework_name.strip()
+    if framework_name not in available_frameworks:
+        raise HTTPException(
+            status_code=status.HTTP_404_NOT_FOUND,
+            detail=f"Framework '{framework_name}' not found",
+        )
+
+    assign_user_framework_access(db, user_id=user_id, framework_name=framework_name)
+    return FrameworkAccessResponse(
+        user_id=user_id,
+        framework_names=sorted(get_user_framework_names(db, user_id)),
+    )
+
+
+@router.delete("/users/{user_id}/access/{framework_name}", response_model=FrameworkAccessResponse)
+async def revoke_framework_from_user(
+    user_id: int,
+    framework_name: str,
+    current_user: User = Depends(require_superuser),
+    db: Session = Depends(get_db),
+):
+    """Revoke one framework from a user (admin only)."""
+    user = get_user_by_id(db, user_id)
+    if not user:
+        raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="User not found")
+
+    revoke_user_framework_access(db, user_id=user_id, framework_name=framework_name)
+    return FrameworkAccessResponse(
+        user_id=user_id,
+        framework_names=sorted(get_user_framework_names(db, user_id)),
+    )
 
 
 @router.get("/list", response_model=List[Dict[str, Any]])

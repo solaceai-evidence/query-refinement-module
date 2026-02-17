@@ -31,6 +31,12 @@ class User(Base):
     
     # Relationships (defined via backref in other models, explicit here for webhooks)
     webhooks = relationship("Webhook", back_populates="user", cascade="all, delete-orphan", lazy="dynamic")
+    framework_access = relationship(
+        "UserFrameworkAccess",
+        back_populates="user",
+        cascade="all, delete-orphan",
+        lazy="selectin",
+    )
 
     def __repr__(self):
         return f"<User(id={self.id}, username='{self.username}', superuser={self.is_superuser}')>"

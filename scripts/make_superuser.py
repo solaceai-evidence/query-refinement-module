@@ -11,6 +11,7 @@ sys.path.insert(0, str(Path(__file__).parent.parent))
 
 from query_refinement_module.db.session import SessionLocal
 from query_refinement_module.db.models.user import User
+from query_refinement_module.api.config import get_settings
 
 
 def make_superuser(username: str):
@@ -19,19 +20,24 @@ def make_superuser(username: str):
     try:
         user = db.query(User).filter(User.username == username).first()
         if not user:
-            print(f"❌ User '{username}' not found")
+            print(f"User '{username}' not found")
             return False
         
         if user.is_superuser:
-            print(f"✓ User '{username}' is already a superuser")
+            print(f"User '{username}' is already a superuser")
             return True
         
         user.is_superuser = True
         db.commit()
-        print(f"✓ User '{username}' is now a superuser with unlimited workflows")
+
+        settings = get_settings()
+        if settings.enforce_workflow_limit:
+            print(f"User '{username}' is now a superuser with unlimited workflows")
+        else:
+            print(f"User '{username}' is now a superuser")
         return True
     except Exception as e:
-        print(f"❌ Error: {e}")
+        print(f"Error: {e}")
         db.rollback()
         return False
     finally:
