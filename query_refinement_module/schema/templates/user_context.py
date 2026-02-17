@@ -151,6 +151,8 @@ DIMENSIONS_CLARIFIED_AND_DEPENDENCIES_TEMPLATE = """
 3. Extract using user's **exact words** from the dimension values
 4. Integrate extracted values into "current" field before asking questions
 5. Dimensions marked [SKIPPED] are intentionally omitted by user—do not ask about them
+6. If any valid partial signal is found, keep it in `current` even when `complete=false`
+7. Use empty `current` only when no extractable signal exists across completed dimensions, conversation history, and original query
 
 {% endif %}
 
