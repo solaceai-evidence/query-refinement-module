@@ -32,6 +32,7 @@ const SynthesisResult = ({ queryId, synthesis, selectedFramework = null, aspects
     const [confidenceBefore, setConfidenceBefore] = useState(0);
     const [confidenceAfter, setConfidenceAfter] = useState(0);
     const [questionQuality, setQuestionQuality] = useState(0);
+    const [newParametersPrompting, setNewParametersPrompting] = useState(0);
     const [easeOfUse, setEaseOfUse] = useState(0);
     const [feltInControl, setFeltInControl] = useState(0);
     const [toneSelection, setToneSelection] = useState('');
@@ -195,6 +196,7 @@ const SynthesisResult = ({ queryId, synthesis, selectedFramework = null, aspects
                     confidence_before: confidenceBefore || null,
                     confidence_after: confidenceAfter || null,
                     question_quality: questionQuality || null,
+                    new_parameters_prompting: newParametersPrompting || null,
                     ease_of_use: easeOfUse || null,
                     felt_in_control: feltInControl || null,
                     tone_selected: toneSelection || null,
@@ -338,6 +340,11 @@ const SynthesisResult = ({ queryId, synthesis, selectedFramework = null, aspects
                             <div className="feedback-field">
                                 <div className="feedback-field-title">The questions asked by the chatbot were relevant and improved my thinking.</div>
                                 <Likert5 name="question_quality" value={questionQuality} onChange={setQuestionQuality} />
+                            </div>
+
+                            <div className="feedback-field">
+                                <div className="feedback-field-title">To what extent did the chatbot prompt you to consider new parameters for your research question?</div>
+                                <Likert5 name="new_parameters_prompting" value={newParametersPrompting} onChange={setNewParametersPrompting} />
                             </div>
 
                             <div className="feedback-field">
