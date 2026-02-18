@@ -32,7 +32,8 @@ export const refinementService = {
     async startRefinement(frameworkName, initialQuery) {
         const response = await apiClient.post('/refinement/start', {
             framework_name: frameworkName,
-            original_query: initialQuery
+            original_query: initialQuery,
+            source: 'gui'
         });
         return response.data;
     },

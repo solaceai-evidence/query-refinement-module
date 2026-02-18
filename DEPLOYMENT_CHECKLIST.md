@@ -8,6 +8,8 @@ For full detail, see `docs/DEPLOYMENT.md`.
 - [ ] Install Docker Engine + Docker Compose plugin on the VM
 - [ ] Copy `.env.prod` to `.env` and replace placeholder values
 - [ ] Set required secrets: `SECRET_KEY`, `QUERY_REFINEMENT_LLM_API_KEY`
+- [ ] If using external API integrations without user JWTs, set `INTEGRATION_API_KEY`
+- [ ] Optional for integration identity naming: set `INTEGRATION_SERVICE_USERNAME`
 - [ ] Set connectivity values: `DATABASE_URL`, `ALLOWED_ORIGINS`
 - [ ] Keep `ALLOW_REGISTRATION=false` in production unless self-signup is explicitly required
 - [ ] Set workflow mode with `ENFORCE_WORKFLOW_LIMIT`:
@@ -46,6 +48,7 @@ curl -i -X POST http://localhost/api/v1/auth/register \
 ## 4) Integration Smoke Checks
 
 - [ ] Start → answer → synthesize succeeds via `/api/v1/refinement/*`
+- [ ] External integration path validated with `X-API-Key` and `source="api_integration"`
 - [ ] Partial answer carry-forward works with `/done` (run `python scripts/replay_e2e_check.py` and confirm `PASS`)
 - [ ] Forward-to-QA succeeds using `/api/v1/refinement/queries/{query_id}/forward-to-qa`
 - [ ] Optional webhooks trigger for expected events (`/api/v1/webhooks`)

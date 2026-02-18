@@ -66,6 +66,16 @@ class Settings(BaseSettings):
         return self
     algorithm: str = "HS256"
     access_token_expire_minutes: int = 480  # 8 hours (increased from 30 minutes)
+
+    # Service-to-service integration auth (prototype)
+    integration_api_key: Optional[str] = Field(
+        default=None,
+        description="Optional API key for trusted external integrations (X-API-Key header)",
+    )
+    integration_service_username: str = Field(
+        default="api_integration_service",
+        description="Username for internal service account used by API integrations",
+    )
     
     # CORS Configuration (environment-specific)
     # Development: localhost origins

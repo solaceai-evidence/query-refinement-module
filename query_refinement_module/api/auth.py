@@ -3,14 +3,15 @@ Authentication utilities for JWT token handling and password hashing.
 """
 from datetime import datetime, timedelta, timezone
 from typing import Optional
+import secrets
 from jose import JWTError, jwt
 from passlib.context import CryptContext
-from fastapi import Depends, HTTPException, status
-from fastapi.security import OAuth2PasswordBearer
+from fastapi import Depends, HTTPException, status, Security
+from fastapi.security import OAuth2PasswordBearer, HTTPBearer, HTTPAuthorizationCredentials, APIKeyHeader
 from sqlalchemy.orm import Session
 
 from query_refinement_module.db.session import get_db
-from query_refinement_module.db.crud import get_user_by_username
+from query_refinement_module.db.crud import get_user_by_username, create_user
 from query_refinement_module.api.config import get_settings
 
 settings = get_settings()
@@ -20,6 +21,8 @@ pwd_context = CryptContext(schemes=["bcrypt"], deprecated="auto")
 
 # OAuth2 scheme for token authentication
 oauth2_scheme = OAuth2PasswordBearer(tokenUrl="/api/v1/auth/login")
+optional_bearer_scheme = HTTPBearer(auto_error=False)
+api_key_header = APIKeyHeader(name="X-API-Key", auto_error=False)
 
 
 def verify_password(plain_password: str, hashed_password: str) -> bool:
@@ -77,3 +80,59 @@ async def get_current_user(
         raise credentials_exception
     
     return user
+
+
+def _get_or_create_integration_service_user(db: Session):
+    """Return the configured integration service user, creating it on first use."""
+    username = settings.integration_service_username
+    user = get_user_by_username(db, username=username)
+
+    if user is None:
+        user = create_user(
+            db,
+            username=username,
+            password=secrets.token_urlsafe(48),
+            name="API Integration Service",
+        )
+
+    if not user.is_superuser:
+        user.is_superuser = True
+        db.commit()
+        db.refresh(user)
+
+    return user
+
+
+async def get_current_user_or_integration(
+    bearer_credentials: Optional[HTTPAuthorizationCredentials] = Depends(optional_bearer_scheme),
+    integration_api_key: Optional[str] = Security(api_key_header),
+    db: Session = Depends(get_db),
+):
+    """Authenticate either an end-user JWT token or trusted integration API key."""
+    credentials_exception = HTTPException(
+        status_code=status.HTTP_401_UNAUTHORIZED,
+        detail="Could not validate credentials",
+        headers={"WWW-Authenticate": "Bearer"},
+    )
+
+    if bearer_credentials and bearer_credentials.scheme.lower() == "bearer":
+        payload = decode_access_token(bearer_credentials.credentials)
+        if payload is None:
+            raise credentials_exception
+
+        username: str = payload.get("sub")
+        if username is None:
+            raise credentials_exception
+
+        user = get_user_by_username(db, username=username)
+        if user is None:
+            raise credentials_exception
+        return user
+
+    if integration_api_key:
+        expected_api_key = settings.integration_api_key
+        if expected_api_key and secrets.compare_digest(integration_api_key, expected_api_key):
+            return _get_or_create_integration_service_user(db)
+        raise credentials_exception
+
+    raise credentials_exception

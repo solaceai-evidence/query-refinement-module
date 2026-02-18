@@ -52,11 +52,13 @@ export interface CommandResult {
 export interface StartRefinementRequest {
     original_query: string;
     framework_name: string;
+    source?: 'gui' | 'api_integration';
 }
 
 export interface StartRefinementResponse {
     session_id: number;
     query_id: number;
+    source: 'gui' | 'api_integration';
     summary: {
         aspects: Array<{
             aspect_name: string;

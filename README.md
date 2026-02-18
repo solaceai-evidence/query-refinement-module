@@ -95,12 +95,35 @@ DATABASE_URL=sqlite:///query_refinement.db
 SECRET_KEY=change-this-in-production
 ALLOW_REGISTRATION=false
 ENFORCE_WORKFLOW_LIMIT=true
+
+# Optional service-to-service auth for external integrations
+INTEGRATION_API_KEY=<shared-service-key>
+INTEGRATION_SERVICE_USERNAME=api_integration_service
 ```
 
 Workflow mode:
 
 - `ENFORCE_WORKFLOW_LIMIT=true`: non-superusers are limited to one completed workflow
 - `ENFORCE_WORKFLOW_LIMIT=false`: non-superusers can run unlimited workflows
+
+External integration mode:
+
+- For browser GUI evaluation, continue using JWT login (`Authorization: Bearer <token>`).
+- For server-to-server integrations, set `INTEGRATION_API_KEY` and call refinement endpoints with `X-API-Key`.
+- Use `source: "api_integration"` in `/api/v1/refinement/start` payloads to mark integration-origin runs.
+
+Minimal integration start example:
+
+```bash
+curl -X POST http://localhost:8000/api/v1/refinement/start \
+  -H 'Content-Type: application/json' \
+  -H 'X-API-Key: <integration-api-key>' \
+  -d '{
+    "original_query": "effects of aspirin in older adults",
+    "framework_name": "pico_advanced",
+    "source": "api_integration"
+  }'
+```
 
 ## User Management (No Self-Registration)
 

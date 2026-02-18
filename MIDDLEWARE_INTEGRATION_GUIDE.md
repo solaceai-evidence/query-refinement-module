@@ -15,11 +15,20 @@ All API routes in this guide are under `/api/v1`.
 
 ## End-to-End Flow
 
-1. Authenticate user
+1. Authenticate request (JWT user token or integration API key)
 2. Start refinement (`/refinement/start`)
 3. Repeat status/answer loop until `ready_for_synthesis=true`
 4. Synthesize (`/refinement/synthesize`)
 5. Forward to external QA (`/refinement/queries/{query_id}/forward-to-qa`)
+
+## Authentication Options
+
+- Interactive users (GUI): `Authorization: Bearer <jwt-token>`
+- External systems (server-to-server): `X-API-Key: <integration-api-key>`
+
+For service-to-service access, configure `INTEGRATION_API_KEY` in the API environment.
+
+If you change integration auth environment variables, restart API processes before testing.
 
 ## Endpoint Contracts
 
@@ -32,9 +41,15 @@ Request:
 ```json
 {
   "original_query": "effects of aspirin",
-  "framework_name": "pico_advanced"
+  "framework_name": "pico_advanced",
+  "source": "api_integration"
 }
 ```
+
+Notes:
+
+- `source` is optional (`gui` default), but should be set to `api_integration` for external system flows.
+- Use the same value consistently for downstream analytics segmentation.
 
 ### 2) Submit answer (or slash command)
 
@@ -151,13 +166,17 @@ Response:
 import requests
 
 API = "http://localhost:8000/api/v1"
-TOKEN = "your-token"
-HEADERS = {"Authorization": f"Bearer {TOKEN}"}
+API_KEY = "your-integration-api-key"
+HEADERS = {"X-API-Key": API_KEY}
 
 # 1) Start refinement
 start = requests.post(
     f"{API}/refinement/start",
-    json={"original_query": "effects of aspirin", "framework_name": "pico_advanced"},
+  json={
+    "original_query": "effects of aspirin",
+    "framework_name": "pico_advanced",
+    "source": "api_integration",
+  },
     headers=HEADERS,
 )
 start.raise_for_status()

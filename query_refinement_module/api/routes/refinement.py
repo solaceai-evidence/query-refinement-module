@@ -37,7 +37,7 @@ from query_refinement_module.db.crud import (
     get_user_framework_names,
     user_has_framework_access,
 )
-from query_refinement_module.api.auth import get_current_user
+from query_refinement_module.api.auth import get_current_user_or_integration
 from query_refinement_module.api.config import get_settings
 from query_refinement_module.api.dependencies import get_refinement_manager, get_session_manager
 from query_refinement_module.schema.registry import get_framework, list_frameworks
@@ -80,6 +80,10 @@ class StartRefinementRequest(BaseModel):
         max_length=128,
         description="Name of the refinement framework to use"
     )
+    source: str = Field(
+        default="gui",
+        description="Request origin channel: gui or api_integration",
+    )
     
     @field_validator('original_query')
     @classmethod
@@ -99,6 +103,15 @@ class StartRefinementRequest(BaseModel):
             raise ValueError("Framework name cannot be empty or just whitespace")
         return v.strip()
 
+    @field_validator('source')
+    @classmethod
+    def validate_source(cls, v: str) -> str:
+        """Validate supported request sources."""
+        normalized = (v or '').strip().lower()
+        if normalized not in {"gui", "api_integration"}:
+            raise ValueError("source must be one of: gui, api_integration")
+        return normalized
+
 
 class StartRefinementResponse(BaseModel):
     """Response with session details and initialization summary."""
@@ -107,6 +120,7 @@ class StartRefinementResponse(BaseModel):
     summary: Dict[str, Any] = Field(..., description="Initialization analysis summary")
     next_prompt: Optional[Dict[str, Any]] = Field(None, description="Next question for the user")
     ready_for_synthesis: bool = Field(False, description="True if all aspects are complete and ready for synthesis")
+    source: str = Field(..., description="Request origin channel")
 
 
 class SubmitAnswerRequest(BaseModel):
@@ -656,7 +670,7 @@ async def _build_command_response(
 
 @router.get("/frameworks")
 def get_available_frameworks(
-    current_user = Depends(get_current_user),
+    current_user = Depends(get_current_user_or_integration),
     db: Session = Depends(get_db),
 ):
     """
@@ -677,7 +691,7 @@ def get_available_frameworks(
 async def start_refinement(
     request: StartRefinementRequest,
     manager: QueryRefinementManager = Depends(get_refinement_manager),
-    current_user = Depends(get_current_user),
+    current_user = Depends(get_current_user_or_integration),
     db: Session = Depends(get_db),
     session_manager: SessionManager = Depends(get_session_manager)
 ):
@@ -727,6 +741,7 @@ async def start_refinement(
             "user_id": current_user.id,
             "framework_name": request.framework_name,
             "query_length": len(request.original_query),
+            "source": request.source,
         },
     )
     
@@ -977,7 +992,8 @@ async def start_refinement(
         query_id=db_query.id,
         summary=summary,
         next_prompt=next_prompt,
-        ready_for_synthesis=ready_for_synthesis
+        ready_for_synthesis=ready_for_synthesis,
+        source=request.source,
     )
 
 
@@ -987,7 +1003,7 @@ async def submit_answer(
     request: SubmitAnswerRequest,
     http_request: Request,
     manager: QueryRefinementManager = Depends(get_refinement_manager),
-    current_user = Depends(get_current_user),
+    current_user = Depends(get_current_user_or_integration),
     db: Session = Depends(get_db),
     session_manager: SessionManager = Depends(get_session_manager)
 ):
@@ -1531,7 +1547,7 @@ async def submit_answer(
 async def get_refinement_status(
     query_id: int,
     manager: QueryRefinementManager = Depends(get_refinement_manager),
-    current_user = Depends(get_current_user),
+    current_user = Depends(get_current_user_or_integration),
     db: Session = Depends(get_db),
     session_manager: SessionManager = Depends(get_session_manager)
 ):
@@ -1691,7 +1707,7 @@ async def get_refinement_status(
 async def synthesize_refined_query(
     request: SynthesizeQueryRequest,
     manager: QueryRefinementManager = Depends(get_refinement_manager),
-    current_user = Depends(get_current_user),
+    current_user = Depends(get_current_user_or_integration),
     db: Session = Depends(get_db),
     session_manager: SessionManager = Depends(get_session_manager)
 ):
@@ -1988,7 +2004,7 @@ async def synthesize_refined_query(
 async def forward_to_qa_system(
     query_id: int,
     request: ForwardToQARequest,
-    current_user = Depends(get_current_user),
+    current_user = Depends(get_current_user_or_integration),
     db: Session = Depends(get_db),
 ):
     """
@@ -2255,7 +2271,7 @@ class CommandHistoryResponse(BaseModel):
 def get_command_history(
     query_id: int,
     limit: int = 100,
-    current_user = Depends(get_current_user),
+    current_user = Depends(get_current_user_or_integration),
     db: Session = Depends(get_db),
 ):
     """
@@ -2355,7 +2371,7 @@ class InspectMessagesResponse(BaseModel):
 @router.get("/queries/{query_id}/inspect-messages", response_model=InspectMessagesResponse)
 def inspect_messages(
     query_id: int,
-    current_user = Depends(get_current_user),
+    current_user = Depends(get_current_user_or_integration),
     session_manager: SessionManager = Depends(get_session_manager),
     db: Session = Depends(get_db),
 ):
@@ -2446,7 +2462,7 @@ class AbandonSessionResponse(BaseModel):
 async def abandon_session(
     request: AbandonSessionRequest,
     http_request: Request,
-    current_user = Depends(get_current_user),
+    current_user = Depends(get_current_user_or_integration),
     db: Session = Depends(get_db),
     session_manager: SessionManager = Depends(get_session_manager)
 ):
@@ -2575,7 +2591,7 @@ async def abandon_session(
 @router.get("/queries/{query_id}/progress")
 async def get_query_progress(
     query_id: str,
-    current_user = Depends(get_current_user),
+    current_user = Depends(get_current_user_or_integration),
     db: Session = Depends(get_db)
 ):
     """

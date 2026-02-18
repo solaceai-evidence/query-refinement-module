@@ -12,6 +12,8 @@ All endpoints are versioned under `/api/v1` unless noted.
 
 JWT access tokens use the `Authorization: Bearer <token>` header.
 
+For server-to-server integrations, refinement workflow endpoints also support `X-API-Key: <integration-api-key>` when `INTEGRATION_API_KEY` is configured on the API service.
+
 ## Refinement Workflow
 
 - `GET /api/v1/refinement/frameworks`
@@ -24,6 +26,25 @@ JWT access tokens use the `Authorization: Bearer <token>` header.
 - `GET /api/v1/refinement/queries/{query_id}/inspect-messages`
 - `GET /api/v1/refinement/queries/{query_id}/progress`
 - `POST /api/v1/refinement/sessions/abandon`
+
+`POST /api/v1/refinement/start` accepts:
+
+- `original_query` (string)
+- `framework_name` (string)
+- `source` (optional: `gui` or `api_integration`, defaults to `gui`)
+
+### Generic external integration snippet
+
+```bash
+curl -X POST http://localhost:8000/api/v1/refinement/start \
+	-H 'Content-Type: application/json' \
+	-H 'X-API-Key: <integration-api-key>' \
+	-d '{
+		"original_query": "effects of aspirin in older adults",
+		"framework_name": "pico_advanced",
+		"source": "api_integration"
+	}'
+```
 
 ## Queries and Sessions
 

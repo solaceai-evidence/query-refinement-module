@@ -80,6 +80,8 @@ services:
       # Security
       SECRET_KEY: ${SECRET_KEY:-please-change-this-secret-key-in-production}
       ACCESS_TOKEN_EXPIRE_MINUTES: ${ACCESS_TOKEN_EXPIRE_MINUTES:-30}
+      INTEGRATION_API_KEY: ${INTEGRATION_API_KEY:-}
+      INTEGRATION_SERVICE_USERNAME: ${INTEGRATION_SERVICE_USERNAME:-api_integration_service}
       
       # CORS (comma-separated origins)
       ALLOWED_ORIGINS: ${ALLOWED_ORIGINS:-http://localhost:3000,http://localhost:8000}

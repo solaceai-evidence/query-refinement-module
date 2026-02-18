@@ -40,6 +40,13 @@ cp .env.prod .env
 - `ALLOWED_ORIGINS`
 - `QUERY_REFINEMENT_LLM_API_KEY`
 
+If external systems call refinement APIs without user JWT login, also set:
+
+- `INTEGRATION_API_KEY`
+- `INTEGRATION_SERVICE_USERNAME` (optional; default is `api_integration_service`)
+
+Important: if you add/change these values, restart the API process/container. If not restarted, integration requests may return `401 Not authenticated` even though `.env` was updated.
+
 3. Strongly recommended production settings:
 
 - `ALLOW_REGISTRATION=false`
@@ -99,6 +106,12 @@ curl -i -X POST http://localhost/api/v1/refinement/start \
 	-H 'Content-Type: application/json' \
 	-H 'Authorization: Bearer <token>' \
 	-d '{"original_query":"effects of aspirin","framework_name":"pico_advanced"}'
+
+# Service-to-service integration (no end-user JWT)
+curl -i -X POST http://localhost/api/v1/refinement/start \
+	-H 'Content-Type: application/json' \
+	-H 'X-API-Key: <integration-api-key>' \
+	-d '{"original_query":"effects of aspirin","framework_name":"pico_advanced","source":"api_integration"}'
 ```
 
 ### Step 5: Observe runtime
