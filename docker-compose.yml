@@ -14,7 +14,7 @@ services:
       POSTGRES_PASSWORD: ${POSTGRES_PASSWORD:-changeme}
       POSTGRES_INITDB_ARGS: "-E UTF8 --locale=en_US.UTF-8"
     volumes:
-      - postgres_data:/var/lib/postgresql/data
+      - ${DATA_ROOT:-./data}/postgres:/var/lib/postgresql/data
       - ./init-db.sql:/docker-entrypoint-initdb.d/init-db.sql:ro
     ports:
       - "${POSTGRES_PORT:-5432}:5432"
@@ -33,7 +33,7 @@ services:
     container_name: query-refinement-redis
     command: redis-server --appendonly yes --maxmemory 512mb --maxmemory-policy allkeys-lru
     volumes:
-      - redis_data:/data
+      - ${DATA_ROOT:-./data}/redis:/data
     ports:
       - "${REDIS_PORT:-6379}:6379"
     healthcheck:
@@ -74,7 +74,7 @@ services:
       # Redis
       REDIS_URL: redis://redis:6379/0
       SESSION_STORAGE_BACKEND: redis
-      SESSION_TTL_SECONDS: ${SESSION_TTL_SECONDS:-3600}
+      SESSION_TTL_SECONDS: ${SESSION_TTL_SECONDS:-10800}
       RATE_LIMITER_BACKEND: redis
       
       # Security
@@ -133,13 +133,6 @@ services:
         echo 'Starting application...' &&
         gunicorn -c gunicorn_conf.py query_refinement_module.api.main:app
       "
-
-# Volumes for persistent data
-volumes:
-  postgres_data:
-    driver: local
-  redis_data:
-    driver: local
 
 # Network for service communication
 networks:
