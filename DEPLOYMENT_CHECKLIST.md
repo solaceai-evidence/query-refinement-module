@@ -46,6 +46,7 @@ curl -i -X POST http://localhost/api/v1/auth/register \
 ## 4) Integration Smoke Checks
 
 - [ ] Start → answer → synthesize succeeds via `/api/v1/refinement/*`
+- [ ] Partial answer carry-forward works with `/done` (run `python scripts/replay_e2e_check.py` and confirm `PASS`)
 - [ ] Forward-to-QA succeeds using `/api/v1/refinement/queries/{query_id}/forward-to-qa`
 - [ ] Optional webhooks trigger for expected events (`/api/v1/webhooks`)
 

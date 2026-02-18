@@ -474,7 +474,9 @@ class QueryRefinementManager:
                 'current': result.current
             }
         else:
-            # Needs follow-up - store question
+            # Needs follow-up - store question and preserve any partial value
+            if result.current and result.current.strip():
+                step.normalized_value = result.current
             step.follow_up_question = result.question
             step.is_complete = False
             

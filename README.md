@@ -70,14 +70,14 @@ poetry run query-refine --framework pico_advanced
 
 ### Commands During Session
 
-| Command   | Purpose                        |
-| --------- | ------------------------------ |
-| `/back`   | Return to previous step        |
-| `/skip`   | Skip current dimension         |
-| `/done`   | Accept current answer, move on |
-| `/status` | Show progress summary          |
-| `/submit` | Generate final refined query   |
-| `/help`   | Show all commands              |
+| Command   | Purpose                                                    |
+| --------- | ---------------------------------------------------------- |
+| `/back`   | Return to previous step                                    |
+| `/skip`   | Skip current dimension (stores no value)                   |
+| `/done`   | Accept captured current value (including partial), move on |
+| `/status` | Show progress summary                                      |
+| `/submit` | Generate final refined query                               |
+| `/help`   | Show all commands                                          |
 
 ## Configuration
 

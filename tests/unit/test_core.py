@@ -21,6 +21,7 @@ from query_refinement_module.interfaces import (
     TracingProviderInterface,
 )
 from query_refinement_module.schema import RefinementAspect
+from query_refinement_module.schema.response import DimensionEvaluationResponse
 
 
 # ---------------------------------------------------------------------------
@@ -585,6 +586,47 @@ def test_gather_refinement_details_compiles_lists():
     clarifications, summaries = manager._gather_refinement_details(session)
     assert clarifications == [("A", "Value")]
     assert summaries == [("B", "Already clear")]
+
+
+def test_process_analysis_result_persists_partial_current_when_incomplete():
+    manager = build_manager(responses=[])
+    aspect = make_aspect(aspect_id="population", name="Population")
+    session = RefinementSession(original_query="query")
+    step = session.add_step(aspect)
+
+    result = DimensionEvaluationResponse(
+        complete=False,
+        current="adults with COPD",
+        question="Can you narrow by age range?",
+    )
+
+    status = manager.process_analysis_result(session, "population", result)
+
+    assert not status["complete"]
+    assert step.is_complete is False
+    assert step.follow_up_question == "Can you narrow by age range?"
+    assert step.normalized_value_as_str == "adults with COPD"
+
+
+def test_process_analysis_result_keeps_existing_value_when_current_empty():
+    manager = build_manager(responses=[])
+    aspect = make_aspect(aspect_id="population", name="Population")
+    session = RefinementSession(original_query="query")
+    step = session.add_step(aspect)
+    step.normalized_value = "adults with COPD"
+
+    result = DimensionEvaluationResponse(
+        complete=False,
+        current="",
+        question="Any specific setting?",
+    )
+
+    status = manager.process_analysis_result(session, "population", result)
+
+    assert not status["complete"]
+    assert step.is_complete is False
+    assert step.follow_up_question == "Any specific setting?"
+    assert step.normalized_value_as_str == "adults with COPD"
 
 
 @pytest.mark.asyncio
