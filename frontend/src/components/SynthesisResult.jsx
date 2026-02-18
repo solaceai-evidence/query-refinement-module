@@ -94,10 +94,12 @@ const SynthesisResult = ({ queryId, synthesis, selectedFramework = null, aspects
             'Synthesis-feasibility check: The combined dimensions define a coherent, comparable body of evidence rather than heterogeneous narrative-only collection',
         ],
         mph_dissertation: [
-            'Timeline: 6-12 months limits study designs (prospective cohorts and RCTs infeasible; cross-sectional, retrospective, or rapid reviews preferred)',
-            'Data access: Public datasets or institutional access required; primary data collection needs IRB approval (3-6 month timeline buffer)',
-            'Scope: Single focused research question; mixed methods and multi-phase designs rarely feasible within timeframe',
-            'Recruitment: Large primary surveys (n>200) and extensive qualitative samples typically exceed capacity; existing data preferred',
+            'Timeline: 6-12 months limits study designs (prospective cohorts, RCTs, and longitudinal designs infeasible; cross-sectional, retrospective, or rapid reviews preferred)',
+            'Ethics approval: Primary data collection requires ethics committee approval (2-3 months expedited, 4-6 months full review); NHS ethics for patient data adds further complexity',
+            'Sample size: Primary data collection >200 (surveys) or >100 (in-person) or >30 (clinical) typically exceeds capacity; secondary data (UK Data Service, ONS, CPRD) or smaller qualitative samples (15-25) preferred',
+            'Scope and methods: Single focused research question; mixed methods with equal weighting or novel instrument development rarely feasible within timeframe',
+            'Data access: UK datasets requiring application (CPRD, HES, longitudinal cohorts) take 1-3 months approval; publicly available datasets (Health Survey for England, Understanding Society) or institutional data preferred',
+            'Resources: Projects requiring substantial budget (participant incentives, professional transcription, proprietary software, travel) may need funding applications; low-cost or unfunded approaches preferred',
         ],
         legal_research: [
             'Jurisdiction: Must specify applicable legal jurisdiction (federal vs state, specific circuit)',
@@ -117,12 +119,18 @@ const SynthesisResult = ({ queryId, synthesis, selectedFramework = null, aspects
 
     const constraints = useMemo(() => {
         const rawList = frameworkConstraintStrings[normalizedFrameworkKey] || [];
-        return rawList.slice(0, 4).map((text, index) => {
+        const audienceByFramework = {
+            pico_advanced: 'Systematic reviewers',
+            mph_dissertation: 'MPH students',
+        };
+        const audience = audienceByFramework[normalizedFrameworkKey] || '';
+
+        return rawList.map((text, index) => {
             const [labelPart, ...rest] = text.split(':');
             const label = labelPart?.trim() || `Constraint ${index + 1}`;
             const description = rest.join(':').trim() || text;
             const id = label.toLowerCase().replace(/[^a-z0-9]+/g, '_').replace(/^_|_$/g, '');
-            return { id: id || `constraint_${index + 1}`, label, description };
+            return { id: id || `constraint_${index + 1}`, label, description, audience };
         });
     }, [frameworkConstraintStrings, normalizedFrameworkKey]);
 
@@ -417,7 +425,7 @@ const SynthesisResult = ({ queryId, synthesis, selectedFramework = null, aspects
                                         <div key={constraint.id} className="constraint-block">
                                             <div className="constraint-header">
                                                 <div className="constraint-title">
-                                                    {constraint.label}
+                                                    {constraint.audience ? `${constraint.label} (${constraint.audience})` : constraint.label}
                                                 </div>
                                                 <div className="constraint-description">{constraint.description}</div>
                                             </div>

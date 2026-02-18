@@ -224,7 +224,9 @@ class SessionCommands:
             return {"success": False, "message": "No active step to finish"}
         
         message = f"Completed refinement dimension: {active.refinement_aspect.name}"
-        if not active.normalized_value:
+        if active.normalized_value_as_str:
+            message += f" (using current value: {active.normalized_value_as_str})."
+        else:
             message += " (no additional details provided)."
         
         # Mark complete without marking as skipped

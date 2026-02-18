@@ -26,6 +26,7 @@ from query_refinement_module.db.crud import (
     reset_refinement_step,
     create_followup,
     get_step_followups,
+    mark_refinement_step_user_ended_early,
 )
 from query_refinement_module.db.database import init_db
 from query_refinement_module.schema import RefinementAspect
@@ -282,6 +283,81 @@ def test_multiple_back_commands_sequence(db: Session, test_user):
     
     # Verify only dimensions 1 and 2 remain
     assert {s.aspect_name for s in steps} == {"dimension_1", "dimension_2"}
+
+
+def test_done_persists_pre_command_active_step_value(db: Session, test_user):
+    """
+    Regression test for /done DB sync:
+    Persist value for the step that was active BEFORE command execution.
+    """
+    session_db = create_query_session(db, user_id=test_user.id)
+    query = create_query(db, session_id=session_db.id, original_query="Test query")
+
+    first_aspect = RefinementAspect(
+        id="dimension_1",
+        name="dimension_1",
+        description="First dimension",
+        specifications="Analyze {query}",
+    )
+    second_aspect = RefinementAspect(
+        id="dimension_2",
+        name="dimension_2",
+        description="Second dimension",
+        specifications="Analyze {query}",
+    )
+
+    session = RefinementSession(original_query="Test query")
+    first_step = session.add_step(first_aspect)
+    session.add_step(second_aspect)
+
+    # Create corresponding DB rows as in API initialization
+    create_refinement_step(db, query_id=query.id, aspect_name="dimension_1")
+    create_refinement_step(db, query_id=query.id, aspect_name="dimension_2")
+
+    # Simulate partial value captured before /done
+    first_step.normalized_value = "adults with COPD"
+
+    # Capture active step BEFORE command execution (matches API route fix)
+    pre_command_active_step = session.get_active_step()
+    assert pre_command_active_step is not None
+    assert pre_command_active_step.refinement_aspect.name == "dimension_1"
+
+    # Execute /done, which advances active step to dimension_2
+    command_payload = session.handle_command(parse_user_command("/done"))
+    assert command_payload["success"] is True
+
+    post_command_active_step = session.get_active_step()
+    assert post_command_active_step is not None
+    assert post_command_active_step.refinement_aspect.name == "dimension_2"
+
+    # Persist using fixed API logic: prefer pre-command active step
+    command_step = pre_command_active_step or command_payload.get("step")
+    db_step = get_refinement_step_by_aspect(
+        db,
+        query_id=query.id,
+        aspect_name=command_step.refinement_aspect.name,
+    )
+    assert db_step is not None
+
+    mark_refinement_step_user_ended_early(
+        db,
+        step_id=db_step.id,
+        final_value=command_step.normalized_value_as_str if command_step.normalized_value_as_str else None,
+    )
+
+    # Assert persisted value is on the pre-command step (dimension_1)
+    first_db_step = get_refinement_step_by_aspect(db, query.id, "dimension_1")
+    second_db_step = get_refinement_step_by_aspect(db, query.id, "dimension_2")
+
+    assert first_db_step is not None
+    assert second_db_step is not None
+    assert first_db_step.final_value == "adults with COPD"
+    assert first_db_step.is_complete is True
+    assert first_db_step.user_ended_early is True
+
+    # And ensure next step was not incorrectly updated
+    assert second_db_step.final_value is None
+    assert second_db_step.user_ended_early is False
 
 
 if __name__ == "__main__":

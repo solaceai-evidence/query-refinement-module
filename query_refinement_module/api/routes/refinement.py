@@ -276,6 +276,68 @@ async def _generate_question_with_retry(
     raise last_error if last_error else Exception("Question generation failed")
 
 
+def _deserialize_refinement_value(value: Optional[str]) -> Optional[Any]:
+    """Deserialize persisted final_value into a native python value when possible."""
+    if value is None:
+        return None
+
+    if not isinstance(value, str):
+        return value
+
+    stripped = value.strip()
+    if not stripped:
+        return value
+
+    if stripped[0] in ["{", "["]:
+        try:
+            return json.loads(stripped)
+        except Exception:
+            return value
+
+    return value
+
+
+def _restore_session_from_db_state(session, db_steps: List[Any]) -> None:
+    """Restore in-memory session state from persisted DB refinement step rows."""
+    for db_step in db_steps:
+        session_step = next(
+            (s for s in session.steps if s.refinement_aspect.name == db_step.aspect_name),
+            None
+        )
+        if not session_step:
+            continue
+
+        # Restore follow-up history
+        for followup in db_step.followup_history:
+            session_step.conversation_history.append({
+                'question': followup.question,
+                'response': followup.answer or ''
+            })
+
+        if session_step.conversation_history:
+            last_followup = db_step.followup_history[-1]
+            session_step.follow_up_question = last_followup.question
+
+        # Restore persisted final value (supports /done with partial value and no follow-up rows)
+        has_final_value = db_step.final_value is not None and str(db_step.final_value).strip() != ""
+        if has_final_value:
+            session_step.normalized_value = _deserialize_refinement_value(db_step.final_value)
+
+        # Restore completion semantics from DB truth
+        session_step.was_skipped = bool(db_step.was_skipped)
+        session_step.is_complete = bool(
+            db_step.is_complete
+            or db_step.was_skipped
+            or db_step.user_ended_early
+            or has_final_value
+            or session_step.conversation_history
+        )
+
+        # Explicit skip with no value should remain value-less
+        if session_step.was_skipped and not has_final_value:
+            session_step.normalized_value = None
+
+
 async def _build_next_prompt(manager, session) -> Optional[Dict[str, Any]]:
     """
     Build the next prompt from the next unrefined aspect in dependency order.
@@ -994,24 +1056,9 @@ async def submit_answer(
             framework,
         )
         
-        # Restore follow-up history from database
+        # Restore persisted DB state (follow-ups + final values + completion flags)
         db_steps = get_query_refinement_steps(db, query_id)
-        for db_step in db_steps:
-            session_step = next(
-                (s for s in session.steps if s.refinement_aspect.name == db_step.aspect_name),
-                None
-            )
-            if session_step:
-                for followup in db_step.followup_history:
-                    session_step.conversation_history.append({
-                        'question': followup.question,
-                        'response': followup.answer or ''
-                    })
-                if session_step.conversation_history:
-                    session_step.is_complete = True
-                    # Restore the last question asked (needed for proper state)
-                    last_followup = db_step.followup_history[-1]
-                    session_step.follow_up_question = last_followup.question
+        _restore_session_from_db_state(session, db_steps)
         
         # Re-cache the reconstructed session
         session_manager.save_session(query_id, session)
@@ -1044,6 +1091,7 @@ async def submit_answer(
         
         # Execute the command
         logger.info(f"[Query {query_id}] Executing command: {cmd_result.command.value}")
+        pre_command_active_step = session.get_active_step()
         command_payload = session.handle_command(cmd_result)
         command_type = cmd_result.command.value
         
@@ -1181,11 +1229,11 @@ async def submit_answer(
                         mark_refinement_step_user_ended_early
                     )
                     
-                    active_step = session.get_active_step()
-                    if active_step and active_step.is_complete:
+                    command_step = pre_command_active_step or command_payload.get("step")
+                    if command_step and command_step.is_complete:
                         db_steps = get_query_refinement_steps(db, query_id)
                         db_step = next(
-                            (s for s in db_steps if s.aspect_name == active_step.refinement_aspect.name),
+                            (s for s in db_steps if s.aspect_name == command_step.refinement_aspect.name),
                             None
                         )
                         
@@ -1193,18 +1241,18 @@ async def submit_answer(
                             if command_type == "skip":
                                 mark_refinement_step_skipped(db, db_step.id)
                                 logger.info(
-                                    f"Marked dimension as skipped in DB: '{active_step.refinement_aspect.name}'",
-                                    extra={"query_id": query_id, "dimension": active_step.refinement_aspect.name}
+                                    f"Marked dimension as skipped in DB: '{command_step.refinement_aspect.name}'",
+                                    extra={"query_id": query_id, "dimension": command_step.refinement_aspect.name}
                                 )
                             elif command_type == "done":
                                 mark_refinement_step_user_ended_early(
                                     db,
                                     step_id=db_step.id,
-                                    final_value=active_step.normalized_value_as_str if active_step.normalized_value else None
+                                    final_value=command_step.normalized_value_as_str if command_step.normalized_value_as_str else None
                                 )
                                 logger.info(
-                                    f"Marked dimension as user-completed in DB: '{active_step.refinement_aspect.name}'",
-                                    extra={"query_id": query_id, "dimension": active_step.refinement_aspect.name}
+                                    f"Marked dimension as user-completed in DB: '{command_step.refinement_aspect.name}'",
+                                    extra={"query_id": query_id, "dimension": command_step.refinement_aspect.name}
                                 )
                 
                 session_manager.save_session(query_id, session)
@@ -1548,24 +1596,9 @@ async def get_refinement_status(
             framework,
         )
         
-        # Restore follow-up history from database
+        # Restore persisted DB state (follow-ups + final values + completion flags)
         db_steps = get_query_refinement_steps(db, query_id)
-        for db_step in db_steps:
-            session_step = next(
-                (s for s in session.steps if s.refinement_aspect.name == db_step.aspect_name),
-                None
-            )
-            if session_step:
-                for followup in db_step.followup_history:
-                    session_step.conversation_history.append({
-                        'question': followup.question,
-                        'response': followup.answer or ''
-                    })
-                if session_step.conversation_history:
-                    session_step.is_complete = True
-                    # Restore the last question asked (needed for proper state)
-                    last_followup = db_step.followup_history[-1]
-                    session_step.follow_up_question = last_followup.question
+        _restore_session_from_db_state(session, db_steps)
         
         # Re-cache the reconstructed session
         session_manager.save_session(query_id, session)
@@ -1711,25 +1744,9 @@ async def synthesize_refined_query(
             framework,
         )
         
-        # Load follow-ups from database and populate session
+        # Restore persisted DB state (follow-ups + final values + completion flags)
         db_steps = get_query_refinement_steps(db, request.query_id)
-        for db_step in db_steps:
-            # Find corresponding step in session
-            session_step = next(
-                (s for s in session.steps if s.refinement_aspect.name == db_step.aspect_name),
-                None
-            )
-            if session_step:
-                # Load follow-ups for this step
-                for followup in db_step.followup_history:
-                    session_step.conversation_history.append({
-                        'question': followup.question,
-                        'response': followup.answer or ''
-                    })
-                
-                # Mark complete if has answers
-                if session_step.conversation_history:
-                    session_step.is_complete = True
+        _restore_session_from_db_state(session, db_steps)
     
     # Update progress: Starting synthesis
     tracker = get_progress_tracker()
