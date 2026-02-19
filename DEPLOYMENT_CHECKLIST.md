@@ -12,7 +12,7 @@ For full detail, see `docs/DEPLOYMENT.md`.
 - [ ] Optional for integration identity naming: set `INTEGRATION_SERVICE_USERNAME`
 - [ ] Set database connectivity values: `POSTGRES_USER`, `POSTGRES_PASSWORD`, `POSTGRES_DB`
 - [ ] Set browser connectivity value: `ALLOWED_ORIGINS`
-- [ ] Optional tooling compatibility: set `DATABASE_URL` to match compose DB settings
+- [ ] Keep DB settings in `POSTGRES_*` only for canonical compose (avoid separate `DATABASE_URL` drift)
 - [ ] Keep `ALLOW_REGISTRATION=false` in production unless self-signup is explicitly required
 - [ ] Set workflow mode with `ENFORCE_WORKFLOW_LIMIT`:
 	- [ ] `true` for one-workflow-per-user evaluation mode
@@ -61,6 +61,8 @@ curl -i -X POST http://localhost/api/v1/auth/register \
 - [ ] Tail API logs: `docker compose -f docker-compose.yml -f docker-compose.prod.yml logs -f api`
 - [ ] Tail nginx logs: `docker compose -f docker-compose.yml -f docker-compose.prod.yml logs -f nginx`
 - [ ] Confirm DB migrations were applied during API startup (`alembic upgrade head` in container logs)
+- [ ] Create and verify at least one Postgres backup artifact (`backups/postgres_*.dump`)
+- [ ] Perform a restore drill in non-production environment from latest backup
 - [ ] Snapshot/backup policy is in place for Postgres and Redis volumes
 
 ## 6) Rollback (Fast Path)

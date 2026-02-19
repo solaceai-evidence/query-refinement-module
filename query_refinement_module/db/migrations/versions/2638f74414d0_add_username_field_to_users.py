@@ -29,12 +29,19 @@ def upgrade() -> None:
         batch_op.create_index(batch_op.f('ix_users_username'), ['username'], unique=True)
     
     # For existing users, generate username from email (take part before @)
-    # This SQL is SQLite-compatible
-    op.execute("""
-        UPDATE users 
-        SET username = SUBSTR(email, 1, INSTR(email, '@') - 1)
-        WHERE email IS NOT NULL AND username IS NULL
-    """)
+    dialect_name = op.get_bind().dialect.name
+    if dialect_name == 'postgresql':
+        op.execute("""
+            UPDATE users
+            SET username = split_part(email, '@', 1)
+            WHERE email IS NOT NULL AND username IS NULL
+        """)
+    else:
+        op.execute("""
+            UPDATE users
+            SET username = SUBSTR(email, 1, INSTR(email, '@') - 1)
+            WHERE email IS NOT NULL AND username IS NULL
+        """)
     
     # Now recreate the table with proper constraints using batch operations
     with op.batch_alter_table('users', schema=None) as batch_op:

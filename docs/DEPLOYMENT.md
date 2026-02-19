@@ -45,7 +45,7 @@ cp .env.prod .env
 Notes:
 
 - Canonical compose derives API database connectivity from `POSTGRES_*`.
-- `DATABASE_URL` can remain set for non-compose tooling, but compose runtime uses the `POSTGRES_*` values.
+- Do not set a separate `DATABASE_URL` in canonical compose unless you intentionally override derived settings.
 
 If external systems call refinement APIs without user JWT login, also set:
 
@@ -167,7 +167,7 @@ Frontend default: `http://localhost:5173`
 
 ## Migrations
 
-Migrations run automatically in the API container startup command (`/app/.venv/bin/alembic upgrade head`).
+Migrations run automatically in the API container startup command (`python3 -m alembic upgrade head`).
 For manual execution:
 
 ```bash

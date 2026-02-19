@@ -134,6 +134,35 @@ echo "Checking system resources..."
 available_space=$(df -h . | awk 'NR==2 {print $4}')
 check_pass "Available disk space: $available_space"
 
+# 8b. Check required writable bind-mount directories
+echo ""
+echo "Checking writable bind-mount directories..."
+data_root="./data"
+if [ -f ".env" ]; then
+    parsed_data_root=$(grep -E '^DATA_ROOT=' .env | tail -n1 | cut -d'=' -f2)
+    if [ -n "$parsed_data_root" ]; then
+        data_root="$parsed_data_root"
+    fi
+fi
+
+required_dirs=(
+    "$data_root/postgres"
+    "$data_root/redis"
+    "./logs"
+    "./logs/nginx"
+)
+
+for dir in "${required_dirs[@]}"; do
+    if [ ! -d "$dir" ]; then
+        mkdir -p "$dir"
+    fi
+    if [ -w "$dir" ]; then
+        check_pass "Directory writable: $dir"
+    else
+        check_fail "Directory is not writable: $dir"
+    fi
+done
+
 # 9. Check if ports are available
 echo ""
 echo "Checking port availability..."

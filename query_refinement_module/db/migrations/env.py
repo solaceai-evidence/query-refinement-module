@@ -13,6 +13,38 @@ from alembic import context
 # access to the values within the .ini file in use.
 config = context.config
 
+def _resolve_database_url_from_env() -> str | None:
+    database_url = os.getenv("DATABASE_URL")
+    if database_url:
+        return database_url
+
+    postgres_user = os.getenv("POSTGRES_USER")
+    postgres_password = os.getenv("POSTGRES_PASSWORD")
+    postgres_db = os.getenv("POSTGRES_DB")
+    postgres_host = os.getenv("POSTGRES_HOST", "postgres")
+    postgres_port = os.getenv("POSTGRES_INTERNAL_PORT", "5432")
+
+    if postgres_user and postgres_password and postgres_db:
+        return (
+            f"postgresql+psycopg2://{postgres_user}:{postgres_password}"
+            f"@{postgres_host}:{postgres_port}/{postgres_db}"
+        )
+
+    return None
+
+
+# Prefer runtime env configuration (Docker/VM), fallback to alembic.ini only for local SQLite workflows.
+database_url = _resolve_database_url_from_env()
+if database_url:
+    config.set_main_option("sqlalchemy.url", database_url)
+
+resolved_url = config.get_main_option("sqlalchemy.url") or ""
+if os.getenv("ENVIRONMENT") == "production" and resolved_url.startswith("sqlite"):
+    raise RuntimeError(
+        "Production migrations cannot run against SQLite. "
+        "Set DATABASE_URL or POSTGRES_USER/POSTGRES_PASSWORD/POSTGRES_DB."
+    )
+
 # Interpret the config file for Python logging.
 # This line sets up loggers basically.
 if config.config_file_name is not None:

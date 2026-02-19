@@ -24,8 +24,34 @@ from query_refinement_module.tracing import get_request_id, get_trace_id
 REFINEMENT_FRAMEWORK_PATH = os.getenv("REFINEMENT_FRAMEWORK_PATH", "/dev/null")
 
 # Database configuration from environment
-DATABASE_URL = os.getenv("DATABASE_URL", "sqlite:///query_refinement.db")
+def _resolve_database_url() -> str:
+    database_url = os.getenv("DATABASE_URL")
+    if database_url:
+        return database_url
+
+    postgres_user = os.getenv("POSTGRES_USER")
+    postgres_password = os.getenv("POSTGRES_PASSWORD")
+    postgres_db = os.getenv("POSTGRES_DB")
+    postgres_host = os.getenv("POSTGRES_HOST", "postgres")
+    postgres_port = os.getenv("POSTGRES_INTERNAL_PORT", "5432")
+
+    if postgres_user and postgres_password and postgres_db:
+        return (
+            f"postgresql+psycopg2://{postgres_user}:{postgres_password}"
+            f"@{postgres_host}:{postgres_port}/{postgres_db}"
+        )
+
+    return "sqlite:///query_refinement.db"
+
+
+DATABASE_URL = _resolve_database_url()
 ENVIRONMENT = os.getenv("ENVIRONMENT", "development")
+
+if ENVIRONMENT == "production" and DATABASE_URL.startswith("sqlite"):
+    raise RuntimeError(
+        "Production mode requires PostgreSQL configuration. "
+        "Set DATABASE_URL or POSTGRES_USER/POSTGRES_PASSWORD/POSTGRES_DB."
+    )
 
 # Connection pool settings (only for PostgreSQL)
 DB_POOL_SIZE = int(os.getenv("DB_POOL_SIZE", "5"))

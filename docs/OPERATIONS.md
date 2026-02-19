@@ -78,16 +78,58 @@ curl -X POST http://localhost:8000/api/v1/refinement/start \
 
 ## Backups
 
-Use your database provider backups or run:
+Create timestamped PostgreSQL backups (custom format, suitable for `pg_restore`):
 
 ```bash
-docker compose -f docker-compose.yml -f docker-compose.prod.yml exec postgres \
-  sh -lc 'pg_dump -U "$POSTGRES_USER" "$POSTGRES_DB"' > backup.sql
+mkdir -p backups
+ts="$(date +%Y%m%d_%H%M%S)"
+docker compose -f docker-compose.yml -f docker-compose.prod.yml exec -T postgres \
+  sh -lc 'pg_dump -U "$POSTGRES_USER" -d "$POSTGRES_DB" -Fc' \
+  > "backups/postgres_${ts}.dump"
+ls -lh "backups/postgres_${ts}.dump"
+```
+
+Optional Redis snapshot backup:
+
+```bash
+mkdir -p backups
+ts="$(date +%Y%m%d_%H%M%S)"
+cp data/redis/appendonly.aof "backups/redis_${ts}.aof"
+```
+
+## Restore
+
+Restore Postgres from a backup file:
+
+```bash
+backup_file="backups/postgres_YYYYMMDD_HHMMSS.dump"
+docker compose -f docker-compose.yml -f docker-compose.prod.yml exec -T postgres \
+  sh -lc 'dropdb -U "$POSTGRES_USER" --if-exists "$POSTGRES_DB" && createdb -U "$POSTGRES_USER" "$POSTGRES_DB"'
+cat "$backup_file" | docker compose -f docker-compose.yml -f docker-compose.prod.yml exec -T postgres \
+  sh -lc 'pg_restore -U "$POSTGRES_USER" -d "$POSTGRES_DB" --clean --if-exists --no-owner --no-privileges'
+```
+
+After restore:
+
+```bash
+docker compose -f docker-compose.yml -f docker-compose.prod.yml restart api
+docker compose -f docker-compose.yml -f docker-compose.prod.yml exec api python -m alembic current
+curl -f http://localhost:8000/ready
 ```
 
 ## Rollback
 
+Fast rollback to last local images and volumes:
+
 ```bash
 docker compose -f docker-compose.yml -f docker-compose.prod.yml down
 docker compose -f docker-compose.yml -f docker-compose.prod.yml up -d
+```
+
+Rollback code + containers to a known Git commit:
+
+```bash
+git checkout <known-good-commit-or-tag>
+docker compose -f docker-compose.yml -f docker-compose.prod.yml up -d --build api frontend nginx
+docker compose -f docker-compose.yml -f docker-compose.prod.yml ps
 ```

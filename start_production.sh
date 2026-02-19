@@ -34,6 +34,22 @@ print_error() {
     echo -e "${RED}[ERROR]${NC} $1"
 }
 
+resolve_database_url() {
+    if [ -n "${DATABASE_URL:-}" ]; then
+        echo "$DATABASE_URL"
+        return
+    fi
+
+    if [ -n "${POSTGRES_USER:-}" ] && [ -n "${POSTGRES_PASSWORD:-}" ] && [ -n "${POSTGRES_DB:-}" ]; then
+        local host="${POSTGRES_HOST:-localhost}"
+        local port="${POSTGRES_PORT:-5432}"
+        echo "postgresql+psycopg2://${POSTGRES_USER}:${POSTGRES_PASSWORD}@${host}:${port}/${POSTGRES_DB}"
+        return
+    fi
+
+    echo ""
+}
+
 # Check if running in production environment
 if [ "${ENVIRONMENT}" != "production" ] && [ "${ENVIRONMENT}" != "staging" ]; then
     print_warn "ENVIRONMENT is not set to 'production' or 'staging'"
@@ -46,7 +62,6 @@ fi
 print_info "Checking required environment variables..."
 
 required_vars=(
-    "DATABASE_URL"
     "SECRET_KEY"
     "QUERY_REFINEMENT_LLM_API_KEY"
 )
@@ -57,6 +72,11 @@ for var in "${required_vars[@]}"; do
         missing_vars+=("$var")
     fi
 done
+
+EFFECTIVE_DATABASE_URL="$(resolve_database_url)"
+if [ -z "$EFFECTIVE_DATABASE_URL" ]; then
+    missing_vars+=("DATABASE_URL or POSTGRES_USER/POSTGRES_PASSWORD/POSTGRES_DB")
+fi
 
 if [ ${#missing_vars[@]} -gt 0 ]; then
     print_error "Missing required environment variables:"
@@ -73,23 +93,23 @@ echo ""
 # 2. Check database connectivity
 print_info "Checking database connectivity..."
 
-# Extract database info from DATABASE_URL
-if [[ $DATABASE_URL == postgresql://* ]]; then
+# Extract database info from resolved DB URL
+if [[ $EFFECTIVE_DATABASE_URL == postgresql://* ]] || [[ $EFFECTIVE_DATABASE_URL == postgresql+psycopg2://* ]]; then
     print_info "Using PostgreSQL database"
     
     # Test connection with timeout
-    if poetry run python -c "from sqlalchemy import create_engine; engine = create_engine('${DATABASE_URL}', connect_args={'connect_timeout': 5}); conn = engine.connect(); conn.close(); print('OK')" > /dev/null 2>&1; then
+    if poetry run python -c "from sqlalchemy import create_engine; engine = create_engine('${EFFECTIVE_DATABASE_URL}', connect_args={'connect_timeout': 5}); conn = engine.connect(); conn.close(); print('OK')" > /dev/null 2>&1; then
         print_info "✓ Database connection successful"
     else
         print_error "Failed to connect to database"
-        print_error "Please check DATABASE_URL and ensure PostgreSQL is running"
+        print_error "Please check DATABASE_URL (or POSTGRES_* values) and ensure PostgreSQL is running"
         exit 1
     fi
-elif [[ $DATABASE_URL == sqlite://* ]]; then
+elif [[ $EFFECTIVE_DATABASE_URL == sqlite://* ]]; then
     print_warn "Using SQLite database (not recommended for production)"
     print_warn "Consider migrating to PostgreSQL for better performance"
 else
-    print_error "Unsupported database URL: ${DATABASE_URL}"
+    print_error "Unsupported database URL: ${EFFECTIVE_DATABASE_URL}"
     exit 1
 fi
 echo ""
@@ -145,7 +165,7 @@ echo ""
 # 7. Display configuration summary
 print_info "Configuration Summary:"
 echo "  Environment: ${ENVIRONMENT:-development}"
-echo "  Database: ${DATABASE_URL#*@}"  # Hide credentials
+echo "  Database: ${EFFECTIVE_DATABASE_URL#*@}"  # Hide credentials
 echo "  Redis: ${REDIS_URL:-not configured}"
 echo "  Workers: ${WORKERS:-4}"
 echo "  Worker Timeout: ${WORKER_TIMEOUT:-120}s"
