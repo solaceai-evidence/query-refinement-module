@@ -32,7 +32,7 @@ passlib = {extras = ["bcrypt"], version = "^1.7.4"}
 python-multipart = "^0.0.22"  # Updated for multipart parsing improvements
 pydantic-settings = "^2.12.0"
 email-validator = "^2.3.0"
-bcrypt = ">=3.2.0,<4.1.0"  # Passlib 1.7.4 compatibility (avoids bcrypt 4.1+ __about__ warning)
+bcrypt = ">=4.0.0,<5.0.0"  # Keep Python 3.12-compatible range; passlib warning is non-fatal
 # Production dependencies
 psycopg2-binary = "^2.9.9"  # PostgreSQL adapter
 gunicorn = "^25.0.0"  # Updated production WSGI server for performance
