@@ -54,7 +54,7 @@ required_files=(
     "Dockerfile"
     "gunicorn_conf.py"
     "nginx/nginx.conf"
-    ".env.example"
+    ".env.prod"
 )
 
 for file in "${required_files[@]}"; do
@@ -93,7 +93,7 @@ if [ -f ".env" ]; then
     fi
     
 else
-    check_warn ".env file not found - copy from .env.example and configure"
+    check_warn ".env file not found - copy from .env.prod and configure"
 fi
 
 # 5. Validate Docker Compose configuration
@@ -137,7 +137,19 @@ check_pass "Available disk space: $available_space"
 # 9. Check if ports are available
 echo ""
 echo "Checking port availability..."
-ports=(80 443)
+http_port="80"
+https_port="443"
+if [ -f ".env" ]; then
+    parsed_http=$(grep -E '^NGINX_HTTP_PORT=' .env | tail -n1 | cut -d'=' -f2)
+    parsed_https=$(grep -E '^NGINX_HTTPS_PORT=' .env | tail -n1 | cut -d'=' -f2)
+    if [ -n "$parsed_http" ]; then
+        http_port="$parsed_http"
+    fi
+    if [ -n "$parsed_https" ]; then
+        https_port="$parsed_https"
+    fi
+fi
+ports=($http_port $https_port)
 port_issues=()
 
 for port in "${ports[@]}"; do
@@ -202,7 +214,7 @@ else
     echo ""
     echo "Required actions:"
     if [ ! -f ".env" ]; then
-        echo "  - Copy .env.example to .env and configure variables"
+        echo "  - Copy .env.prod to .env and configure variables"
     fi
     if [ ${#missing_vars[@]} -gt 0 ]; then
         echo "  - Configure missing variables: ${missing_vars[*]}"
@@ -214,6 +226,6 @@ fi
 
 echo ""
 echo "For detailed deployment instructions, see:"
-echo "  - docs/QUICK_START_VM_DEPLOYMENT.md"
-echo "  - docs/DOCKER_OPTIMIZATION_SUMMARY.md"
+echo "  - docs/DEPLOYMENT.md"
+echo "  - DEPLOYMENT_CHECKLIST.md"
 echo ""

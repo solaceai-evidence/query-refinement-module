@@ -10,12 +10,15 @@ For full detail, see `docs/DEPLOYMENT.md`.
 - [ ] Set required secrets: `SECRET_KEY`, `QUERY_REFINEMENT_LLM_API_KEY`
 - [ ] If using external API integrations without user JWTs, set `INTEGRATION_API_KEY`
 - [ ] Optional for integration identity naming: set `INTEGRATION_SERVICE_USERNAME`
-- [ ] Set connectivity values: `DATABASE_URL`, `ALLOWED_ORIGINS`
+- [ ] Set database connectivity values: `POSTGRES_USER`, `POSTGRES_PASSWORD`, `POSTGRES_DB`
+- [ ] Set browser connectivity value: `ALLOWED_ORIGINS`
+- [ ] Optional tooling compatibility: set `DATABASE_URL` to match compose DB settings
 - [ ] Keep `ALLOW_REGISTRATION=false` in production unless self-signup is explicitly required
 - [ ] Set workflow mode with `ENFORCE_WORKFLOW_LIMIT`:
 	- [ ] `true` for one-workflow-per-user evaluation mode
 	- [ ] `false` for unlimited non-superuser workflows
 - [ ] Ensure host paths exist and are writable: `./logs`, `./logs/nginx`
+- [ ] If host uses `5432`/`6379`, override `POSTGRES_PORT`/`REDIS_PORT` in `.env` (example: `5433`/`6380`)
 - [ ] Verify required inbound ports:
 	- [ ] `80` (HTTP via nginx)
 	- [ ] `443` (HTTPS via nginx, if certificates are configured)

@@ -52,7 +52,7 @@ docker compose -f docker-compose.yml -f docker-compose.prod.yml logs -f api
 
 ```bash
 curl http://localhost/health
-curl http://localhost/ready
+curl http://localhost:8000/ready
 ```
 
 Integration auth quick check:
@@ -82,7 +82,7 @@ Use your database provider backups or run:
 
 ```bash
 docker compose -f docker-compose.yml -f docker-compose.prod.yml exec postgres \
-  pg_dump -U postgres query_refinement > backup.sql
+  sh -lc 'pg_dump -U "$POSTGRES_USER" "$POSTGRES_DB"' > backup.sql
 ```
 
 ## Rollback

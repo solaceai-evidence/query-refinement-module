@@ -36,9 +36,16 @@ cp .env.prod .env
 2. Set required values in `.env`:
 
 - `SECRET_KEY`
-- `DATABASE_URL`
+- `POSTGRES_USER`
+- `POSTGRES_PASSWORD`
+- `POSTGRES_DB`
 - `ALLOWED_ORIGINS`
 - `QUERY_REFINEMENT_LLM_API_KEY`
+
+Notes:
+
+- Canonical compose derives API database connectivity from `POSTGRES_*`.
+- `DATABASE_URL` can remain set for non-compose tooling, but compose runtime uses the `POSTGRES_*` values.
 
 If external systems call refinement APIs without user JWT login, also set:
 
@@ -78,6 +85,13 @@ Recommended values by operating mode:
 - Ensure ports `80` and `443` are allowed inbound
 - Decide whether port `8000` should be externally reachable; restrict at firewall if not needed
 - Create writable directories: `./logs`, `./logs/nginx`
+- If host services already use `5432`/`6379`, set `POSTGRES_PORT`/`REDIS_PORT` in `.env` (for example `5433`/`6380`)
+
+Optional preflight validator:
+
+```bash
+bash scripts/validate_deployment.sh
+```
 
 ### Step 2: Start stack
 
@@ -153,7 +167,7 @@ Frontend default: `http://localhost:5173`
 
 ## Migrations
 
-Migrations run automatically in the API container startup command (`alembic upgrade head`).
+Migrations run automatically in the API container startup command (`/app/.venv/bin/alembic upgrade head`).
 For manual execution:
 
 ```bash
