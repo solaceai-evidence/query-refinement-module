@@ -36,9 +36,10 @@ WORKDIR /app
 # Copy dependency files
 COPY pyproject.toml poetry.lock* ./
 
-# Install dependencies (no dev dependencies in production)
-RUN poetry install --no-root --no-dev --no-interaction --no-ansi && \
-    poetry run pip install requests
+# Install dependencies (main/runtime dependencies only)
+RUN poetry install --only main --no-root --no-interaction --no-ansi && \
+    poetry run python -m pip install --no-cache-dir requests alembic gunicorn && \
+    poetry run python -m pip check
 
 # ============================================================================
 # Runtime Stage: Minimal production image

@@ -138,9 +138,9 @@ services:
         echo 'Waiting for database...' &&
         sleep 5 &&
         echo 'Running database migrations...' &&
-        /app/.venv/bin/alembic upgrade head &&
+        /app/.venv/bin/python -m alembic upgrade head &&
         echo 'Starting application...' &&
-        /app/.venv/bin/gunicorn -c gunicorn_conf.py query_refinement_module.api.main:app
+        /app/.venv/bin/python -m gunicorn -c gunicorn_conf.py query_refinement_module.api.main:app
       "
 
 # Network for service communication
