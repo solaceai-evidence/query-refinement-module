@@ -74,7 +74,9 @@ services:
         python3 -m gunicorn -c gunicorn_conf.py query_refinement_module.api.main:app
       "
     networks:
-      - query-refinement-net
+      query-refinement-net:
+        aliases:
+          - api
     restart: unless-stopped
 
   # Frontend (Nginx serving React build)
