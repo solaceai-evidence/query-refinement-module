@@ -24,8 +24,7 @@ RUN apt-get update && apt-get install -y \
 ENV POETRY_VERSION=1.7.1 \
     POETRY_HOME="/opt/poetry" \
     POETRY_NO_INTERACTION=1 \
-    POETRY_VIRTUALENVS_IN_PROJECT=true \
-    POETRY_VIRTUALENVS_CREATE=true
+    POETRY_VIRTUALENVS_CREATE=false
 
 RUN curl -sSL https://install.python-poetry.org | python3 -
 ENV PATH="$POETRY_HOME/bin:$PATH"
@@ -36,12 +35,10 @@ WORKDIR /app
 # Copy dependency files
 COPY pyproject.toml poetry.lock* ./
 
-# Install dependencies (main/runtime dependencies only)
-RUN poetry config virtualenvs.create true && \
-    poetry config virtualenvs.in-project true && \
-    poetry install --only main --no-root --no-interaction --no-ansi && \
-    poetry run python -m pip install --no-cache-dir requests alembic gunicorn && \
-    poetry run python -m pip check
+# Install dependencies (main/runtime dependencies only) into system Python
+RUN poetry install --only main --no-root --no-interaction --no-ansi && \
+    python -m pip install --no-cache-dir requests alembic gunicorn && \
+    python -m pip check
 
 # ============================================================================
 # Runtime Stage: Minimal production image
@@ -60,18 +57,14 @@ RUN useradd -m -u 1000 appuser
 # Set working directory
 WORKDIR /app
 
-# Copy virtual environment from builder
-COPY --from=builder /app/.venv /app/.venv
-
-# Ensure /app/.venv/bin/python exists (some builds only provide python3)
-RUN if [ -x /app/.venv/bin/python3 ] && [ ! -e /app/.venv/bin/python ]; then ln -s /app/.venv/bin/python3 /app/.venv/bin/python; fi
+# Copy installed Python packages from builder
+COPY --from=builder /usr/local/lib/python3.12/site-packages /usr/local/lib/python3.12/site-packages
 
 # Copy application code
 COPY --chown=appuser:appuser . .
 
-# Add virtual environment to PATH
-ENV PATH="/app/.venv/bin:$PATH" \
-    PYTHONUNBUFFERED=1 \
+# Runtime environment
+ENV PYTHONUNBUFFERED=1 \
     PYTHONDONTWRITEBYTECODE=1
 
 # Create directories for logs and data
