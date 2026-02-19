@@ -15,9 +15,8 @@ services:
       POSTGRES_INITDB_ARGS: "-E UTF8 --locale=en_US.UTF-8"
     volumes:
       - ${DATA_ROOT:-./data}/postgres:/var/lib/postgresql/data
-      - ./init-db.sql:/docker-entrypoint-initdb.d/init-db.sql:ro
     ports:
-      - "${POSTGRES_PORT:-5432}:5432"
+      - "${POSTGRES_BIND_ADDRESS:-127.0.0.1}:${POSTGRES_PORT:-5432}:5432"
     healthcheck:
       test: ["CMD-SHELL", "pg_isready -U ${POSTGRES_USER:-qruser} -d ${POSTGRES_DB:-query_refinement}"]
       interval: 10s
@@ -35,7 +34,7 @@ services:
     volumes:
       - ${DATA_ROOT:-./data}/redis:/data
     ports:
-      - "${REDIS_PORT:-6379}:6379"
+      - "${REDIS_BIND_ADDRESS:-127.0.0.1}:${REDIS_PORT:-6379}:6379"
     healthcheck:
       test: ["CMD", "redis-cli", "ping"]
       interval: 10s
@@ -57,6 +56,8 @@ services:
       redis:
         condition: service_healthy
     environment:
+      PATH: /app/.venv/bin:/usr/local/bin:/usr/bin:/bin
+
       # Application
       ENVIRONMENT: ${ENVIRONMENT:-production}
       DEBUG: ${DEBUG:-false}
@@ -64,7 +65,7 @@ services:
       LOG_FORMAT: ${LOG_FORMAT:-json}
       
       # Database (PostgreSQL)
-      DATABASE_URL: postgresql://${POSTGRES_USER:-qruser}:${POSTGRES_PASSWORD:-changeme}@postgres:5432/${POSTGRES_DB:-query_refinement}
+      DATABASE_URL: postgresql+psycopg2://${POSTGRES_USER:-qruser}:${POSTGRES_PASSWORD:-changeme}@postgres:5432/${POSTGRES_DB:-query_refinement}
       DB_POOL_SIZE: ${DB_POOL_SIZE:-5}
       DB_MAX_OVERFLOW: ${DB_MAX_OVERFLOW:-10}
       DB_POOL_TIMEOUT: ${DB_POOL_TIMEOUT:-30.0}
@@ -72,7 +73,7 @@ services:
       DB_POOL_PRE_PING: ${DB_POOL_PRE_PING:-true}
       
       # Redis
-      REDIS_URL: redis://redis:6379/0
+      REDIS_URL: ${REDIS_URL:-redis://redis:6379/0}
       SESSION_STORAGE_BACKEND: redis
       SESSION_TTL_SECONDS: ${SESSION_TTL_SECONDS:-10800}
       RATE_LIMITER_BACKEND: redis
@@ -99,17 +100,23 @@ services:
       
       # Rate Limiting
       LLM_RATE_LIMIT_RPM: ${LLM_RATE_LIMIT_RPM:-100}
+      LLM_RATE_LIMIT_TPM: ${LLM_RATE_LIMIT_TPM:-40000}
+      LLM_RATE_LIMIT_PER_USER_RPM: ${LLM_RATE_LIMIT_PER_USER_RPM:-4}
+      LLM_MAX_CONCURRENT_PER_USER: ${LLM_MAX_CONCURRENT_PER_USER:-2}
+
+      # Workflow policy
+      ENFORCE_WORKFLOW_LIMIT: ${ENFORCE_WORKFLOW_LIMIT:-false}
       
       # Server
       WORKERS: ${WORKERS:-4}
       WORKER_TIMEOUT: ${WORKER_TIMEOUT:-120}
     ports:
-      - "${API_PORT:-8000}:8000"
+      - "${API_BIND_ADDRESS:-0.0.0.0}:${API_PORT:-8000}:8000"
     volumes:
       - ./refinement_frameworks:/app/refinement_frameworks:ro
       - ./logs:/app/logs
     healthcheck:
-      test: ["CMD", "python", "-c", "import requests; requests.get('http://localhost:8000/health', timeout=5)"]
+      test: ["CMD", "/app/.venv/bin/python", "-c", "import requests; requests.get('http://localhost:8000/health', timeout=5)"]
       interval: 30s
       timeout: 10s
       start_period: 40s
@@ -131,9 +138,9 @@ services:
         echo 'Waiting for database...' &&
         sleep 5 &&
         echo 'Running database migrations...' &&
-        alembic upgrade head &&
+        /app/.venv/bin/alembic upgrade head &&
         echo 'Starting application...' &&
-        gunicorn -c gunicorn_conf.py query_refinement_module.api.main:app
+        /app/.venv/bin/gunicorn -c gunicorn_conf.py query_refinement_module.api.main:app
       "
 
 # Network for service communication
