@@ -37,7 +37,9 @@ WORKDIR /app
 COPY pyproject.toml poetry.lock* ./
 
 # Install dependencies (main/runtime dependencies only)
-RUN poetry install --only main --no-root --no-interaction --no-ansi && \
+RUN poetry config virtualenvs.create true && \
+    poetry config virtualenvs.in-project true && \
+    poetry install --only main --no-root --no-interaction --no-ansi && \
     poetry run python -m pip install --no-cache-dir requests alembic gunicorn && \
     poetry run python -m pip check
 
@@ -60,6 +62,9 @@ WORKDIR /app
 
 # Copy virtual environment from builder
 COPY --from=builder /app/.venv /app/.venv
+
+# Ensure /app/.venv/bin/python exists (some builds only provide python3)
+RUN if [ -x /app/.venv/bin/python3 ] && [ ! -e /app/.venv/bin/python ]; then ln -s /app/.venv/bin/python3 /app/.venv/bin/python; fi
 
 # Copy application code
 COPY --chown=appuser:appuser . .

@@ -116,7 +116,7 @@ services:
       - ./refinement_frameworks:/app/refinement_frameworks:ro
       - ./logs:/app/logs
     healthcheck:
-      test: ["CMD", "/app/.venv/bin/python", "-c", "import requests; requests.get('http://localhost:8000/health', timeout=5)"]
+      test: ["CMD", "python3", "-c", "import requests; requests.get('http://localhost:8000/health', timeout=5)"]
       interval: 30s
       timeout: 10s
       start_period: 40s
@@ -138,9 +138,9 @@ services:
         echo 'Waiting for database...' &&
         sleep 5 &&
         echo 'Running database migrations...' &&
-        /app/.venv/bin/python -m alembic upgrade head &&
+        python3 -m alembic upgrade head &&
         echo 'Starting application...' &&
-        /app/.venv/bin/python -m gunicorn -c gunicorn_conf.py query_refinement_module.api.main:app
+        python3 -m gunicorn -c gunicorn_conf.py query_refinement_module.api.main:app
       "
 
 # Network for service communication
