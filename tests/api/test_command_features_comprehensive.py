@@ -717,8 +717,8 @@ def test_malformed_command_rejected():
     query_id = session_data["query_id"]
     
     malformed_commands = [
-        "/goto abc",  # Non-numeric argument
-        "/goto 1 2 3",  # Too many arguments
+        "/unknown abc",
+        "/unknown 1 2 3",
         "/ ",  # Just slash and space
         "/",  # Just slash
     ]
@@ -846,12 +846,9 @@ def test_navigation_command_sequence():
         submit_answer(token, query_id, "Adults over 65")
         submit_answer(token, query_id, "With hypertension")
         
-        # Navigate: back -> forward again -> goto
+        # Navigate: back -> forward again
         submit_command(token, query_id, "/back", force=True)
         submit_answer(token, query_id, "Updated: Adults over 65")
-        
-        if total_steps > 1:
-            submit_command(token, query_id, "/goto 2", force=True)
         
         # Verify we can still continue
         data = submit_command(token, query_id, "/status")
@@ -981,9 +978,8 @@ def test_whitespace_in_command():
     data = submit_command(token, query_id, "  /status  ")
     assert data["success"] is True
     
-    data = submit_command(token, query_id, "/goto  2")
-    # Should either work or give proper error about step number
-    assert "message" in data
+    data = submit_command(token, query_id, "  /steps  ")
+    assert data["success"] is True
     
     print("✓ Whitespace in commands handled correctly")
 

@@ -150,7 +150,7 @@ export function isUserCommand(input) {
         return true;
     }
 
-    // Check for commands with arguments (e.g., "/goto 2")
+    // Check for commands with arguments
     for (const cmd of COMMANDS_WITH_ARGS) {
         if (trimmed.startsWith(cmd + ' ') || trimmed === cmd) {
             return true;

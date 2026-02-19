@@ -162,7 +162,7 @@ class CommandResponse(BaseModel):
     next_prompt: Optional[Dict[str, Any]] = Field(None, description="Next question after command execution")
     
     # Optional fields for specific commands
-    invalidated_aspects: Optional[List[str]] = Field(None, description="Aspects marked for review (/back, /goto)")
+    invalidated_aspects: Optional[List[str]] = Field(None, description="Aspects marked for review (/back, /restart)")
     synthesis_ready: Optional[bool] = Field(None, description="True if session ready for synthesis (/submit)")
     step_summary: Optional[Dict[str, Any]] = Field(None, description="Step statistics (/status)")
     step_list: Optional[List[Dict[str, Any]]] = Field(None, description="All steps with status (/steps)")
@@ -471,7 +471,7 @@ async def _build_command_response(
     """Build CommandResponse based on command type and execution payload.
     
     Args:
-        command_type: The command type (status, back, goto, etc.)
+        command_type: The command type (status, back, restart, etc.)
         payload: Result from session.handle_command()
         session: QueryRefinementSession instance
         force_confirmation_needed: Whether force flag is required
@@ -559,14 +559,14 @@ async def _build_command_response(
         if response.next_prompt:
             logger.info(f"[_build_command_response]   -> Aspect: {response.next_prompt.get('name')}")
     
-    elif command_type in ["back", "prev", "previous", "goto", "restart"]:
+    elif command_type in ["back", "prev", "previous", "restart"]:
         logger.info(f"[_build_command_response] NAVIGATION command ({command_type}) - building next prompt")
         # Navigation commands - show new active step
         response.invalidated_aspects = payload.get("invalidated", [])
         
-        # For back/goto/restart, explicitly generate question for reopened step
+        # For back/restart, explicitly generate question for reopened step
         # Don't allow LLM to auto-complete it again
-        if command_type in ["back", "goto", "restart"]:
+        if command_type in ["back", "restart"]:
             reopened_step = session.get_active_step()
             if reopened_step and not reopened_step.follow_up_question:
                 # Force generate a question (don't auto-complete)
@@ -1018,7 +1018,7 @@ async def submit_answer(
     
     Command processing (input starts with /):
     - Information commands (/status, /steps, /help): Return session state
-    - Navigation commands (/back, /goto, /restart): Modify session state and return new active step
+    - Navigation commands (/back, /restart): Modify session state and return new active step
     - Control commands (/skip, /done): Mark current step complete and advance
     - Synthesis command (/submit, /end): Flag session ready for synthesis
     """
@@ -1115,7 +1115,7 @@ async def submit_answer(
         
         # Check if force confirmation is needed for navigation commands
         force_confirmation_needed = False
-        if not request.force and command_type in ["back", "prev", "previous", "goto", "restart"]:
+        if not request.force and command_type in ["back", "prev", "previous", "restart"]:
             invalidated = command_payload.get("invalidated", [])
             if invalidated and command_payload.get("success", False):
                 # Navigation would invalidate dependent aspects - require confirmation
@@ -1146,7 +1146,6 @@ async def submit_answer(
             "clear": AuditEventType.COMMAND_CLEAR,
             "skip": AuditEventType.COMMAND_SKIP,
             "done": AuditEventType.COMMAND_DONE,
-            "goto": AuditEventType.COMMAND_GOTO,
             "status": AuditEventType.COMMAND_STATUS,
             "help": AuditEventType.COMMAND_HELP,
             "steps": AuditEventType.COMMAND_STEPS,
@@ -1191,7 +1190,7 @@ async def submit_answer(
         
         # Save session state for state-mutating commands
         if command_payload.get("success", False) and not force_confirmation_needed:
-            if command_type in ["back", "prev", "previous", "goto", "restart", "skip", "done", "submit", "end"]:
+            if command_type in ["back", "prev", "previous", "restart", "skip", "done", "submit", "end"]:
                 logger.info(f"[Query {query_id}] Saving session state after command: {command_type}")
                 
                 # Cascade delete DB records when session is truncated (referential integrity)
@@ -2312,7 +2311,6 @@ def get_command_history(
         AuditEventType.COMMAND_CLEAR,
         AuditEventType.COMMAND_SKIP,
         AuditEventType.COMMAND_DONE,
-        AuditEventType.COMMAND_GOTO,
         AuditEventType.COMMAND_STATUS,
         AuditEventType.COMMAND_HELP,
         AuditEventType.COMMAND_STEPS,

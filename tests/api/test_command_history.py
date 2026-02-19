@@ -413,47 +413,6 @@ class TestCommandAuditLogging:
         assert log.details["command"] == "clear"
         assert log.details["command_input"] == "/clear"
     
-    def test_goto_command_with_argument_logged(self, query_with_session, db: Session, session_manager):
-        """Goto command with argument is properly logged."""
-        db_query, token = query_with_session
-        
-        # Setup session with multiple completed steps
-        framework = get_framework("pico_advanced")
-        session = session_manager.load_session(db_query.id, framework)
-        
-        for i in range(2):
-            active = session.get_active_step()
-            if active:
-                active.conversation_history.append({
-                    'question': f'Q{i}',
-                    'response': f'A{i}'
-                })
-                active.is_complete = True
-        
-        session_manager.save_session(db_query.id, session)
-        
-        client = TestClient(app)
-        
-        # Execute /goto command
-        response = client.post(
-            f"/api/v1/refinement/queries/{db_query.id}/answer",
-            json={"answer": "/goto Population", "force": True},
-            headers={"Authorization": f"Bearer {token}"}
-        )
-        
-        # Get command history
-        history_response = client.get(
-            f"/api/v1/refinement/queries/{db_query.id}/command-history",
-            headers={"Authorization": f"Bearer {token}"}
-        )
-        
-        data = history_response.json()
-        goto_cmd = next((cmd for cmd in data["commands"] if cmd["command"] == "goto"), None)
-        
-        if goto_cmd:  # May not work if all steps not completed
-            assert goto_cmd["argument"] is not None
-            assert "population" in goto_cmd["argument"].lower() or goto_cmd["argument"] == "Population"
-    
     def test_force_confirmation_tracked_in_audit(self, query_with_session, db: Session, session_manager):
         """Force confirmation requirement is tracked in audit."""
         db_query, token = query_with_session

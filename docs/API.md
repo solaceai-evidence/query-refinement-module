@@ -105,7 +105,6 @@ curl -X POST http://localhost:8000/api/v1/refinement/start \
 The frontend and API accept slash commands during refinement:
 
 - `/back`, `/prev`
-- `/goto <n>`
 - `/restart`
 - `/skip` (marks current dimension skipped, no final value persisted)
 - `/done` (marks current dimension complete and persists captured current value, including partial values)

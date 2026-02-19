@@ -157,8 +157,8 @@ def parse_user_command(user_input: str) -> CommandResult:
         >>> parse_user_command("/back")
         CommandResult(command=UserCommand.BACK, ...)
         
-        >>> parse_user_command("/goto 3")
-        CommandResult(command=UserCommand.GOTO, argument="3", ...)
+        >>> parse_user_command("/back")
+        CommandResult(command=UserCommand.BACK, argument=None, ...)
     """
     if not is_user_command(user_input):
         return CommandResult(command=UserCommand.NONE, is_valid=False)

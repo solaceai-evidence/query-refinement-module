@@ -53,7 +53,6 @@ class AuditEventType:
     COMMAND_CLEAR = "command.clear"
     COMMAND_SKIP = "command.skip"
     COMMAND_DONE = "command.done"
-    COMMAND_GOTO = "command.goto"
     COMMAND_STATUS = "command.status"
     COMMAND_HELP = "command.help"
     COMMAND_STEPS = "command.steps"
