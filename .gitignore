@@ -68,6 +68,9 @@ query_refinement.db-journal
 *.db-journal
 load_test_reports/*
 
+# Local Docker runtime volumes
+/data/
+
 # Flask stuff:
 instance/
 .webassets-cache
