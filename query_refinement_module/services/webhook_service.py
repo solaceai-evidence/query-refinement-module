@@ -273,6 +273,13 @@ class WebhookService:
                 if success:
                     delivered_count += 1
             except Exception as e:
+                try:
+                    self.db.rollback()
+                except Exception:
+                    logger.error(
+                        "Failed to rollback DB session after webhook delivery error",
+                        exc_info=True
+                    )
                 logger.error(
                     f"Failed to deliver webhook {webhook.id}: {str(e)}",
                     exc_info=True
@@ -303,7 +310,17 @@ def trigger_webhook_event(
         Number of webhooks triggered
     """
     service = WebhookService(db)
-    return service.trigger_event(event_type, event_data, user_id)
+    try:
+        return service.trigger_event(event_type, event_data, user_id)
+    except Exception:
+        try:
+            db.rollback()
+        except Exception:
+            logger.error(
+                "Failed to rollback DB session after trigger_webhook_event error",
+                exc_info=True
+            )
+        raise
 
 
 # ==========================================

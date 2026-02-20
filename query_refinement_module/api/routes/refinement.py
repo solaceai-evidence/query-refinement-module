@@ -1377,6 +1377,7 @@ async def submit_answer(
         question=active_step.follow_up_question or active_step.refinement_aspect.name,
         answer=user_input
     )
+    followup_id = db_followup.id
     
     # Check if aspect is complete
     is_complete = analysis_status.get('complete', False)
@@ -1412,6 +1413,10 @@ async def submit_answer(
             trigger_webhook_event(db, "refinement.step_completed", payload, user_id=current_user.id)
         except Exception as e:
             logger.error(f"Failed to trigger refinement.step_completed webhook: {e}", exc_info=True)
+            try:
+                db.rollback()
+            except Exception:
+                logger.error("Failed to rollback DB session after refinement.step_completed webhook error", exc_info=True)
     
     # Get next prompt
     next_prompt = None
@@ -1492,6 +1497,10 @@ async def submit_answer(
                 
             except Exception as e:
                 logger.error(f"Error generating next question: {e}", exc_info=True)
+                try:
+                    db.rollback()
+                except Exception:
+                    logger.error("Failed to rollback DB session after auto-cascade error", exc_info=True)
                 # Stop cascading on error, use fallback
                 break
         
@@ -1518,6 +1527,10 @@ async def submit_answer(
             trigger_webhook_event(db, "refinement.complete", payload, user_id=current_user.id)
         except Exception as e:
             logger.error(f"Failed to trigger refinement.complete webhook: {e}", exc_info=True)
+            try:
+                db.rollback()
+            except Exception:
+                logger.error("Failed to rollback DB session after refinement.complete webhook error", exc_info=True)
     
     duration_ms = (time.time() - start_time) * 1000
     logger.info(
@@ -1535,7 +1548,7 @@ async def submit_answer(
     
     return SubmitAnswerResponse(
         refinement_step_id=db_step.id,
-        followup_id=db_followup.id,
+        followup_id=followup_id,
         is_complete=is_complete,
         next_prompt=next_prompt,
         ready_for_synthesis=ready_for_synthesis
