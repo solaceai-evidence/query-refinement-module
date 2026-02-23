@@ -95,38 +95,99 @@ bash scripts/validate_deployment.sh
 
 ### Step 2: Start stack
 
+Choose one deployment mode:
+
+#### Mode A: HTTP (API-only, no nginx)
+
+```bash
+docker compose -f docker-compose.yml up -d --build
+```
+
+Use this for internal testing or local-only access on port `8000`.
+
+#### Mode B: HTTPS (nginx + TLS, no public domain required)
+
 ```bash
 docker compose -f docker-compose.yml -f docker-compose.prod.yml up -d --build
 ```
 
+Use this when you want TLS termination at nginx but are not exposing a public domain yet (for example, direct IP testing with a self-signed certificate).
+
+#### Mode C: HTTPS + Domain (recommended for evaluators/integrations)
+
+```bash
+docker compose -f docker-compose.yml -f docker-compose.prod.yml up -d --build
+```
+
+Use this with DNS + valid certificates (for example, `query-refinement-assistant.cloud`).
+
 ### Step 3: Verify services and health
+
+Run checks for the mode you started:
+
+#### Mode A: HTTP (API-only)
+
+```bash
+docker compose -f docker-compose.yml ps
+curl -f http://localhost:8000/ready
+curl -f http://localhost:8000/health
+```
+
+#### Mode B: HTTPS (no public domain)
 
 ```bash
 docker compose -f docker-compose.yml -f docker-compose.prod.yml ps
-curl -f http://localhost/health
+curl -I http://localhost/health
+curl -f http://localhost/nginx-health
+curl -k -f https://localhost/health
+curl -f http://localhost:8000/ready
+```
+
+#### Mode C: HTTPS + Domain
+
+```bash
+docker compose -f docker-compose.yml -f docker-compose.prod.yml ps
+curl -I http://query-refinement-assistant.cloud/health
+curl -f https://query-refinement-assistant.cloud/health
+curl -f http://localhost/nginx-health
 curl -f http://localhost:8000/ready
 ```
 
 Interpretation:
 
-- `/health` confirms nginx→API liveness path
+- HTTP mode uses API endpoints directly on `:8000`
+- In HTTPS modes, `http://.../health` should return `301` redirect to HTTPS
+- `/nginx-health` confirms local nginx container liveness (used by container healthcheck in prod compose)
 - `/ready` confirms API dependency readiness (DB/Redis/etc.)
 
 ### Step 4: Functional smoke checks
 
+Use the appropriate base URL:
+
+- Mode A (HTTP): `http://localhost:8000`
+- Mode B (HTTPS, local test): `https://localhost`
+- Mode C (HTTPS + domain): `https://query-refinement-assistant.cloud`
+
+Examples:
+
 ```bash
-curl -i -X POST http://localhost/api/v1/auth/login
-curl -i -X POST http://localhost/api/v1/refinement/start \
+curl -i -X POST <base-url>/api/v1/auth/login
+curl -i -X POST <base-url>/api/v1/refinement/start \
 	-H 'Content-Type: application/json' \
 	-H 'Authorization: Bearer <token>' \
 	-d '{"original_query":"effects of aspirin","framework_name":"pico_advanced"}'
 
 # Service-to-service integration (no end-user JWT)
-curl -i -X POST http://localhost/api/v1/refinement/start \
+curl -i -X POST <base-url>/api/v1/refinement/start \
 	-H 'Content-Type: application/json' \
 	-H 'X-API-Key: <integration-api-key>' \
 	-d '{"original_query":"effects of aspirin","framework_name":"pico_advanced","source":"api_integration"}'
 ```
+
+Notes:
+
+- For Mode B, add `-k` to curl commands if using self-signed certs.
+- For Mode C, replace `<base-url>` with `https://query-refinement-assistant.cloud`.
 
 ### Step 5: Observe runtime
 
