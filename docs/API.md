@@ -27,11 +27,22 @@ For server-to-server integrations, refinement workflow endpoints also support `X
 - `GET /api/v1/refinement/queries/{query_id}/progress`
 - `POST /api/v1/refinement/sessions/abandon`
 
+Refinement workflow endpoints require either `Authorization: Bearer <token>` or `X-API-Key: <integration-api-key>`.
+
+`/api/v1/refinement/start` is **POST-only** (no GET variant is implemented).
+
 `POST /api/v1/refinement/start` accepts:
 
 - `original_query` (string)
 - `framework_name` (string)
 - `source` (optional: `gui` or `api_integration`, defaults to `gui`)
+
+Start response includes: `session_id`, `query_id`, `summary`, optional `next_prompt`, `ready_for_synthesis`, and `source`.
+
+`POST /api/v1/refinement/queries/{query_id}/answer` returns:
+
+- `SubmitAnswerResponse` for normal answers (includes `ready_for_synthesis`)
+- `CommandResponse` for slash commands (includes optional `synthesis_ready` when using `/submit` or `/end`)
 
 ### Generic external integration snippet
 
@@ -118,7 +129,7 @@ The frontend and API accept slash commands during refinement:
 Admin endpoints require a superuser account.
 
 - Core admin routes use: `/api/v1/admin/...`
-- Legacy admin routes (currently still active) use: `/api/v1/api/admin/...`
+- Additional admin route groups are exposed under: `/api/v1/api/admin/...`
 
 Current split:
 

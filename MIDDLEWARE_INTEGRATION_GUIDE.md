@@ -36,6 +36,10 @@ If you change integration auth environment variables, restart API processes befo
 
 `POST /api/v1/refinement/start`
 
+Method contract:
+
+- `POST` only (there is no `GET /api/v1/refinement/start` endpoint)
+
 Request:
 
 ```json
@@ -50,6 +54,15 @@ Notes:
 
 - `source` is optional (`gui` default), but should be set to `api_integration` for external system flows.
 - Use the same value consistently for downstream analytics segmentation.
+- Requires either `Authorization: Bearer <jwt-token>` or `X-API-Key: <integration-api-key>`.
+
+Response fields:
+
+- `session_id`, `query_id`
+- `summary`
+- `next_prompt` (nullable)
+- `ready_for_synthesis` (boolean)
+- `source`
 
 ### 2) Submit answer (or slash command)
 
@@ -68,6 +81,8 @@ Notes:
 
 - `answer` may be natural language or a slash command (for example `/back`, `/status`)
 - Use `force=true` only for commands that explicitly require confirmation
+- Non-command answers return `ready_for_synthesis`.
+- Slash-command responses use `CommandResponse` and may include `synthesis_ready` (not `ready_for_synthesis`) for `/submit` or `/end`.
 
 ### 3) Check status
 
