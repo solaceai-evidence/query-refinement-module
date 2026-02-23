@@ -94,6 +94,19 @@ Integration-critical fields:
 - `next_prompt` (next question payload)
 - `is_complete` (workflow status)
 
+### Response schema reference
+
+For full expected JSON structures (including `CommandResponse` vs `SubmitAnswerResponse`,
+`command-history`, `inspect-messages`, `progress`, and common error envelopes), use:
+
+- `docs/API.md` -> **Expected response structures (integration)**
+
+Integration parsing rule of thumb:
+
+- For `POST /refinement/queries/{query_id}/answer`, branch on the presence of `command_type`.
+  - If `command_type` exists: treat payload as `CommandResponse`.
+  - Otherwise: treat payload as `SubmitAnswerResponse`.
+
 ### 4) Synthesize
 
 `POST /api/v1/refinement/synthesize`
