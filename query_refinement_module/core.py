@@ -1277,25 +1277,14 @@ class QueryRefinementManager:
                 refinement_aspect_values[aspect_id] = "[SKIPPED]"
 
         if not clarifications and not baseline_summaries:
-            duration_ms = (time.time() - start_time) * 1000
             logger.info(
-                "Skipping LLM synthesis: no refinement clarifications or summaries recorded.",
+                "No refinement clarifications recorded (all dimensions skipped). "
+                "Proceeding with LLM synthesis to generate semantic/keyword expansions from the original query.",
                 extra={
                     "request_id": request_id,
                     "trace_id": trace_id,
-                    "duration_ms": round(duration_ms, 2),
                 },
             )
-            return {
-                "integrated_statement": session.original_query,
-                "used_llm": False,
-                "clarifications": [],
-                "baseline_summaries": [],
-                "refinement_aspect_values": refinement_aspect_values,
-                "metadata": {
-                    "reason": "no_clarifications",
-                },
-            }
 
         # Build prompts using SynthesisPromptBuilder for structured output
         aspects = [step.refinement_aspect for step in session.steps]
