@@ -148,6 +148,7 @@ celerybeat.pid
 .env
 .env.*
 !.env.prod
+!.env.ollama
 .envrc
 .venv
 env/

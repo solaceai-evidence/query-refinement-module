@@ -1152,3 +1152,647 @@ legal_research:
           has: General remedy type (injunction)
           missing: Type of injunction (preliminary vs permanent), basis for equitable relief
           example_question: What type of injunction - preliminary, permanent, or both? What equities support injunctive relief?
+solaceai:
+  - user_context:
+      user_type: "Systematic reviewer"
+      context: "Protocol development for systematic review or meta-analysis. Researcher is formulating a research question for a comprehensive evidence synthesis, requiring precise PICO/SPIDER/ECLIPSE framework specification for protocol registration and publication-quality review."
+      tone: "professional" # (educational, professional, pragmatic)
+      complexity: "expert" # (novice, intermediate, advanced, expert)
+      examples_from: "public health"
+      constraints:
+        - "Specificity check: Every dimension must have concrete, measurable definitions without ambiguous terms (reject 'elderly', 'standard care', 'improved outcomes' unless operationalized)"
+        - "Alignment check: All dimensions must be mutually compatible (intervention appropriate for population and condition, outcome measurable given design constraints)"
+        - "Search-readiness check: Each element can be converted into specific database search terms, MeSH headings, or screening criteria"
+        - "Completeness check: All critical PICO elements defined without circular dependencies (no 'depends on what studies we find')"
+        - "Synthesis-feasibility check: The combined dimensions define a coherent, comparable body of evidence rather than heterogeneous narrative-only collection"
+  - id: population
+    name: Population
+    description: The group of individuals, communities, or entities to whom the research applies, defined by demographic characteristics, geographic context, and relevant inclusion criteria.
+    strictness: MODERATE #(MODERATE | PERMISSIVE |  STRICT)
+    specifications: |
+      **Task:** Evaluate and assemble population specification.
+
+      **Elements to track:**
+      - Age (range, category, or life stage)
+      - Sex/gender
+      - Ethnicity/race
+      - Geographic setting or context
+      - Relevant subgroup characteristics: roles (e.g., healthcare workers, parents, teachers, students, caregivers), affiliations (e.g., military veterans, union members), socioeconomic markers (e.g., low-income, uninsured, educational attainment), pregnancy/reproductive status, occupational categories, insurance status
+
+      **Required:**
+      - At least confirm whether "all populations" or limited to specific demographics
+      - Age specification if topic is age-dependent
+      - Setting if research is geography/culture-dependent
+
+      **Not required unless relevant:**
+      - Ethnicity/race specification (only if health disparities focus or explicitly mentioned)
+      - All elements (partial is acceptable if user confirms scope)
+
+      **Age standardization:**
+      When assembling, standardize age terms:
+      - "kids" → "children (2-12 years)"
+      - "elderly" → "older adults (65+ years)"
+      - Non-standard range → prepend "approximately"
+    examples:
+      clear:
+        - statement: Efficacy of metformin in adults aged 40-65 with type 2 diabetes
+          rationale: Age (40-65) specified, with all-inclusive gender (adults) and ethnicity and setting
+        - statement: Postmenopausal women under 65 in urban clinical settings
+          rationale: clearly described age (postmenopausal under 65), gender (women), setting (urban clinical)
+        - statement: Black males aged 18-45 with hypertension in community health centers
+          rationale: clearly defined age (18-45), gender (males), ethnicity (Black), setting (community health centers)
+      needs_refinement:
+        - statement: The effect of exercise on depression
+          issue: Zero demographics specified; too broad
+          missing: Age, gender at minimum
+          example_question: "You are including all ages, genders, ethnicities, and settings. Is that correct or do you want to limit to you have any specific age range, sex/gender, setting, and/or ethnicity/race?"
+      partial:
+        - statement: Women over 40 with cardiovascular disease
+          has: Gender (women) and minimum age (40)
+          missing: ethnicity (if CVD disparities relevant),setting (geographic/clinical context)
+          example_question: Is there an upper age limit? Are you focusing on specific ethnic groups given CVD disparities?
+      vague_ambiguous:
+        - statement: Treatment outcomes in minority populations aged 65 and older in tertiary care hospitals
+          issue: "'Minority populations' is vague and could mean multiple groups"
+          missing: precise ethnicity/race or setting; maybe gender as well
+          example_question: "Which specific population groups are you focusing on? (e.g., Hispanic/Latino, African American, Asian, Native American). Do you have any specifications regarding gender or geographic location?"
+  - id: intervention
+    name: Intervention
+    description: The healthcare action, exposure, or strategy being evaluated, specified in sufficient detail to allow replication, including modality, intensity, duration, and delivery context
+    strictness: MODERATE #(MODERATE | PERMISSIVE |  STRICT)
+    depends_on:
+      - population
+      - clinical_condition
+    specifications: |
+      **Task:** Evaluate and assemble intervention specification.
+
+      **Elements to track:**
+      - Intervention type (pharmacological/procedural/behavioral/diagnostic)
+      - Specific agent or method
+      - Dosing/intensity (if applicable)
+      - Duration (if applicable)
+      - Delivery method (if applicable)
+
+      **Required:**
+      - Intervention type
+      - Specific agent/method name
+
+      **Required if applicable:**
+      - Dosing: for dose-dependent interventions
+      - Duration: if affects outcomes
+      - Delivery: if route/setting/provider affects outcomes
+    examples:
+      clear:
+        - statement: Metformin vs placebo in newly diagnosed Type 2 diabetes over 6 months.
+          rationale: Inferred intervention type (Pharmacological), Drug (metformin), duration (6 months), and comparison (placebo) well specified.
+        - statement: Laparoscopic Roux-en-Y gastric bypass compared to other techniques
+          rationale: Specific intervention type (surgical technique, inferred) and method (laparoscopic Roux-en-Y)
+        - statement: Cognitive Behavioral Therapy delivered by licensed clinical psychologists
+          rationale: Inferred intervention type (nonpharmacological), method (CBT), provider (licensed psychologists)
+        - statement: Atorvastatin treatment for hyperlipidemia
+          has: Inferred intervention type (Pharmacological), Drug name (atorvastatin), indication (hyperlipidemia)
+      partial:
+        - statement: Exercise intervention for weight loss
+          has: intervention type (exercise)
+          missing: exercise modality, intensity level, frequency, session duration unspecified
+          example_question:
+            What type of exercise? (aerobic, resistance, both) What intensity,
+            frequency, and exercise modality?
+        - statement: Effects of medication on blood pressure
+          has: intervention type (Pharmacological)
+          missing: Drug name (optional dose, frequency, duration, route)
+          example_question:
+            Which medication are you studying? Please specify the drug
+            name, dose, frequency, and treatment duration if applicable.
+      vague_ambiguous:
+        - statement: Intensive glycemic control in diabetes
+          issue: " Intervention type is clear (glycemic control); 'Intensive' is subjective - it could be specified as a regimen or target"
+          missing: Specific regimen or glycemic targets
+          example_question: "Are you interested in a specific intervention and regimen or a target that defines 'intensive control'?"
+  - id: comparator
+    name: Comparator
+    description: The alternative intervention, standard of care, placebo, or no-intervention condition against which the intervention is assessed, providing the reference for effect estimation
+    strictness: MODERATE #(MODERATE | PERMISSIVE |  STRICT)
+    depends_on:
+      - population
+      - intervention
+    specifications: |
+      **Task:** Evaluate and assemble comparator specification.
+
+      **Elements to track:**
+      - Comparator type (placebo/standard care/active comparator/no treatment)
+      - Specific comparator details (matching intervention specificity)
+
+      **Required:**
+      - At least one comparator specified
+      - Comparator detail level matching intervention detail
+
+      **Comparator types:**
+      - Placebo: inert substance or mock procedure
+      - Standard care: specify which guideline or usual practice
+      - Active comparator: specify drug, dose, or technique
+      - No treatment: watchful waiting (justify if effective treatment exists)
+    examples:
+      clear:
+        - statement: Metformin vs placebo in prediabetic adults
+          rationale: Clear active intervention (metformin) vs inert control (placebo)
+        - statement:
+            New anticoagulant compared to warfarin (standard care) in atrial
+            fibrillation
+          rationale: Novel treatment (New anticoagulant) vs established standard of care (warfarin)
+        - statement:
+            High-intensity statins vs moderate-intensity statins in secondary
+            prevention
+          rationale: clear comparator (High-intensity statins vs moderate-intensity statins)
+      needs_refinement:
+        - statement: Effects of new drug on blood pressure
+          issue: No comparison group mentioned
+          missing: Comparator specification
+          example_question:
+            What will you compare the new drug against? (e.g., any other treatmentplacebo,
+            current standard treatment, another active drug)
+        - statement: Study of surgical intervention
+          issue: No comparison - surgery vs what?
+          missing: Control/comparison group
+          example_question:
+            What is the comparison? (e.g., surgery vs medical management,
+            surgery vs observation, one surgical technique vs another)
+      vague_ambiguous:
+        - statement: ACE inhibitors versus control in hypertension
+          issue: "'Control' could mean placebo, standard care, or no treatment"
+          example_question:
+            What does 'control' mean in your study? (placebo, standard
+            antihypertensive therapy, or no treatment)
+        - statement: Intervention vs standard therapy
+          issue: "'Standard therapy' varies by geography, guidelines, and time period"
+          example_question:
+            What specific treatment(s) constitute 'standard therapy' in
+            your context? (e.g., specific drugs, specific guidelines)
+  - id: outcome
+    name: Outcome
+    description: The measurable indicators, endpoints, or phenomena used to assess results, including health metrics, behavioral indicators, or descriptive findings.
+    strictness: MODERATE #(MODERATE | PERMISSIVE |  STRICT)
+    depends_on:
+      - population
+      - intervention
+      - comparator
+    specifications: |
+      **Task:** Evaluate and assemble outcome specification.
+
+      **Elements to track:**
+      - Primary outcome(s) or main variable(s) of interest
+      - Outcome type (clinical, behavioral, attitudinal, system-level)
+      - Measurement method, instrument, or data source
+      - Timepoint(s) or assessment period (if applicable)
+
+      **Required:**
+      - At least one primary outcome or main variable of interest
+      - Measurement method for vague outcomes (satisfaction, improvement, experiences)
+
+      **Conditionally required:**
+      - Timepoint: required if timing affects interpretation
+      - Instrument: required for subjective outcomes; not needed for self-evident measures
+    examples:
+      clear:
+        - statement: Effect of intervention on all-cause mortality at 5 years or more
+          rationale: Specific outcome (all-cause mortality), clear timepoint (5 years or more). With this outcome, a shorter duration may not be associated with the intervention; thus the inclusion of a longer timepoint.
+        - statement: Change in HbA1c from baseline to 6 months
+          rationale: Outcome type (diabetes indicator) inferred, measurement method -specific biomarker- (HbA1c) and timeframe (baseline to 6 months) clearly defined
+      needs_refinement:
+        - statement: Study on treatment effectiveness
+          issue: "'Effectiveness' not defined - needs specific measurable outcome"
+          missing: Specific outcome measure, measurement method, timepoint
+          example_question:
+            How will you measure effectiveness? (e.g., specific clinical
+            outcomes, biomarkers, patient-reported measures)
+        - statement: Research on improving patient outcomes
+          issue: "'Outcomes' is vague - could mean dozens of different measures"
+          missing: Specific outcome(s), measurement tools, assessment timing
+          example_question:
+            What specific outcome(s) will you measure? When will they
+            be assessed?
+        - statement: Trial measuring quality of life improvement
+          issue: QOL mentioned but no instrument specified
+          missing: QOL instrument, measurement timepoints, MCID
+          example_question:
+            Which quality of life instrument will you use? (e.g., SF-36,
+            EQ-5D, disease-specific) When will you assess it?
+      partial:
+        - statement: Effect on blood pressure reduction
+          has: General outcome category (blood pressure)
+          missing:
+            Specific BP parameter (systolic, diastolic, mean arterial), target
+            reduction,measurement protocol, timepoint
+          example_question:
+            Which BP parameter? (systolic, diastolic, or both) What measurement
+            protocol? When will it be assessed?
+        - statement: Change in depression scores using validated scales
+          has: Outcome type (depression), mentions validation
+          missing: Specific scale, timepoints, MCID
+          example_question:
+            Which depression scale? (PHQ-9, Beck Depression Inventory,
+            HAM-D) At what timepoints? What change is clinically meaningful?
+      vague_ambiguous:
+        - statement: Study on long-term outcomes of surgery
+          issue:
+            "'Long-term' is relative (could be 1 year or 10 years), 'outcomes'
+            unspecified"
+          example_question:
+            What is the follow-up duration? What specific outcomes will
+            you measure? (e.g., survival, complications, functional status)
+        - statement: Research on significant improvement in symptoms
+          issue:
+            "'Significant' (statistical vs clinical?) and 'symptoms' (which ones?)
+            both vague"
+          example_question:
+            Which specific symptoms? How will you measure them? What defines
+            a clinically meaningful improvement?
+  - id: study_type
+    name: Study Type
+    description: The category of research methodology used to evaluate the intervention-outcome relationship, classified by study type, which guides eligibility, evidence synthesis, and interpretation
+    strictness: MODERATE #(MODERATE | PERMISSIVE |  STRICT)
+    depends_on:
+      - population
+      - intervention
+      - comparator
+      - outcome
+    specifications: |
+      **Task:** Evaluate and assemble study design specification.
+
+      **Elements to track:**
+      - Primary Study Types 
+      - Secondary Study Types 
+      - Other Study Types
+
+      **Required:**
+      - At least one study design specified
+
+      **Category Definitions:**
+
+      PRIMARY STUDY TYPES: 
+      Before and after study, Case control study, Case report, Case series, Clinical study, Clinical trial, Cohort study, Comparative study, Cross-sectional study, Diagnostic test accuracy study, Evaluation study, Observational study, Pilot study, Quality improvement study, Randomized controlled trial, Validation study
+
+      SECONDARY STUDY TYPES
+      Living review, Meta-analysis, Rapid review, Scoping review, Systematic review, Narrative review, Review
+
+      OTHER STUDY TYPES: 
+      Government document, Policy document, Guideline, Consensus conference
+
+      **Assembly example:**
+      - User: "RCTs" → Current: "randomized controlled trials"
+      - User: "also cohort studies" → Current: "randomized controlled trials and cohort studies"
+      - User: "but not retrospective ones" → Current: "randomized controlled trials and prospective cohort studies"
+
+      **Showing Category Lists to User:**
+
+      ALWAYS show the relevant category list(s) when asking for clarification:
+
+      - If no study type specified yet → show ALL STUDY TYPES list
+      - If asking about PRIMARY types → show PRIMARY STUDY TYPES list
+      - If asking about SECONDARY types → show SECONDARY STUDY TYPES list
+      - If asking about OTHER types → show OTHER STUDY TYPES list
+      - If asking about multiple categories → show all relevant lists
+      - If user has specified one category and you're asking about others → show only the new category list(s)
+
+
+      **Clarification Behavior:**
+
+      - If user mentions only PRIMARY types → acknowledge, then ask: "Would you also like to include secondary sources (reviews, meta-analyses) or other document types (guidelines, policies)?" + show SECONDARY and OTHER lists
+
+      - If user mentions only SECONDARY types → acknowledge, then ask: "Should we also include primary research studies?" + show PRIMARY list
+
+      - If user mentions only OTHER types → acknowledge, then ask: "Should we also include primary research or secondary sources?" + show PRIMARY and SECONDARY lists
+
+      - If user mentions MIXED types (from multiple categories) → acknowledge, optionally ask about exclusions from shown lists or remaining categories
+
+      - If nothing specified yet → start by asking about PRIMARY types + show PRIMARY list
+
+      - If user mentions unlisted study type → map to closest category if possible, or ask for clarification
+
+      **Completion:**
+      Accept once at least one study design is clearly specified from any category.
+    examples:
+      clear:
+        - statement: All RCTs on treatments for basal cell carcinomas
+          rationale: primary study types (RCT, clinical trials) clearly specified
+      needs_refinement:
+        - statement: Study comparing two diabetes medications
+          issue: Study type not specified
+          missing: Study type
+          example_question:
+            What study design? (e.g., randomized controlled trial, observational
+            cohort, systematic review)
+  - id: clinical_condition
+    name: Clinical Condition
+    description: The health condition or disease under study, including its stage, severity, and relevant comorbidities, which defines eligibility criteria and contextualizes outcome relevance for the target population.
+    strictness: MODERATE #(MODERATE | PERMISSIVE |  STRICT)
+    depends_on:
+      - population
+    specifications: |
+      **Task:** Evaluate and assemble health condition specification.
+
+      **Elements to track:**
+      - Primary condition name
+      - Disease stage (if applicable)
+      - Severity (if applicable)
+      - Relevant comorbidities (if applicable)
+
+      **Required:**
+      - Primary condition, unambiguous
+
+      **Required if applicable:**
+      - Stage: for conditions where staging affects treatment (cancer, CKD)
+      - Severity: for conditions where severity affects treatment (depression, asthma)
+
+      **Ambiguity triggers:**
+      - "Diabetes" → ask: Type 1, Type 2, or gestational?
+      - "Heart disease" → ask: CAD, heart failure, or arrhythmia?
+      - "Cancer" → ask: which type and stage?
+    examples:
+      clear:
+        - statement: "Efficacy of SGLT2 inhibitors in Type 2 diabetes patients"
+          rationale: primary condition (Type 2 diabetes) specified unambiguously
+        - statement: "Management of acute severe asthma exacerbations requiring emergency department care."
+          rationale: All critical elements present and appropiately specified. Primary condition (asthma), disease stage (acute exacerbations), severity level (severe), diagnostic criteria  and setting/context implicit (requires emergency department level of care)
+        - statement: "Effects of statins in patients with moderate hyperlipidemia."
+          rationale: primary condition (hyperlipidemia), severity level (moderate)
+      needs_refinement:
+        - statement: Outcomes of cancer treatment
+          issue: Unspecified primary condition type/site
+          missing: Specific cancer type (e.g., breast, lung, colorectal) and disease stage (I-IV)
+          example_question: "What specific type of cancer (e.g., breast, lung, colorectal) and disease stage (I-IV) are you focusing on?"
+      partial:
+        - statement: Study in high-risk cardiovascular patients
+          has: primary condition (cardiovascular disease)
+          missing: "'High-risk' is subjective - needs risk score, comorbidities, or other specific criteria"
+          example_question: "What defines 'high-risk'? (e.g., Framingham score, specific risk factors, prior events, comorbidities)"
+        - statement: Outcomes in hypertensive patients with diabetes
+          has: primary condition (hypertension), comorbidity (diabetes)
+          missing: "Blood pressure range and Hypertension severity not specified, Diabetes type not specified"
+          example_question: "Specify hypertension severity (stage 1 or 2), Blood pressure range (e.g., 140-159/90-99 mmHg), and diabetes type (Type 1 or Type 2) to clarify treatment approach"
+      vague_ambiguous:
+        - statement: Treatment in patients with refractory disease
+          issue: "'refractory disease' to what?"
+          missing: primary condition vague/unspecified
+          example_question: "Which conditions/diseases are you looking at? Is it pertinent to also include what treatments the disease is refractory to?"
+        - statement: treatment for diabetic patients
+          issue: ambiguous diabetes type (Type 1 vs Type 2 vs gestational)
+          example_question: "What type of diabetes? (Type 1, Type 2, gestational)"
+        - statement: intervention in patients with heart problems
+          issue: "‘Heart problems’ is vague - could mean coronary artery disease, heart failure, arrhythmias, etc."
+          example_question: "What specific heart condition are you referring to? (e.g., coronary artery disease, heart failure, arrhythmias) And are you interested in a specific level of severity or stage?"
+  - id: user_type
+    name: User Type
+    description: The professional role, organizational affiliation, and primary use intent of the person querying Solace-AI, used to calibrate response framing, document type prioritization, and language complexity.
+    strictness: PERMISSIVE
+    specifications: |
+      **Task:** Identify and assemble user type specification.
+
+      **Elements to track:**
+      - Professional role (clinician, researcher, policymaker, public health practitioner, field/humanitarian worker, other)
+      - Organizational context (hospital, ministry/government, academic institution, NGO/humanitarian organization, primary care setting, other)
+      - Use intent (clinical practice, research/grant, policy brief, operational planning, community outreach, other)
+      - Target audience for output (self, supervisor/minister, academic reviewers, field staff, community members)
+      - Technical/domain literacy (medical, research, policy, non-specialist)
+
+      **Required:**
+      - Professional role (at minimum a broad category)
+      - Use intent
+
+      **Not required unless volunteered:**
+      - Specific institution or organization name
+      - Precise seniority level (unless it affects output framing, e.g., grant PI vs. coordinator)
+
+      **Inference behavior:**
+      - If the user's query or context strongly implies a role (e.g., mentions "my ward", "my grant proposal", "the Minister"), infer and confirm rather than ask from scratch
+      - If role is ambiguous between two categories (e.g., clinician-researcher), accept the hybrid and note both
+      - Seniority modifiers (junior/senior, chief/coordinator) should be captured if volunteered, as they affect output complexity and document type preferences
+
+      **Role → response calibration guidance (for downstream use):**
+      - Clinical practitioner → prioritize clinical guidelines, point-of-care summaries, treatment protocols; practical and actionable framing
+      - Hospital/facility administrator → prioritize operational guidelines, checklists, contingency protocols; planning and logistics framing  
+      - Researcher/academic → prioritize peer-reviewed evidence, systematic reviews, research gaps; methodological framing
+      - Policymaker/ministry → prioritize evidence syntheses, best practice documents, cost-effectiveness data; policy brief framing
+      - Humanitarian/field worker (non-medical) → prioritize accessible summaries, implementation guides, grey literature from NGOs and UN agencies; plain language framing
+      - Other → default to balanced mix; confirm preferred framing
+
+    examples:
+      clear:
+        - statement: "I am a hospital administrator preparing flood contingency plans"
+          rationale: Role (administrator), organizational context (hospital), and use intent (operational planning) all clearly established
+        - statement: "I am a postdoctoral researcher writing a grant proposal on vector-borne disease in Peru"
+          rationale: Role (researcher), use intent (grant writing), and geographic/topical focus (Peru, vector-borne disease) all specified
+        - statement: "I work at the Ministry of Environment and need to prepare a brief for the Minister on urban heat mitigation"
+          rationale: Role (policy officer), context (government ministry), and target audience (Minister) clearly stated; use intent (policy brief) inferred
+      needs_refinement:
+        - statement: "I need information on flood preparedness"
+          issue: No role or context provided; response framing cannot be calibrated
+          missing: Professional role, organizational context, use intent
+          example_question: |
+            To tailor the results to your needs, could you tell me a bit about yourself?
+            For example:
+            - Are you a clinician, hospital administrator, researcher, policymaker, or field/humanitarian worker?
+            - Are you preparing for clinical practice, operational planning, a policy document, or a research project?
+      partial:
+        - statement: "I am a doctor in rural China"
+          has: Professional role (clinician), geographic context (rural China)
+          missing: Use intent (clinical practice assumed but not confirmed), target audience
+          example_question: "Are you looking for this to inform your own clinical practice, or are you preparing materials for community outreach or colleagues?"
+        - statement: "I work in a refugee camp"
+          has: Organizational context (humanitarian/field setting)
+          missing: Role (medical vs. non-medical), use intent, target audience
+          example_question: "What is your role in the camp — are you a healthcare provider, a coordinator, or another kind of staff? And what will you use the information for?"
+      vague_ambiguous:
+        - statement: "I work in public health"
+          issue: "'Public health' spans clinical, research, policy, and field roles"
+          example_question: "Could you tell me more about your specific role? For example, are you a practitioner, researcher, policymaker, or working in a field/humanitarian setting? And what will you use this search for?"
+  - id: geographic_context
+    name: Geographic Context
+    description: The geographic scope and location-specific characteristics relevant to the user's query, including country, region, urban/rural setting, and contextual factors that shape evidence applicability and transferability.
+    strictness: MODERATE
+    depends_on:
+      - user_type
+    specifications: |
+      **Task:** Identify and assemble geographic context specification.
+
+      **Elements to track:**
+      - Country or countries of interest
+      - Sub-national region or administrative unit (if relevant)
+      - Urban/rural/peri-urban classification
+      - Income classification (LIC, LMIC, UMIC, HIC) — inferred from country if not stated
+      - Climate zone or ecological setting (if relevant to query)
+      - Cross-context applicability intent (local application only vs. global evidence synthesis with local lens)
+
+      **Required:**
+      - At least one country or region of interest
+      - Urban/rural classification if setting-dependent (e.g., vector-borne disease, air quality, primary care access)
+
+      **Not required unless relevant:**
+      - Sub-national specificity (only if regional variation is epidemiologically or policy-relevant)
+      - Climate zone (only if directly linked to the health or environmental phenomenon of interest)
+      - Income classification (infer from country; only ask if user's context is ambiguous or cross-country)
+
+      **Inference behavior:**
+      - Infer income classification from named country using World Bank groupings; confirm only if the classification affects scope
+      - If user mentions a country in their user_type context (e.g., "rural China", "Indian cities", "Peru"), pre-populate and confirm rather than ask from scratch
+      - If query is about global best practices for local application, capture both the evidence scope (global) and the application context (specific country/setting)
+      - If the query involves migration or displacement, capture both origin and destination contexts if both are relevant
+
+      **Cross-context applicability:**
+      - "Local only": user wants evidence from their specific country or region
+      - "Global with local lens": user wants global evidence filtered for transferability to their context
+      - "Global synthesis": user wants comprehensive global evidence regardless of setting
+      - Default to "Global with local lens" if unspecified and a specific location has been provided
+
+      **Income classification definitions (World Bank):**
+      - LIC: Low-income country (GNI per capita ≤ $1,135)
+      - LMIC: Lower-middle-income country
+      - UMIC: Upper-middle-income country
+      - HIC: High-income country (GNI per capita > $13,845)
+    examples:
+      clear:
+        - statement: "Best practices for urban heat mitigation implementable in Indian cities"
+          rationale: Country (India), urban setting, and applicability intent (implementable = local application lens) all established. Income classification (LMIC) inferred.
+        - statement: "Vector-borne disease interventions in rural Peru, or globally if transferable to Peru's context"
+          rationale: Country (Peru), rural setting, cross-context applicability (global with local lens) explicitly stated.
+        - statement: "Flood preparedness guidelines for a tertiary hospital in Bangkok"
+          rationale: Country (Thailand), urban/facility setting, sub-national context (Bangkok) relevant given infrastructure variation.
+      needs_refinement:
+        - statement: "Guidelines for heat-related illness"
+          issue: No geographic context provided; evidence applicability and transferability cannot be assessed
+          missing: Country or region of interest, urban/rural setting, applicability scope
+          example_question: |
+            Where will this information be applied? For example:
+            - Which country or region are you working in?
+            - Is the setting urban, rural, or mixed?
+            - Are you looking for evidence specifically from your country, or global evidence that could be adapted to your context?
+      partial:
+        - statement: "Climate change and health in Sub-Saharan Africa"
+          has: Region (Sub-Saharan Africa), broad income context (mix of LICs and LMICs)
+          missing: Specific country or countries (if relevant), urban/rural classification, applicability intent
+          example_question: "Are you focusing on a specific country or set of countries within Sub-Saharan Africa, or the region broadly? Is the setting urban, rural, or both?"
+        - statement: "Displacement health in a camp in East Africa"
+          has: Broad region (East Africa), setting (displacement camp)
+          missing: Specific country (origin and/or host), whether evidence scope should be local or global
+          example_question: "Which country is the camp located in? Are you also interested in evidence from similar contexts globally, or specifically from this region?"
+      vague_ambiguous:
+        - statement: "Developing countries"
+          issue: "'Developing countries' is an imprecise and contested term spanning vastly different epidemiological and policy contexts"
+          example_question: |
+            Could you be more specific about the geographic scope?
+            For example:
+            - A specific country or region (e.g., South Asia, West Africa, Latin America)?
+            - A World Bank income category (low-income, lower-middle-income)?
+            - Or are you interested in evidence from LMICs broadly?
+        - statement: "Low-resource settings"
+          issue: "'Low-resource' could refer to income level, infrastructure, or health system capacity — and applies to both LMICs and underserved areas within HICs"
+          example_question: "Are you referring to low- and middle-income countries broadly, a specific region, or underserved settings within a particular country?"
+  - id: climate_environmental_context
+    name: Climate and Environmental Context
+    description: The climate or environmental crisis, hazard, or stressor relevant to the user's query, including event type, temporal phase, severity, and the health or system domains affected, which contextualizes evidence retrieval for climate-health intersections.
+    strictness: MODERATE
+    depends_on:
+      - user_type
+      - geographic_context
+    specifications: |
+      **Task:** Identify and assemble climate and environmental context specification.
+
+      **Elements to track:**
+      - Hazard or stressor type (see taxonomy below)
+      - Temporal phase (anticipatory/preparedness, acute/response, post-event/recovery, chronic/ongoing)
+      - Severity or intensity (if characterizable)
+      - Affected domain(s) (health system, public health, environment, livelihoods, displacement)
+      - Health consequences or pathways of interest (direct health effects, indirect/systemic effects, or both)
+
+      **Required:**
+      - At least one hazard or stressor type
+      - Temporal phase (infer if strongly implied; confirm if ambiguous)
+
+      **Not required unless relevant:**
+      - Severity: only if evidence applicability is severity-dependent (e.g., Category 4-5 cyclone vs. tropical storm)
+      - Affected domain: infer from user_type and use intent; only ask if multiple domains are plausible and disambiguation matters
+      - Health pathway: only ask if the user's framing does not make it clear (e.g., "flood health effects" is ambiguous; "waterborne disease after floods" is not)
+
+      **Hazard taxonomy:**
+
+      METEOROLOGICAL & HYDROLOGICAL HAZARDS:
+      Flood (riverine, flash, coastal, urban), Drought, Extreme heat event / heatwave, Wildfire / forest fire, Tropical cyclone / hurricane / typhoon, Storm surge, Extreme cold event, Landslide (rainfall-triggered)
+
+      AIR QUALITY & ATMOSPHERIC HAZARDS:
+      Urban air pollution (particulate matter, ozone, NOx), Wildfire smoke, Dust storm / sandstorm, Indoor air pollution
+
+      ECOLOGICAL & BIOLOGICAL HAZARDS:
+      Vector-borne disease emergence/spread (climate-driven), Waterborne disease outbreak (climate-driven), Food insecurity / crop failure (climate-driven), Ecosystem degradation, Biodiversity loss
+
+      SLOW-ONSET & CHRONIC STRESSORS:
+      Sea level rise, Coastal erosion, Desertification / land degradation, Permafrost thaw, Ocean acidification, Chronic heat stress (not discrete event)
+
+      COMPOUND & CASCADING EVENTS:
+      Compound flood-drought, Drought-conflict-displacement nexus, Climate-migration-health nexus, Cascading infrastructure failure
+
+      **Temporal phase definitions:**
+      - Anticipatory/preparedness: before a predicted or seasonal event; focus on prevention, stockpiling, training
+      - Acute/response: during or immediately after an event; focus on rapid response, triage, emergency protocols
+      - Post-event/recovery: weeks to months after; focus on rehabilitation, disease surveillance, mental health, reconstruction
+      - Chronic/ongoing: persistent stressor without discrete event boundary; focus on adaptation, long-term management
+
+      **Inference behavior:**
+      - If user_type or geographic_context strongly implies a hazard (e.g., "flood preparedness", "upcoming summer in rural China"), pre-populate and confirm
+      - If multiple hazards are plausible (e.g., "climate change impacts"), ask user to specify or confirm scope
+      - For compound events, capture all relevant components
+      - Map colloquial terms to taxonomy: "bad air quality" → urban air pollution; "disease after the floods" → waterborne disease outbreak (climate-driven) + flood
+    examples:
+      clear:
+        - statement: "Preparing a hospital for predicted floods next season — power supply, medicines, staff readiness"
+          rationale: Hazard (flood, riverine/urban), temporal phase (anticipatory/preparedness), affected domain (health system) all established. Health pathways (infrastructure continuity, supply chain, HCP readiness) clearly scoped.
+        - statement: "Vector-borne disease spread in Peru driven by climate change"
+          rationale: Hazard (vector-borne disease emergence, climate-driven), temporal phase (chronic/ongoing), geographic link established via geographic_context. Health pathway (disease emergence and spread) explicit.
+        - statement: "Reducing urban air pollution and heat islands in Indian cities"
+          rationale: Two hazards identified (urban air pollution + chronic heat stress), temporal phase (chronic/ongoing), affected domain (environment + public health), intervention framing established.
+      needs_refinement:
+        - statement: "Climate change and health"
+          issue: Hazard type unspecified; 'climate change' encompasses dozens of distinct stressors with different evidence bases
+          missing: Specific hazard or stressor, temporal phase, affected domain
+          example_question: |
+            Which specific climate or environmental hazard are you focusing on?
+
+            METEOROLOGICAL & HYDROLOGICAL HAZARDS:
+            Flood, Drought, Extreme heat event / heatwave, Wildfire, Tropical cyclone, Storm surge, Extreme cold event, Landslide
+
+            AIR QUALITY & ATMOSPHERIC HAZARDS:
+            Urban air pollution, Wildfire smoke, Dust storm, Indoor air pollution
+
+            ECOLOGICAL & BIOLOGICAL HAZARDS:
+            Vector-borne disease spread, Waterborne disease outbreak, Food insecurity, Ecosystem degradation
+
+            SLOW-ONSET & CHRONIC STRESSORS:
+            Sea level rise, Desertification, Permafrost thaw, Chronic heat stress
+
+            COMPOUND & CASCADING EVENTS:
+            Compound flood-drought, Drought-conflict-displacement nexus, Climate-migration-health nexus, Cascading infrastructure failure
+
+            You can select more than one.
+        - statement: "Effects of extreme weather on communities"
+          issue: "'Extreme weather' is not specific enough; temporal phase and affected domain unclear"
+          missing: Specific hazard type, temporal phase, health pathway
+          example_question: "Which type of extreme weather event? (e.g., heatwave, flood, cyclone) Are you interested in immediate health impacts during the event, or longer-term effects on communities?"
+      partial:
+        - statement: "Psychological impacts of displacement due to drought"
+          has: Hazard (drought), compound stressor implied (drought-conflict-displacement nexus), health pathway (mental health), affected domain (displaced population)
+          missing: Temporal phase (acute displacement vs. protracted/chronic), severity context
+          example_question: "Are you focusing on the acute phase of displacement, longer-term mental health in protracted displacement, or both?"
+        - statement: "Heat-related illness in summer"
+          has: Hazard (extreme heat / heatwave), temporal phase (anticipatory — 'upcoming summer' implies preparedness)
+          missing: Severity characterization, health pathway scope (prevention only, treatment, or both), affected domain (individual clinical vs. community)
+          example_question: "Are you looking for evidence on preventing heat-related illness, treating it once it occurs, or both? And is the focus on individual patient management or community-level preparedness?"
+      vague_ambiguous:
+        - statement: "Environmental health issues"
+          issue: "'Environmental health' spans occupational exposures, chemical hazards, climate stressors, and sanitation — too broad for targeted retrieval"
+          example_question: |
+            Could you be more specific about the environmental stressor or hazard you are focusing on? For example:
+            - A climate-related hazard (flood, drought, heatwave, air pollution)?
+            - A chronic environmental stressor (desertification, sea level rise)?
+            - Or a compound event (e.g., drought leading to displacement and food insecurity)?
+        - statement: "Disasters and health"
+          issue: "'Disasters' conflates natural hazards, climate events, and non-climate emergencies (earthquakes, conflict); evidence bases differ substantially"
+          example_question: "Are you focusing specifically on climate- or weather-related disasters (e.g., floods, heatwaves, cyclones), or are you including non-climate emergencies as well?"
