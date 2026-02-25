@@ -106,6 +106,8 @@ services:
 
       # Workflow policy
       ENFORCE_WORKFLOW_LIMIT: ${ENFORCE_WORKFLOW_LIMIT:-false}
+      # Registration: default closed in production; set ALLOW_REGISTRATION=true to enable self-service signup
+      ALLOW_REGISTRATION: ${ALLOW_REGISTRATION:-false}
       
       # Server
       WORKERS: ${WORKERS:-4}

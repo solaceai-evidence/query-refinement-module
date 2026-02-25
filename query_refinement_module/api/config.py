@@ -49,7 +49,7 @@ class Settings(BaseSettings):
     
     # Security
     secret_key: str = Field(default="your-secret-key-change-this-in-production")
-    allow_registration: bool = Field(default=True, description="Allow self-service user registration")
+    allow_registration: bool = Field(default=False, description="Allow self-service user registration")
     enforce_workflow_limit: bool = Field(
         default=True,
         description="If true, non-superusers are limited to one completed workflow",

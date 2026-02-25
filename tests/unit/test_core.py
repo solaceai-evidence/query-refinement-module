@@ -545,29 +545,6 @@ async def test_process_next_step_returns_error_after_failed_validation():
     assert step.is_complete
 
 
-@pytest.mark.skip(reason="Method _augment_prompt_for_retry removed in v2.0 - internal implementation changed")
-def test_augment_prompt_for_retry_appends_guidance():
-    prompt = QueryRefinementManager._augment_prompt_for_retry("base", "not json", 1, "previous")
-    assert "ATTEMPT 1" in prompt
-    assert "not json" in prompt
-    assert "previous" in prompt
-
-
-@pytest.mark.skip(reason="Method build_follow_up_prompts removed in v2.0 - internal implementation changed")
-def test_build_follow_up_prompts_requires_history():
-    manager = build_manager(responses=[])
-    session = RefinementSession(original_query="query")
-    step = session.add_step(make_aspect())
-
-    with pytest.raises(ValueError):
-        manager.build_follow_up_prompts(session)
-
-    step.add_follow_up("Q", "A")
-    system_prompt, user_prompt = manager.build_follow_up_prompts(session)
-    assert "FOLLOW-UP CONTEXT" in user_prompt
-    assert "research advisor" in system_prompt or len(system_prompt) > 0
-
-
 def test_gather_refinement_details_compiles_lists():
     manager = build_manager(responses=[])
     session = RefinementSession(original_query="query")
@@ -631,12 +608,33 @@ def test_process_analysis_result_keeps_existing_value_when_current_empty():
 
 @pytest.mark.asyncio
 async def test_synthesize_refined_query_without_clarifications():
-    manager = build_manager(responses=[])
+    """Even with no answered dimensions, the LLM is called to produce semantic/keyword expansions."""
+    llm_response = json.dumps({
+        "synthesized_statement": "expanded: original",
+        "refined_dimensions": {},
+        "search_optimized": {
+            "semantic": "original synonyms expansions",
+            "keyword": {
+                "structured": "original",
+                "phrases": ["original"],
+                "terms": {"required": ["original"], "optional": [], "excluded": []}
+            }
+        },
+        "search_filters": {
+            "publication_years": "", "venues": [], "authors": [],
+            "publication_types": [], "fields_of_study": []
+        },
+        "terminology": {"synonyms": {}, "colloquial": []}
+    })
+    manager = build_manager(responses=[llm_response])
     session = RefinementSession(original_query="original")
 
     result = await manager.synthesize_refined_query(session)
-    assert not result["used_llm"]
-    assert result["integrated_statement"] == "original"
+    assert result["used_llm"]
+    assert result["integrated_statement"] == "expanded: original"
+    # Even with nothing answered, the original query must appear in the LLM prompt
+    call = manager.llm_provider.calls[0]
+    assert "original" in call["user_prompt"].lower()
 
 
 @pytest.mark.asyncio
