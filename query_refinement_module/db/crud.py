@@ -431,6 +431,26 @@ def mark_refinement_step_user_ended_early(
     )
 
 
+def update_refinement_step_generated_question(
+    db: Session,
+    step_id: int,
+    question: str,
+) -> Optional[RefinementStep]:
+    """
+    Persist the LLM-generated question for a refinement step.
+
+    Allows the question to survive server restarts and session TTL expiry so
+    that read-only commands (/steps, /status, /help) can return the current
+    question without triggering a new LLM call.
+    """
+    step = get_refinement_step(db, step_id)
+    if step:
+        step.generated_question = question
+        db.commit()
+        db.refresh(step)
+    return step
+
+
 def delete_refinement_steps_by_aspects(
     db: Session,
     query_id: int,

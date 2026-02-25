@@ -38,6 +38,10 @@ class RefinementStep(Base):
     # From LLM: is_complete - whether dimension is sufficiently refined
     is_complete = Column(Boolean, default=False, nullable=False)
     
+    # Transient-but-persisted: the last question generated for this step.
+    # Allows session restore after server restart without a costly LLM re-call.
+    generated_question = Column(Text, nullable=True)
+    
     # Evaluation-only: User used /skip command
     was_skipped = Column(Boolean, default=False, nullable=False)
     

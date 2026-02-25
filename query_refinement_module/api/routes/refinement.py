@@ -36,6 +36,7 @@ from query_refinement_module.db.crud import (
     abandon_query_session,
     get_user_framework_names,
     user_has_framework_access,
+    update_refinement_step_generated_question,
 )
 from query_refinement_module.api.auth import get_current_user_or_integration
 from query_refinement_module.api.config import get_settings
@@ -331,6 +332,10 @@ def _restore_session_from_db_state(session, db_steps: List[Any]) -> None:
         if session_step.conversation_history:
             last_followup = db_step.followup_history[-1]
             session_step.follow_up_question = last_followup.question
+        elif db_step.generated_question:
+            # Restore the last LLM-generated question for the current active (unanswered) step
+            # so read-only commands (/steps, /status, /help) can return it without an LLM call.
+            session_step.follow_up_question = db_step.generated_question
 
         # Restore persisted final value (supports /done with partial value and no follow-up rows)
         has_final_value = db_step.final_value is not None and str(db_step.final_value).strip() != ""
@@ -444,6 +449,26 @@ async def _build_next_prompt(manager, session) -> Optional[Dict[str, Any]]:
     return None
 
 
+def _persist_generated_question(
+    db,
+    db_steps: List,
+    next_prompt: Optional[Dict[str, Any]],
+) -> None:
+    """Persist a generated question to DB so it survives server restarts."""
+    if not next_prompt or not db:
+        return
+    aspect_name = next_prompt.get("name")
+    question = next_prompt.get("question")
+    if not aspect_name or not question:
+        return
+    db_step = next((s for s in db_steps if s.aspect_name == aspect_name), None)
+    if db_step:
+        try:
+            update_refinement_step_generated_question(db, db_step.id, question)
+        except Exception as e:
+            logger.warning(f"Could not persist generated_question for '{aspect_name}': {e}")
+
+
 def _get_active_prompt(session) -> Optional[Dict[str, Any]]:
     """Return the currently active question if it already exists in session state."""
     active_step = session.get_active_step()
@@ -466,7 +491,10 @@ async def _build_command_response(
     command_type: str,
     payload: Dict[str, Any],
     session,
-    force_confirmation_needed: bool = False
+    force_confirmation_needed: bool = False,
+    db=None,
+    query_id: Optional[int] = None,
+    db_steps: Optional[List] = None,
 ) -> CommandResponse:
     """Build CommandResponse based on command type and execution payload.
     
@@ -503,6 +531,7 @@ async def _build_command_response(
     if not success or force_confirmation_needed:
         logger.info(f"[_build_command_response] Command failed or needs confirmation, preserving current prompt")
         response.next_prompt = _get_active_prompt(session) or await _build_next_prompt(manager, session)
+        _persist_generated_question(db, db_steps or [], response.next_prompt)
         if force_confirmation_needed:
             response.force_required = True
             response.invalidated_aspects = payload.get("invalidated", [])
@@ -512,7 +541,8 @@ async def _build_command_response(
     if command_type in ["status"]:
         logger.info(f"[_build_command_response] STATUS command - adding step summary")
         response.step_summary = payload.get("summary")
-        response.next_prompt = _get_active_prompt(session) or await _build_next_prompt(manager, session)
+        # Read-only command: never trigger an LLM call, use cached prompt only
+        response.next_prompt = _get_active_prompt(session)
     
     elif command_type in ["steps"]:
         logger.info(f"[_build_command_response] STEPS command - building step list")
@@ -539,12 +569,13 @@ async def _build_command_response(
                 for step in steps
             ]
             logger.info(f"[_build_command_response] Built step list with {len(response.step_list)} steps")
-        response.next_prompt = _get_active_prompt(session) or await _build_next_prompt(manager, session)
+        # Read-only command: never trigger an LLM call, use cached prompt only
+        response.next_prompt = _get_active_prompt(session)
     
     elif command_type in ["help"]:
         logger.info(f"[_build_command_response] HELP command - showing help text")
-        # Help message is in 'message' field, show current prompt
-        response.next_prompt = _get_active_prompt(session) or await _build_next_prompt(manager, session)
+        # Read-only command: never trigger an LLM call, use cached prompt only
+        response.next_prompt = _get_active_prompt(session)
     
     elif command_type in ["submit", "end"]:
         logger.info(f"[_build_command_response] SUBMIT/END command - marking synthesis ready")
@@ -555,6 +586,7 @@ async def _build_command_response(
         logger.info(f"[_build_command_response] CLEAR command - regenerating question for current aspect")
         # Clear command - regenerate question for current aspect
         response.next_prompt = await _build_next_prompt(manager, session)
+        _persist_generated_question(db, db_steps or [], response.next_prompt)
         logger.info(f"[_build_command_response] Next prompt: {'exists' if response.next_prompt else 'None'}")
         if response.next_prompt:
             logger.info(f"[_build_command_response]   -> Aspect: {response.next_prompt.get('name')}")
@@ -637,6 +669,7 @@ async def _build_command_response(
                     reopened_step.follow_up_question = f"Let's review {aspect.name} for your research query. What would you like to specify for this dimension?"
         
         response.next_prompt = await _build_next_prompt(manager, session)
+        _persist_generated_question(db, db_steps or [], response.next_prompt)
         logger.info(f"[_build_command_response] Next prompt: {'exists' if response.next_prompt else 'None'}")
         if response.next_prompt:
             logger.info(f"[_build_command_response]   -> Aspect: {response.next_prompt.get('name')}")
@@ -645,6 +678,7 @@ async def _build_command_response(
         logger.info(f"[_build_command_response] CONTROL command ({command_type}) - advancing to next step")
         # Control commands - advance to next step with LLM analysis and auto-completion
         response.next_prompt = await _build_next_prompt(manager, session)
+        _persist_generated_question(db, db_steps or [], response.next_prompt)
         logger.info(f"[_build_command_response] Next prompt: {'exists' if response.next_prompt else 'None'}")
         if response.next_prompt:
             has_question = bool(response.next_prompt.get('question'))
@@ -928,6 +962,7 @@ async def start_refinement(
     }
     
     next_prompt = await _build_next_prompt(manager, session)
+    _persist_generated_question(db, db_steps, next_prompt)
     
     # Check if all aspects are complete (ready for synthesis)
     ready_for_synthesis = next_prompt is None and session.is_complete()
@@ -1102,7 +1137,10 @@ async def submit_answer(
                 command_type=cmd_result.command.value,
                 payload={"success": False, "message": cmd_result.error_message or "Invalid command"},
                 session=session,
-                force_confirmation_needed=False
+                force_confirmation_needed=False,
+                db=db,
+                query_id=query_id,
+                db_steps=get_query_refinement_steps(db, query_id),
             )
         
         # Execute the command
@@ -1278,7 +1316,10 @@ async def submit_answer(
             command_type=command_type,
             payload=command_payload,
             session=session,
-            force_confirmation_needed=force_confirmation_needed
+            force_confirmation_needed=force_confirmation_needed,
+            db=db,
+            query_id=query_id,
+            db_steps=get_query_refinement_steps(db, query_id),
         )
 
         # Persist active question context if a prompt is present in command response
@@ -1506,6 +1547,7 @@ async def submit_answer(
         
         # Build prompt after cascade completes
         next_prompt = await _build_next_prompt(manager, session)
+        _persist_generated_question(db, db_steps, next_prompt)
     
     # Save updated session back to Redis
     session_manager.save_session(query_id, session)
@@ -1642,6 +1684,8 @@ async def get_refinement_status(
     else:
         next_prompt = _get_active_prompt(session) or await _build_next_prompt(manager, session)
         ready_for_synthesis = next_prompt is None and session.is_complete()
+        db_steps_status = get_query_refinement_steps(db, query_id)
+        _persist_generated_question(db, db_steps_status, next_prompt)
 
     # Persist in case next prompt was generated during this status request
     session_manager.save_session(query_id, session)
