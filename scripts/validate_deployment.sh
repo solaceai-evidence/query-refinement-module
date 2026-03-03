@@ -145,14 +145,30 @@ if [ -f ".env" ]; then
     fi
 fi
 
-required_dirs=(
-    "$data_root/postgres"
-    "$data_root/redis"
+echo ""
+echo "Checking writable bind-mount directories..."
+data_root="./data"
+if [ -f ".env" ]; then
+    parsed_data_root=$(grep -E '^DATA_ROOT=' .env | tail -n1 | cut -d'=' -f2)
+    if [ -n "$parsed_data_root" ]; then
+        data_root="$parsed_data_root"
+    fi
+fi
+
+# Directories that must be writable by the HOST user (app writes logs here)
+host_writable_dirs=(
     "./logs"
     "./logs/nginx"
 )
 
-for dir in "${required_dirs[@]}"; do
+# Directories owned by container users (postgres/redis run as UID 999/1000 inside container)
+# These should EXIST but are intentionally not writable by the host user
+container_owned_dirs=(
+    "$data_root/postgres"
+    "$data_root/redis"
+)
+
+for dir in "${host_writable_dirs[@]}"; do
     if [ ! -d "$dir" ]; then
         mkdir -p "$dir"
     fi
@@ -160,6 +176,24 @@ for dir in "${required_dirs[@]}"; do
         check_pass "Directory writable: $dir"
     else
         check_fail "Directory is not writable: $dir"
+    fi
+done
+
+for dir in "${container_owned_dirs[@]}"; do
+    if [ ! -d "$dir" ]; then
+        mkdir -p "$dir"
+    fi
+    if [ -d "$dir" ]; then
+        dir_owner=$(stat -c '%u' "$dir" 2>/dev/null || stat -f '%u' "$dir" 2>/dev/null)
+        if [ "$dir_owner" = "999" ]; then
+            check_pass "Directory $dir is correctly owned by container user (UID 999)"
+        elif [ "$dir_owner" = "0" ]; then
+            check_fail "Directory $dir is owned by root - postgres container cannot write to it. Run: sudo chown -R 999:999 $dir"
+        else
+            check_warn "Directory $dir is owned by UID $dir_owner (expected 999) - postgres may not be able to write to it"
+        fi
+    else
+        check_fail "Directory missing: $dir"
     fi
 done
 
