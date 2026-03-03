@@ -6,7 +6,7 @@ import time
 import pytest
 
 # Test configuration
-BASE_URL = "http://localhost:8000/api/v1"
+BASE_URL = "http://localhost:8001/api/v1"
 
 
 def check_api_health() -> bool:
@@ -19,7 +19,7 @@ def check_api_health() -> bool:
 
 
 if not check_api_health():
-    pytest.skip("API server is not available at http://localhost:8000", allow_module_level=True)
+    pytest.skip("API server is not available at http://localhost:8001", allow_module_level=True)
 
 
 def register_and_login() -> str:

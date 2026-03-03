@@ -125,7 +125,7 @@ def test_user_creation_workflow():
 # tests/api/test_api_my_feature.py
 import requests
 
-BASE_URL = "http://localhost:8000"
+BASE_URL = "http://localhost:8001"
 
 def test_my_endpoint():
     response = requests.post(f"{BASE_URL}/api/my-endpoint", json={"data": "value"})
@@ -148,7 +148,7 @@ poetry run mypy query_refinement_module
 poetry run pytest tests/unit/ tests/integration/ -v --cov=query_refinement_module
 
 # Run API tests (in CI, start server in background first)
-poetry run uvicorn query_refinement_module.api.main:app --host 0.0.0.0 --port 8000 &
+poetry run uvicorn query_refinement_module.api.main:app --host 0.0.0.0 --port 8001 &
 sleep 5
 poetry run python tests/api/test_api_endpoints.py
 ```

@@ -20,7 +20,7 @@ const ProtectedRoute = ({ children }) => {
 
     // Check both context and localStorage to handle race conditions
     const hasValidAuth = isAuthenticated || authUtils.isAuthenticated();
-    return hasValidAuth ? children : <Navigate to="/login" />;
+    return hasValidAuth ? children : <Navigate to="/login" replace />;
 };
 
 export default ProtectedRoute;

@@ -3,7 +3,7 @@ import { authUtils } from '../utils/auth';
 import { logger } from '../utils/logger';
 import { toast } from '../utils/toast';
 
-const baseURL = import.meta.env.VITE_API_BASE_URL || 'http://localhost:8000';
+const baseURL = import.meta.env.VITE_API_BASE_URL || 'http://localhost:8001';
 
 const apiClient = axios.create({
     baseURL: baseURL,
@@ -80,7 +80,9 @@ apiClient.interceptors.response.use(
         }
 
         // Handle 401 Unauthorized
-        if (error.response?.status === 401 && !originalRequest._retry) {
+        // Skip redirect for auth endpoints - a 401 on login means wrong credentials, not expired session
+        const isAuthEndpoint = originalRequest.url?.includes('/auth/login') || originalRequest.url?.includes('/auth/register');
+        if (error.response?.status === 401 && !originalRequest._retry && !isAuthEndpoint) {
             logger.warn('401 Unauthorized - session expired', {
                 url: originalRequest.url,
                 request_id: requestId

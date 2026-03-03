@@ -193,7 +193,7 @@ Response:
 ```python
 import requests
 
-API = "http://localhost:8000/api/v1"
+API = "http://localhost:8001/api/v1"
 API_KEY = "your-integration-api-key"
 HEADERS = {"X-API-Key": API_KEY}
 

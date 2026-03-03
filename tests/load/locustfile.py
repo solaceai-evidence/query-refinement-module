@@ -11,19 +11,19 @@ This script simulates realistic user behavior patterns for load testing:
 
 Usage:
     # Start Locust web UI
-    poetry run locust -f tests/load/locustfile.py --host=http://localhost:8000
+    poetry run locust -f tests/load/locustfile.py --host=http://localhost:8001
 
     # Headless mode (100 users, 10 users/sec spawn rate, 5 min duration)
-    poetry run locust -f tests/load/locustfile.py --host=http://localhost:8000 \
+    poetry run locust -f tests/load/locustfile.py --host=http://localhost:8001 \
         --users 100 --spawn-rate 10 --run-time 5m --headless
 
     # With specific test scenario
-    poetry run locust -f tests/load/locustfile.py --host=http://localhost:8000 \
+    poetry run locust -f tests/load/locustfile.py --host=http://localhost:8001 \
         --users 50 --spawn-rate 5 SingleStepUser
 
 Environment Variables:
     LOAD_TEST_API_KEY: API key for authentication (required)
-    LOAD_TEST_HOST: API host URL (default: http://localhost:8000)
+    LOAD_TEST_HOST: API host URL (default: http://localhost:8001)
 """
 
 import json
@@ -567,25 +567,25 @@ class WaveLoadShape(LoadTestShape):
 # ============================================================================
 """
 # 1. Basic load test with web UI
-poetry run locust -f tests/load/locustfile.py --host=http://localhost:8000
+poetry run locust -f tests/load/locustfile.py --host=http://localhost:8001
 
 # 2. Headless test with 100 users
-poetry run locust -f tests/load/locustfile.py --host=http://localhost:8000 \
+poetry run locust -f tests/load/locustfile.py --host=http://localhost:8001 \
     --users 100 --spawn-rate 10 --run-time 5m --headless
 
 # 3. Step load pattern
-poetry run locust -f tests/load/locustfile.py --host=http://localhost:8000 \
+poetry run locust -f tests/load/locustfile.py --host=http://localhost:8001 \
     StepLoadShape --headless
 
 # 4. Specific user type only
-poetry run locust -f tests/load/locustfile.py --host=http://localhost:8000 \
+poetry run locust -f tests/load/locustfile.py --host=http://localhost:8001 \
     --users 50 --spawn-rate 5 MultiStepUser --headless
 
 # 5. With custom API key
 LOAD_TEST_API_KEY=your-api-key poetry run locust -f tests/load/locustfile.py \
-    --host=http://localhost:8000 --users 100 --spawn-rate 10 --headless
+    --host=http://localhost:8001 --users 100 --spawn-rate 10 --headless
 
 # 6. Generate HTML report
-poetry run locust -f tests/load/locustfile.py --host=http://localhost:8000 \
+poetry run locust -f tests/load/locustfile.py --host=http://localhost:8001 \
     --users 100 --spawn-rate 10 --run-time 10m --headless --html report.html
 """

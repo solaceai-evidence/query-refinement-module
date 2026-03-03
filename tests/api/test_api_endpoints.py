@@ -9,7 +9,7 @@ import time
 import pytest
 from typing import Dict
 
-BASE_URL = "http://localhost:8000/api/v1"
+BASE_URL = "http://localhost:8001/api/v1"
 DB_PATH = "query_refinement.db"
 
 # Store test data
@@ -50,7 +50,7 @@ def check_api_health():
 
 
 if not check_api_health():
-    pytest.skip("API server is not available at http://localhost:8000", allow_module_level=True)
+    pytest.skip("API server is not available at http://localhost:8001", allow_module_level=True)
 
 
 def print_response(step: str, response: requests.Response):

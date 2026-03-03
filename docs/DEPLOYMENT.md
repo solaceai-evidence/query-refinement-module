@@ -12,9 +12,9 @@ Use this deployment path for production and external integrations:
 Routing model:
 
 - Client traffic enters via `nginx` on ports `80/443`
-- API traffic is proxied to `api:8000` under `/api/*`
+- API traffic is proxied to `api:8001` under `/api/*`
 - Frontend traffic is proxied from `/` to the frontend container
-- Direct API port `8000` is also published by default for diagnostics
+- Direct API port `8001` is also published by default for diagnostics
 
 `docker-compose.fullstack.yml` is an alternative topology (`backend` naming, different proxy assumptions). Use it only intentionally and do not mix with commands in this guide.
 
@@ -83,7 +83,7 @@ Recommended values by operating mode:
 ### Step 1: Host preflight
 
 - Ensure ports `80` and `443` are allowed inbound
-- Decide whether port `8000` should be externally reachable; restrict at firewall if not needed
+- Decide whether port `8001` should be externally reachable; restrict at firewall if not needed
 - Create writable directories: `./logs`, `./logs/nginx`
 - If host services already use `5432`/`6379`, set `POSTGRES_PORT`/`REDIS_PORT` in `.env` (for example `5433`/`6380`)
 
@@ -103,7 +103,7 @@ Choose one deployment mode:
 docker compose -f docker-compose.yml up -d --build
 ```
 
-Use this for internal testing or local-only access on port `8000`.
+Use this for internal testing or local-only access on port `8001`.
 
 #### Mode B: HTTPS (nginx + TLS, no public domain required)
 
@@ -129,8 +129,8 @@ Run checks for the mode you started:
 
 ```bash
 docker compose -f docker-compose.yml ps
-curl -f http://localhost:8000/ready
-curl -f http://localhost:8000/health
+curl -f http://localhost:8001/ready
+curl -f http://localhost:8001/health
 ```
 
 #### Mode B: HTTPS (no public domain)
@@ -140,7 +140,7 @@ docker compose -f docker-compose.yml -f docker-compose.prod.yml ps
 curl -I http://localhost/health
 curl -f http://localhost/nginx-health
 curl -k -f https://localhost/health
-curl -f http://localhost:8000/ready
+curl -f http://localhost:8001/ready
 ```
 
 #### Mode C: HTTPS + Domain
@@ -150,12 +150,12 @@ docker compose -f docker-compose.yml -f docker-compose.prod.yml ps
 curl -I http://query-refinement-assistant.cloud/health
 curl -f https://query-refinement-assistant.cloud/health
 curl -f http://localhost/nginx-health
-curl -f http://localhost:8000/ready
+curl -f http://localhost:8001/ready
 ```
 
 Interpretation:
 
-- HTTP mode uses API endpoints directly on `:8000`
+- HTTP mode uses API endpoints directly on `:8001`
 - In HTTPS modes, `http://.../health` should return `301` redirect to HTTPS
 - `/nginx-health` confirms local nginx container liveness (used by container healthcheck in prod compose)
 - `/ready` confirms API dependency readiness (DB/Redis/etc.)
@@ -164,7 +164,7 @@ Interpretation:
 
 Use the appropriate base URL:
 
-- Mode A (HTTP): `http://localhost:8000`
+- Mode A (HTTP): `http://localhost:8001`
 - Mode B (HTTPS, local test): `https://localhost`
 - Mode C (HTTPS + domain): `https://query-refinement-assistant.cloud`
 
@@ -214,7 +214,7 @@ poetry run alembic upgrade head
 poetry run uvicorn query_refinement_module.api.main:app --reload
 ```
 
-API default: `http://localhost:8000`
+API default: `http://localhost:8001`
 
 ### Frontend
 

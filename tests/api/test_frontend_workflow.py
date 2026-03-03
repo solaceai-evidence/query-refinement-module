@@ -9,12 +9,12 @@ import sys
 import time
 import pytest
 
-BASE_URL = "http://localhost:8000/api/v1"
+BASE_URL = "http://localhost:8001/api/v1"
 
 
 def _api_available() -> bool:
     try:
-        return requests.get("http://localhost:8000/health", timeout=3).status_code == 200
+        return requests.get("http://localhost:8001/health", timeout=3).status_code == 200
     except requests.exceptions.RequestException:
         return False
 

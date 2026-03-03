@@ -48,7 +48,7 @@ echo ""
 echo "Starting API server..."
 poetry run uvicorn query_refinement_module.api.main:app \
     --host 127.0.0.1 \
-    --port 8000 \
+    --port 8001 \
     --log-level warning &
 
 API_PID=$!
@@ -58,7 +58,7 @@ echo "✓ API server started (PID: $API_PID)"
 echo "Waiting for API server to be ready..."
 MAX_WAIT=30
 WAITED=0
-while ! curl -s http://localhost:8000/health > /dev/null; do
+while ! curl -s http://localhost:8001/health > /dev/null; do
     sleep 1
     WAITED=$((WAITED + 1))
     if [ $WAITED -ge $MAX_WAIT ]; then

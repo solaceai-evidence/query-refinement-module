@@ -8,7 +8,7 @@ Canonical production routing:
 
 - Browser traffic enters through nginx on `http(s)://<host>`
 - API calls use `/api/v1/...` from that same origin
-- Avoid hardcoding direct `:8000` URLs in browser code for production
+- Avoid hardcoding direct `:8001` URLs in browser code for production
 
 Recommended frontend environment variable pattern:
 
@@ -250,7 +250,7 @@ const checkHealthBeforeStart = async () => {
 - Show progress for instant operations
 - Block UI during progress tracking
 - Forget to handle `error` state
-- Assume `:8000` is publicly accessible in production VM environments
+- Assume `:8001` is publicly accessible in production VM environments
 
 ### Error Handling
 

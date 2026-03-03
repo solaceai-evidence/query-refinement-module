@@ -10,7 +10,7 @@ from query_refinement_module.schema.registry import list_frameworks
 
 
 def main() -> int:
-    base_url = "http://localhost:8000/api/v1"
+    base_url = "http://localhost:8001/api/v1"
     uid = int(time.time() * 1000)
     frameworks = list_frameworks()
     framework = "mph_dissertation" if "mph_dissertation" in frameworks else frameworks[0]

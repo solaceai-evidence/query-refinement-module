@@ -22,7 +22,7 @@ For full detail, see `docs/DEPLOYMENT.md`.
 - [ ] Verify required inbound ports:
 	- [ ] `80` (HTTP via nginx)
 	- [ ] `443` (HTTPS via nginx, if certificates are configured)
-	- [ ] `8000` (direct API access, optional but enabled by default in compose)
+	- [ ] `8001` (direct API access, optional but enabled by default in compose)
 
 ## 2) Deploy (Canonical Path)
 
@@ -36,7 +36,7 @@ docker compose -f docker-compose.yml -f docker-compose.prod.yml up -d --build
 ## 3) Verify Runtime
 
 - [ ] Nginx liveness: `curl -f http://localhost/health`
-- [ ] API readiness (direct API port): `curl -f http://localhost:8000/ready`
+- [ ] API readiness (direct API port): `curl -f http://localhost:8001/ready`
 - [ ] Auth endpoint is reachable: `curl -i -X POST http://localhost/api/v1/auth/login`
 - [ ] Registration policy is enforced (expected `403` when disabled):
 

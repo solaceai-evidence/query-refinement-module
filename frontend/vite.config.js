@@ -7,10 +7,21 @@ export default defineConfig({
   server: {
     proxy: {
       '/api': {
-        target: 'http://localhost:8000',
+        target: 'http://localhost:8001',
         changeOrigin: true,
         secure: false,
       }
     }
+  },
+  build: {
+    // Strip all console.* calls from production builds
+    // logForwarder.js intercepts console at runtime for structured logging;
+    // raw console.log debug statements are not needed in production bundles.
+    minify: 'esbuild',
+    target: 'es2015',
+  },
+  esbuild: {
+    drop: ['debugger'],
+    pure: ['console.log', 'console.debug'],
   }
 })

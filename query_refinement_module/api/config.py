@@ -81,7 +81,7 @@ class Settings(BaseSettings):
     # Development: localhost origins
     # Production: Add your frontend domains, e.g., "https://yourdomain.com,https://app.yourdomain.com"
     allowed_origins_raw: str = Field(
-        default="http://localhost:3000,http://localhost:5173,http://localhost:8000",
+        default="http://localhost:3000,http://localhost:5173,http://localhost:8001",
         description="CORS allowed origins (comma-separated in env: ALLOWED_ORIGINS=https://app.com,https://www.app.com)"
     )
 
@@ -100,7 +100,7 @@ class Settings(BaseSettings):
     
     # Server Configuration
     host: str = Field(default="0.0.0.0", description="Server bind address")
-    port: int = Field(default=8000, description="Server port")
+    port: int = Field(default=8001, description="Server port")
     workers: int = Field(default=4, description="Number of Gunicorn worker processes (production)")
     worker_class: str = Field(default="uvicorn.workers.UvicornWorker", description="Gunicorn worker class")
     worker_timeout: int = Field(default=120, description="Worker timeout in seconds")

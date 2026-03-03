@@ -37,7 +37,7 @@ poetry run alembic upgrade head
 poetry run uvicorn query_refinement_module.api.main:app --reload
 ```
 
-Backend available at: http://localhost:8000 (API docs at /docs)  
+Backend available at: http://localhost:8001 (API docs at /docs)  
 **API Endpoints:** All endpoints use `/api/v1/` prefix (e.g., `/api/v1/refinement/start`)
 
 ### 2. Frontend Setup
@@ -115,7 +115,7 @@ External integration mode:
 Minimal integration start example:
 
 ```bash
-curl -X POST http://localhost:8000/api/v1/refinement/start \
+curl -X POST http://localhost:8001/api/v1/refinement/start \
   -H 'Content-Type: application/json' \
   -H 'X-API-Key: <integration-api-key>' \
   -d '{

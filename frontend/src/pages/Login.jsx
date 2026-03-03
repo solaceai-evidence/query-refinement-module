@@ -1,5 +1,5 @@
 import { useState, useEffect } from 'react';
-import { useNavigate } from 'react-router-dom';
+import { useNavigate, useSearchParams } from 'react-router-dom';
 import { useAuth } from '../context/AuthContext';
 import './Auth.css';
 
@@ -9,6 +9,8 @@ const Login = () => {
     const [error, setError] = useState('');
     const [loading, setLoading] = useState(false);
     const navigate = useNavigate();
+    const [searchParams] = useSearchParams();
+    const sessionExpired = searchParams.get('expired') === 'true';
     const { login, isAuthenticated } = useAuth();
 
     // Redirect to home if already authenticated
@@ -42,6 +44,9 @@ const Login = () => {
                 <h1>Research Query Refinement Advisor</h1>
                 <h2>Login</h2>
 
+                {sessionExpired && (
+                    <div className="info-message">Your session has expired. Please log in again.</div>
+                )}
                 {error && <div className="error-message">{error}</div>}
 
                 <form onSubmit={handleSubmit}>

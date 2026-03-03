@@ -16,7 +16,7 @@ import pytest
 from typing import Dict, Any, Optional
 
 # Test configuration
-BASE_URL = "http://localhost:8000/api/v1"
+BASE_URL = "http://localhost:8001/api/v1"
 TEST_USER = {
     "username": "commandtest",
     "email": "command_test@example.com",
@@ -38,7 +38,7 @@ def check_api_health() -> bool:
 def setup_module(module):
     """Skip this integration suite when API server is not running."""
     if not check_api_health():
-        pytest.skip("Integration API server not available at http://localhost:8000", allow_module_level=True)
+        pytest.skip("Integration API server not available at http://localhost:8001", allow_module_level=True)
 
 
 def register_and_login() -> str:

@@ -1,7 +1,7 @@
 import time
 import requests
 
-BASE_URL = "http://localhost:8000/api/v1"
+BASE_URL = "http://localhost:8001/api/v1"
 
 
 def register_and_login() -> str:

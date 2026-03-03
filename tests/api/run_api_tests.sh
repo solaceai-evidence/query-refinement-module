@@ -42,7 +42,7 @@ echo "🚀 Starting API server..."
 # Start API server in background
 nohup poetry run uvicorn query_refinement_module.api.main:app \
     --host 0.0.0.0 \
-    --port 8000 \
+    --port 8001 \
     > /tmp/api_server.log 2>&1 &
 
 SERVER_PID=$!
@@ -55,7 +55,7 @@ echo "⏳ Waiting for server to initialize..."
 sleep 3
 
 # Check if server is healthy
-if curl -s http://localhost:8000/health > /dev/null 2>&1; then
+if curl -s http://localhost:8001/health > /dev/null 2>&1; then
     echo "✅ Server is healthy"
 else
     echo "❌ Server failed to start. Check logs:"

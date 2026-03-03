@@ -17,7 +17,7 @@ import sys
 import time
 from typing import Dict, Optional
 
-BASE_URL = "http://localhost:8000/api/v1"
+BASE_URL = "http://localhost:8001/api/v1"
 
 class Colors:
     """ANSI color codes for terminal output"""

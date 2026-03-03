@@ -8,12 +8,12 @@ import requests
 import json
 import pytest
 
-BASE_URL = "http://localhost:8000/api/v1"
+BASE_URL = "http://localhost:8001/api/v1"
 
 
 def _api_available() -> bool:
     try:
-        return requests.get("http://localhost:8000/health", timeout=3).status_code == 200
+        return requests.get("http://localhost:8001/health", timeout=3).status_code == 200
     except requests.exceptions.RequestException:
         return False
 
@@ -175,6 +175,6 @@ if __name__ == "__main__":
         print(f"\n✗ Test failed: {e}\n")
         raise
     except requests.exceptions.ConnectionError:
-        print("\n✗ Cannot connect to API server at http://localhost:8000")
+        print("\n✗ Cannot connect to API server at http://localhost:8001")
         print("Please start the server with: poetry run uvicorn query_refinement_module.api.main:app --reload\n")
         raise

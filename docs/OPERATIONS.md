@@ -52,14 +52,14 @@ docker compose -f docker-compose.yml -f docker-compose.prod.yml logs -f api
 
 ```bash
 curl http://localhost/health
-curl http://localhost:8000/ready
+curl http://localhost:8001/ready
 ```
 
 Integration auth quick check:
 
 ```bash
-curl -i -H 'X-API-Key: <integration-api-key>' http://localhost:8000/api/v1/refinement/frameworks
-curl -i -H 'X-API-Key: wrong-key' http://localhost:8000/api/v1/refinement/frameworks
+curl -i -H 'X-API-Key: <integration-api-key>' http://localhost:8001/api/v1/refinement/frameworks
+curl -i -H 'X-API-Key: wrong-key' http://localhost:8001/api/v1/refinement/frameworks
 ```
 
 Expected:
@@ -70,7 +70,7 @@ Expected:
 End-to-end integration smoke (minimal):
 
 ```bash
-curl -X POST http://localhost:8000/api/v1/refinement/start \
+curl -X POST http://localhost:8001/api/v1/refinement/start \
   -H 'Content-Type: application/json' \
   -H 'X-API-Key: <integration-api-key>' \
   -d '{"original_query":"effects of aspirin in older adults","framework_name":"pico_advanced","source":"api_integration"}'
@@ -114,7 +114,7 @@ After restore:
 ```bash
 docker compose -f docker-compose.yml -f docker-compose.prod.yml restart api
 docker compose -f docker-compose.yml -f docker-compose.prod.yml exec api python -m alembic current
-curl -f http://localhost:8000/ready
+curl -f http://localhost:8001/ready
 ```
 
 ## Rollback

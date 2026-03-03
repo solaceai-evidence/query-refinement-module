@@ -14,7 +14,7 @@ Usage:
 
 Environment Variables:
     HOST: Bind address (default: 0.0.0.0)
-    PORT: Bind port (default: 8000)
+    PORT: Bind port (default: 8001)
     WORKERS: Number of worker processes (default: 4)
     WORKER_CLASS: Worker class (default: uvicorn.workers.UvicornWorker)
     WORKER_TIMEOUT: Worker timeout in seconds (default: 120)
@@ -24,7 +24,7 @@ import os
 import multiprocessing
 
 # Server socket
-bind = f"{os.getenv('HOST', '0.0.0.0')}:{os.getenv('PORT', '8000')}"
+bind = f"{os.getenv('HOST', '0.0.0.0')}:{os.getenv('PORT', '8001')}"
 backlog = 2048  # Maximum number of pending connections
 
 # Worker processes

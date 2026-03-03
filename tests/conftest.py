@@ -65,7 +65,7 @@ def test_db_session(test_db_engine):
 @pytest.fixture(scope="session")
 def api_base_url():
     """Base URL for API tests (versioned)."""
-    return os.getenv("TEST_API_URL", "http://localhost:8000/api/v1")
+    return os.getenv("TEST_API_URL", "http://localhost:8001/api/v1")
 
 
 @pytest.fixture(autouse=True)

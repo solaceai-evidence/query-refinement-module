@@ -47,7 +47,7 @@ Start response includes: `session_id`, `query_id`, `summary`, optional `next_pro
 ### Generic external integration snippet
 
 ```bash
-curl -X POST http://localhost:8000/api/v1/refinement/start \
+curl -X POST http://localhost:8001/api/v1/refinement/start \
 	-H 'Content-Type: application/json' \
 	-H 'X-API-Key: <integration-api-key>' \
 	-d '{

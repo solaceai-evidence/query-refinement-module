@@ -12,7 +12,7 @@ import requests
 import time
 import pytest
 
-BASE_URL = "http://localhost:8000/api/v1"
+BASE_URL = "http://localhost:8001/api/v1"
 
 # Test user credentials
 ADMIN_USER = {
@@ -38,7 +38,7 @@ def check_api_health():
 
 
 if not check_api_health():
-    pytest.skip("API server is not available at http://localhost:8000", allow_module_level=True)
+    pytest.skip("API server is not available at http://localhost:8001", allow_module_level=True)
 
 
 def create_user(user_data):
@@ -79,7 +79,7 @@ def make_superuser(email):
 
 def test_api_is_running():
     """Verify API server is running."""
-    assert check_api_health(), "API server must be running on localhost:8000"
+    assert check_api_health(), "API server must be running on localhost:8001"
 
 
 def test_admin_cache_endpoints_require_auth():

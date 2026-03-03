@@ -5,7 +5,7 @@
 # - Stage 2: Runtime - Minimal image with application
 #
 # Build: docker build -t query-refinement-api:latest .
-# Run: docker run -p 8000:8000 query-refinement-api:latest
+# Run: docker run -p 8001:8001 query-refinement-api:latest
 
 # ============================================================================
 # Builder Stage: Install dependencies
@@ -75,11 +75,11 @@ RUN mkdir -p /app/logs /app/data && \
 USER appuser
 
 # Expose port
-EXPOSE 8000
+EXPOSE 8001
 
 # Health check
 HEALTHCHECK --interval=30s --timeout=10s --start-period=40s --retries=3 \
-    CMD python -c "import requests; requests.get('http://localhost:8000/health', timeout=5)" || exit 1
+    CMD python -c "import requests; requests.get('http://localhost:8001/health', timeout=5)" || exit 1
 
 # Default command: Run with Gunicorn
 CMD ["gunicorn", "-c", "gunicorn_conf.py", "query_refinement_module.api.main:app"]

@@ -13,7 +13,7 @@ import json
 import sys
 import time
 
-BASE_URL = "http://localhost:8000/api/v1"
+BASE_URL = "http://localhost:8001/api/v1"
 
 def print_test(name):
     print(f"\n{'='*60}")

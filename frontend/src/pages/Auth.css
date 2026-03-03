@@ -100,6 +100,15 @@
     font-size: 14px;
 }
 
+.info-message {
+    background: #e8f0fe;
+    color: #1a56db;
+    padding: 12px;
+    border-radius: 5px;
+    margin-bottom: 20px;
+    font-size: 14px;
+}
+
 .auth-link {
     text-align: center;
     margin-top: 20px;
