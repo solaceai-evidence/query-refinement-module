@@ -103,6 +103,9 @@ services:
     build:
       context: ./frontend
       dockerfile: Dockerfile.production
+      args:
+        VITE_API_BASE_URL: /api/v1
+        VITE_API_TIMEOUT: "90000"
     container_name: query-refinement-frontend
     depends_on:
       api:

@@ -12,6 +12,12 @@ RUN npm ci
 # Copy source code
 COPY . .
 
+# Build arg for API URL - defaults to relative path for production (served behind nginx)
+ARG VITE_API_BASE_URL=/api/v1
+ARG VITE_API_TIMEOUT=90000
+ENV VITE_API_BASE_URL=${VITE_API_BASE_URL}
+ENV VITE_API_TIMEOUT=${VITE_API_TIMEOUT}
+
 # Build the application
 RUN npm run build
 

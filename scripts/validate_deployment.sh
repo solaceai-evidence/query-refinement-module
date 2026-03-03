@@ -188,9 +188,9 @@ for dir in "${container_owned_dirs[@]}"; do
         if [ "$dir_owner" = "999" ]; then
             check_pass "Directory $dir is correctly owned by container user (UID 999)"
         elif [ "$dir_owner" = "0" ]; then
-            check_fail "Directory $dir is owned by root - postgres container cannot write to it. Run: sudo chown -R 999:999 $dir"
+            check_fail "Directory $dir is owned by root - container cannot write to it. Run: sudo chown -R 999:999 $dir"
         else
-            check_warn "Directory $dir is owned by UID $dir_owner (expected 999) - postgres may not be able to write to it"
+            check_warn "Directory $dir is owned by UID $dir_owner (expected 999) - container may not be able to write to it. Run: sudo chown -R 999:999 $dir"
         fi
     else
         check_fail "Directory missing: $dir"

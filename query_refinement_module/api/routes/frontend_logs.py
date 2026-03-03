@@ -10,6 +10,7 @@ from typing import List, Optional
 from fastapi import APIRouter, Depends, HTTPException, status, Request
 from pydantic import BaseModel, Field
 from sqlalchemy import func
+from sqlalchemy.exc import IntegrityError
 from sqlalchemy.orm import Session
 
 from query_refinement_module.db.database import SessionLocal
@@ -174,8 +175,48 @@ def submit_frontend_logs(
         
         db.add(frontend_log)
         created_count += 1
-    
-    db.commit()
+
+    try:
+        db.commit()
+    except IntegrityError:
+        # A stale session_id FK caused the batch to fail — retry with session_id stripped
+        db.rollback()
+        created_count = 0
+        for log_entry in batch.logs:
+            if log_entry.level not in FrontendLogLevel.all_levels():
+                continue
+            if log_entry.log_type not in FrontendLogType.all_types():
+                continue
+            frontend_log = FrontendLog(
+                timestamp=datetime.now(timezone.utc),
+                client_timestamp=log_entry.timestamp,
+                level=log_entry.level,
+                log_type=log_entry.log_type,
+                user_id=current_user.id,
+                session_id=None,  # stripped to avoid FK violation
+                request_id=log_entry.request_id,
+                trace_id=log_entry.trace_id,
+                url=log_entry.url,
+                user_agent=log_entry.user_agent or request.headers.get("user-agent"),
+                screen_resolution=log_entry.screen_resolution,
+                viewport_size=log_entry.viewport_size,
+                message=log_entry.message,
+                details=log_entry.details,
+                error_name=log_entry.error_name,
+                error_stack=log_entry.error_stack,
+                error_line=log_entry.error_line,
+                error_column=log_entry.error_column,
+                error_file=log_entry.error_file,
+                network_url=log_entry.network_url,
+                network_method=log_entry.network_method,
+                network_status=log_entry.network_status,
+                network_duration_ms=log_entry.network_duration_ms,
+                performance_metric=log_entry.performance_metric,
+                performance_value=log_entry.performance_value,
+            )
+            db.add(frontend_log)
+            created_count += 1
+        db.commit()
     
     # Audit the frontend log submission
     audit_service.log_from_request(
