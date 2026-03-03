@@ -161,12 +161,9 @@ host_writable_dirs=(
     "./logs/nginx"
 )
 
-# Directories owned by container users (postgres/redis run as UID 999/1000 inside container)
-# These should EXIST but are intentionally not writable by the host user
-container_owned_dirs=(
-    "$data_root/postgres"
-    "$data_root/redis"
-)
+# Directories owned by container users - checked individually per expected UID:
+#   postgres:16-alpine runs postgres as UID 70
+#   redis:7-alpine     runs redis    as UID 999
 
 for dir in "${host_writable_dirs[@]}"; do
     if [ ! -d "$dir" ]; then
@@ -179,23 +176,25 @@ for dir in "${host_writable_dirs[@]}"; do
     fi
 done
 
-for dir in "${container_owned_dirs[@]}"; do
+check_container_dir() {
+    local dir="$1"
+    local expected_uid="$2"
+    local service_name="$3"
     if [ ! -d "$dir" ]; then
         mkdir -p "$dir"
     fi
-    if [ -d "$dir" ]; then
-        dir_owner=$(stat -c '%u' "$dir" 2>/dev/null || stat -f '%u' "$dir" 2>/dev/null)
-        if [ "$dir_owner" = "999" ]; then
-            check_pass "Directory $dir is correctly owned by container user (UID 999)"
-        elif [ "$dir_owner" = "0" ]; then
-            check_fail "Directory $dir is owned by root - container cannot write to it. Run: sudo chown -R 999:999 $dir"
-        else
-            check_warn "Directory $dir is owned by UID $dir_owner (expected 999) - container may not be able to write to it. Run: sudo chown -R 999:999 $dir"
-        fi
+    dir_owner=$(stat -c '%u' "$dir" 2>/dev/null || stat -f '%u' "$dir" 2>/dev/null)
+    if [ "$dir_owner" = "$expected_uid" ]; then
+        check_pass "Directory $dir is correctly owned by $service_name (UID $expected_uid)"
+    elif [ "$dir_owner" = "0" ]; then
+        check_fail "Directory $dir is owned by root - $service_name cannot write to it. Run: sudo chown -R ${expected_uid}:${expected_uid} $dir"
     else
-        check_fail "Directory missing: $dir"
+        check_warn "Directory $dir is owned by UID $dir_owner (expected $expected_uid for $service_name). Run: sudo chown -R ${expected_uid}:${expected_uid} $dir"
     fi
-done
+}
+
+check_container_dir "$data_root/postgres" "70"  "postgres:16-alpine"
+check_container_dir "$data_root/redis"    "999" "redis:7-alpine"
 
 # 9. Check if ports are available
 echo ""
