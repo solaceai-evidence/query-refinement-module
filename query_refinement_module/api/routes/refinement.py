@@ -962,6 +962,7 @@ async def start_refinement(
     }
     
     next_prompt = await _build_next_prompt(manager, session)
+    db_steps = get_query_refinement_steps(db, db_query.id)
     _persist_generated_question(db, db_steps, next_prompt)
     
     # Check if all aspects are complete (ready for synthesis)
