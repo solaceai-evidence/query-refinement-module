@@ -537,8 +537,13 @@ class InMemorySessionManager:
         """Save session to memory."""
         self._cleanup_expired()
         try:
-            # Use same serialization as Redis manager
-            serialized = SessionManager._serialize_session(None, session)
+            # Use same serialization schema as Redis manager (without relying on bound instance methods)
+            serialized = {
+                "original_query": session.original_query,
+                "synthesis_requested": session.synthesis_requested,
+                "steps": [SessionManager._serialize_step(None, step) for step in session.steps],
+                "complete_framework_ids": [aspect.id for aspect in session._complete_framework],
+            }
             self._sessions[query_id] = serialized
             self._timestamps[query_id] = time.time()
             logger.debug(f"Saved session {query_id} to memory (steps={len(session.steps)})")
