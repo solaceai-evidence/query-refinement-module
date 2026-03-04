@@ -18,7 +18,7 @@ const apiClient = axios.create({
     }
 });
 
-logger.info('API Client initialized', { baseURL });
+logger.info('API Client initialized (HTTPS-safe build)', { baseURL });
 
 // Request interceptor to add auth token
 apiClient.interceptors.request.use(
