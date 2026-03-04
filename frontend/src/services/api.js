@@ -7,8 +7,8 @@ import { toast } from '../utils/toast';
 // This cannot be overridden by any .env file on the server.
 // In dev mode, use VITE_API_BASE_URL (proxied by Vite dev server).
 const baseURL = import.meta.env.PROD
-  ? '/api/v1'
-  : (import.meta.env.VITE_API_BASE_URL || 'http://localhost:8001/api/v1');
+    ? '/api/v1'
+    : (import.meta.env.VITE_API_BASE_URL || 'http://localhost:8001/api/v1');
 
 const apiClient = axios.create({
     baseURL: baseURL,
