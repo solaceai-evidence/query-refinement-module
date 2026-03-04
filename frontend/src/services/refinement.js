@@ -172,7 +172,7 @@ export const refinementService = {
      * @returns {Promise<any>}
      */
     async submitFeedback(queryId, rating, comments = null, metadata = null, consentToUseData = false) {
-        const response = await apiClient.post('/feedback', {
+        const response = await apiClient.post('/feedback/', {
             query_id: queryId,
             rating,
             comments,
