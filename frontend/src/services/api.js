@@ -3,7 +3,12 @@ import { authUtils } from '../utils/auth';
 import { logger } from '../utils/logger';
 import { toast } from '../utils/toast';
 
-const baseURL = import.meta.env.VITE_API_BASE_URL || 'http://localhost:8001';
+// In production builds, ALWAYS use relative path so requests go through nginx over HTTPS.
+// This cannot be overridden by any .env file on the server.
+// In dev mode, use VITE_API_BASE_URL (proxied by Vite dev server).
+const baseURL = import.meta.env.PROD
+  ? '/api/v1'
+  : (import.meta.env.VITE_API_BASE_URL || 'http://localhost:8001/api/v1');
 
 const apiClient = axios.create({
     baseURL: baseURL,
