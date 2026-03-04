@@ -1,0 +1,17 @@
+# Exclude local env files from Docker build context
+# VITE_API_BASE_URL and other build-time vars are passed as Docker ARGs instead
+.env
+.env.local
+.env.*.local
+.env.development
+.env.test
+
+# Node modules - reinstalled during build via npm ci
+node_modules/
+
+# Build output - rebuilt during Docker build
+dist/
+
+# Misc
+.DS_Store
+*.log
