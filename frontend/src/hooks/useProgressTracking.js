@@ -71,8 +71,11 @@ export function useProgressTracking(queryId, pollInterval = 1500) {
                 status: err.response?.status
             });
 
-            // Stop polling on 404 (query not found) or 403 (access denied)
-            if ([404, 403].includes(err.response?.status)) {
+            // Stop polling on terminal HTTP states:
+            // 401 – token expired (auth interceptor will redirect)
+            // 403 – access denied
+            // 404 – query not found (deleted / never existed)
+            if ([401, 403, 404].includes(err.response?.status)) {
                 setError(errorMsg);
                 stopPolling();
             }

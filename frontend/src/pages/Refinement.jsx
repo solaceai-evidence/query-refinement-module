@@ -1,4 +1,4 @@
-import { useState, useEffect } from 'react';
+import { useState, useEffect, useRef } from 'react';
 import { useNavigate } from 'react-router-dom';
 import FrameworkSelector from '../components/FrameworkSelector';
 import QuestionRenderer from '../components/QuestionRenderer';
@@ -48,14 +48,18 @@ const Refinement = () => {
         title: '',
         message: '',
         onConfirm: null,
-        type: 'warning'
+        type: 'warning',
+        confirmText: 'Continue'
     });
+    // Ref guard: prevents concurrent synthesis requests if the button is clicked
+    // while React hasn't yet re-rendered with loading=true.
+    const isSynthesizingRef = useRef(false);
     const { logout } = useAuth();
     const navigate = useNavigate();
     const { showSuccess, showInfo, showWarning, showError } = useToast();
 
     // Progress tracking hook
-    const { progress, isPolling } = useProgressTracking(queryId);
+    const { progress, isPolling, stopPolling } = useProgressTracking(queryId);
 
     // Check for saved session but don't auto-restore
     const [savedSessionData, setSavedSessionData] = useState(null);
@@ -228,6 +232,21 @@ const Refinement = () => {
             return `Authentication error. Please log in again.`;
         }
 
+        // Check for payment / quota issues
+        if (status === 402) {
+            return `LLM service credits exhausted. Please contact the administrator.`;
+        }
+
+        // Check for resource not found
+        if (status === 404) {
+            return baseDetail || `The requested resource was not found. It may have been deleted or expired.`;
+        }
+
+        // Check for conflict (premature synthesis, duplicate action, etc.)
+        if (status === 409) {
+            return baseDetail || `This action cannot be performed right now. Please complete all required steps first.`;
+        }
+
         // Check for validation errors
         if (status === 400 || status === 422) {
             return baseDetail || `Invalid request. Please check your input and try again.`;
@@ -249,6 +268,7 @@ const Refinement = () => {
                 title: 'Workflow Limit Reached',
                 message: 'You have already completed one refinement workflow. For evaluation purposes, only one workflow per participant is allowed. If this is unexpected, please contact the study team.',
                 type: 'warning',
+                confirmText: 'OK',
                 onConfirm: () => setConfirmationDialog(prev => ({ ...prev, isOpen: false }))
             });
             return;
@@ -539,49 +559,63 @@ const Refinement = () => {
 
                 // Check if confirmation is needed (force_required flag)
                 if (response.force_required && response.invalidated_aspects?.length > 0) {
-                    const confirmed = window.confirm(
-                        `${response.message}\n\nAffected aspects: ${response.invalidated_aspects.join(', ')}\n\nDo you want to proceed?`
-                    );
+                    // Release the loading spinner while the user decides
+                    setLoading(false);
 
-                    if (!confirmed) {
-                        showInfo('Action cancelled');
-                        return;
-                    }
+                    // Capture answer in closure for the async onConfirm callback
+                    const pendingAnswer = answer;
 
-                    // Re-submit command with force=true
-                    console.log('[COMMAND] Re-submitting with force=true');
-                    const forceResponse = await refinementService.continueRefinement(
-                        sessionId,
-                        queryId,
-                        answer,
-                        true
-                    );
+                    setConfirmationDialog({
+                        isOpen: true,
+                        title: 'Confirm Navigation',
+                        message: `${response.message}\n\nAffected dimensions: ${response.invalidated_aspects.join(', ')}`,
+                        type: 'warning',
+                        confirmText: 'Proceed Anyway',
+                        onConfirm: async () => {
+                            setConfirmationDialog(prev => ({ ...prev, isOpen: false }));
+                            setLoading(true);
+                            try {
+                                console.log('[COMMAND] Re-submitting with force=true');
+                                const forceResponse = await refinementService.continueRefinement(
+                                    sessionId,
+                                    queryId,
+                                    pendingAnswer,
+                                    true
+                                );
 
-                    if (forceResponse.next_prompt?.question) {
-                        setCurrentQuestion(forceResponse.next_prompt);
-                        setCurrentAspectId(forceResponse.next_prompt.aspect_id);
-                        setConversationHistory(prev => {
-                            const latest = prev[prev.length - 1];
-                            const isDuplicate = latest?.type === 'question' && latest?.content === forceResponse.next_prompt.question;
-                            if (isDuplicate) return prev;
-                            return [...prev, createHistoryItem('question', forceResponse.next_prompt.question, {
-                                aspectId: forceResponse.next_prompt.aspect_id,
-                                aspectName: forceResponse.next_prompt.name
-                            })];
-                        });
-                    }
+                                if (forceResponse.next_prompt?.question) {
+                                    setCurrentQuestion(forceResponse.next_prompt);
+                                    setCurrentAspectId(forceResponse.next_prompt.aspect_id);
+                                    setConversationHistory(prev => {
+                                        const latest = prev[prev.length - 1];
+                                        const isDuplicate = latest?.type === 'question' && latest?.content === forceResponse.next_prompt.question;
+                                        if (isDuplicate) return prev;
+                                        return [...prev, createHistoryItem('question', forceResponse.next_prompt.question, {
+                                            aspectId: forceResponse.next_prompt.aspect_id,
+                                            aspectName: forceResponse.next_prompt.name
+                                        })];
+                                    });
+                                }
 
-                    if (forceResponse.synthesis_ready) {
-                        setReadyForSynthesis(true);
-                        setStage('review');
-                        setCurrentQuestion(null);
-                        setCurrentAspectId(null);
-                        showSuccess('All dimensions complete! Review your answers and click "Generate Refined Query" to proceed.');
-                    } else {
-                        showSuccess('Command applied successfully');
-                    }
+                                if (forceResponse.synthesis_ready) {
+                                    setReadyForSynthesis(true);
+                                    setStage('review');
+                                    setCurrentQuestion(null);
+                                    setCurrentAspectId(null);
+                                    showSuccess('All dimensions complete! Review your answers and click "Generate Refined Query" to proceed.');
+                                } else {
+                                    showSuccess('Command applied successfully');
+                                }
 
-                    await updateAspectStatus();
+                                await updateAspectStatus();
+                            } catch (forceErr) {
+                                const errorDetail = await handleRefinementError(forceErr, 'apply command');
+                                setError(errorDetail);
+                            } finally {
+                                setLoading(false);
+                            }
+                        }
+                    });
                     return;
                 }
 
@@ -830,6 +864,7 @@ const Refinement = () => {
                     title: 'Skip Dimension?',
                     message: `Skipping "${dimensionName}" will remove all ${currentDimensionAnswers.length} answer(s) you've already provided for this dimension.\n\nDo you want to continue?`,
                     type: 'warning',
+                    confirmText: 'Skip Dimension',
                     onConfirm: async () => {
                         console.log('[COMMAND HANDLER] Skip confirmed by user');
                         setConfirmationDialog({ ...confirmationDialog, isOpen: false });
@@ -851,6 +886,7 @@ const Refinement = () => {
                     title: 'Restart Session?',
                     message: `This will clear all progress and start from the beginning.\n\nYou have provided ${completedCount} answer(s) so far.\n\nDo you want to restart?`,
                     type: 'warning',
+                    confirmText: 'Restart Session',
                     onConfirm: async () => {
                         console.log('[COMMAND HANDLER] Restart confirmed by user');
                         setConfirmationDialog({ ...confirmationDialog, isOpen: false });
@@ -875,6 +911,7 @@ const Refinement = () => {
                     title: 'Go Back?',
                     message: `Going back will:\n• Clear "${previousDimension}" for fresh review\n• Remove "${currentDimension}" and all subsequent dimensions\n\nThey will be regenerated based on your updated answers.\n\nDo you want to go back?`,
                     type: 'warning',
+                    confirmText: 'Go Back',
                     onConfirm: async () => {
                         console.log('[COMMAND HANDLER] Back confirmed by user');
                         setConfirmationDialog({ ...confirmationDialog, isOpen: false });
@@ -921,6 +958,13 @@ const Refinement = () => {
             setError('Cannot synthesize: Missing session information');
             return;
         }
+
+        // Guard against double-invocation (e.g. rapid clicks before React re-renders)
+        if (isSynthesizingRef.current) {
+            console.warn('[handleSynthesis] Synthesis already in progress - ignoring duplicate call');
+            return;
+        }
+        isSynthesizingRef.current = true;
 
         console.log('[handleSynthesis] Starting synthesis', { queryId, sessionId });
         setLoading(true);
@@ -999,6 +1043,8 @@ const Refinement = () => {
             setSynthesis(result);
             console.log('[handleSynthesis] ✓ Changing stage to synthesis');
             setStage('synthesis');
+            console.log('[handleSynthesis] ✓ Stopping progress polling');
+            stopPolling();
             console.log('[handleSynthesis] ✓ Clearing session');
             clearSession(); // Clear saved session after completion
 
@@ -1017,6 +1063,7 @@ const Refinement = () => {
             const errorDetail = await handleRefinementError(err, 'synthesize query');
             setError(errorDetail);
         } finally {
+            isSynthesizingRef.current = false;
             setLoading(false);
             console.log('[handleSynthesis] Loading state cleared');
         }
@@ -1151,11 +1198,11 @@ const Refinement = () => {
                         </button>
                     )}
                     {stage !== 'framework-selection' && (
-                        <button onClick={handleStartOver} className="btn-link">
-                            Start Over
+                        <button onClick={handleStartOver} className="btn-link" disabled={loading}>
+                            {loading ? 'Processing...' : 'Start Over'}
                         </button>
                     )}
-                    <button onClick={handleLogout} className="btn-link">
+                    <button onClick={handleLogout} className="btn-link" disabled={loading}>
                         Logout
                     </button>
                 </div>
@@ -1447,7 +1494,7 @@ const Refinement = () => {
                 onConfirm={confirmationDialog.onConfirm}
                 onCancel={() => setConfirmationDialog({ ...confirmationDialog, isOpen: false })}
                 type={confirmationDialog.type}
-                confirmText="Skip Dimension"
+                confirmText={confirmationDialog.confirmText || 'Continue'}
                 cancelText="Cancel"
             />
         </div>

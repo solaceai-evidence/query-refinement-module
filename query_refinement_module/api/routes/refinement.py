@@ -57,7 +57,7 @@ from query_refinement_module.services.progress_tracker import get_progress_track
 from query_refinement_module.models.progress import ProgressStage
 from query_refinement_module.schema import DimensionEvaluationResponse
 
-from pydantic import BaseModel, Field, field_validator
+from pydantic import BaseModel, Field, field_validator, AnyHttpUrl
 
 
 router = APIRouter(prefix="/refinement", tags=["Query Refinement Workflow"])
@@ -164,7 +164,7 @@ class CommandResponse(BaseModel):
     
     # Optional fields for specific commands
     invalidated_aspects: Optional[List[str]] = Field(None, description="Aspects marked for review (/back, /restart)")
-    synthesis_ready: Optional[bool] = Field(None, description="True if session ready for synthesis (/submit)")
+    synthesis_ready: bool = Field(False, description="True if session ready for synthesis (/submit)")
     step_summary: Optional[Dict[str, Any]] = Field(None, description="Step statistics (/status)")
     step_list: Optional[List[Dict[str, Any]]] = Field(None, description="All steps with status (/steps)")
     force_required: Optional[bool] = Field(None, description="True if command requires force=true flag")
@@ -199,10 +199,9 @@ class SynthesizeQueryResponse(BaseModel):
 
 class ForwardToQARequest(BaseModel):
     """Request to forward refined query to external QA system."""
-    qa_system_url: str = Field(
+    qa_system_url: AnyHttpUrl = Field(
         ...,
-        description="URL of the external question-answering system",
-        min_length=1
+        description="URL of the external question-answering system"
     )
     qa_system_auth: Optional[Dict[str, str]] = Field(
         None,
@@ -486,6 +485,13 @@ def _get_active_prompt(session) -> Optional[Dict[str, Any]]:
     return None
 
 
+def _is_session_ready_for_synthesis(session) -> bool:
+    """Return True when synthesis can be safely executed for a session."""
+    if not session:
+        return False
+    return bool(session.synthesis_requested or session.is_complete())
+
+
 async def _build_command_response(
     manager,
     command_type: str,
@@ -521,7 +527,7 @@ async def _build_command_response(
         message=message,
         next_prompt=None,
         invalidated_aspects=None,
-        synthesis_ready=None,
+        synthesis_ready=False,
         step_summary=None,
         step_list=None,
         force_required=None
@@ -543,6 +549,7 @@ async def _build_command_response(
         response.step_summary = payload.get("summary")
         # Read-only command: never trigger an LLM call, use cached prompt only
         response.next_prompt = _get_active_prompt(session)
+        response.synthesis_ready = _is_session_ready_for_synthesis(session)
     
     elif command_type in ["steps"]:
         logger.info(f"[_build_command_response] STEPS command - building step list")
@@ -693,6 +700,10 @@ async def _build_command_response(
                 response.synthesis_ready = True
             else:
                 logger.warning(f"[_build_command_response]   -> ⚠️ No next prompt but session not complete - unexpected state")
+
+    # Ensure response contract stays explicit for integrations
+    if not response.synthesis_ready:
+        response.synthesis_ready = _is_session_ready_for_synthesis(session)
     
     logger.info(f"[_build_command_response] Response built successfully - next_prompt: {'yes' if response.next_prompt else 'no'}, synthesis_ready: {response.synthesis_ready}")
     return response
@@ -1455,10 +1466,7 @@ async def submit_answer(
             trigger_webhook_event(db, "refinement.step_completed", payload, user_id=current_user.id)
         except Exception as e:
             logger.error(f"Failed to trigger refinement.step_completed webhook: {e}", exc_info=True)
-            try:
-                db.rollback()
-            except Exception:
-                logger.error("Failed to rollback DB session after refinement.step_completed webhook error", exc_info=True)
+            # Webhook failure is non-critical; do not rollback already-committed DB writes.
     
     # Get next prompt
     next_prompt = None
@@ -1539,11 +1547,7 @@ async def submit_answer(
                 
             except Exception as e:
                 logger.error(f"Error generating next question: {e}", exc_info=True)
-                try:
-                    db.rollback()
-                except Exception:
-                    logger.error("Failed to rollback DB session after auto-cascade error", exc_info=True)
-                # Stop cascading on error, use fallback
+                # Stop cascading on error; do not rollback prior cascade writes.
                 break
         
         # Build prompt after cascade completes
@@ -1570,10 +1574,7 @@ async def submit_answer(
             trigger_webhook_event(db, "refinement.complete", payload, user_id=current_user.id)
         except Exception as e:
             logger.error(f"Failed to trigger refinement.complete webhook: {e}", exc_info=True)
-            try:
-                db.rollback()
-            except Exception:
-                logger.error("Failed to rollback DB session after refinement.complete webhook error", exc_info=True)
+            # Webhook failure is non-critical; do not rollback already-committed DB writes.
     
     duration_ms = (time.time() - start_time) * 1000
     logger.info(
@@ -1820,6 +1821,12 @@ async def synthesize_refined_query(
         # Restore persisted DB state (follow-ups + final values + completion flags)
         db_steps = get_query_refinement_steps(db, request.query_id)
         _restore_session_from_db_state(session, db_steps)
+
+    if not _is_session_ready_for_synthesis(session):
+        raise HTTPException(
+            status_code=status.HTTP_409_CONFLICT,
+            detail="Query is not ready for synthesis. Complete all dimensions or use /submit first."
+        )
     
     # Update progress: Starting synthesis
     tracker = get_progress_tracker()

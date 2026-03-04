@@ -128,7 +128,7 @@ app.add_middleware(
     use_user_identifier=True,
     secret_key=settings.secret_key,
     algorithm=settings.algorithm,
-    exempt_paths=["/docs", "/redoc", "/openapi.json", "/health", "/"]
+    exempt_paths=["/docs", "/redoc", "/openapi.json", "/health", "/ready", "/"]
 )
 
 # Exception handlers

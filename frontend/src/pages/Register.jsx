@@ -30,6 +30,20 @@ const Register = () => {
             return;
         }
 
+        // Validate username (backend requirements)
+        if (username.trim().length < 3) {
+            setError('Username must be at least 3 characters');
+            return;
+        }
+        if (username.trim().length > 50) {
+            setError('Username must be no more than 50 characters');
+            return;
+        }
+        if (!/^[a-zA-Z0-9_-]+$/.test(username.trim())) {
+            setError('Username may only contain letters, numbers, underscores, and hyphens');
+            return;
+        }
+
         // Validate password strength (backend requirements)
         if (password.length < 8) {
             setError('Password must be at least 8 characters');
@@ -86,6 +100,10 @@ const Register = () => {
                             value={username}
                             onChange={(e) => setUsername(e.target.value)}
                             required
+                            minLength={3}
+                            maxLength={50}
+                            pattern="[a-zA-Z0-9_\-]+"
+                            title="Letters, numbers, underscores, and hyphens only"
                             disabled={loading}
                         />
                     </div>

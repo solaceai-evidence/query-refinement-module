@@ -690,6 +690,30 @@ def test_submit_then_synthesize():
     print("✓ Synthesis works after /submit")
 
 
+def test_synthesize_rejected_when_not_ready():
+    """Test synthesis endpoint rejects premature requests before /submit or completion."""
+    token = register_and_login()
+    session_data = create_test_session(token)
+    query_id = session_data["query_id"]
+    headers = {"Authorization": f"Bearer {token}"}
+
+    # Make partial progress but do not complete all dimensions and do not /submit.
+    submit_answer(token, query_id, "Older adults with cardiovascular risk")
+
+    response = requests.post(
+        f"{BASE_URL}/refinement/synthesize",
+        json={"query_id": query_id},
+        headers=headers
+    )
+
+    assert response.status_code == 409
+    data = response.json()
+    assert "detail" in data
+    assert "not ready for synthesis" in data["detail"].lower()
+
+    print("✓ Premature synthesis is rejected with 409")
+
+
 # ============================================================================
 # ERROR HANDLING - Comprehensive Tests
 # ============================================================================

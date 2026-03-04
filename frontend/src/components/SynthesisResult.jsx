@@ -44,6 +44,7 @@ const SynthesisResult = ({ queryId, synthesis, selectedFramework = null, aspects
     const [consentSelection, setConsentSelection] = useState('');
     const [submitError, setSubmitError] = useState('');
     const [feedbackSubmitted, setFeedbackSubmitted] = useState(false);
+    const [submitting, setSubmitting] = useState(false);
 
     const toneOptions = useMemo(() => ([
         {
@@ -185,6 +186,8 @@ const SynthesisResult = ({ queryId, synthesis, selectedFramework = null, aspects
 
     const handleFeedbackSubmit = async (e) => {
         e.preventDefault();
+        if (submitting || feedbackSubmitted) return; // Guard against double-submit
+        setSubmitting(true);
         try {
             setSubmitError('');
 
@@ -236,11 +239,13 @@ const SynthesisResult = ({ queryId, synthesis, selectedFramework = null, aspects
         } catch (error) {
             console.error('Failed to submit feedback:', error);
             setSubmitError(error?.response?.data?.detail || 'Failed to submit feedback. Please try again.');
+        } finally {
+            setSubmitting(false);
         }
     };
 
     const isSingleChoiceValid = (value) => typeof value === 'string' && value.length > 0;
-    const canSubmit = isSingleChoiceValid(consentSelection);
+    const canSubmit = isSingleChoiceValid(consentSelection) && !submitting && !feedbackSubmitted;
 
     const updateConstraintConsidered = (index, value) => {
         setConstraintResponses((prev) => {
@@ -559,7 +564,7 @@ const SynthesisResult = ({ queryId, synthesis, selectedFramework = null, aspects
                             className="btn-submit"
                             disabled={!canSubmit}
                         >
-                            Submit Feedback
+                            {submitting ? 'Submitting...' : 'Submit Feedback'}
                         </button>
                     </form>
                 )}
