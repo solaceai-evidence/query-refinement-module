@@ -1,10 +1,24 @@
 # Deployment Guide
 
-This guide covers local development and production deployment for the Query Refinement Module, with a focus on VM-based microservice evaluation.
+This guide covers local development and production deployment for the Query Refinement Module.
 
-## Canonical Production Topology
+## Pre-deployment checklist
 
-Use this deployment path for production and external integrations:
+Before starting, verify the following:
+
+- Docker Engine and Docker Compose plugin are installed on the VM
+- Copy `.env.prod` to `.env` and fill in all placeholder values
+- Required secrets are set: `SECRET_KEY`, `QUERY_REFINEMENT_LLM_API_KEY`
+- Database values are set: `POSTGRES_USER`, `POSTGRES_PASSWORD`, `POSTGRES_DB`
+- `ALLOWED_ORIGINS` includes all browser-facing hostnames
+- `ALLOW_REGISTRATION=false` unless self-signup is explicitly required
+- `ENFORCE_WORKFLOW_LIMIT` is set: `true` for one-workflow-per-user evaluation; `false` for unlimited
+- For server-to-server integrations: `INTEGRATION_API_KEY` is set
+- Host paths exist and are writable: `./logs`, `./logs/nginx`
+- If port `5432` or `6379` is already in use on the host, override with `POSTGRES_PORT` / `REDIS_PORT` in `.env`
+- Inbound ports `80` and `443` are open; port `8001` is optional (direct API access)
+
+## Production topology
 
 - `docker-compose.yml` (base services): `postgres`, `redis`, `api`
 - `docker-compose.prod.yml` (production overrides): adds `frontend`, `nginx`
@@ -16,16 +30,14 @@ Routing model:
 - Frontend traffic is proxied from `/` to the frontend container
 - Direct API port `8001` is also published by default for diagnostics
 
-`docker-compose.fullstack.yml` is an alternative topology (`backend` naming, different proxy assumptions). Use it only intentionally and do not mix with commands in this guide.
-
 ## Prerequisites
 
 - Docker Engine + Docker Compose plugin
 - VM with persistent disk for database/cache volumes
 - Network access to your LLM provider
-- Optional for local dev: Python 3.12+, Poetry, Node.js 20+
+- Optional for local development: Python 3.12+, Poetry, Node.js 20+
 
-## Environment Configuration
+## Environment configuration
 
 1. Copy production template:
 

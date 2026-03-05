@@ -1,46 +1,53 @@
 # Query Refinement Module
 
-A conversational query refinement engine that guides users through structured clarification dialogues. Uses LLM-powered analysis to refine research queries across configurable dimensions (e.g., PICO framework for medical research).
+A web-based tool that guides users through a structured conversation to clarify and refine a research question. The tool asks targeted questions across the key dimensions of a chosen research framework (for example, PICO for medical research), then produces a refined, coherent research statement.
 
-## Features
+The tool is intended for:
+- MPH students refining dissertation topics using the MPH Dissertation framework
+- Systematic reviewers structuring evidence synthesis questions using the PICO framework
+- Any researcher who needs to sharpen a research question before searching the literature
 
-- **Framework-driven refinement**: YAML-defined dimensions with dependencies
-- **Conversational flow**: Multi-turn Q&A with follow-up questions
-- **User commands**: `/skip`, `/done`, `/back`, `/status` for navigation
-- **Structured outputs**: LLM responses validated via Pydantic models
-- **Search optimization**: Generates semantic, keyword, and grey literature variants
-- **Session persistence**: SQLite/PostgreSQL with Redis caching
+## Using the web application
 
-## Quick Start
+1. Log in at the application URL provided to you.
+2. Select a refinement framework.
+3. Enter your initial research question or topic.
+4. Answer the clarifying questions the tool asks. You can skip, go back, or finish early at any time.
+5. Review the integrated research statement produced at the end.
+6. Complete the feedback survey.
+
+### Commands available during the dialogue
+
+| Command | What it does |
+| --- | --- |
+| `/skip` | Skip the current question |
+| `/back` | Return to the previous question |
+| `/done` | Accept your current answer and move on |
+| `/status` | See how many questions remain |
+| `/submit` | Finish early and generate the refined statement |
+| `/help` | List all commands |
+
+## Running the application locally
 
 ### Prerequisites
 
 - Python 3.12+
 - Poetry
-- Node.js 20+ (for frontend)
+- Node.js 20+ (for the frontend)
 
-### 1. Backend Setup
+### Backend
 
 ```bash
-# Install dependencies
 poetry install
-
-# Create .env from example
 cp .env.example .env
-# Edit .env with your API key:
-#   QUERY_REFINEMENT_LLM_API_KEY=your-key-here
-
-# Run database migrations
+# Edit .env and set QUERY_REFINEMENT_LLM_API_KEY
 poetry run alembic upgrade head
-
-# Start backend
 poetry run uvicorn query_refinement_module.api.main:app --reload
 ```
 
-Backend available at: http://localhost:8001 (API docs at /docs)  
-**API Endpoints:** All endpoints use `/api/v1/` prefix (e.g., `/api/v1/refinement/start`)
+Backend available at: http://localhost:8001 (interactive API docs at /docs)
 
-### 2. Frontend Setup
+### Frontend
 
 ```bash
 cd frontend
@@ -50,84 +57,58 @@ npm run dev
 
 Frontend available at: http://localhost:5173
 
-### 3. Use the Application
+## Production deployment (Docker)
 
-1. Login at http://localhost:5173 with provided credentials
-2. Select a refinement framework
-3. Enter your research query
-4. Answer clarifying questions
-5. Export refined query
+```bash
+docker compose -f docker-compose.yml -f docker-compose.prod.yml up -d
+```
 
-## CLI Usage
+See [docs/DEPLOYMENT.md](docs/DEPLOYMENT.md) for the full deployment guide.
+
+## CLI usage
 
 ```bash
 # List available frameworks
 poetry run query-refine --list-frameworks
 
-# Start interactive session
+# Start an interactive session
 poetry run query-refine --framework pico_advanced
 ```
 
-### Commands During Session
+### Commands during a CLI session
 
-| Command   | Purpose                                                    |
-| --------- | ---------------------------------------------------------- |
-| `/back`   | Return to previous step                                    |
-| `/skip`   | Skip current dimension (stores no value)                   |
-| `/done`   | Accept captured current value (including partial), move on |
-| `/status` | Show progress summary                                      |
-| `/submit` | Generate final refined query                               |
-| `/help`   | Show all commands                                          |
+| Command | Purpose |
+| --- | --- |
+| `/back` | Return to previous step |
+| `/skip` | Skip current dimension |
+| `/done` | Accept current value and move on |
+| `/status` | Show progress summary |
+| `/submit` | Generate final refined query |
+| `/help` | Show all commands |
 
 ## Configuration
 
-Key environment variables (see `.env.example`):
+Key environment variables (copy `.env.example` to `.env` and fill in values):
 
-```bash
-# LLM Settings
-QUERY_REFINEMENT_LLM_MODEL=anthropic/claude-sonnet-4-20250514
-QUERY_REFINEMENT_LLM_API_KEY=your-api-key
+| Variable | Description |
+| --- | --- |
+| `QUERY_REFINEMENT_LLM_API_KEY` | API key for the LLM provider |
+| `QUERY_REFINEMENT_LLM_MODEL` | Model to use (default: claude-sonnet-4-20250514) |
+| `SECRET_KEY` | Secret key for session tokens — change this in production |
+| `DATABASE_URL` | Database connection string (default: SQLite for local development) |
+| `ALLOW_REGISTRATION` | Set to `false` to disable self-registration |
+| `ENFORCE_WORKFLOW_LIMIT` | `true` = one workflow per user; `false` = unlimited |
+| `INTEGRATION_API_KEY` | Optional: for server-to-server API access without a user login |
 
-# Database
-DATABASE_URL=sqlite:///query_refinement.db
+For external systems calling the API without a user login, also set:
+- `INTEGRATION_API_KEY` — shared key sent via the `X-API-Key` header
+- `INTEGRATION_SERVICE_USERNAME` — optional identity label (defaults to `api_integration_service`)
 
-# Session Security
-SECRET_KEY=change-this-in-production
-ALLOW_REGISTRATION=false
-ENFORCE_WORKFLOW_LIMIT=true
+After changing these values, restart the API process or container.
 
-# Optional service-to-service auth for external integrations
-INTEGRATION_API_KEY=<shared-service-key>
-INTEGRATION_SERVICE_USERNAME=api_integration_service
-```
+## User management
 
-Workflow mode:
-
-- `ENFORCE_WORKFLOW_LIMIT=true`: non-superusers are limited to one completed workflow
-- `ENFORCE_WORKFLOW_LIMIT=false`: non-superusers can run unlimited workflows
-
-External integration mode:
-
-- For browser GUI evaluation, continue using JWT login (`Authorization: Bearer <token>`).
-- For server-to-server integrations, set `INTEGRATION_API_KEY` and call refinement endpoints with `X-API-Key`.
-- Use `source: "api_integration"` in `/api/v1/refinement/start` payloads to mark integration-origin runs.
-
-Minimal integration start example:
-
-```bash
-curl -X POST http://localhost:8001/api/v1/refinement/start \
-  -H 'Content-Type: application/json' \
-  -H 'X-API-Key: <integration-api-key>' \
-  -d '{
-    "original_query": "effects of aspirin in older adults",
-    "framework_name": "pico_advanced",
-    "source": "api_integration"
-  }'
-```
-
-## User Management (No Self-Registration)
-
-Create users and superusers programmatically:
+Registration is disabled by default. Create accounts using the provided scripts:
 
 ```bash
 # Create a user (password auto-generated if omitted)
@@ -139,37 +120,9 @@ poetry run python scripts/create_user.py --username admin --superuser
 # Promote an existing user to superuser
 poetry run python scripts/make_superuser.py alice
 
-# Bulk import users from generated credentials
+# Bulk import users from a credentials CSV
 poetry run python scripts/import_credentials.py scripts/credentials.csv
 ```
-## Custom Frameworks
-
-Define frameworks in YAML:
-
-```yaml
-my_framework:
-  - id: population
-    aspect_name: Population
-    aspect_description: Who is being studied
-    refinement_instructions: |
-      Analyze the research input: {input}
-      Identify the target population.
-    allow_follow_up: true
-    max_follow_ups: 2
-```
-
-Set path: `export REFINEMENT_FRAMEWORK_PATH=/path/to/frameworks.yaml`
-
-## Docker Deployment
-
-```bash
-# Production deployment
-docker compose -f docker-compose.yml -f docker-compose.prod.yml up -d
-
-# Run migrations
-docker compose -f docker-compose.yml -f docker-compose.prod.yml exec api alembic upgrade head
-```
-
 ## Testing
 
 ```bash
@@ -183,28 +136,28 @@ poetry run pytest tests/unit/
 poetry run pytest --cov=query_refinement_module
 ```
 
-## Project Structure
+## Project structure
 
 ```
-query_refinement_module/   # Main package
-├── api/                   # FastAPI routes and middleware
-├── db/                    # SQLAlchemy models and migrations
-├── schema/                # Pydantic models and framework loading
-├── providers/             # LLM provider abstraction
-└── core.py                # Session management logic
+query_refinement_module/   # Main Python package
+  api/                     # HTTP endpoints and middleware
+  db/                      # Database models and migrations
+  providers/               # LLM provider abstraction
+  core.py                  # Session management logic
 
 frontend/                  # React web application
 refinement_frameworks/     # YAML framework definitions
-tests/                     # Unit, integration, and API tests
-docs/                      # Additional documentation
+scripts/                   # User management and utility scripts
+tests/                     # Automated tests
+docs/                      # Technical documentation
 ```
 
 ## Documentation
 
-- [docs/DEPLOYMENT.md](docs/DEPLOYMENT.md) - Deployment and environment setup
-- [docs/API.md](docs/API.md) - API endpoints and commands
-- [docs/FRAMEWORKS.md](docs/FRAMEWORKS.md) - Framework authoring
-- [docs/OPERATIONS.md](docs/OPERATIONS.md) - Migrations, backups, and checks
+- [docs/DEPLOYMENT.md](docs/DEPLOYMENT.md) — Production deployment, infrastructure, and backups
+- [docs/API.md](docs/API.md) — Full API reference for external integrations
+- [docs/FRAMEWORKS.md](docs/FRAMEWORKS.md) — How to define custom refinement frameworks
+- [docs/OPERATIONS.md](docs/OPERATIONS.md) — Migrations, backups, and rollback procedures
 
 ## License
 
