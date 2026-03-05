@@ -119,6 +119,33 @@ const SynthesisResult = ({ queryId, synthesis, selectedFramework = null, aspects
             .replace(/[^a-z0-9_]/g, '');
     }, [selectedFramework]);
 
+    const surveyConfig = useMemo(() => {
+        const configs = {
+            pico_advanced: {
+                intro: 'This short survey is for systematic reviewers using the PICO refinement framework. Your responses help improve the tool and support research on AI-assisted evidence synthesis.',
+                overall_helpful: 'Overall, I would rate this tool as helpful for structuring my systematic review question.',
+                confidence_before: 'Before using the tool, I felt confident about the precision of my PICO question.',
+                confidence_after: 'After using the tool, I feel confident about the precision of my PICO question.',
+                question_quality: 'The questions asked by the chatbot were relevant and helped sharpen my PICO elements.',
+                new_parameters_prompting: 'To what extent did the chatbot prompt you to consider PICO elements you had not previously defined?',
+                ease_of_use: 'The tool was easy to use.',
+                felt_in_control: 'I felt in control of the refinement process (e.g., could revise/skip/finish when needed).',
+            },
+        };
+        return configs[normalizedFrameworkKey] || {
+            intro: 'This short survey is part of the MPH student workflow. Your responses help improve the tool and support research on AI-assisted dissertation planning.',
+            overall_helpful: 'Overall, I would rate this tool as helpful for clarifying my dissertation topic.',
+            confidence_before: 'Before using the tool, I felt confident about the clarity/specificity of my topic.',
+            confidence_after: 'After using the tool, I feel confident about the clarity/specificity of my topic.',
+            question_quality: 'The questions asked by the chatbot were relevant and improved my thinking.',
+            new_parameters_prompting: 'To what extent did the chatbot prompt you to consider new parameters for your research question?',
+            ease_of_use: 'The tool was easy to use.',
+            felt_in_control: 'I felt in control of the refinement process (e.g., could revise/skip/finish when needed).',
+        };
+    }, [normalizedFrameworkKey]);
+
+    const surveyMetaKey = normalizedFrameworkKey ? `${normalizedFrameworkKey}_survey_v1` : 'mph_survey_v1';
+
     const constraints = useMemo(() => {
         const rawList = frameworkConstraintStrings[normalizedFrameworkKey] || [];
         const audienceByFramework = {
@@ -194,7 +221,7 @@ const SynthesisResult = ({ queryId, synthesis, selectedFramework = null, aspects
             const consentToUseData = consentSelection === 'yes';
 
             const metadata = {
-                mph_survey_v1: {
+                [surveyMetaKey]: {
                     time_saved: timeSaved || null,
                     confidence_before: confidenceBefore || null,
                     confidence_after: confidenceAfter || null,
@@ -316,7 +343,7 @@ const SynthesisResult = ({ queryId, synthesis, selectedFramework = null, aspects
             <div className="result-section">
                 <h3>Share Your Experience</h3>
                 <p className="feedback-intro">
-                    This short survey is part of the MPH student workflow. Your responses help improve the tool and support research on AI-assisted dissertation planning.
+                    {surveyConfig.intro}
                 </p>
                 {feedbackSubmitted ? (
                     <div className="feedback-success">
@@ -328,37 +355,37 @@ const SynthesisResult = ({ queryId, synthesis, selectedFramework = null, aspects
                             <p className="feedback-prompt">Quick ratings (1–5)</p>
 
                             <div className="feedback-field">
-                                <div className="feedback-field-title">Overall, I would rate this tool as helpful for clarifying my dissertation topic.</div>
+                                <div className="feedback-field-title">{surveyConfig.overall_helpful}</div>
                                 <Likert5 name="overall_helpful" value={rating} onChange={setRating} />
                             </div>
 
                             <div className="feedback-field">
-                                <div className="feedback-field-title">Before using the tool, I felt confident about the clarity/specificity of my topic.</div>
+                                <div className="feedback-field-title">{surveyConfig.confidence_before}</div>
                                 <Likert5 name="confidence_before" value={confidenceBefore} onChange={setConfidenceBefore} />
                             </div>
 
                             <div className="feedback-field">
-                                <div className="feedback-field-title">After using the tool, I feel confident about the clarity/specificity of my topic.</div>
+                                <div className="feedback-field-title">{surveyConfig.confidence_after}</div>
                                 <Likert5 name="confidence_after" value={confidenceAfter} onChange={setConfidenceAfter} />
                             </div>
 
                             <div className="feedback-field">
-                                <div className="feedback-field-title">The questions asked by the chatbot were relevant and improved my thinking.</div>
+                                <div className="feedback-field-title">{surveyConfig.question_quality}</div>
                                 <Likert5 name="question_quality" value={questionQuality} onChange={setQuestionQuality} />
                             </div>
 
                             <div className="feedback-field">
-                                <div className="feedback-field-title">To what extent did the chatbot prompt you to consider new parameters for your research question?</div>
+                                <div className="feedback-field-title">{surveyConfig.new_parameters_prompting}</div>
                                 <Likert5 name="new_parameters_prompting" value={newParametersPrompting} onChange={setNewParametersPrompting} />
                             </div>
 
                             <div className="feedback-field">
-                                <div className="feedback-field-title">The tool was easy to use.</div>
+                                <div className="feedback-field-title">{surveyConfig.ease_of_use}</div>
                                 <Likert5 name="ease_of_use" value={easeOfUse} onChange={setEaseOfUse} leftLabel="Very difficult" rightLabel="Very easy" />
                             </div>
 
                             <div className="feedback-field">
-                                <div className="feedback-field-title">I felt in control of the refinement process (e.g., could revise/skip/finish when needed).</div>
+                                <div className="feedback-field-title">{surveyConfig.felt_in_control}</div>
                                 <Likert5 name="felt_in_control" value={feltInControl} onChange={setFeltInControl} />
                             </div>
 
