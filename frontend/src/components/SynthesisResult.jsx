@@ -466,7 +466,7 @@ const SynthesisResult = ({ queryId, synthesis, selectedFramework = null, aspects
 
                         {constraints.length > 0 ? (
                             <div className="feedback-questions">
-                                <p className="feedback-prompt">Constraints check (did the chatbot reference these when relevant?)</p>
+                                <p className="feedback-prompt">Constraints check — did the tool reference these when relevant? Select <em>N/A</em> if the check was not applicable to your review.</p>
                                 {constraints.map((constraint, index) => {
                                     const response = constraintResponses[index] || { considered: '', dimensions: [] };
                                     const showDimensionPicker = response.considered === 'yes';
@@ -498,6 +498,16 @@ const SynthesisResult = ({ queryId, synthesis, selectedFramework = null, aspects
                                                         onChange={() => updateConstraintConsidered(index, 'no')}
                                                     />
                                                     <span>No</span>
+                                                </label>
+                                                <label className={`yes-no-option ${response.considered === 'n/a' ? 'selected' : ''}`}>
+                                                    <input
+                                                        type="radio"
+                                                        name={`constraint_${constraint.id}`}
+                                                        value="n/a"
+                                                        checked={response.considered === 'n/a'}
+                                                        onChange={() => updateConstraintConsidered(index, 'n/a')}
+                                                    />
+                                                    <span>N/A</span>
                                                 </label>
                                             </div>
                                             {showDimensionPicker && (
