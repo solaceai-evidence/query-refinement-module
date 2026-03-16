@@ -300,7 +300,68 @@ class TestFrontendContracts:
         
         print("✓ No 'needs_refinement' field exposed in API responses")
         print("✓ All responses use 'is_complete' field correctly")
+    def test_start_refinement_response_skip_refinement_contract(self):
+        """
+        Validates StartRefinementResponse with skip_refinement=True payload.
 
+        When skip_refinement=True the response embeds a SynthesizeQueryResponse
+        in the optional `synthesis` field.  All other fields must still be present
+        and `next_prompt` must be null.
+        """
+        synthesize_dict = {
+            "query_id": 2,
+            "integrated_statement": "In adults, compare aspirin versus placebo.",
+            "used_llm": True,
+            "structured_output": None,
+        }
+        response_dict = {
+            "session_id": 1,
+            "query_id": 2,
+            "summary": {
+                "total_aspects": 4,
+                "aspects_needing_refinement": 0,
+                "aspects_clear": 4,
+                "is_complete": True,
+            },
+            "next_prompt": None,
+            "ready_for_synthesis": True,
+            "source": "api_integration",
+            "synthesis": synthesize_dict,
+        }
+
+        response = StartRefinementResponse(**response_dict)
+
+        # Core fields still present
+        assert hasattr(response, 'session_id')
+        assert hasattr(response, 'query_id')
+        assert hasattr(response, 'summary')
+        assert hasattr(response, 'synthesis')
+
+        # skip_refinement fast-path expectations
+        assert response.next_prompt is None
+        assert response.ready_for_synthesis is True
+        assert response.synthesis is not None
+
+        synth = response.synthesis
+        assert isinstance(synth, SynthesizeQueryResponse)
+        assert isinstance(synth.integrated_statement, str)
+        assert synth.integrated_statement != ""
+        assert isinstance(synth.used_llm, bool)
+
+        # Normal flow: synthesis field is absent / null
+        normal_dict = {
+            "session_id": 1,
+            "query_id": 3,
+            "summary": {"total_aspects": 4, "aspects_needing_refinement": 2,
+                        "aspects_clear": 2, "is_complete": False},
+            "next_prompt": None,
+            "ready_for_synthesis": False,
+            "source": "gui",
+        }
+        normal_response = StartRefinementResponse(**normal_dict)
+        assert normal_response.synthesis is None
+
+        print("\u2713 StartRefinementResponse skip_refinement contract valid")
 
 if __name__ == "__main__":
     """Run contract tests standalone for quick validation."""
@@ -317,6 +378,7 @@ if __name__ == "__main__":
     test.test_synthesize_response_contract()
     test.test_next_prompt_structure()
     test.test_no_needs_refinement_field_in_responses()
+    test.test_start_refinement_response_skip_refinement_contract()
     
     print("\n" + "="*70)
     print("✅ ALL CONTRACT TESTS PASSED")

@@ -36,8 +36,9 @@ Refinement workflow endpoints require either `Authorization: Bearer <token>` or 
 - `original_query` (string)
 - `framework_name` (string)
 - `source` (optional: `gui` or `api_integration`, defaults to `gui`)
+- `skip_refinement` (optional boolean, defaults to `false`) — when `true`, all refinement dimensions are skipped and synthesis is executed immediately as part of the same request. No per-dimension LLM calls are made; the response contains a `synthesis` object with the final result. Intended for API integrations that want a single-call workflow at the cost of refinement quality.
 
-Start response includes: `session_id`, `query_id`, `summary`, optional `next_prompt`, `ready_for_synthesis`, and `source`.
+Start response includes: `session_id`, `query_id`, `summary`, optional `next_prompt`, `ready_for_synthesis`, `source`, and optional `synthesis` (populated only when `skip_refinement=true`).
 
 `POST /api/v1/refinement/queries/{query_id}/answer` returns:
 
@@ -89,7 +90,8 @@ The following are the expected response envelopes for external integrations.
 		"description": "Target population characteristics"
 	},
 	"ready_for_synthesis": false,
-	"source": "api_integration"
+	"source": "api_integration",
+	"synthesis": null
 }
 ```
 
@@ -97,6 +99,49 @@ Notes:
 
 - `next_prompt` can be `null` when the session is already complete.
 - `ready_for_synthesis=true` means the next call should be `/refinement/synthesize`.
+- `synthesis` is `null` in normal flow. When `skip_refinement=true` it is populated with the same envelope as `/refinement/synthesize` so no follow-up call is needed.
+
+##### `POST /api/v1/refinement/start` with `skip_refinement=true` (201)
+
+```bash
+curl -X POST http://localhost:8001/api/v1/refinement/start \
+	-H 'Content-Type: application/json' \
+	-H 'X-API-Key: <integration-api-key>' \
+	-d '{
+		"original_query": "effects of aspirin in older adults",
+		"framework_name": "pico_advanced",
+		"source": "api_integration",
+		"skip_refinement": true
+	}'
+```
+
+```json
+{
+	"session_id": 101,
+	"query_id": 124,
+	"summary": {
+		"total_aspects": 4,
+		"aspects_needing_refinement": 0,
+		"aspects_clear": 4,
+		"is_complete": true
+	},
+	"next_prompt": null,
+	"ready_for_synthesis": true,
+	"source": "api_integration",
+	"synthesis": {
+		"query_id": 124,
+		"integrated_statement": "In adults, compare aspirin versus placebo for stroke prevention.",
+		"used_llm": true,
+		"structured_output": null
+	}
+}
+```
+
+Notes:
+
+- All dimensions are recorded as skipped in the database (audit trail preserved).
+- A subsequent call to `/refinement/synthesize` will return `409 Conflict` because synthesis was already performed.
+- The `/refinement/synthesize` endpoint remains available for normal (non-skip) workflows.
 
 #### `POST /api/v1/refinement/queries/{query_id}/answer` (200)
 

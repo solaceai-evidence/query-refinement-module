@@ -85,7 +85,12 @@ class StartRefinementRequest(BaseModel):
         default="gui",
         description="Request origin channel: gui or api_integration",
     )
-    
+    skip_refinement: bool = Field(
+        default=False,
+        description="When True, skip all refinement dimensions and go straight to synthesis. "
+                    "No per-dimension LLM calls are made; only the synthesis LLM call is used."
+    )
+
     @field_validator('original_query')
     @classmethod
     def query_not_empty(cls, v: str) -> str:
@@ -122,6 +127,11 @@ class StartRefinementResponse(BaseModel):
     next_prompt: Optional[Dict[str, Any]] = Field(None, description="Next question for the user")
     ready_for_synthesis: bool = Field(False, description="True if all aspects are complete and ready for synthesis")
     source: str = Field(..., description="Request origin channel")
+    synthesis: Optional["SynthesizeQueryResponse"] = Field(
+        None,
+        description="Populated when skip_refinement=True: full synthesis result embedded "
+                    "in the start response so no follow-up /synthesize call is needed."
+    )
 
 
 class SubmitAnswerRequest(BaseModel):
@@ -865,7 +875,69 @@ async def start_refinement(
             query_id=db_query.id,
             aspect_name=step.refinement_aspect.name
         )
-    
+
+    # ── Fast path: skip all refinements, go straight to synthesis ──────────
+    if request.skip_refinement:
+        from query_refinement_module.db.crud import mark_refinement_step_skipped
+
+        # Mark every in-memory step as skipped so is_complete() returns True
+        for step in session.steps:
+            step.is_complete = True
+            step.was_skipped = True
+        session.synthesis_requested = True
+
+        # Persist the skip in the database for audit / session reconstruction
+        db_steps = get_query_refinement_steps(db, db_query.id)
+        for db_step in db_steps:
+            mark_refinement_step_skipped(db, db_step.id)
+
+        # Save session to Redis so _run_synthesis can load it
+        session_manager.save_session(db_query.id, session)
+
+        await track_progress(
+            query_id=str(db_query.id),
+            stage=ProgressStage.SUGGESTIONS_READY,
+            message="All refinements skipped, proceeding to synthesis"
+        )
+
+        logger.info(
+            "API: Refinement workflow started (skip_refinement=True) – running synthesis inline",
+            extra={
+                "request_id": request_id,
+                "user_id": current_user.id,
+                "session_id": db_session.id,
+                "query_id": db_query.id,
+                "total_aspects": len(session.steps),
+            },
+        )
+
+        synthesis_response = await _run_synthesis(
+            manager=manager,
+            session=session,
+            db=db,
+            db_query=db_query,
+            current_user=current_user,
+            session_manager=session_manager,
+            query_id=db_query.id,
+            request_id=request_id,
+        )
+
+        return StartRefinementResponse(
+            session_id=db_session.id,
+            query_id=db_query.id,
+            summary={
+                "total_aspects": len(session.steps),
+                "aspects_needing_refinement": 0,
+                "aspects_clear": len(session.steps),
+                "is_complete": True,
+            },
+            next_prompt=None,
+            ready_for_synthesis=True,
+            source=request.source,
+            synthesis=synthesis_response,
+        )
+    # ── End fast path ───────────────────────────────────────────────────────
+
     # Update progress: aspects extracted
     await track_progress(
         query_id=str(db_query.id),
@@ -874,7 +946,7 @@ async def start_refinement(
         aspects_count=len(session.steps),
         details={"framework": request.framework_name}
     )
-    
+
     # Update progress: Generating suggestions
     await track_progress(
         query_id=str(db_query.id),
@@ -1761,6 +1833,213 @@ async def get_refinement_status(
     )
 
 
+# ==========================================
+# Synthesis helper – shared by /synthesize and skip_refinement fast-path
+# ==========================================
+
+async def _run_synthesis(
+    *,
+    manager: QueryRefinementManager,
+    session,
+    db,
+    db_query,
+    current_user,
+    session_manager: SessionManager,
+    query_id: int,
+    request_id: str,
+) -> SynthesizeQueryResponse:
+    """
+    Execute the full synthesis pipeline and return a SynthesizeQueryResponse.
+
+    Called by both the /synthesize endpoint and the skip_refinement fast-path
+    in /start so that both paths stay in sync without code duplication.
+    """
+    tracker = get_progress_tracker()
+
+    await track_progress(
+        query_id=str(query_id),
+        stage=ProgressStage.SYNTHESIZING,
+        message="Synthesizing final refined query...",
+        details={"framework": db_query.session.framework_name},
+    )
+
+    # Webhook: synthesis.started
+    try:
+        from query_refinement_module.services.webhook_service import (
+            trigger_webhook_event,
+            build_synthesis_started_payload,
+        )
+        trigger_webhook_event(
+            db,
+            "synthesis.started",
+            build_synthesis_started_payload(
+                query_id=query_id,
+                initial_query=db_query.original_query,
+            ),
+            user_id=current_user.id,
+        )
+    except Exception as _e:
+        logger.error(f"Failed to trigger synthesis.started webhook: {_e}", exc_info=True)
+
+    # LLM synthesis call
+    try:
+        await tracker.increment_llm_calls(str(query_id))
+        synthesis_result = await manager.synthesize_refined_query(session)
+    except Exception as _e:
+        await track_progress(
+            query_id=str(query_id),
+            stage=ProgressStage.FAILED,
+            message="Synthesis failed",
+            error=str(_e),
+        )
+        raise HTTPException(
+            status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
+            detail=f"Failed to synthesize query: {str(_e)}",
+        )
+
+    integrated_statement = synthesis_result.get("integrated_statement", "")
+
+    # Build structured output
+    structured_output = None
+    if synthesis_result.get("dimensions_specifications"):
+        structured_output = {
+            "dimensions_specifications": synthesis_result.get("dimensions_specifications"),
+            "search_optimized": synthesis_result.get("search_optimized"),
+            "search_filters": synthesis_result.get("search_filters"),
+            "terminology": synthesis_result.get("terminology"),
+        }
+    elif integrated_statement and (
+        integrated_statement.startswith("{") or integrated_statement.startswith("`")
+    ):
+        try:
+            import json as _json
+            import re as _re
+
+            json_str = integrated_statement
+            if json_str.startswith("`"):
+                lines = json_str.split("\n")
+                if lines[0].startswith("`"):
+                    lines = lines[1:]
+                if lines and lines[-1].strip().startswith("`"):
+                    lines = lines[:-1]
+                json_str = "\n".join(lines)
+
+            if not json_str.rstrip().endswith("}"):
+                logger.error(
+                    "JSON response appears truncated (doesn't end with '}'), likely hit max_tokens limit",
+                    extra={"json_length": len(json_str), "request_id": request_id},
+                )
+                _match = _re.search(r'"integrated_statement"\s*:\s*"([^"]+)"', json_str)
+                if _match:
+                    integrated_statement = _match.group(1)
+                raise ValueError("JSON response was truncated, increase max_tokens")
+
+            _parsed = _json.loads(json_str)
+            structured_output = {
+                "dimensions_specifications": _parsed.get("dimensions_specifications"),
+                "search_optimized": _parsed.get("search_optimized"),
+                "search_filters": _parsed.get("search_filters"),
+                "terminology": _parsed.get("terminology"),
+            }
+            if _parsed.get("integrated_statement"):
+                integrated_statement = _parsed["integrated_statement"]
+            logger.info(
+                "Successfully parsed JSON from integrated_statement string",
+                extra={"has_dimensions": "dimensions" in _parsed},
+            )
+        except (_json.JSONDecodeError, ValueError) as _e:
+            logger.error(
+                f"Failed to parse JSON from integrated_statement: {_e}",
+                extra={"error_type": type(_e).__name__},
+            )
+
+    if not integrated_statement or not integrated_statement.strip():
+        raise HTTPException(
+            status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
+            detail="Synthesis produced empty result. Please try again.",
+        )
+
+    logger.info(
+        "Integrated statement before database update",
+        extra={
+            "request_id": request_id,
+            "integrated_statement_preview": integrated_statement[:200],
+            "integrated_statement_length": len(integrated_statement),
+        },
+    )
+
+    # Persist to DB
+    update_refined_query(db, query_id, integrated_statement)
+
+    # Mark workflow complete if limit enforcement is active
+    settings = get_settings()
+    if settings.enforce_workflow_limit and not current_user.is_superuser:
+        current_user.has_completed_workflow = True
+        db.commit()
+
+    db.refresh(db_query)
+    logger.info(
+        "Database updated with refined query",
+        extra={
+            "request_id": request_id,
+            "query_id": query_id,
+            "db_integrated_statement_length": len(db_query.refined_query) if db_query.refined_query else 0,
+        },
+    )
+
+    await track_progress(
+        query_id=str(query_id),
+        stage=ProgressStage.SYNTHESIS_COMPLETE,
+        message="Synthesis completed successfully",
+    )
+
+    # Webhook: synthesis.complete
+    try:
+        from query_refinement_module.services.webhook_service import (
+            trigger_webhook_event,
+            build_synthesis_complete_payload,
+        )
+        trigger_webhook_event(
+            db,
+            "synthesis.complete",
+            build_synthesis_complete_payload(
+                query_id=query_id,
+                refined_query=integrated_statement,
+                initial_query=db_query.original_query,
+            ),
+            user_id=current_user.id,
+        )
+    except Exception as _e:
+        logger.error(f"Failed to trigger synthesis.complete webhook: {_e}", exc_info=True)
+
+    # Clean up Redis session (workflow complete)
+    session_manager.delete_session(query_id)
+
+    await track_progress(
+        query_id=str(query_id),
+        stage=ProgressStage.COMPLETED,
+        message="Refinement completed successfully",
+    )
+
+    logger.info(
+        "API: Query synthesis completed",
+        extra={
+            "request_id": request_id,
+            "query_id": query_id,
+            "used_llm": synthesis_result.get("used_llm", False),
+            "integrated_statement_length": len(integrated_statement),
+            "has_structured_output": structured_output is not None,
+        },
+    )
+
+    return SynthesizeQueryResponse(
+        query_id=query_id,
+        integrated_statement=integrated_statement,
+        used_llm=synthesis_result.get("used_llm", False),
+        structured_output=structured_output,
+    )
+
+
 @router.post("/synthesize", response_model=SynthesizeQueryResponse)
 async def synthesize_refined_query(
     request: SynthesizeQueryRequest,
@@ -1771,18 +2050,17 @@ async def synthesize_refined_query(
 ):
     """
     Synthesize the final refined query from all collected answers.
-    
+
     This combines the original query with all refinement clarifications
     into a well-formed refined query.
     """
     import time
-    from query_refinement_module.tracing import generate_request_id, set_request_id, get_request_id
-    
-    # Generate and set request ID for tracing
+    from query_refinement_module.tracing import generate_request_id, set_request_id
+
     request_id_val = generate_request_id()
     set_request_id(request_id_val)
-    
     start_time = time.time()
+
     logger.info(
         "API: Synthesizing refined query",
         extra={
@@ -1791,25 +2069,21 @@ async def synthesize_refined_query(
             "query_id": request.query_id,
         },
     )
-    
+
     db_query = get_query(db, request.query_id)
     if not db_query:
         raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Query not found")
-    
+
     if db_query.session.user_id != current_user.id:
         raise HTTPException(status_code=status.HTTP_403_FORBIDDEN, detail="Access denied")
-    
-    # Get framework name from database
+
     framework_name = db_query.session.framework_name
     if not framework_name:
         raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail="Framework name not found for session")
-    
+
     framework = get_framework(framework_name)
-    
-    # Try to load session from Redis
     session = session_manager.load_session(request.query_id, framework)
-    
-    # If session not in Redis, reconstruct from database (fallback)
+
     if not session:
         logger.warning("Session not found in Redis for query_id=%d, reconstructing from database", request.query_id)
         session = await asyncio.to_thread(
@@ -1817,246 +2091,37 @@ async def synthesize_refined_query(
             db_query.original_query,
             framework,
         )
-        
-        # Restore persisted DB state (follow-ups + final values + completion flags)
         db_steps = get_query_refinement_steps(db, request.query_id)
         _restore_session_from_db_state(session, db_steps)
 
     if not _is_session_ready_for_synthesis(session):
         raise HTTPException(
             status_code=status.HTTP_409_CONFLICT,
-            detail="Query is not ready for synthesis. Complete all dimensions or use /submit first."
+            detail="Query is not ready for synthesis. Complete all dimensions or use /submit first.",
         )
-    
-    # Update progress: Starting synthesis
-    tracker = get_progress_tracker()
-    await track_progress(
-        query_id=str(request.query_id),
-        stage=ProgressStage.SYNTHESIZING,
-        message="Synthesizing final refined query...",
-        details={"framework": framework_name}
-    )
-    
-    # Trigger webhook: synthesis.started
-    try:
-        from query_refinement_module.services.webhook_service import (
-            trigger_webhook_event,
-            build_synthesis_started_payload
-        )
-        payload = build_synthesis_started_payload(
-            query_id=request.query_id,
-            initial_query=db_query.original_query
-        )
-        trigger_webhook_event(db, "synthesis.started", payload, user_id=current_user.id)
-    except Exception as e:
-        logger.error(f"Failed to trigger synthesis.started webhook: {e}", exc_info=True)
-    
-    # Synthesize refined query
-    try:
-        # Increment LLM call counter before synthesis
-        await tracker.increment_llm_calls(str(request.query_id))
-        synthesis_result = await manager.synthesize_refined_query(session)
-    except Exception as e:
-        # Update progress: Failed
-        await track_progress(
-            query_id=str(request.query_id),
-            stage=ProgressStage.FAILED,
-            message="Synthesis failed",
-            error=str(e)
-        )
-        raise HTTPException(
-            status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
-            detail=f"Failed to synthesize query: {str(e)}"
-        )
-    
-    integrated_statement = synthesis_result.get('integrated_statement', '')
-    
-    # Build structured output from synthesis result
-    structured_output = None
-    if synthesis_result.get('dimensions_specifications'):
-        # Already parsed by core.py
-        structured_output = {
-            'dimensions_specifications': synthesis_result.get('dimensions_specifications'),
-            'search_optimized': synthesis_result.get('search_optimized'),
-            'search_filters': synthesis_result.get('search_filters'),
-            'terminology': synthesis_result.get('terminology'),
-        }
-    elif integrated_statement and (integrated_statement.startswith('{') or integrated_statement.startswith('```')):
-        # Try to parse JSON from integrated_statement string (fallback if core.py parsing failed)
-        try:
-            import json
-            import re
-            
-            # Strip markdown code fences if present
-            json_str = integrated_statement
-            if json_str.startswith('```'):
-                # Remove opening fence (```json or ```)
-                lines = json_str.split('\n')
-                if lines[0].startswith('```'):
-                    lines = lines[1:]
-                # Remove closing fence
-                if lines and lines[-1].strip().startswith('```'):
-                    lines = lines[:-1]
-                json_str = '\n'.join(lines)
-            
-            # Check if JSON might be truncated
-            if not json_str.rstrip().endswith('}'):
-                logger.error(
-                    "JSON response appears truncated (doesn't end with '}'), likely hit max_tokens limit",
-                    extra={
-                        "json_length": len(json_str),
-                        "json_preview_end": json_str[-100:] if len(json_str) > 100 else json_str
-                    }
-                )
-                # Attempt to extract integrated_statement (LLM field name) even from partial JSON
-                import re
-                statement_match = re.search(r'"integrated_statement"\s*:\s*"([^"]+)"', json_str)
-                if statement_match:
-                    integrated_statement = statement_match.group(1)
-                    logger.info(f"Extracted integrated_statement from truncated JSON: {integrated_statement[:100]}...")
-                else:
-                    logger.warning("Could not extract integrated_statement from truncated JSON")
-                # Keep structured_output as None for truncated response
-                raise ValueError("JSON response was truncated, increase max_tokens")
-            
-            # Parse JSON
-            parsed_data = json.loads(json_str)
-            
-            # Extract structured fields (use LLM template field names)
-            structured_output = {
-                'dimensions_specifications': parsed_data.get('dimensions_specifications'),
-                'search_optimized': parsed_data.get('search_optimized'),
-                'search_filters': parsed_data.get('search_filters'),
-                'terminology': parsed_data.get('terminology'),
-            }
-            
-            # Use integrated_statement (LLM field name) as integrated_statement if available
-            if parsed_data.get('integrated_statement'):
-                integrated_statement = parsed_data['integrated_statement']
-                
-            logger.info(
-                "Successfully parsed JSON from integrated_statement string",
-                extra={"has_dimensions": 'dimensions' in parsed_data}
-            )
-            
-        except (json.JSONDecodeError, ValueError) as e:
-            logger.error(
-                f"Failed to parse JSON from integrated_statement: {e}",
-                extra={
-                    "error_type": type(e).__name__,
-                    "json_preview": json_str[:200] if 'json_str' in locals() else None
-                }
-            )
-            # Keep integrated_statement as-is, structured_output remains None
-    
-    # Validate integrated_statement before returning
-    if not integrated_statement or not integrated_statement.strip():
-        logger.error(
-            "Synthesis produced empty integrated_statement",
-            extra={
-                "request_id": request_id_val,
-                "query_id": request.query_id,
-                "synthesis_result_keys": list(synthesis_result.keys()) if synthesis_result else None,
-            }
-        )
-        raise HTTPException(
-            status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
-            detail="Synthesis produced empty result. Please try again."
-        )
-    
-    logger.info(
-        "Integrated statement before database update",
-        extra={
-            "request_id": request_id_val,
-            "integrated_statement_preview": integrated_statement[:200],
-            "integrated_statement_length": len(integrated_statement),
-        }
-    )
-    
-    # Update database
-    update_refined_query(db, request.query_id, integrated_statement)
 
-    # Mark workflow complete after synthesis (unless superuser)
-    settings = get_settings()
-    if settings.enforce_workflow_limit and not current_user.is_superuser:
-        current_user.has_completed_workflow = True
-        db.commit()
-    
-    # Verify database update
-    db.refresh(db_query)
-    logger.info(
-        "Database updated with refined query",
-        extra={
-            "request_id": request_id_val,
-            "query_id": request.query_id,
-            "db_integrated_statement_length": len(db_query.refined_query) if db_query.refined_query else 0,
-        }
-    )
-    
-    # Update progress: Synthesis complete
-    await track_progress(
-        query_id=str(request.query_id),
-        stage=ProgressStage.SYNTHESIS_COMPLETE,
-        message="Synthesis completed successfully"
-    )
-    
-    # Trigger webhook: synthesis.complete
-    try:
-        from query_refinement_module.services.webhook_service import (
-            trigger_webhook_event,
-            build_synthesis_complete_payload
-        )
-        payload = build_synthesis_complete_payload(
-            query_id=request.query_id,
-            refined_query=integrated_statement,
-            initial_query=db_query.original_query
-        )
-        trigger_webhook_event(db, "synthesis.complete", payload, user_id=current_user.id)
-    except Exception as e:
-        logger.error(f"Failed to trigger synthesis.complete webhook: {e}", exc_info=True)
-    
-    # Delete session from Redis (workflow complete)
-    session_manager.delete_session(request.query_id)
-    
-    # Update progress: Completed
-    await track_progress(
-        query_id=str(request.query_id),
-        stage=ProgressStage.COMPLETED,
-        message="Refinement completed successfully"
-    )
-    session_manager.delete_session(request.query_id)
-    
-    duration_ms = (time.time() - start_time) * 1000
-    logger.info(
-        "API: Query synthesis completed",
-        extra={
-            "request_id": request_id_val,
-            "user_id": current_user.id,
-            "query_id": request.query_id,
-            "used_llm": synthesis_result.get('used_llm', False),
-            "integrated_statement_length": len(integrated_statement),
-            "has_structured_output": structured_output is not None,
-            "duration_ms": round(duration_ms, 2),
-        },
-    )
-    
-    response = SynthesizeQueryResponse(
+    response = await _run_synthesis(
+        manager=manager,
+        session=session,
+        db=db,
+        db_query=db_query,
+        current_user=current_user,
+        session_manager=session_manager,
         query_id=request.query_id,
-        integrated_statement=integrated_statement,
-        used_llm=synthesis_result.get('used_llm', False),
-        structured_output=structured_output
+        request_id=request_id_val,
     )
-    
+
+    duration_ms = (time.time() - start_time) * 1000
     logger.info(
         "Returning synthesis response",
         extra={
             "request_id": request_id_val,
+            "duration_ms": round(duration_ms, 2),
             "response_query_id": response.query_id,
             "response_integrated_statement_length": len(response.integrated_statement),
             "response_has_structured_output": response.structured_output is not None,
-        }
+        },
     )
-    
     return response
 
 

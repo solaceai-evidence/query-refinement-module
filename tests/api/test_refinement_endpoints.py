@@ -625,6 +625,50 @@ def test_command_force_confirmation():
     else:
         print("⊘ Force confirmation not triggered (no dependent aspects)")
 
+def test_skip_refinement_workflow():
+    """Test skip_refinement=True: /start returns embedded synthesis, no /synthesize call needed."""
+    token = register_and_login()
+    headers = {"Authorization": f"Bearer {token}"}
+
+    response = requests.post(
+        f"{BASE_URL}/refinement/start",
+        json={
+            "original_query": "effects of aspirin on stroke prevention in elderly",
+            "framework_name": "pico_advanced",
+            "source": "api_integration",
+            "skip_refinement": True,
+        },
+        headers=headers,
+    )
+
+    if response.status_code in [500, 402]:
+        print(f"\u26a0 skip_refinement requires LLM configuration: {response.status_code}")
+        return
+
+    assert response.status_code == 201, f"Expected 201, got {response.status_code}: {response.text}"
+    data = response.json()
+
+    # Core response fields must still be present
+    assert "session_id" in data
+    assert "query_id" in data
+    assert "summary" in data
+
+    # skip_refinement-specific assertions
+    assert data["ready_for_synthesis"] is True, "ready_for_synthesis should be True"
+    assert data["next_prompt"] is None, "next_prompt should be null when skipping"
+    assert data["summary"]["aspects_needing_refinement"] == 0
+    assert data["summary"]["is_complete"] is True
+
+    # Synthesis must be embedded in the response
+    assert data.get("synthesis") is not None, "synthesis field must be populated"
+    synth = data["synthesis"]
+    assert synth["query_id"] == data["query_id"]
+    assert "integrated_statement" in synth
+    assert isinstance(synth["integrated_statement"], str)
+    assert len(synth["integrated_statement"]) > 0, "integrated_statement must not be empty"
+    assert "used_llm" in synth
+
+    print(f"\u2713 skip_refinement workflow succeeded - integrated_statement length: {len(synth['integrated_statement'])}")
 
 if __name__ == "__main__":
     print("\n" + "="*60)
@@ -656,6 +700,7 @@ if __name__ == "__main__":
         ("Command: /back", test_command_back_after_answer),
         ("Command: Invalid command", test_command_invalid),
         ("Command: Force confirmation", test_command_force_confirmation),
+        ("Skip refinement workflow", test_skip_refinement_workflow),
     ]
     
     passed = 0
