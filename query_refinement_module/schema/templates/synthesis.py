@@ -9,13 +9,24 @@ SYNTHESIS_TEMPLATE = """
 # RESEARCH SYNTHESIS AND SEARCH OPTIMIZATION
 
 ## Role
-Transform a user's research query into a structured, search-ready framework. Do not answer the research question — structure it for database discovery. Output ONLY valid JSON. No preamble, no markdown fencing.
+Convert the user's research query into a structured, search-ready specification for literature retrieval. Do not answer the research question. Return exactly one valid JSON object and no other text.
 
-## Input
-1. **Original research query** — verbatim user input
-2. **Clarified dimensions** — refined specifications (`[SKIPPED]` → `null`)
+## Inputs
+1. Original research query: verbatim user input.
+2. Clarified dimensions: refined specifications. Treat `[SKIPPED]` as `null` in the output.
 
 ---
+
+## General Rules
+1. Use only information stated in the original query or clarified dimensions.
+2. If a value is unsupported or uncertain, leave it empty: use `""`, `[]`, `{}`, or `null` as required by the schema.
+3. Explicit dimension values override conflicting content in the original query.
+4. Do not infer unstated facts, outcomes, methods, populations, geographies, or disciplines.
+5. Deduplicate all arrays and term lists.
+6. Preserve a formal, neutral, technical register.
+7. Use the smallest sufficient output that preserves retrieval quality.
+8. When multiple compliant outputs are possible, choose the shortest formal wording that preserves meaning.
+9. Preserve the schema field order shown below. Preserve input dimension-key order in `dimensions_specifications`.
 
 ## Output Schema
 
@@ -57,148 +68,181 @@ Transform a user's research query into a structured, search-ready framework. Do 
 ## Field Specifications
 
 ### integrated_statement
-Combine the original query with all non-null dimensions into a single, coherent statement.
+Write one coherent sentence that integrates the original query with all non-null dimensions.
 
-Rules (in precedence order):
-1. Dimension values override conflicting original query content
-2. Expand abbreviations (T2DM → type 2 diabetes mellitus)
-3. Correct typos; preserve the user's terminology and phrasing style
-4. Remove filler phrases: "I think", "I want to study", "maybe", "um", "well"
-5. Preserve format: question stays a question; statement stays a statement
-6. Never add information not present in the input or dimensions
-7. When most/all dimensions are `[SKIPPED]`: apply rules 1–6 to the original query alone; use `[]` for any filter where the value is uncertain
+Rules in precedence order:
+1. Dimension values override conflicting original-query content.
+2. Expand abbreviations when first stated if the expansion is certain.
+3. Correct obvious typos.
+4. Remove filler language such as "I think", "I want to study", "maybe", "um", and "well".
+5. Preserve sentence mode: a question remains a question; a statement remains a statement.
+6. Do not add content not present in the inputs.
+7. If all dimensions are `[SKIPPED]`, normalize the original query alone.
 
 ### dimensions_specifications
-All dimension keys from the input, with their values. Set to `null` for `[SKIPPED]` dimensions.
+Include every dimension key from the input exactly once, in input order. Use the provided value, or `null` when the input value is `[SKIPPED]`.
 
 ### search_optimized.semantic
-50–100 word natural language query for vector/embedding search.
-- Convey conceptual content and research aims
-- Include technical terminology with context
-- Exclude temporal constraints, venue names, author names, and publication types
-- Exception: retain temporal elements intrinsic to the research question (e.g., "longitudinal trends", "pre/post policy changes")
+Write one natural-language query of 50-90 words for semantic or embedding search.
+
+Rules:
+- State the core subject, phenomenon, and scope.
+- Include technical terminology needed for retrieval.
+- Exclude years, venues, authors, and publication types.
+- Keep temporal content only when it is intrinsic to the research question itself.
+- Use one sentence.
+- Prefer 60-75 words unless the inputs require a shorter or longer statement within the allowed range.
 
 ### search_optimized.keyword.structured
-Boolean query: AND-connected concept blocks; OR-connected variants within blocks.
+Write one Boolean query with AND-connected concept blocks and OR-connected variants within blocks.
 
-**Structure:** `(CONCEPT_A) AND (CONCEPT_B) AND (CONCEPT_C)`
+Default block count and ordering:
+- Use exactly 4 blocks by default.
+- Use 3 blocks only when fewer than 4 concepts are indispensable.
+- Use 5 blocks only when location, context, or factor terms form a distinct indispensable concept absent from all other blocks.
+- Order blocks as: subject/population, phenomenon/exposure/intervention, condition/topic, then context/location/factors if needed.
+- Use uppercase Boolean operators: `AND`, `OR`, and `NOT`.
+- Use parentheses only where they change scope or grouping.
 
-Each concept block may combine these patterns as needed:
-- Core term plus modifiers: `("term" AND (mod1 OR mod2))`
-- Quoted multi-word phrases: `"complete phrase"`
-- Abbreviations: `ABC`
-- Wildcards: `term*`
-- Exhaustive enumeration for interventions, drugs, devices, procedures, technologies, and named subpopulations — draw specific terms from `terminology.hyponyms` when populating these enumerations
-- Compound variants: `((qual1 OR qual2) AND (term1 OR term2))`
+Allowed block patterns:
+- `("term" AND (mod1 OR mod2))`
+- `"complete phrase"`
+- `ABC`
+- `term*`
+- `((qual1 OR qual2) AND (term1 OR term2))`
 
 Rules:
-- Build 3-5 concept blocks covering the indispensable concepts in the query; usually subject/population, phenomenon/exposure/intervention, and condition/topic, plus setting/location/factor blocks only when they materially affect retrieval
-- Within each block, include exact synonyms, abbreviations, lexical variants, and hyponyms needed for high recall
-- Build each block from the integrated statement plus `terminology.synonyms` and `terminology.hyponyms`; standard database indexing variants and well-established abbreviations are allowed when they are conventional retrieval forms of the same concept
-- It is acceptable to enumerate narrower procedures, devices, drugs, technologies, named subtypes, and named subpopulations when they are explicit in the integrated statement, supplied via `terminology.hyponyms`, or are standard retrieval variants of an explicitly stated concept
-- For process concepts such as adoption, implementation, uptake, or diffusion, a small set of closely adjacent process terms may be included when they are standard retrieval variants used to capture the same literature; keep them tightly coupled to the stated concept and do not expand to the full project lifecycle
-- For geographic concepts stated at a macro level (for example, a region or country group), named member countries or subregions may be included only when they are valid instances of the stated geography and are supplied through `terminology.hyponyms` or are standard retrieval expansions needed for database recall
-- Do not introduce broader adjacent concepts, speculative expansions, or unrelated sibling concepts merely to increase recall; every term in a block must remain anchored to the same underlying concept
-- Use the minimum terms needed for exhaustive recall within the stated scope; prefer specificity over padding
-- Exclude years, venues, authors, and publication types (those belong in `search_filters`)
+- Build blocks from `integrated_statement`, `terminology.synonyms`, and `terminology.hyponyms`.
+- Within each block, include only terms anchored to the same concept.
+- Include exact synonyms, established abbreviations, spelling variants, lexical variants, and necessary hyponyms.
+- Enumerate narrower drugs, devices, procedures, technologies, subtypes, subpopulations, or geographic members only when they are explicit, supplied via `terminology.hyponyms`, or are standard retrieval variants of the same concept.
+- For process concepts such as adoption, implementation, uptake, or diffusion, include only closely adjacent retrieval variants of that same process.
+- Exclude years, venues, authors, and publication types.
+- Do not include a term unless it is anchored to a concept present in `integrated_statement`.
+- Prefer exact phrases over free terms when both are equally precise.
 
 ### search_optimized.keyword.phrases
-5–10 exact phrases (2–4 words each) characteristic of the target literature.
+Return 5-8 exact phrases, each 2-4 words.
 
 Rules:
-- Prefer phrases taken directly from `integrated_statement` or from established equivalents already represented in `terminology.synonyms`
-- Use phrases that a relevant title, abstract, subject heading, or author keyword could plausibly contain verbatim
-- Favor discriminative literature phrases over generic academic language
-- Do not include full-sentence fragments, vague process labels, or phrases that merely restate a single-word keyword without added retrieval value
-- Keep phrases anchored to the stated scope; do not add phrases that imply a broader population, setting, or domain than the query supports
+- Prefer phrases taken directly from `integrated_statement`.
+- Otherwise use established equivalents already represented in `terminology.synonyms`.
+- Use phrases that could plausibly appear verbatim in a relevant title, abstract, subject heading, or author keyword.
+- Exclude vague academic language, full-sentence fragments, and phrases that broaden the stated scope.
+- Use 5 phrases by default. Use more only when each additional phrase adds distinct retrieval value.
 
 ### search_optimized.keyword.terms
-- `required`: 2–5 core terms that must appear in every relevant result
-- `optional`: 5–10 domain-specific terms that improve precision
-- `excluded`: terms that signal out-of-scope population, setting, or domain
+- `required`: 2-4 core lexical anchors.
+- `optional`: 5-8 precision-raising terms.
+- `excluded`: only clearly out-of-scope populations, settings, scales, or domains.
 
 Rules:
-- `required` terms should be the smallest set of lexical anchors whose absence would usually make a result irrelevant; prefer core concepts over broad context words
-- `optional` terms should be precision-raising terms that are strongly associated with the target literature but are not mandatory in every relevant result
-- `excluded` terms should remove clearly out-of-scope populations, settings, scales, or domains that are plausible retrieval confounders for the query
-- Keep all terms concise; use single terms or short noun phrases rather than sentence fragments
-- Do not repeat the same concept across `required` and `optional` using only trivial wording differences
-- Do not include generic research words, publication-type words, years, venue names, or author names
-- Do not use `excluded` to negate close variants of the target concept; use it only for genuinely out-of-scope content
+- `required` terms are the smallest set whose absence makes a result irrelevant.
+- `optional` terms improve precision but are not mandatory in every relevant result.
+- `excluded` terms must remove true confounders, not close variants of the target concept.
+- Each term must be a single word or two-word compound.
+- Do not repeat the same concept across `required` and `optional` with trivial wording changes.
+- Do not include years, venue names, author names, publication-type labels, or generic research words.
+- Use 3 `required` terms by default when the topic supports them.
+- Use 5 `optional` terms by default.
+- Use `excluded` only when clear confounders are present; otherwise return `[]`.
 
 ### search_optimized.research_elements
-Seven-component decomposition spanning PICO, PECO, SPICE, SPIDER, ECLIPSE, and CIC frameworks. Extract strictly from `integrated_statement`; do not infer content not present. Set to `""` when a component is absent, inapplicable, or indeterminate. Each non-empty value: concise verbatim-derived phrase of 10–30 words. Do not paraphrase beyond normalization.
+Extract seven research elements from `integrated_statement` only. Do not infer missing content. Use `""` when a field is absent, inapplicable, or indeterminate. Each non-empty value must be a concise phrase derived from the wording of `integrated_statement`.
+
+Geography-separation rule:
+- `location` is the only research element that may contain place names or place-defining qualifiers.
+- Treat country groups, regions, and development-status labels as location qualifiers, including `LMIC`, `LMICs`, `HIC`, `Global South`, `Sub-Saharan Africa`, and `South Asia`.
+- Remove geography from `subject`, `phenomenon`, `context`, `comparator`, `outcome`, and `perspective`.
+- If a phrase mixes a transferable concept with geography, place the full geographic constraint in `location` and keep the de-localized concept in the other field.
+- `context` is the operational or institutional setting, not the place in which it occurs.
+
+Field guide:
 
 | Field | Universal meaning | Clinical | Social Science | Engineering/CS | Humanities | Public Health |
 |---|---|---|---|---|---|---|
 | **subject** | Who or what is under study | Patient population | Community or group | System or algorithm | Text, period, or artifact | Target population |
 | **phenomenon** | What is being examined, applied, or experienced | Intervention or exposure | Policy, program, or practice | Method or technique | Theme, event, or argument | Exposure or intervention |
-| **context** | Operational or institutional environment | Clinical setting (ICU, ED, primary care) | Organizational or societal setting | Deployment environment or platform | Archival or cultural setting | Health system or community org |
-| **location** | Physical or geopolitical place | Country, region, urban/rural | Country, region, or community | Country or deployment region | Historical location | Country, LMIC/HIC, urban/rural |
+| **context** | Operational or institutional environment | Clinical setting | Organizational or societal setting | Deployment environment or platform | Archival or cultural setting | Health system or community organization |
+| **location** | Physical, geopolitical, or place-defining qualifier | Country, region, urban/rural | Country, region, locality | Country or deployment region | Historical location | Country, LMIC/HIC, urban/rural |
 | **comparator** | Contrast, baseline, or alternative condition | Control or active comparator | Alternative condition | Baseline method | Contrasting tradition | Counterfactual or alternative |
 | **outcome** | Measured or assessed result | Clinical endpoint | Social or behavioral result | Performance metric | Interpretive finding | Health or policy outcome |
 | **perspective** | Whose viewpoint or intended recipient | Patient or clinician | Policymaker or community member | End-user or developer | Reader or historian | Patient, provider, or planner |
 
 Leave `phenomenon` empty for purely descriptive or exploratory questions.
-Leave `context` empty when no specific setting is mentioned.
-Leave `location` empty when geography is not a dimension of the question.
-Leave `comparator` empty when no comparison is involved.
+Leave `context` empty when no specific setting is stated.
+Leave `location` empty when geography is not part of the question.
+Leave `comparator` empty when no comparison is stated.
 Leave `outcome` empty for description, mapping, or theory-building questions.
-Leave `perspective` empty when no specific audience or viewpoint is stated.
+Leave `perspective` empty when no audience or viewpoint is stated.
+Leave a field empty rather than paraphrasing beyond the wording supported by `integrated_statement`.
 
 ### search_filters.publication_years
-Format: `"YYYY-YYYY"` or `""` if no temporal reference.
-- "Recent" in health/medicine → `"2020-2026"`
-- "Last decade" → `"2016-2026"`
-- "Since YYYY" → `"YYYY-2026"`
+Format: `"YYYY-YYYY"` or `""`.
+- "Recent" in health or medicine -> `"2020-2026"`
+- "Recent" in all other disciplines -> `"2021-2026"`
+- "Last decade" -> `"2016-2026"`
+- "Since YYYY" -> `"YYYY-2026"`
 
 ### search_filters.venues
-Array of journal or conference names exactly as stated. `[]` if none.
+Return journal or conference names exactly as stated. Otherwise return `[]`.
 
 ### search_filters.authors
-Array of author names exactly as stated. `[]` if none.
+Return author names exactly as stated. Otherwise return `[]`.
 
 ### search_filters.publication_types
-Populate only when a study design is explicitly stated in the query or dimensions. Return `[]` otherwise.
+Populate only when a study design is explicitly stated in the query or dimensions. Otherwise return `[]`.
 
 Permitted values only:
 Before and after study | Case control study | Case report | Case series | Clinical study | Clinical trial | Cohort study | Comparative study | Consensus conference | Cross-sectional study | Diagnostic test accuracy study | Evaluation study | Government document | Guideline | Living review | Meta-analysis | Narrative review | Observational study | Pilot study | Policy document | Quality improvement study | Randomized controlled trial | Rapid review | Review | Scoping review | Systematic review | Validation study
 
 ### search_filters.fields_of_study
-Populate with 1-3 values from the permitted list. Use a field when it is explicitly stated in the query or dimensions, or when it is directly and unambiguously entailed by the topic. Multi-label assignment is allowed when multiple disciplines are central to the query rather than merely adjacent. Return `[]` when the field requires interpretation, when the query is too general to anchor a discipline, or when plausible labels are only loosely related.
+Return 1-3 values only when the field is explicit or directly and unambiguously entailed by the topic. Otherwise return `[]`.
 
 Rules:
-- Prefer the smallest sufficient set of fields
-- Include multiple fields only when each one is materially necessary to classify the literature being sought
-- Treat this as coarse disciplinary classification, not topic tagging
-- Do not add background or supporting disciplines unless the query explicitly studies them
-- Do not use fields_of_study as a substitute for topic keywords, setting, audience, or method
-- Do not exceed 3 fields; if more than 3 seem plausible, keep only the most central disciplines that a database indexer would assign
-- When in doubt between one field and several, choose the narrower set
+- Use the smallest sufficient set.
+- Include multiple fields only when each field is central to the literature being sought.
+- Treat this as coarse disciplinary classification, not topic tagging.
+- Do not use `fields_of_study` to encode methods, audiences, settings, or keywords.
+- If classification requires interpretation rather than clear entailment, return `[]`.
+- Use 1 field by default. Use 2 or 3 only when each additional field is independently indispensable.
 
 Permitted values only:
 Agricultural and Food Sciences | Art | Biology | Business | Chemistry | Computer Science | Economics | Education | Engineering | Environmental Science | Geography | Geology | History | Law | Linguistics | Materials Science | Mathematics | Medicine | Philosophy | Physics | Political Science | Psychology | Public Health | Sociology
 
 ### terminology.synonyms
-For up to 8 core concepts drawn from `integrated_statement`: provide 3–8 synonyms each. When more than 8 concepts are present, prioritise in this order: subject, phenomenon, comparator, outcome, then remaining concepts by centrality to the research question. Synonyms only — alternative terms at the same level of specificity as the concept, with materially the same denotation in retrieval contexts. Use lexical variants, spelling variants, standard abbreviations, and established equivalent phrasings. Do not include broader terms, narrower terms, neighboring process stages, components, exemplars, or loosely associated terms. Do not include hyponyms (those belong in `terminology.hyponyms`).
+For up to 8 core concepts from `integrated_statement`, provide 3-8 synonyms each. Prioritize, in order: subject, phenomenon, comparator, outcome, then remaining concepts by centrality.
+
+Rules:
+- Include only same-level equivalents: lexical variants, spelling variants, established abbreviations, and equivalent phrasings.
+- Do not include broader terms, narrower terms, exemplars, components, neighboring process stages, or loosely associated terms.
+- Do not place hyponyms here.
+- Use 3 synonyms per concept by default. Add more only when each additional synonym is a genuine retrieval variant.
 
 ### terminology.hyponyms
-For up to 8 core concepts drawn from `integrated_statement`: provide 3–8 specific instances, subtypes, or narrower terms that fall under each concept (i.e., "X is a type of concept"). Hyponyms must be true members of the parent concept, not merely related mechanisms, neighboring concepts, overlapping policy categories, or retrieval-adjacent terms. Prioritise concepts whose hyponym expansion materially affects recall: interventions, exposures, technologies, populations, settings, and geographies. For geographic concepts, valid members of a stated region or country group may be used as hyponyms when they are concrete instances of the stated geography. These terms directly populate exhaustive enumerations in `keyword.structured` concept blocks — ensure completeness for any concept that would otherwise require a wildcard alone.
+For up to 8 core concepts from `integrated_statement`, provide 3-8 true subtypes, members, or specific instances each.
+
+Rules:
+- Use only true members of the parent concept.
+- Prioritize concepts whose hyponym expansion materially affects recall: interventions, exposures, technologies, populations, settings, and geographies.
+- For geographic concepts, valid member countries or subregions may be included when they are concrete instances of the stated geography.
+- These terms directly support exhaustive enumerations in `keyword.structured`.
+- Use 3 hyponyms per concept by default. Add more only when each additional hyponym improves recall without broadening scope.
 
 ---
 
-## Example 1 - Medicine Domain
+## Example 1 - Medicine
 
-**Input 1 (Original query):**
+Input 1:
 "I am interested in recent studies about venous thromboembolism prophylaxis in patients undergoing major orthopedic surgery"
 
-**Input 2 (Clarified dimensions):**
+Input 2:
 - Population: "Patients undergoing major orthopedic surgery (total hip replacement, knee replacement, hip fracture surgery)"
 - Intervention: "Thromboprophylaxis interventions including antithrombotic medications and mechanical interventions such as compression stockings"
 - Comparison: "Within and across classes (comparing interventions both within the same class and between different classes)"
 - Outcomes: [SKIPPED]
 
-**Output:**
+Output:
 
 {
   "integrated_statement": "Recent studies about venous thromboembolism prophylaxis in patients undergoing major orthopedic surgery (total hip replacement, knee replacement, hip fracture surgery), comparing thromboprophylaxis interventions including antithrombotic medications and mechanical interventions such as compression stockings within and across classes",
@@ -209,14 +253,14 @@ For up to 8 core concepts drawn from `integrated_statement`: provide 3–8 speci
     "outcomes": null
   },
   "search_optimized": {
-    "semantic": "Studies comparing thromboprophylaxis interventions for venous thromboembolism prevention in patients undergoing major orthopedic surgery including total hip replacement, total knee replacement, and hip fracture surgery, examining antithrombotic medications such as low molecular weight heparins, direct oral anticoagulants, and antiplatelet agents alongside mechanical interventions including compression stockings and intermittent pneumatic compression devices, comparing effectiveness and safety both within intervention classes and across different prophylaxis approaches",
+    "semantic": "Studies comparing venous thromboembolism prophylaxis interventions in patients undergoing major orthopedic surgery, including total hip replacement, total knee replacement, and hip fracture surgery, with emphasis on antithrombotic medications and mechanical prophylaxis such as compression stockings and intermittent pneumatic compression devices, comparing approaches within and across intervention classes.",
     "keyword": {
       "structured": "((\"arthroplasty\" AND (knee OR hip)) OR \"total knee replacement\" OR \"knee arthroplasty\" OR tkr OR knee prosthesis OR knee joint OR total hip replacement OR hip arthroplasty OR thr OR Hip Prosthesis OR hip fracture surgery OR hfs OR (arthroscop* AND (knee OR meniscectomy OR synovectomy OR cruciate ligament))) AND (\"pulmonary embol*\" OR \"pulmonary thromboembol*\" OR PE OR \"deep vein thrombos*\" OR \"deep venous thrombos*\" OR \"deep venous thromboembol*\" OR \"deep vein thromboembol*\" OR DVT OR \"venous thromboembol*\" OR VTE OR \"venous thrombos*\" OR clot) AND (aspirin OR clopidogrel OR ticlopidine OR prasugrel OR heparin OR UFH OR LMWH OR enoxaparin OR dalteparin OR nadroparin OR ardeparin OR bemiparin OR certoparin OR parnaparin OR reviparin OR tinzaparin OR danaparoid OR fondaparinux OR idraparinux OR rivaroxaban OR apixaban OR enoxaparin OR desirudin OR argatroban OR bivalirudin OR lepirudin OR dabigatran OR warfarin OR acenocoumarol OR dicoumarol OR dextran sulfate OR ((compression or elastic) and (stocking* or boot*)) OR GCS OR venous foot pump OR VFP OR \"pneumatic compression\" OR \"pneumatic hose\" OR pneumatic compression hose OR \"vena cava filter*\" OR \"factor xa inhibitors\")",
       "phrases": ["venous thromboembolism prophylaxis", "major orthopedic surgery", "total hip replacement", "total knee replacement", "compression stockings", "antithrombotic medications", "mechanical prophylaxis", "thromboprophylaxis interventions"],
       "terms": {
-        "required": ["venous thromboembolism", "prophylaxis"],
-        "optional": ["LMWH", "DOAC", "compression stockings", "mechanical prophylaxis", "intermittent pneumatic compression", "hip fracture surgery"],
-        "excluded": ["pediatric", "trauma", "spine surgery", "upper extremity"]
+        "required": ["venous thromboembolism", "prophylaxis", "orthopedic surgery"],
+        "optional": ["DVT", "pulmonary embolism", "LMWH", "DOAC", "mechanical prophylaxis", "compression stockings", "hip fracture surgery"],
+        "excluded": ["pediatric", "spine surgery", "upper extremity"]
       }
     },
     "research_elements": {
@@ -224,7 +268,7 @@ For up to 8 core concepts drawn from `integrated_statement`: provide 3–8 speci
       "phenomenon": "Thromboprophylaxis interventions including antithrombotic medications and mechanical interventions such as compression stockings",
       "context": "",
       "location": "",
-      "comparator": "Within and across intervention classes (same-class and cross-class comparisons)",
+      "comparator": "Within and across classes",
       "outcome": "",
       "perspective": ""
     }
@@ -238,32 +282,29 @@ For up to 8 core concepts drawn from `integrated_statement`: provide 3–8 speci
   },
   "terminology": {
     "synonyms": {
-      "venous thromboembolism": ["VTE", "venous thrombosis", "thromboembolic disease", "thromboembolism"],
-      "prophylaxis": ["prevention", "thromboprophylaxis", "preventive therapy", "preventive measures"],
+      "venous thromboembolism": ["VTE", "venous thrombosis", "thromboembolism"],
+      "prophylaxis": ["prevention", "thromboprophylaxis", "preventive therapy"],
       "major orthopedic surgery": ["major orthopaedic surgery", "major orthopedic procedures", "major orthopaedic procedures"],
-      "total hip replacement": ["total hip arthroplasty", "THR", "THA", "hip prosthesis implantation"],
-      "total knee replacement": ["total knee arthroplasty", "TKR", "TKA", "knee prosthesis implantation"],
-      "antithrombotic medications": ["antithrombotic agents", "antithrombotic therapy", "antithrombotic drugs", "antithrombotic treatment"],
-      "compression stockings": ["graduated compression stockings", "GCS", "elastic stockings", "compression hosiery"],
-      "mechanical interventions": ["mechanical prophylaxis", "physical prophylaxis", "mechanical preventive measures"]
+      "antithrombotic medications": ["antithrombotic agents", "antithrombotic therapy", "antithrombotic drugs"],
+      "mechanical prophylaxis": ["mechanical interventions", "physical prophylaxis", "mechanical preventive measures"]
     },
     "hyponyms": {
-      "venous thromboembolism": ["deep vein thrombosis", "DVT", "pulmonary embolism", "PE", "proximal DVT", "distal DVT"],
+      "venous thromboembolism": ["deep vein thrombosis", "DVT", "pulmonary embolism", "PE"],
       "major orthopedic surgery": ["total hip replacement", "total knee replacement", "hip fracture surgery", "hip arthroplasty", "knee arthroplasty"],
-      "antithrombotic medications": ["anticoagulants", "antiplatelet drugs", "low molecular weight heparins", "direct oral anticoagulants", "vitamin K antagonists", "LMWH", "DOAC"],
-      "mechanical interventions": ["compression stockings", "intermittent pneumatic compression", "venous foot pumps", "anti-embolism stockings", "graduated compression sleeves"]
+      "antithrombotic medications": ["anticoagulants", "low molecular weight heparins", "direct oral anticoagulants", "vitamin K antagonists"],
+      "mechanical prophylaxis": ["compression stockings", "graduated compression stockings", "intermittent pneumatic compression", "venous foot pumps"]
     }
   }
 }
 
 ---
 
-## Example 2 - Technology/Social Science Domain
+## Example 2 - Technology and Social Science
 
-**Input 1 (Original query):**
+Input 1:
 "What factors influence the adoption of renewable energy technologies in developing countries?"
 
-**Input 2 (Clarified dimensions):**
+Input 2:
 - Technology Type: "Solar photovoltaic systems, wind turbines, and small-scale hydroelectric installations"
 - Geographic Context: "Low and middle-income countries in Sub-Saharan Africa and South Asia"
 - Factors: "Economic barriers, policy frameworks, infrastructure availability, cultural acceptance, and financing mechanisms"
@@ -272,10 +313,10 @@ For up to 8 core concepts drawn from `integrated_statement`: provide 3–8 speci
 - Intended For: "Energy policymakers and development aid organizations"
 - Temporal Scope: "Studies from 2015 onwards"
 
-**Output:**
+Output:
 
 {
-  "integrated_statement": "What economic barriers, policy frameworks, infrastructure availability, cultural acceptance, and financing mechanisms influence the adoption of solar photovoltaic systems, wind turbines, and small-scale hydroelectric installations among rural households, smallholder farmers, and local enterprises in off-grid and rural electrification programs in low and middle-income countries in Sub-Saharan Africa and South Asia, based on studies from 2015 onwards, for use by energy policymakers and development aid organizations",
+  "integrated_statement": "What economic barriers, policy frameworks, infrastructure availability, cultural acceptance, and financing mechanisms influence the adoption of solar photovoltaic systems, wind turbines, and small-scale hydroelectric installations among rural households, smallholder farmers, and local enterprises in off-grid and rural electrification programs in low and middle-income countries in Sub-Saharan Africa and South Asia, based on studies from 2015 onwards, for use by energy policymakers and development aid organizations?",
   "dimensions_specifications": {
     "technology_type": "Solar photovoltaic systems, wind turbines, and small-scale hydroelectric installations",
     "geographic_context": "Low and middle-income countries in Sub-Saharan Africa and South Asia",
@@ -286,28 +327,19 @@ For up to 8 core concepts drawn from `integrated_statement`: provide 3–8 speci
     "temporal_scope": "Studies from 2015 onwards"
   },
   "search_optimized": {
-    "semantic": "Research examining economic barriers, policy frameworks, infrastructure availability, cultural acceptance, and financing mechanisms that influence adoption of renewable energy technologies including solar photovoltaic systems, wind turbines, and small-scale hydroelectric installations among rural households, smallholder farmers, and local enterprises in off-grid and rural electrification programs across low and middle-income countries in Sub-Saharan Africa and South Asia, focusing on barriers and enablers to technology deployment, community acceptance, regulatory environments, and financial models that facilitate or hinder uptake, intended for energy policymakers and development aid organizations",
+    "semantic": "Research on economic barriers, policy frameworks, infrastructure availability, cultural acceptance, and financing mechanisms affecting adoption of solar photovoltaic systems, wind turbines, and small-scale hydroelectric installations among rural households, smallholder farmers, and local enterprises in off-grid and rural electrification programs across low and middle-income countries in Sub-Saharan Africa and South Asia.",
     "keyword": {
-      "structured": "((\"solar photovoltaic*\" OR \"solar PV\" OR \"solar panel*\" OR \"solar energy\" OR \"solar power\") OR (\"wind turbine*\" OR \"wind energy\" OR \"wind power\" OR \"wind farm*\") OR (\"small-scale hydroelectric\" OR \"micro-hydro*\" OR \"mini-hydro*\" OR hydropower OR \"hydroelectric power\")) AND ((\"renewable energy\" OR \"clean energy\" OR \"green energy\" OR \"sustainable energy\" OR \"alternative energy\") AND (adoption OR uptake OR implementation OR deployment OR diffusion)) AND ((\"low and middle-income countr*\" OR \"low-income countr*\" OR \"middle-income countr*\" OR LMIC OR \"Sub-Saharan Africa\" OR \"South Asia\") OR (Kenya OR Tanzania OR Uganda OR Ethiopia OR India OR Bangladesh OR Pakistan OR Nepal)) AND (\"economic barrier*\" OR affordability OR cost OR pricing OR \"financial constraint*\" OR subsid* OR incentive* OR \"policy framework*\" OR regulation* OR governance OR legislation OR infrastructure OR grid OR \"energy access\" OR \"cultural acceptance\" OR \"social acceptance\" OR \"community acceptance\" OR perception* OR \"financing mechanism*\" OR investment OR \"business model*\" OR microfinance)",
-      "phrases": [
-        "renewable energy adoption",
-        "low and middle-income countries",
-        "solar photovoltaic systems",
-        "wind turbines",
-        "economic barriers",
-        "policy frameworks",
-        "Sub-Saharan Africa",
-        "rural electrification programs"
-      ],
+      "structured": "((\"renewable energy\" OR \"clean energy\" OR \"sustainable energy\") AND (adoption OR uptake OR implementation OR deployment)) AND (\"solar photovoltaic systems\" OR \"solar PV\" OR \"wind turbines\" OR \"wind energy\" OR \"small-scale hydroelectric\" OR micro-hydro OR mini-hydro) AND (\"economic barriers\" OR affordability OR cost OR \"policy frameworks\" OR regulation OR infrastructure OR \"cultural acceptance\" OR \"social acceptance\" OR \"financing mechanisms\" OR microfinance) AND (\"low and middle-income countries\" OR LMIC OR LMICs OR \"Sub-Saharan Africa\" OR \"South Asia\" OR Kenya OR Tanzania OR Uganda OR Ethiopia OR India OR Bangladesh OR Pakistan OR Nepal)",
+      "phrases": ["renewable energy adoption", "solar photovoltaic systems", "wind turbines", "small-scale hydroelectric", "economic barriers", "policy frameworks", "rural electrification programs", "low and middle-income countries"],
       "terms": {
-        "required": ["renewable energy", "adoption"],
-        "optional": ["solar photovoltaic", "wind turbines", "small-scale hydroelectric", "financing mechanisms", "policy frameworks", "Sub-Saharan Africa", "South Asia", "rural households", "smallholder farmers", "off-grid electrification"],
-        "excluded": ["developed countries", "high-income", "OECD", "industrial scale", "large-scale", "fossil fuel"]
+        "required": ["renewable energy", "adoption", "LMIC"],
+        "optional": ["solar photovoltaic", "wind turbines", "micro-hydro", "policy frameworks", "financing mechanisms", "rural electrification", "smallholder farmers"],
+        "excluded": ["high-income countries", "industrial scale", "fossil fuel"]
       }
     },
     "research_elements": {
       "subject": "Rural households, smallholder farmers, and local enterprises",
-      "phenomenon": "Economic barriers, policy frameworks, infrastructure availability, cultural acceptance, and financing mechanisms influencing renewable energy adoption",
+      "phenomenon": "Economic barriers, policy frameworks, infrastructure availability, cultural acceptance, and financing mechanisms influencing adoption",
       "context": "Off-grid and rural electrification programs",
       "location": "Low and middle-income countries in Sub-Saharan Africa and South Asia",
       "comparator": "",
@@ -324,29 +356,28 @@ For up to 8 core concepts drawn from `integrated_statement`: provide 3–8 speci
   },
   "terminology": {
     "synonyms": {
-      "renewable energy": ["clean energy", "sustainable energy", "green energy", "alternative energy"],
-      "adoption": ["uptake", "take-up", "technology uptake", "acceptance and uptake"],
-      "low and middle-income countries": ["LMIC", "LMICs", "low- and middle-income countries", "lower- and middle-income countries"],
-      "solar photovoltaic": ["solar PV", "photovoltaic systems", "PV systems", "solar photovoltaic systems"],
-      "economic barriers": ["financial barriers", "cost barriers", "affordability constraints", "economic constraints"],
-      "policy frameworks": ["regulatory frameworks", "policy environments", "governance structures", "legislative frameworks"],
-      "infrastructure": ["energy infrastructure", "grid infrastructure", "power infrastructure", "energy access infrastructure"],
-      "cultural acceptance": ["social acceptance", "community acceptance", "public acceptance", "societal acceptance"]
+      "renewable energy": ["clean energy", "sustainable energy", "green energy"],
+      "adoption": ["uptake", "take-up", "implementation"],
+      "low and middle-income countries": ["LMIC", "LMICs", "low- and middle-income countries"],
+      "economic barriers": ["financial barriers", "cost barriers", "affordability constraints"],
+      "policy frameworks": ["regulatory frameworks", "policy environments", "governance structures"]
     },
     "hyponyms": {
-      "renewable energy technologies": ["solar photovoltaic systems", "wind turbines", "small-scale hydroelectric installations", "solar home systems", "micro-wind turbines", "run-of-river hydro"],
-      "adoption": ["implementation", "deployment", "diffusion"],
-      "economic barriers": ["upfront capital costs", "credit access constraints", "affordability gaps", "financing gaps", "high import tariffs", "currency risk"],
-      "policy frameworks": ["feed-in tariffs", "net metering policies", "renewable energy subsidies", "rural electrification mandates", "energy access legislation", "tax incentives"],
+      "renewable energy technologies": ["solar photovoltaic systems", "wind turbines", "small-scale hydroelectric installations", "solar home systems", "run-of-river hydro"],
+      "economic barriers": ["upfront capital costs", "credit access constraints", "affordability gaps", "financing gaps"],
+      "policy frameworks": ["feed-in tariffs", "net metering policies", "renewable energy subsidies", "rural electrification mandates"],
       "low and middle-income countries in Sub-Saharan Africa and South Asia": ["Kenya", "Tanzania", "Uganda", "Ethiopia", "India", "Bangladesh", "Pakistan", "Nepal"]
     }
   }
 }
+
 ---
 
 ## Hard Rules
-- Output only the JSON object — no text before or after, no markdown code blocks
-- Valid JSON only: escape internal quotes (\"), no trailing commas
-- All dimension keys must appear in `dimensions_specifications` (`null` for `[SKIPPED]`)
-- `publication_types` and `fields_of_study` must use only values from the permitted lists above
+- Output exactly one JSON object. Do not add preamble, explanation, markdown fences, or comments.
+- Use valid JSON only: double quotes, escaped internal quotes, and no trailing commas.
+- Every dimension key must appear in `dimensions_specifications`; map `[SKIPPED]` to `null`.
+- `publication_types` and `fields_of_study` must use only the permitted values listed above.
+- When evidence is insufficient, use empty values; do not infer.
+- Do not invent tie-breakers, defaults, or expansions beyond the rules stated in this prompt.
 """
