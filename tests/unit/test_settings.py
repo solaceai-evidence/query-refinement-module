@@ -128,3 +128,26 @@ def test_analyzer_kwargs_returns_copy(monkeypatch):
     assert settings.temperature == pytest.approx(0.4)
     assert settings.max_tokens == 512
     assert settings.completion_kwargs["presence_penalty"] == 1
+
+
+def test_constrained_decoding_env_var(monkeypatch):
+    _clear_env(monkeypatch)
+    monkeypatch.delenv("QUERY_REFINEMENT_LLM_CONSTRAINED_DECODING", raising=False)
+    monkeypatch.setenv("QUERY_REFINEMENT_LLM_MODEL", "openai/gpt-4o-mini")
+
+    # Default is False when env var is absent
+    settings = LLMSettings.from_env()
+    assert settings.constrained_decoding is False
+    assert settings.as_provider_kwargs()["constrained_decoding"] is False
+
+    # Explicit true
+    monkeypatch.setenv("QUERY_REFINEMENT_LLM_CONSTRAINED_DECODING", "true")
+    settings = LLMSettings.from_env()
+    assert settings.constrained_decoding is True
+    assert settings.as_provider_kwargs()["constrained_decoding"] is True
+
+    # Explicit false
+    monkeypatch.setenv("QUERY_REFINEMENT_LLM_CONSTRAINED_DECODING", "false")
+    settings = LLMSettings.from_env()
+    assert settings.constrained_decoding is False
+    assert settings.as_provider_kwargs()["constrained_decoding"] is False

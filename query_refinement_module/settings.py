@@ -16,6 +16,7 @@ _ENV_MAX_TOKENS = "QUERY_REFINEMENT_LLM_MAX_TOKENS"
 _ENV_COMPLETION_KWARGS = "QUERY_REFINEMENT_LLM_COMPLETION_KWARGS"
 _ENV_ENABLE_PROMPT_CACHING = "QUERY_REFINEMENT_ENABLE_PROMPT_CACHING"
 _ENV_ENABLE_CIRCUIT_BREAKER = "QUERY_REFINEMENT_ENABLE_CIRCUIT_BREAKER"
+_ENV_CONSTRAINED_DECODING = "QUERY_REFINEMENT_LLM_CONSTRAINED_DECODING"
 _ENV_CIRCUIT_BREAKER_FAILURE_THRESHOLD = "QUERY_REFINEMENT_CIRCUIT_BREAKER_FAILURE_THRESHOLD"
 _ENV_CIRCUIT_BREAKER_RECOVERY_TIMEOUT = "QUERY_REFINEMENT_CIRCUIT_BREAKER_RECOVERY_TIMEOUT"
 
@@ -77,6 +78,7 @@ class LLMSettings:
     completion_kwargs: Dict[str, Any] = field(default_factory=dict)
     enable_prompt_caching: bool = True
     enable_circuit_breaker: bool = True
+    constrained_decoding: bool = False
     circuit_breaker_failure_threshold: int = 5
     circuit_breaker_recovery_timeout: float = 60.0
     terminal_reinforcement_threshold: int = 3  # Hardcoded optimal value (data-driven from 3,777 dimensions)
@@ -103,6 +105,7 @@ class LLMSettings:
         completion_kwargs = _parse_completion_kwargs(os.getenv(_ENV_COMPLETION_KWARGS))
         enable_prompt_caching = _parse_bool(os.getenv(_ENV_ENABLE_PROMPT_CACHING), default=True)
         enable_circuit_breaker = _parse_bool(os.getenv(_ENV_ENABLE_CIRCUIT_BREAKER), default=True)
+        constrained_decoding = _parse_bool(os.getenv(_ENV_CONSTRAINED_DECODING), default=False)
         circuit_breaker_failure_threshold = int(os.getenv(_ENV_CIRCUIT_BREAKER_FAILURE_THRESHOLD, "5"))
         circuit_breaker_recovery_timeout = float(os.getenv(_ENV_CIRCUIT_BREAKER_RECOVERY_TIMEOUT, "60.0"))
 
@@ -115,6 +118,7 @@ class LLMSettings:
             completion_kwargs=completion_kwargs,
             enable_prompt_caching=enable_prompt_caching,
             enable_circuit_breaker=enable_circuit_breaker,
+            constrained_decoding=constrained_decoding,
             circuit_breaker_failure_threshold=circuit_breaker_failure_threshold,
             circuit_breaker_recovery_timeout=circuit_breaker_recovery_timeout,
             # terminal_reinforcement_threshold uses class default of 3 (data-driven optimal value)
@@ -139,6 +143,7 @@ class LLMSettings:
             "default_completion_kwargs": copy.deepcopy(self.completion_kwargs),
             "enable_prompt_caching": self.enable_prompt_caching,
             "enable_circuit_breaker": self.enable_circuit_breaker,
+            "constrained_decoding": self.constrained_decoding,
             "circuit_breaker_config": circuit_breaker_config,
         }
 

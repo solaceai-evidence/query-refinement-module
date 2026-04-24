@@ -40,6 +40,7 @@ class LiteLLMProvider(LLMProviderInterface):
         default_completion_kwargs: Optional[Dict[str, Any]] = None,
         enable_prompt_caching: bool = True,
         enable_circuit_breaker: bool = True,
+        constrained_decoding: bool = False,
         circuit_breaker_config: Optional[CircuitBreakerConfig] = None,
     ) -> None:
         if litellm is None:
@@ -55,7 +56,8 @@ class LiteLLMProvider(LLMProviderInterface):
         self._api_base = api_base
         self._default_completion_kwargs = default_completion_kwargs or {}
         self._enable_prompt_caching = enable_prompt_caching
-        
+        self._constrained_decoding = constrained_decoding
+
         # Semaphore to limit concurrent LLM calls (prevent overwhelming server)
         self._max_concurrent = 20  # Store for logging
         self._semaphore = asyncio.Semaphore(self._max_concurrent)  # Max 20 concurrent calls
@@ -253,37 +255,69 @@ class LiteLLMProvider(LLMProviderInterface):
         request_id = get_request_id()
         trace_id = get_trace_id()
         
-        # Handle response_format for structured outputs
-        # Supports both Pydantic models (for providers with native structured output support)
-        # and JSON schema dicts (for broader compatibility)
+        # Handle response_format for structured outputs.
+        # When constrained_decoding is enabled (vLLM), swap litellm's response_format
+        # mechanism for vLLM's native guided_json via extra_body.
+        _constrained_parse_model = None
         if response_format is not None:
             try:
                 from pydantic import BaseModel
                 if isinstance(response_format, type) and issubclass(response_format, BaseModel):
-                    # Use Pydantic model directly - litellm will convert to appropriate format
-                    # Works with: OpenAI (gpt-4o+), Anthropic (Claude 3.5+), Google (Gemini 1.5+)
-                    completion_kwargs["response_format"] = response_format
-                    logger.debug(
-                        "Using Pydantic model for structured output",
-                        extra={
-                            "model": target_model,
-                            "response_format_type": response_format.__name__,
-                            "request_id": request_id,
-                            "trace_id": trace_id,
-                        }
-                    )
+                    if self._constrained_decoding:
+                        # vLLM path: derive JSON Schema and pass as guided_json
+                        schema = response_format.model_json_schema(by_alias=True)
+                        _constrained_parse_model = response_format
+                        existing_extra = completion_kwargs.get("extra_body", {})
+                        completion_kwargs["extra_body"] = {**existing_extra, "guided_json": schema}
+                        logger.debug(
+                            "Using vLLM guided_json constrained decoding",
+                            extra={
+                                "model": target_model,
+                                "response_format_type": response_format.__name__,
+                                "request_id": request_id,
+                                "trace_id": trace_id,
+                            }
+                        )
+                    else:
+                        # Standard path: pass Pydantic model directly to litellm
+                        completion_kwargs["response_format"] = response_format
+                        logger.debug(
+                            "Using Pydantic model for structured output",
+                            extra={
+                                "model": target_model,
+                                "response_format_type": response_format.__name__,
+                                "request_id": request_id,
+                                "trace_id": trace_id,
+                            }
+                        )
                 elif isinstance(response_format, dict):
-                    # Use JSON schema dict (e.g., {"type": "json_object"})
-                    completion_kwargs["response_format"] = response_format
-                    logger.debug(
-                        "Using JSON schema for structured output",
-                        extra={
-                            "model": target_model,
-                            "response_format": response_format,
-                            "request_id": request_id,
-                            "trace_id": trace_id,
-                        }
-                    )
+                    if (
+                        self._constrained_decoding
+                        and ("properties" in response_format or "$defs" in response_format)
+                    ):
+                        # Real JSON Schema dict — use as guided_json
+                        existing_extra = completion_kwargs.get("extra_body", {})
+                        completion_kwargs["extra_body"] = {**existing_extra, "guided_json": response_format}
+                        logger.debug(
+                            "Using vLLM guided_json constrained decoding (schema dict)",
+                            extra={
+                                "model": target_model,
+                                "request_id": request_id,
+                                "trace_id": trace_id,
+                            }
+                        )
+                    else:
+                        # OpenAI shorthand {"type": "json_object"} or constrained_decoding=False
+                        completion_kwargs["response_format"] = response_format
+                        logger.debug(
+                            "Using JSON schema for structured output",
+                            extra={
+                                "model": target_model,
+                                "response_format": response_format,
+                                "request_id": request_id,
+                                "trace_id": trace_id,
+                            }
+                        )
             except ImportError:
                 logger.warning(
                     "Pydantic not available, response_format ignored",
@@ -372,7 +406,7 @@ class LiteLLMProvider(LLMProviderInterface):
                 # Check if LiteLLM parsed the response (structured outputs)
                 message_obj = response["choices"][0]["message"]
                 if hasattr(message_obj, "parsed") and message_obj.parsed is not None:
-                    # Structured output was parsed by LiteLLM
+                    # Structured output was parsed by LiteLLM (native providers)
                     message = message_obj.parsed
                     logger.info(
                         "Received structured output (parsed by LiteLLM)",
@@ -383,9 +417,38 @@ class LiteLLMProvider(LLMProviderInterface):
                             "trace_id": trace_id,
                         }
                     )
+                elif _constrained_parse_model is not None:
+                    # vLLM constrained decoding: parse JSON string into Pydantic model
+                    raw_content = (
+                        message_obj.get("content", "")
+                        if isinstance(message_obj, dict)
+                        else getattr(message_obj, "content", "")
+                    )
+                    try:
+                        message = _constrained_parse_model.model_validate_json(raw_content)
+                        logger.info(
+                            "Received structured output (parsed from vLLM guided_json)",
+                            extra={
+                                "model": target_model,
+                                "parsed_type": _constrained_parse_model.__name__,
+                                "request_id": request_id,
+                                "trace_id": trace_id,
+                            }
+                        )
+                    except Exception:
+                        logger.warning(
+                            "Failed to parse vLLM guided_json response as %s, returning raw string",
+                            _constrained_parse_model.__name__,
+                            extra={"model": target_model, "request_id": request_id},
+                        )
+                        message = raw_content
                 else:
                     # Standard text response
-                    message = message_obj.get("content", "")
+                    message = (
+                        message_obj.get("content", "")
+                        if isinstance(message_obj, dict)
+                        else getattr(message_obj, "content", "")
+                    )
                 
                 usage = response.get("usage", {})
                 total_tokens = usage.get("total_tokens") if usage else None

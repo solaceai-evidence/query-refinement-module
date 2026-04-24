@@ -1316,15 +1316,11 @@ class QueryRefinementManager:
         if max_tokens is not None:
             completion_kwargs["max_tokens"] = max_tokens
         
-        # Try to use structured output for providers that support it
-        # This works with OpenAI gpt-4o and later, Anthropic Claude Sonnet 4+
-        # For other providers, the prompt already instructs to return JSON
-        try:
-            # Use basic JSON object format (more widely supported)
-            completion_kwargs["response_format"] = {"type": "json_object"}
-        except Exception:
-            # Provider doesn't support response_format, rely on prompt instructions
-            pass
+        # Use QueryRefinementResponse Pydantic model for structured output.
+        # - litellm routes this to the appropriate mechanism per provider
+        #   (tool_use for Claude, json_schema for OpenAI, guided_json for vLLM)
+        # - The model is passed directly so the provider can enforce the full nested schema.
+        completion_kwargs["response_format"] = QueryRefinementResponse
 
         try:
             result = await self.llm_provider.complete_async(
@@ -1343,57 +1339,15 @@ class QueryRefinementManager:
             )
             raise
 
-        refined_query = (result.context or "").strip()
-
-        # Try to parse as structured JSON response with robust error handling
+        refined_query = (result.context or "").strip() if not isinstance(result.context, QueryRefinementResponse) else ""
         synthesis_response = None
-        try:
-            # Strip markdown code fences if present (some models add these)
-            cleaned_text = refined_query
-            if cleaned_text.startswith("```"):
-                lines = cleaned_text.splitlines()
-                if len(lines) >= 2 and lines[0].startswith("```"):
-                    # Drop opening fence and optional closing fence
-                    body = lines[1:]
-                    if body and body[-1].startswith("```"):
-                        body = body[:-1]
-                    cleaned_text = "\n".join(body)
-            
-            # Try to find JSON if it's embedded in text
-            if not cleaned_text.startswith("{"):
-                # Look for JSON object start
-                json_start = cleaned_text.find("{")
-                if json_start != -1:
-                    cleaned_text = cleaned_text[json_start:]
-                    # Find matching closing brace
-                    brace_count = 0
-                    for i, char in enumerate(cleaned_text):
-                        if char == "{":
-                            brace_count += 1
-                        elif char == "}":
-                            brace_count -= 1
-                            if brace_count == 0:
-                                cleaned_text = cleaned_text[:i+1]
-                                break
-            
-            # Log the full raw response before JSON parsing to debug malformed JSON
-            logger.info(
-                "Raw synthesis LLM response | Length: %d chars | First 500 chars: %s",
-                len(cleaned_text),
-                cleaned_text[:500]
-            )
-            logger.debug("Full synthesis LLM response:\n%s", cleaned_text)
-            
-            # Parse JSON
-            response_data = json.loads(cleaned_text)
-            
-            # Validate with Pydantic model
-            synthesis_response = QueryRefinementResponse(**response_data)
+
+        # Fast path: provider already post-parsed the result into a QueryRefinementResponse
+        # (happens with Claude/OpenAI native structured output and vLLM constrained decoding).
+        if isinstance(result.context, QueryRefinementResponse):
+            synthesis_response = result.context
             refined_query = synthesis_response.integrated_statement
-            
-            logger.info(
-                "Successfully parsed and validated structured synthesis response"
-            )
+            logger.info("Synthesis response pre-parsed by provider (skipping JSON decode)")
             self.trace_emitter.emit(
                 "synthesis_response_parsed",
                 metadata={
@@ -1403,50 +1357,111 @@ class QueryRefinementManager:
                     "detail_values_count": len(synthesis_response.dimensions_specifications) if synthesis_response.dimensions_specifications else 0,
                 }
             )
-        except json.JSONDecodeError as parse_error:
-            # JSON parsing failed - log detailed error
-            logger.warning(
-                "JSON parsing failed: %s at line %d column %d (char %d)",
-                parse_error.msg,
-                parse_error.lineno,
-                parse_error.colno,
-                parse_error.pos
-            )
-            self.trace_emitter.emit(
-                "synthesis_response_parse_failed",
-                level="warning",
-                metadata={
-                    "error_type": "JSONDecodeError",
-                    "error_message": str(parse_error),
-                    "error_line": parse_error.lineno,
-                    "error_column": parse_error.colno,
-                    "response_preview": cleaned_text[:200] if cleaned_text else "<empty>",
-                    "response_length": len(cleaned_text) if cleaned_text else 0,
-                }
-            )
-            # Use raw response as fallback
-            if not refined_query or refined_query == cleaned_text:
-                logger.warning("Using original query as fallback due to parsing failure")
-                refined_query = session.original_query
-        except (ValueError, TypeError) as validation_error:
-            # Pydantic validation failed - JSON structure doesn't match schema
-            logger.warning(
-                "Response validation failed: %s",
-                validation_error
-            )
-            self.trace_emitter.emit(
-                "synthesis_response_parse_failed",
-                level="warning",
-                metadata={
-                    "error_type": type(validation_error).__name__,
-                    "error_message": str(validation_error),
-                    "response_preview": cleaned_text[:200] if cleaned_text else "<empty>",
-                    "response_length": len(cleaned_text) if cleaned_text else 0,
-                }
-            )
-            if not refined_query:
-                logger.warning("LLM synthesis returned empty response; using original query")
-                refined_query = session.original_query
+
+        # Try to parse as structured JSON response with robust error handling.
+        # Skipped when the provider already returned a parsed QueryRefinementResponse
+        # (native structured output from Claude/OpenAI, or vLLM constrained decoding).
+        if synthesis_response is None:
+            try:
+                # Strip markdown code fences if present (some models add these)
+                cleaned_text = refined_query
+                if cleaned_text.startswith("```"):
+                    lines = cleaned_text.splitlines()
+                    if len(lines) >= 2 and lines[0].startswith("```"):
+                        # Drop opening fence and optional closing fence
+                        body = lines[1:]
+                        if body and body[-1].startswith("```"):
+                            body = body[:-1]
+                        cleaned_text = "\n".join(body)
+                
+                # Try to find JSON if it's embedded in text
+                if not cleaned_text.startswith("{"):
+                    # Look for JSON object start
+                    json_start = cleaned_text.find("{")
+                    if json_start != -1:
+                        cleaned_text = cleaned_text[json_start:]
+                        # Find matching closing brace
+                        brace_count = 0
+                        for i, char in enumerate(cleaned_text):
+                            if char == "{":
+                                brace_count += 1
+                            elif char == "}":
+                                brace_count -= 1
+                                if brace_count == 0:
+                                    cleaned_text = cleaned_text[:i+1]
+                                    break
+                
+                # Log the full raw response before JSON parsing to debug malformed JSON
+                logger.info(
+                    "Raw synthesis LLM response | Length: %d chars | First 500 chars: %s",
+                    len(cleaned_text),
+                    cleaned_text[:500]
+                )
+                logger.debug("Full synthesis LLM response:\n%s", cleaned_text)
+                
+                # Parse JSON
+                response_data = json.loads(cleaned_text)
+                
+                # Validate with Pydantic model
+                synthesis_response = QueryRefinementResponse(**response_data)
+                refined_query = synthesis_response.integrated_statement
+                
+                logger.info(
+                    "Successfully parsed and validated structured synthesis response"
+                )
+                self.trace_emitter.emit(
+                    "synthesis_response_parsed",
+                    metadata={
+                        "has_structured_response": True,
+                        "response_length": len(refined_query),
+                        "has_detail_values": bool(synthesis_response.dimensions_specifications),
+                        "detail_values_count": len(synthesis_response.dimensions_specifications) if synthesis_response.dimensions_specifications else 0,
+                    }
+                )
+            except json.JSONDecodeError as parse_error:
+                # JSON parsing failed - log detailed error
+                logger.warning(
+                    "JSON parsing failed: %s at line %d column %d (char %d)",
+                    parse_error.msg,
+                    parse_error.lineno,
+                    parse_error.colno,
+                    parse_error.pos
+                )
+                self.trace_emitter.emit(
+                    "synthesis_response_parse_failed",
+                    level="warning",
+                    metadata={
+                        "error_type": "JSONDecodeError",
+                        "error_message": str(parse_error),
+                        "error_line": parse_error.lineno,
+                        "error_column": parse_error.colno,
+                        "response_preview": cleaned_text[:200] if cleaned_text else "<empty>",
+                        "response_length": len(cleaned_text) if cleaned_text else 0,
+                    }
+                )
+                # Use raw response as fallback
+                if not refined_query or refined_query == cleaned_text:
+                    logger.warning("Using original query as fallback due to parsing failure")
+                    refined_query = session.original_query
+            except (ValueError, TypeError) as validation_error:
+                # Pydantic validation failed - JSON structure doesn't match schema
+                logger.warning(
+                    "Response validation failed: %s",
+                    validation_error
+                )
+                self.trace_emitter.emit(
+                    "synthesis_response_parse_failed",
+                    level="warning",
+                    metadata={
+                        "error_type": type(validation_error).__name__,
+                        "error_message": str(validation_error),
+                        "response_preview": cleaned_text[:200] if cleaned_text else "<empty>",
+                        "response_length": len(cleaned_text) if cleaned_text else 0,
+                    }
+                )
+                if not refined_query:
+                    logger.warning("LLM synthesis returned empty response; using original query")
+                    refined_query = session.original_query
 
         self.trace_emitter.emit(
             "query_synthesis_complete",

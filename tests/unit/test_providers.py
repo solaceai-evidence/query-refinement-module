@@ -246,3 +246,177 @@ def test_configure_file_logging_creates_directory(tmp_path):
         for handler in original_handlers:
             if handler not in root_logger.handlers:
                 root_logger.addHandler(handler)
+
+
+# ---------------------------------------------------------------------------
+# Constrained decoding (vLLM guided_json) tests
+# ---------------------------------------------------------------------------
+
+import pytest
+from unittest.mock import AsyncMock, patch
+
+from query_refinement_module.schema.response import (
+    DimensionEvaluationResponse,
+    QueryRefinementResponse,
+    SearchOptimized,
+    KeywordSearch,
+    SearchTerms,
+    SearchFilters,
+    Terminology,
+)
+
+
+def _make_qrr() -> QueryRefinementResponse:
+    """Minimal valid QueryRefinementResponse for testing."""
+    return QueryRefinementResponse(**{
+        "synthesized_statement": "Refined query for testing",
+        "refined_dimensions": {"population": "adults"},
+        "search_optimized": {
+            "semantic": "adults health outcomes",
+            "keyword": {
+                "structured": "adults AND health",
+                "phrases": ["health outcomes"],
+                "terms": {"required": ["adults"], "optional": [], "excluded": []},
+            },
+        },
+        "search_filters": {
+            "publication_years": "",
+            "venues": [],
+            "authors": [],
+            "publication_types": [],
+            "fields_of_study": [],
+        },
+        "terminology": {"synonyms": {}, "colloquial": []},
+    })
+
+
+@pytest.mark.asyncio
+async def test_litellm_provider_constrained_decoding_dimension():
+    """Pydantic model + constrained_decoding=True → guided_json in extra_body, no response_format."""
+    import query_refinement_module.providers.llm as llm_module
+
+    dim_json = '{"complete": true, "current": "adults 18-65", "question": ""}'
+    mock_response = {
+        "choices": [{"message": {"content": dim_json}}],
+        "usage": {"total_tokens": 42},
+        "id": "dim-test-1",
+    }
+
+    with patch.object(llm_module, "litellm") as mock_litellm:
+        mock_litellm.acompletion = AsyncMock(return_value=mock_response)
+
+        provider = LiteLLMProvider(
+            default_model="meta-llama/Llama-3.3-70B-Instruct",
+            constrained_decoding=True,
+            enable_circuit_breaker=False,
+        )
+        result = await provider.complete_async(
+            user_prompt="Evaluate dimension",
+            response_format=DimensionEvaluationResponse,
+        )
+
+    call_kwargs = mock_litellm.acompletion.call_args.kwargs
+    assert "extra_body" in call_kwargs
+    assert "guided_json" in call_kwargs["extra_body"]
+    assert "properties" in call_kwargs["extra_body"]["guided_json"]
+    assert "response_format" not in call_kwargs
+
+    assert isinstance(result.context, DimensionEvaluationResponse)
+    assert result.context.complete is True
+    assert result.context.current == "adults 18-65"
+
+
+@pytest.mark.asyncio
+async def test_litellm_provider_constrained_decoding_synthesis():
+    """QueryRefinementResponse + constrained_decoding=True → guided_json uses aliased schema keys."""
+    import query_refinement_module.providers.llm as llm_module
+
+    qrr = _make_qrr()
+    mock_response = {
+        "choices": [{"message": {"content": qrr.model_dump_json(by_alias=True)}}],
+        "usage": {"total_tokens": 120},
+        "id": "syn-test-1",
+    }
+
+    with patch.object(llm_module, "litellm") as mock_litellm:
+        mock_litellm.acompletion = AsyncMock(return_value=mock_response)
+
+        provider = LiteLLMProvider(
+            default_model="meta-llama/Llama-3.3-70B-Instruct",
+            constrained_decoding=True,
+            enable_circuit_breaker=False,
+        )
+        result = await provider.complete_async(
+            user_prompt="Synthesize",
+            response_format=QueryRefinementResponse,
+        )
+
+    call_kwargs = mock_litellm.acompletion.call_args.kwargs
+    guided = call_kwargs["extra_body"]["guided_json"]
+    # Schema must use alias keys so it matches what the synthesis prompt instructs the LLM to produce
+    props = guided.get("properties", guided.get("$defs", {}).get("QueryRefinementResponse", {}).get("properties", {}))
+    assert "synthesized_statement" in props or any(
+        "synthesized_statement" in str(v) for v in guided.values()
+    ), "guided_json schema must use aliased field name 'synthesized_statement'"
+    assert "response_format" not in call_kwargs
+
+    assert isinstance(result.context, QueryRefinementResponse)
+    assert result.context.integrated_statement == "Refined query for testing"
+
+
+@pytest.mark.asyncio
+async def test_litellm_provider_constrained_decoding_json_object_fallback():
+    """constrained_decoding=True with {\"type\": \"json_object\"} dict falls back to response_format."""
+    import query_refinement_module.providers.llm as llm_module
+
+    mock_response = {
+        "choices": [{"message": {"content": '{"answer": 42}'}}],
+        "usage": {"total_tokens": 10},
+        "id": "fallback-test-1",
+    }
+
+    with patch.object(llm_module, "litellm") as mock_litellm:
+        mock_litellm.acompletion = AsyncMock(return_value=mock_response)
+
+        provider = LiteLLMProvider(
+            default_model="meta-llama/Llama-3.3-70B-Instruct",
+            constrained_decoding=True,
+            enable_circuit_breaker=False,
+        )
+        result = await provider.complete_async(
+            user_prompt="Give me JSON",
+            response_format={"type": "json_object"},
+        )
+
+    call_kwargs = mock_litellm.acompletion.call_args.kwargs
+    assert call_kwargs["response_format"] == {"type": "json_object"}
+    assert "extra_body" not in call_kwargs or "guided_json" not in call_kwargs.get("extra_body", {})
+
+
+@pytest.mark.asyncio
+async def test_litellm_provider_no_regression_constrained_decoding_off():
+    """constrained_decoding=False (default) with Pydantic model uses standard litellm response_format path."""
+    import query_refinement_module.providers.llm as llm_module
+
+    mock_response = {
+        "choices": [{"message": {"content": '{"complete": true, "current": "val", "question": ""}'}}],
+        "usage": {"total_tokens": 20},
+        "id": "no-reg-1",
+    }
+
+    with patch.object(llm_module, "litellm") as mock_litellm:
+        mock_litellm.acompletion = AsyncMock(return_value=mock_response)
+
+        provider = LiteLLMProvider(
+            default_model="anthropic/claude-sonnet-4-20250514",
+            constrained_decoding=False,
+            enable_circuit_breaker=False,
+        )
+        await provider.complete_async(
+            user_prompt="Evaluate",
+            response_format=DimensionEvaluationResponse,
+        )
+
+    call_kwargs = mock_litellm.acompletion.call_args.kwargs
+    assert call_kwargs["response_format"] is DimensionEvaluationResponse
+    assert "extra_body" not in call_kwargs or "guided_json" not in call_kwargs.get("extra_body", {})

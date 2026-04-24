@@ -703,3 +703,49 @@ async def test_run_full_refinement_processes_steps():
     # This may not work as expected - we'll process manually instead
     result = await manager.process_next_step(session)
     assert step.is_complete
+
+
+@pytest.mark.asyncio
+async def test_synthesize_refined_query_uses_preparsed_context():
+    """When the provider returns a QueryRefinementResponse as result.context (vLLM / native structured
+    output), synthesize_refined_query must use it directly without attempting json.loads."""
+    from query_refinement_module.schema.response import (
+        QueryRefinementResponse,
+        SearchOptimized,
+        KeywordSearch,
+        SearchTerms,
+        SearchFilters,
+        Terminology,
+    )
+
+    preparsed = QueryRefinementResponse(**{
+        "synthesized_statement": "Pre-parsed integrated statement",
+        "refined_dimensions": {"population": "adults 18-65"},
+        "search_optimized": {
+            "semantic": "adults 18-65 health outcomes",
+            "keyword": {
+                "structured": "adults AND (18-65)",
+                "phrases": ["adults 18-65"],
+                "terms": {"required": ["adults"], "optional": [], "excluded": []},
+            },
+        },
+        "search_filters": {
+            "publication_years": "",
+            "venues": [],
+            "authors": [],
+            "publication_types": [],
+            "fields_of_study": [],
+        },
+        "terminology": {"synonyms": {}, "colloquial": []},
+    })
+
+    # StubLLMProvider wraps non-LLMCompletionResult items in DummyCompletionResult.
+    # Passing the QueryRefinementResponse directly makes result.context a QueryRefinementResponse.
+    manager = build_manager(responses=[preparsed])
+    session = RefinementSession(original_query="original query")
+
+    result = await manager.synthesize_refined_query(session)
+
+    assert result["used_llm"]
+    assert result["integrated_statement"] == "Pre-parsed integrated statement"
+    assert result["dimensions_specifications"] == {"population": "adults 18-65"}

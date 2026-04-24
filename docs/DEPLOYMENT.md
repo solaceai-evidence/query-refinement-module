@@ -37,6 +37,58 @@ Routing model:
 - Network access to your LLM provider
 - Optional for local development: Python 3.12+, Poetry, Node.js 20+
 
+## LLM provider configuration
+
+The API service connects to an LLM provider via LiteLLM.  Three pre-filled
+environment templates are provided:
+
+| Template      | Provider                                  | `CONSTRAINED_DECODING` |
+| ------------- | ----------------------------------------- | ---------------------- |
+| `.env.prod`   | Anthropic Claude (cloud, default)         | `false`                |
+| `.env.ollama` | Ollama (local CPU/GPU)                    | `false`                |
+| `.env.vllm`   | vLLM self-hosted OpenAI-compatible server | `true`                 |
+
+### Switching to vLLM
+
+1. Start a vLLM server (requires GPU and the `vllm` package):
+
+```bash
+vllm serve meta-llama/Llama-3.3-70B-Instruct \
+  --port 8000 --dtype bfloat16 --max-model-len 16384
+# Verify: curl http://localhost:8000/v1/models
+```
+
+2. Copy the template and configure:
+
+```bash
+cp .env.vllm .env
+# Set QUERY_REFINEMENT_LLM_API_BASE to match your vLLM server address
+# Set QUERY_REFINEMENT_LLM_MODEL to match the loaded model
+```
+
+Key vLLM-specific settings:
+
+| Variable                                    | Required value          | Notes                                               |
+| ------------------------------------------- | ----------------------- | --------------------------------------------------- |
+| `QUERY_REFINEMENT_LLM_API_BASE`             | `http://<host>:8000/v1` | Must point at the vLLM server                       |
+| `QUERY_REFINEMENT_LLM_API_KEY`              | `EMPTY`                 | Conventional placeholder for local servers          |
+| `QUERY_REFINEMENT_LLM_CONSTRAINED_DECODING` | `true`                  | Sends `guided_json` schema in every structured call |
+| `QUERY_REFINEMENT_ENABLE_PROMPT_CACHING`    | `false`                 | Anthropic-specific feature; disable for vLLM        |
+
+> **Warning:** `QUERY_REFINEMENT_LLM_CONSTRAINED_DECODING=true` must only be
+> set when the API base points at a vLLM server.  Setting it for
+> Anthropic / OpenAI / Ollama will break structured output for those providers.
+
+### Constrained decoding behaviour
+
+When `CONSTRAINED_DECODING=true`, the provider injects the full Pydantic JSON
+Schema as `extra_body={"guided_json": <schema>}` in every structured LLM
+call.  vLLM enforces the schema at the token level, guaranteeing
+structurally valid output from both the dimension evaluation and synthesis
+stages without any post-hoc JSON repair.
+
+---
+
 ## Environment configuration
 
 1. Copy production template:

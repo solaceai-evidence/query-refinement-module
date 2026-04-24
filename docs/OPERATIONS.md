@@ -2,6 +2,57 @@
 
 This guide covers routine tasks and checks.
 
+## Switching LLM backends
+
+Three env templates cover the supported backends:
+
+| Template      | Provider                 | Constrained decoding |
+| ------------- | ------------------------ | -------------------- |
+| `.env.prod`   | Anthropic Claude (cloud) | off                  |
+| `.env.ollama` | Ollama (local)           | off                  |
+| `.env.vllm`   | vLLM (self-hosted)       | **on**               |
+
+To switch, copy the relevant template to `.env` and restart the API container:
+
+```bash
+cp .env.vllm .env
+docker compose -f docker-compose.yml -f docker-compose.prod.yml up -d --build api
+```
+
+### Verifying constrained decoding is active
+
+When `QUERY_REFINEMENT_LLM_CONSTRAINED_DECODING=true` the API logs will show
+`guided_json` schema injection for every structured call.  Confirm at runtime:
+
+```bash
+docker compose -f docker-compose.yml -f docker-compose.prod.yml logs api | grep guided_json
+```
+
+If constrained decoding is active but the vLLM server is unreachable, the
+`/ready` endpoint will report unhealthy:
+
+```bash
+curl -f http://localhost:8001/ready
+```
+
+### vLLM server diagnostics
+
+```bash
+# Confirm the vLLM server is up and serving the expected model
+curl http://localhost:8000/v1/models
+
+# Test a raw structured call with guided_json
+curl -X POST http://localhost:8000/v1/chat/completions \
+  -H 'Content-Type: application/json' \
+  -d '{
+    "model": "meta-llama/Llama-3.3-70B-Instruct",
+    "messages": [{"role": "user", "content": "Reply with valid JSON only: {\"complete\": true, \"current\": \"test\", \"question\": \"\"}"}],
+    "guided_json": {"type": "object", "properties": {"complete": {"type": "boolean"}, "current": {"type": "string"}, "question": {"type": "string"}}, "required": ["complete", "current", "question"]}
+  }'
+```
+
+---
+
 ## Runtime Modes
 
 The service now supports two practical runtime channels:
