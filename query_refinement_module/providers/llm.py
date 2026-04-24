@@ -358,12 +358,18 @@ class LiteLLMProvider(LLMProviderInterface):
                 
                 # Define the LLM call as an async function for circuit breaker wrapping
                 async def make_llm_call():
+                    # When api_base is set (vLLM / Ollama), LiteLLM constructs
+                    # its own AsyncOpenAI client internally and would try to
+                    # read .api_key from any client we pass — which fails for
+                    # httpx.AsyncClient.  Only pass our pooled client when
+                    # using a cloud provider with no custom base URL.
+                    http_client = None if self._api_base else self._http_client
                     return await litellm.acompletion(
                         model=target_model,
                         messages=messages_list,
                         api_key=self._api_key,
                         api_base=self._api_base,
-                        client=self._http_client,  # Use persistent HTTP client if available
+                        client=http_client,
                         **completion_kwargs,
                     )
                 
