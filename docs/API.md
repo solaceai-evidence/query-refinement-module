@@ -45,6 +45,112 @@ Start response includes: `session_id`, `query_id`, `summary`, optional `next_pro
 - `SubmitAnswerResponse` for normal answers (includes `ready_for_synthesis`)
 - `CommandResponse` for slash commands (includes optional `synthesis_ready` when using `/submit` or `/end`)
 
+### Refinement response shapes
+
+The workflow endpoints return different response envelopes depending on the step.
+
+#### `POST /api/v1/refinement/start`
+
+Returns `StartRefinementResponse` with these fields:
+
+- `session_id`: database session ID
+- `query_id`: database query ID
+- `summary`: initialization summary for the new workflow
+- `next_prompt`: the first refinement question, or `null` if the workflow is already complete
+- `ready_for_synthesis`: `true` when no more refinement questions are needed
+- `source`: `gui` or `api_integration`
+- `synthesis`: present only when `skip_refinement=true`; contains the same synthesis envelope returned by `/refinement/synthesize`
+
+`summary` is a compact object that reports the overall workflow state. Clients should expect counts such as:
+
+- `total_aspects`
+- `aspects_needing_refinement`
+- `aspects_clear`
+- `is_complete`
+
+`next_prompt` is the next question the client should display to the user. It uses this shape:
+
+```json
+{
+	"aspect_id": "population",
+	"name": "Population",
+	"question": "Which population are you focusing on?",
+	"description": "Target population characteristics"
+}
+```
+
+#### `POST /api/v1/refinement/queries/{query_id}/answer`
+
+This endpoint is polymorphic. The response depends on whether the submitted text is a normal answer or a slash command.
+
+Normal answers return `SubmitAnswerResponse`:
+
+- `refinement_step_id`: refinement step record ID
+- `followup_id`: follow-up record ID
+- `is_complete`: whether the current aspect is complete
+- `next_prompt`: the next question, or `null` if no follow-up is needed
+- `ready_for_synthesis`: `true` when all aspects are complete and the workflow can move to synthesis
+
+Slash commands return `CommandResponse`:
+
+- `command_type`: the parsed command name such as `status`, `back`, `skip`, `submit`, or `steps`
+- `success`: whether the command executed successfully
+- `message`: human-readable feedback
+- `next_prompt`: the next question after the command, or `null`
+- `invalidated_aspects`: aspect IDs that were reset or marked for review
+- `synthesis_ready`: `true` when `/submit` or `/end` has completed the workflow
+- `step_summary`: present for `/status`
+- `step_list`: present for `/steps`
+- `force_required`: `true` when the command needs `force=true` to continue
+
+`next_prompt` uses the same shape as the start response. When returned after a command, it can be used directly by the UI without extra transformation.
+
+#### `GET /api/v1/refinement/queries/{query_id}/status`
+
+Returns `GetRefinementStatusResponse` with these fields:
+
+- `query_id`: query record ID
+- `original_query`: the original user question
+- `refined_query`: the latest refined statement, or `null` if synthesis has not completed
+- `is_complete`: whether the workflow is fully complete
+- `current_aspect`: the current aspect being refined, or `null`
+- `aspects_summary`: overall workflow summary
+- `next_prompt`: the next question, or `null`
+- `ready_for_synthesis`: `true` when synthesis can be started
+- `aspects`: per-aspect status records
+- `conversation_history`: the UI restoration history for the session
+
+The `aspects` array contains lightweight status objects such as:
+
+```json
+{
+	"aspect_id": "population",
+	"name": "Population",
+	"is_complete": false,
+	"needs_review": false,
+	"was_skipped": false,
+	"status": "active"
+}
+```
+
+The `conversation_history` array is ordered and contains the visible interaction trail. Typical items include:
+
+- `type`: `query`, `question`, or `answer`
+- `content`: the message text
+- `aspectId`: optional aspect identifier
+- `aspectName`: optional display label
+
+#### `POST /api/v1/refinement/synthesize`
+
+Returns `SynthesizeQueryResponse` with these fields:
+
+- `query_id`: query record ID
+- `integrated_statement`: the final refined statement
+- `used_llm`: whether synthesis used the LLM path
+- `structured_output`: optional structured result for clients that need search-ready fields
+
+The detailed `structured_output` contract is described below.
+
 ### Generic external integration snippet
 
 ```bash
@@ -246,16 +352,67 @@ Command-specific fields to expect:
 	"integrated_statement": "In adults over 65, compare aspirin versus placebo for stroke prevention.",
 	"used_llm": true,
 	"structured_output": {
-		"search_optimized": {},
-		"search_filters": {},
-		"terminology": {}
+		"dimensions_specifications": {
+			"population": "Adults over 65",
+			"intervention": "Aspirin",
+			"comparator": "Placebo",
+			"outcome": "Stroke prevention"
+		},
+		"search_optimized": {
+			"semantic": "Studies of aspirin compared with placebo for stroke prevention in adults over 65.",
+			"keyword": {
+				"structured": "(aspirin OR acetylsalicylic acid) AND (placebo OR control) AND (stroke prevention OR cerebrovascular accident prevention)",
+				"phrases": ["stroke prevention", "older adults", "aspirin trial"],
+				"terms": {
+					"required": ["aspirin", "stroke", "placebo"],
+					"optional": ["acetylsalicylic acid", "cerebrovascular", "older adults"],
+					"excluded": []
+				}
+			},
+			"research_elements": {
+				"subject": "Adults over 65",
+				"phenomenon": "Aspirin",
+				"context": "",
+				"location": "",
+				"comparator": "Placebo",
+				"outcome": "Stroke prevention",
+				"perspective": ""
+			}
+		},
+		"search_filters": {
+			"publication_years": "2020-2026",
+			"venues": [],
+			"authors": [],
+			"publication_types": [],
+			"fields_of_study": ["Medicine", "Public Health"]
+		},
+		"terminology": {
+			"synonyms": {
+				"aspirin": ["acetylsalicylic acid", "ASA"],
+				"placebo": ["sham", "control"],
+				"stroke prevention": ["cerebrovascular prevention", "stroke prophylaxis"]
+			},
+			"hyponyms": {
+				"aspirin": ["low-dose aspirin", "enteric-coated aspirin"],
+				"stroke": ["ischemic stroke", "hemorrhagic stroke"]
+			}
+		}
 	}
 }
 ```
 
 Notes:
 
-- `structured_output` can be `null`.
+- `structured_output` can be `null` when the service cannot derive a structured payload from the synthesis result.
+- When present, `structured_output` is a JSON object with four sections:
+  - `dimensions_specifications`: the refined value for each dimension, keyed by dimension id
+  - `search_optimized`: retrieval-ready search text and metadata, including `semantic`, `keyword`, and `research_elements`
+  - `search_filters`: optional narrowing filters such as year range, venues, authors, publication types, and fields of study
+  - `terminology`: synonym and hyponym mappings used to expand recall during search construction
+- `search_optimized.keyword.terms.required` contains the smallest set of anchors that should remain in the query.
+- `search_optimized.keyword.terms.optional` contains precision-raising terms.
+- `search_optimized.keyword.terms.excluded` contains only true confounders, not close variants of the target concept.
+- `research_elements` is intentionally concise and may contain empty strings for fields that do not apply.
 
 #### `POST /api/v1/refinement/queries/{query_id}/forward-to-qa` (200)
 
