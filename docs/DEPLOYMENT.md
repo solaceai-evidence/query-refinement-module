@@ -1,24 +1,60 @@
 # Deployment Guide
 
-This guide covers local development and production deployment for the Query Refinement Module.
+This guide is written for someone who needs to put the application on a server and make it available to users. It starts with the simplest production setup and explains the settings in plain language.
+
+## Before You Start
+
+For a normal production deployment, you will need:
+
+- Docker Engine and the Docker Compose plugin on the server
+- A copy of the production environment file (`.env.prod`)
+- Values for the database, AI provider, and website addresses
+- A writable location for logs
+
+## Quick Production Setup
+
+1. Copy the production environment file:
+
+```bash
+cp .env.prod .env
+```
+
+2. Edit `.env` and set these required values:
+
+- `SECRET_KEY` - protects login sessions
+- `QUERY_REFINEMENT_LLM_API_KEY` - lets the app talk to your AI provider
+- `POSTGRES_USER`, `POSTGRES_PASSWORD`, `POSTGRES_DB` - database login details
+- `ALLOWED_ORIGINS` - the browser addresses allowed to use the app
+
+3. If users should be able to create their own accounts, set `ALLOW_REGISTRATION=true`. Otherwise leave it at `false`.
+
+4. If outside systems will call the API directly, set `INTEGRATION_API_KEY` and, optionally, `INTEGRATION_SERVICE_USERNAME`.
+
+5. Start the production stack:
+
+```bash
+docker compose -f docker-compose.yml -f docker-compose.prod.yml up -d --build
+```
+
+6. Open the site in a browser and check that the homepage, login page, and API docs load correctly.
 
 ## Pre-deployment checklist
 
 Before starting, verify the following:
 
-- Docker Engine and Docker Compose plugin are installed on the VM
-- Copy `.env.prod` to `.env` and fill in all placeholder values
-- Required secrets are set: `SECRET_KEY`, `QUERY_REFINEMENT_LLM_API_KEY`
-- Database values are set: `POSTGRES_USER`, `POSTGRES_PASSWORD`, `POSTGRES_DB`
-- `ALLOWED_ORIGINS` includes all browser-facing hostnames
-- `ALLOW_REGISTRATION=false` unless self-signup is explicitly required
-- `ENFORCE_WORKFLOW_LIMIT` is set: `true` for one-workflow-per-user evaluation; `false` for unlimited
-- For server-to-server integrations: `INTEGRATION_API_KEY` is set
+- Docker Engine and Docker Compose plugin are installed on the server
+- `.env.prod` has been copied to `.env`
+- `SECRET_KEY` and `QUERY_REFINEMENT_LLM_API_KEY` are set
+- `POSTGRES_USER`, `POSTGRES_PASSWORD`, and `POSTGRES_DB` are set
+- `ALLOWED_ORIGINS` includes every browser address that should be allowed to use the app
+- `ALLOW_REGISTRATION=false` unless self-signup is needed
+- `ENFORCE_WORKFLOW_LIMIT` is set to the intended operating mode
+- `INTEGRATION_API_KEY` is set if other systems will call the API
 - Host paths exist and are writable: `./logs`, `./logs/nginx`
-- If port `5432` or `6379` is already in use on the host, override with `POSTGRES_PORT` / `REDIS_PORT` in `.env`
-- Inbound ports `80` and `443` are open; port `8001` is optional (direct API access)
+- If port `5432` or `6379` is already in use, override with `POSTGRES_PORT` / `REDIS_PORT` in `.env`
+- Inbound ports `80` and `443` are open; port `8001` is optional for direct API access
 
-## Production topology
+## What Runs in Production
 
 - `docker-compose.yml` (base services): `postgres`, `redis`, `api`
 - `docker-compose.prod.yml` (production overrides): adds `frontend`, `nginx`
@@ -37,7 +73,7 @@ Routing model:
 - Network access to your LLM provider
 - Optional for local development: Python 3.12+, Poetry, Node.js 20+
 
-## LLM provider configuration
+## LLM Provider Configuration
 
 The API service connects to an LLM provider via LiteLLM.  Three pre-filled
 environment templates are provided:
@@ -76,8 +112,8 @@ Key vLLM-specific settings:
 | `QUERY_REFINEMENT_ENABLE_PROMPT_CACHING`    | `false`                 | Anthropic-specific feature; disable for vLLM        |
 
 > **Warning:** `QUERY_REFINEMENT_LLM_CONSTRAINED_DECODING=true` must only be
-> set when the API base points at a vLLM server.  Setting it for
-> Anthropic / OpenAI / Ollama will break structured output for those providers.
+> set when the API base points at a vLLM server. Setting it for Anthropic,
+> OpenAI, or Ollama will break structured output.
 
 ### Constrained decoding behaviour
 
@@ -89,9 +125,9 @@ stages without any post-hoc JSON repair.
 
 ---
 
-## Environment configuration
+## Environment Configuration
 
-1. Copy production template:
+1. Copy production template if you have not already done so:
 
 ```bash
 cp .env.prod .env
@@ -116,7 +152,7 @@ If external systems call refinement APIs without user JWT login, also set:
 - `INTEGRATION_API_KEY`
 - `INTEGRATION_SERVICE_USERNAME` (optional; default is `api_integration_service`)
 
-Important: if you add/change these values, restart the API process/container. If not restarted, integration requests may return `401 Not authenticated` even though `.env` was updated.
+Important: if you change these values, restart the API process or container. If not restarted, integration requests may return `401 Not authenticated` even though `.env` was updated.
 
 3. Strongly recommended production settings:
 
@@ -142,12 +178,12 @@ Recommended values by operating mode:
 - `LLM_MAX_CONCURRENT_PER_USER`
 - `WORKERS`
 
-## VM Microservice Deployment Runbook
+## Deployment Runbook
 
-### Step 1: Host preflight
+### Step 1: Check the server
 
 - Ensure ports `80` and `443` are allowed inbound
-- Decide whether port `8001` should be externally reachable; restrict at firewall if not needed
+- Decide whether port `8001` should be externally reachable; restrict it at the firewall if not needed
 - Create writable directories: `./logs`, `./logs/nginx`
 - If host services already use `5432`/`6379`, set `POSTGRES_PORT`/`REDIS_PORT` in `.env` (for example `5433`/`6380`)
 
@@ -157,11 +193,11 @@ Optional preflight validator:
 bash scripts/validate_deployment.sh
 ```
 
-### Step 2: Start stack
+### Step 2: Start the stack
 
 Choose one deployment mode:
 
-#### Mode A: HTTP (API-only, no nginx)
+#### Mode A: HTTP (API only, no nginx)
 
 ```bash
 docker compose -f docker-compose.yml up -d --build
@@ -175,21 +211,21 @@ Use this for internal testing or local-only access on port `8001`.
 docker compose -f docker-compose.yml -f docker-compose.prod.yml up -d --build
 ```
 
-Use this when you want TLS termination at nginx but are not exposing a public domain yet (for example, direct IP testing with a self-signed certificate).
+Use this when you want TLS termination at nginx but are not exposing a public domain yet. This is useful for direct IP testing with a self-signed certificate.
 
-#### Mode C: HTTPS + Domain (recommended for evaluators/integrations)
+#### Mode C: HTTPS + domain (recommended for evaluators and integrations)
 
 ```bash
 docker compose -f docker-compose.yml -f docker-compose.prod.yml up -d --build
 ```
 
-Use this with DNS + valid certificates (for example, `query-refinement-assistant.cloud`).
+Use this with DNS and valid certificates (for example, `query-refinement-assistant.cloud`).
 
-### Step 3: Verify services and health
+### Step 3: Verify the services
 
 Run checks for the mode you started:
 
-#### Mode A: HTTP (API-only)
+#### Mode A: HTTP (API only)
 
 ```bash
 docker compose -f docker-compose.yml ps
@@ -207,7 +243,7 @@ curl -k -f https://localhost/health
 curl -f http://localhost:8001/ready
 ```
 
-#### Mode C: HTTPS + Domain
+#### Mode C: HTTPS + domain
 
 ```bash
 docker compose -f docker-compose.yml -f docker-compose.prod.yml ps
@@ -217,14 +253,14 @@ curl -f http://localhost/nginx-health
 curl -f http://localhost:8001/ready
 ```
 
-Interpretation:
+What the checks mean:
 
 - HTTP mode uses API endpoints directly on `:8001`
-- In HTTPS modes, `http://.../health` should return `301` redirect to HTTPS
-- `/nginx-health` confirms local nginx container liveness (used by container healthcheck in prod compose)
-- `/ready` confirms API dependency readiness (DB/Redis/etc.)
+- In HTTPS modes, `http://.../health` should return a redirect to HTTPS
+- `/nginx-health` confirms the nginx container is alive
+- `/ready` confirms API dependency readiness such as the database and Redis
 
-### Step 4: Functional smoke checks
+### Step 4: Run a quick smoke test
 
 Use the appropriate base URL:
 
@@ -253,7 +289,7 @@ Notes:
 - For Mode B, add `-k` to curl commands if using self-signed certs.
 - For Mode C, replace `<base-url>` with `https://query-refinement-assistant.cloud`.
 
-### Step 5: Observe runtime
+### Step 5: Watch the logs
 
 ```bash
 docker compose -f docker-compose.yml -f docker-compose.prod.yml logs -f api

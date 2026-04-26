@@ -1,11 +1,7 @@
 # Query Refinement Module
 
-A web-based tool that guides users through a structured conversation to clarify and refine a research question. The tool asks targeted questions across the key dimensions of a chosen research framework (for example, PICO for medical research), then produces a refined, coherent research statement.
+A web-based tool that helps people turn a rough research idea into a clearer question. It asks a short series of guided questions based on a chosen refinement framework, then produces a refined statement that is more focused to use for a literature search or project plan.
 
-The tool is intended for:
-- MPH students refining dissertation topics using the MPH Dissertation framework
-- Systematic reviewers structuring evidence synthesis questions using the PICO framework
-- Any researcher who needs to sharpen a research question before searching the literature
 
 ## Using the web application
 
@@ -38,7 +34,7 @@ The tool is intended for:
 ### Backend
 
 ```bash
-poetry install
+poetry install --with dev
 cp .env.example .env
 # Edit .env and set QUERY_REFINEMENT_LLM_API_KEY
 poetry run alembic upgrade head
@@ -57,11 +53,35 @@ npm run dev
 
 Frontend available at: http://localhost:5173
 
-## Production deployment (Docker)
+## Production deployment
+
+The simplest deployment path is Docker. This is the recommended option if you are putting the app on a server for other people to use.
+
+1. Install Docker and the Docker Compose plugin on the target server.
+2. Copy the production environment file and fill in the values:
+
+```bash
+cp .env.prod .env
+```
+
+3. In `.env`, set the values that make the app safe and usable in your environment:
+
+- `SECRET_KEY`
+- `QUERY_REFINEMENT_LLM_API_KEY`
+- `POSTGRES_USER`
+- `POSTGRES_PASSWORD`
+- `POSTGRES_DB`
+- `ALLOWED_ORIGINS`
+
+4. Start the stack:
 
 ```bash
 docker compose -f docker-compose.yml -f docker-compose.prod.yml up -d
 ```
+
+5. Open the site in your browser and check the app, API docs, and sign-in flow.
+
+If you are deploying against a local AI server instead of a hosted provider, use `.env.ollama` or `.env.vllm` as the starting point instead of `.env.prod`.
 
 See [docs/DEPLOYMENT.md](docs/DEPLOYMENT.md) for the full deployment guide.
 

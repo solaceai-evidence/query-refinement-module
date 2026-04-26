@@ -33,6 +33,8 @@ python-multipart = "^0.0.22"  # Updated for multipart parsing improvements
 pydantic-settings = "^2.12.0"
 email-validator = "^2.3.0"
 bcrypt = ">=4.0.0,<5.0.0"  # Keep Python 3.12-compatible range; passlib warning is non-fatal
+jinja2 = "^3.1.6"
+requests = "^2.32.4"
 # Production dependencies
 psycopg2-binary = "^2.9.9"  # PostgreSQL adapter
 gunicorn = "^25.0.0"  # Updated production WSGI server for performance
