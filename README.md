@@ -168,6 +168,54 @@ enforcing schema-conformant output at the token level.  This option must only
 be set when `QUERY_REFINEMENT_LLM_API_BASE` points at a vLLM server — it
 will break structured output for Anthropic, OpenAI, and Ollama.
 
+### Agent setup
+
+If you are using this repository in Agent mode, pick one of these local model
+backends and copy the matching environment file to `.env`.
+
+#### Option 1: Ollama
+
+Use this if you already have Ollama installed and want a simple local setup.
+
+```bash
+ollama pull llama3.3:70b
+cp .env.ollama-llama3.3-70b .env
+```
+
+Set the API base to Ollama's default endpoint if it is not already set:
+
+```dotenv
+QUERY_REFINEMENT_LLM_API_BASE=http://localhost:11434
+QUERY_REFINEMENT_LLM_API_KEY=
+QUERY_REFINEMENT_LLM_CONSTRAINED_DECODING=false
+```
+
+#### Option 2: vLLM
+
+Use this if you have GPU resources and want the OpenAI-compatible vLLM server.
+
+```bash
+pip install vllm
+vllm serve meta-llama/Llama-3.3-70B-Instruct \
+  --port 8000 --dtype bfloat16 --max-model-len 16384
+cp .env.vllm .env
+```
+
+Then point the app at the vLLM server:
+
+```dotenv
+QUERY_REFINEMENT_LLM_MODEL=openai/meta-llama/Llama-3.3-70B-Instruct
+QUERY_REFINEMENT_LLM_API_BASE=http://localhost:8000/v1
+QUERY_REFINEMENT_LLM_API_KEY=EMPTY
+QUERY_REFINEMENT_LLM_CONSTRAINED_DECODING=true
+```
+
+Verify the server before starting the app:
+
+```bash
+curl http://localhost:8000/v1/models
+```
+
 ## Architecture: how the LLM pipeline works
 
 Understanding this helps when choosing a provider and diagnosing unexpected output.
