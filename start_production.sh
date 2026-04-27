@@ -63,8 +63,13 @@ print_info "Checking required environment variables..."
 
 required_vars=(
     "SECRET_KEY"
-    "QUERY_REFINEMENT_LLM_API_KEY"
 )
+
+# API key is only required for cloud providers (Anthropic, OpenAI).
+# Self-hosted backends (Ollama, vLLM) set an empty or placeholder value.
+if [ -z "${QUERY_REFINEMENT_LLM_API_BASE:-}" ]; then
+    required_vars+=("QUERY_REFINEMENT_LLM_API_KEY")
+fi
 
 missing_vars=()
 for var in "${required_vars[@]}"; do
@@ -168,7 +173,7 @@ echo "  Environment: ${ENVIRONMENT:-development}"
 echo "  Database: ${EFFECTIVE_DATABASE_URL#*@}"  # Hide credentials
 echo "  Redis: ${REDIS_URL:-not configured}"
 echo "  Workers: ${WORKERS:-4}"
-echo "  Worker Timeout: ${WORKER_TIMEOUT:-120}s"
+  echo "  Worker Timeout: ${WORKER_TIMEOUT:-180}s"
 echo "  Log Level: ${LOG_LEVEL:-INFO}"
 echo "  Log Format: ${LOG_FORMAT:-json}"
 echo "  CORS Origins: ${ALLOWED_ORIGINS:-localhost}"

@@ -7,10 +7,13 @@ echo ""
 # Check if .env file exists
 if [ ! -f ".env" ]; then
     echo "Warning: .env file not found"
-    echo "   Creating from .env.example..."
-    cp .env.example .env
-    echo "Please edit .env with your API keys and settings"
+    echo "   Pick the template that matches your LLM provider:"
+    echo "     cp .env.prod   .env   # Anthropic Claude (cloud)"
+    echo "     cp .env.ollama .env   # Ollama (local)"
+    echo "     cp .env.vllm   .env   # vLLM (self-hosted GPU)"
+    echo "   Then set QUERY_REFINEMENT_LLM_API_KEY (cloud) or verify API_BASE (local)"
     echo ""
+    exit 1
 fi
 
 # Check if REFINEMENT_FRAMEWORK_PATH is set in .env
