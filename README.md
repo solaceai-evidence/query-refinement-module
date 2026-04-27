@@ -35,8 +35,10 @@ A web-based tool that helps people turn a rough research idea into a clearer que
 
 ```bash
 poetry install --with dev
-cp .env.example .env
-# Edit .env and set QUERY_REFINEMENT_LLM_API_KEY
+# .env is pre-configured for Anthropic Claude — just set your API key:
+#   Edit .env: set QUERY_REFINEMENT_LLM_API_KEY=<your-key>
+# For local Ollama: cp .env.ollama .env
+# For self-hosted vLLM: cp .env.vllm .env
 poetry run alembic upgrade head
 poetry run uvicorn query_refinement_module.api.main:app --reload
 ```
@@ -113,7 +115,7 @@ Key environment variables (copy `.env.example` to `.env` and fill in values):
 | Variable                                    | Description                                                                                       |
 | ------------------------------------------- | ------------------------------------------------------------------------------------------------- |
 | `QUERY_REFINEMENT_LLM_API_KEY`              | API key for the LLM provider (use `EMPTY` for local vLLM)                                         |
-| `QUERY_REFINEMENT_LLM_MODEL`                | Model identifier (default: `claude-sonnet-4-20250514`)                                            |
+| `QUERY_REFINEMENT_LLM_MODEL`                | Model identifier (default: `anthropic/claude-sonnet-4-6`)                                         |
 | `QUERY_REFINEMENT_LLM_API_BASE`             | Base URL for the LLM API; omit for Anthropic/OpenAI, set for vLLM/Ollama                          |
 | `QUERY_REFINEMENT_LLM_CONSTRAINED_DECODING` | `true` to enable vLLM guided JSON decoding — **vLLM only**; leave `false` for all other providers |
 | `SECRET_KEY`                                | Secret key for session tokens — change this in production                                         |
@@ -132,11 +134,12 @@ After changing these values, restart the API process or container.
 
 Three pre-filled environment templates are provided:
 
-| File          | Provider                 | Constrained decoding |
-| ------------- | ------------------------ | -------------------- |
-| `.env.prod`   | Anthropic Claude (cloud) | off                  |
-| `.env.ollama` | Ollama (local)           | off                  |
-| `.env.vllm`   | vLLM (self-hosted)       | **on**               |
+| File          | Provider                | Constrained decoding |
+| ------------- | ----------------------- | -------------------- |
+| `.env`        | Anthropic Claude (dev)  | off                  |
+| `.env.prod`   | Anthropic Claude (prod) | off                  |
+| `.env.ollama` | Ollama (local)          | off                  |
+| `.env.vllm`   | vLLM (self-hosted)      | **on**               |
 
 To switch to vLLM:
 

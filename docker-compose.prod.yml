@@ -79,11 +79,6 @@ services:
       WORKER_TIMEOUT: "180"
       MAX_REQUESTS: "3000"
       MAX_REQUESTS_JITTER: "300"
-      
-      # Enable all production features
-      ENABLE_METRICS: "true"
-      ENABLE_TRACING: "true"
-      SANITIZE_PII: "true"
     volumes:
       # Read-only mounts for security
       - ./refinement_frameworks:/app/refinement_frameworks:ro
