@@ -35,10 +35,11 @@ A web-based tool that helps people turn a rough research idea into a clearer que
 
 ```bash
 poetry install --with dev
-# .env is pre-configured for Anthropic Claude — just set your API key:
-#   Edit .env: set QUERY_REFINEMENT_LLM_API_KEY=<your-key>
-# For local Ollama: cp .env.ollama .env
-# For self-hosted vLLM: cp .env.vllm .env
+# Pick the template for your LLM provider:
+#   cp .env.anthropic-claude-sonnet-4-6 .env   # Anthropic Claude (cloud)
+#   cp .env.ollama-llama3.3-70b .env           # Ollama — Llama 3.3 70B (local)
+#   cp .env.vllm .env                          # vLLM (self-hosted GPU)
+# Then set QUERY_REFINEMENT_LLM_API_KEY (cloud) or verify API_BASE (local)
 poetry run alembic upgrade head
 poetry run uvicorn query_refinement_module.api.main:app --reload
 ```
@@ -95,7 +96,7 @@ docker compose -f docker-compose.yml -f docker-compose.prod.yml up -d
 
 5. Open the site in your browser and check the app, API docs, and sign-in flow.
 
-If you are deploying against a local AI server instead of a hosted provider, use `.env.ollama` or `.env.vllm` as the starting point instead of `.env.prod`.
+If you are deploying against a local AI server instead of a hosted provider, use `.env.ollama-llama3.3-70b` or `.env.vllm` as the starting point instead of `.env.prod`. For local Anthropic Claude development, use `.env.anthropic-claude-sonnet-4-6`.
 
 See [docs/DEPLOYMENT.md](docs/DEPLOYMENT.md) for the full deployment guide.
 
@@ -146,12 +147,12 @@ After changing these values, restart the API process or container.
 
 Three pre-filled environment templates are provided:
 
-| File          | Provider                | Constrained decoding |
-| ------------- | ----------------------- | -------------------- |
-| `.env`        | Anthropic Claude (dev)  | off                  |
-| `.env.prod`   | Anthropic Claude (prod) | off                  |
-| `.env.ollama` | Ollama (local)          | off                  |
-| `.env.vllm`   | vLLM (self-hosted)      | **on**               |
+| File                               | Provider                       | Constrained decoding |
+| ---------------------------------- | ------------------------------ | -------------------- |
+| `.env.anthropic-claude-sonnet-4-6` | Anthropic Claude Sonnet 4.6    | off                  |
+| `.env.prod`                        | Anthropic Claude (production)  | off                  |
+| `.env.ollama-llama3.3-70b`         | Ollama — Llama 3.3 70B (local) | off                  |
+| `.env.vllm`                        | vLLM — Llama 3.3 70B (GPU)     | **on**               |
 
 To switch to vLLM:
 

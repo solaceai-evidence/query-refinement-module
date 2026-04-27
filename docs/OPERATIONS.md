@@ -6,21 +6,25 @@ This guide covers routine tasks and checks.
 
 Four env templates cover the supported backends:
 
-| Template      | Provider                 | API key required | Constrained decoding |
-| ------------- | ------------------------ | ---------------- | -------------------- |
-| `.env`        | Anthropic Claude (dev)   | yes              | off                  |
-| `.env.prod`   | Anthropic Claude (cloud) | yes              | off                  |
-| `.env.ollama` | Ollama (local)           | no               | off                  |
-| `.env.vllm`   | vLLM (self-hosted)       | no               | **on**               |
+| Template                           | Provider                             | API key required | Constrained decoding |
+| ---------------------------------- | ------------------------------------ | ---------------- | -------------------- |
+| `.env.anthropic-claude-sonnet-4-6` | Anthropic Claude Sonnet 4.6 (dev)    | yes              | off                  |
+| `.env.prod`                        | Anthropic Claude (cloud, production) | yes              | off                  |
+| `.env.ollama-llama3.3-70b`         | Ollama — Llama 3.3 70B (local)       | no               | off                  |
+| `.env.vllm`                        | vLLM — Llama 3.3 70B (self-hosted)   | no               | **on**               |
 
 To switch, copy the relevant template to `.env` and restart the API:
 
 ```bash
-# Ollama
-cp .env.ollama .env
+# Anthropic Claude Sonnet 4.6 (local development)
+cp .env.anthropic-claude-sonnet-4-6 .env
 ./start_api.sh
 
-# vLLM
+# Ollama — Llama 3.3 70B (local)
+cp .env.ollama-llama3.3-70b .env
+./start_api.sh
+
+# vLLM — Llama 3.3 70B (self-hosted GPU)
 cp .env.vllm .env
 ./start_api.sh
 

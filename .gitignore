@@ -148,7 +148,8 @@ celerybeat.pid
 .env
 .env.*
 !.env.prod
-!.env.ollama
+!.env.anthropic-claude-sonnet-4-6
+!.env.ollama-llama3.3-70b
 !.env.vllm
 .envrc
 .venv
