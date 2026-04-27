@@ -168,6 +168,53 @@ enforcing schema-conformant output at the token level.  This option must only
 be set when `QUERY_REFINEMENT_LLM_API_BASE` points at a vLLM server — it
 will break structured output for Anthropic, OpenAI, and Ollama.
 
+## Architecture: how the LLM pipeline works
+
+Understanding this helps when choosing a provider and diagnosing unexpected output.
+
+### Dimension-by-dimension evaluation
+
+The refinement workflow processes each framework dimension (e.g. Population, Intervention, Comparison, Outcome in PICO) as a **separate, independent LLM call**. The framework YAML (~109 KB) is parsed at startup; only the rendered specification for the current dimension is sent to the model.
+
+Each call receives:
+
+| #   | Message role   | Content                                                | Grows over the session?              |
+| --- | -------------- | ------------------------------------------------------ | ------------------------------------ |
+| 1   | System         | Global directive                                       | No — static                          |
+| 2   | System         | User context profile                                   | No — static                          |
+| 3   | System         | Previously completed dimension *values* (summaries)    | +~150 tokens per completed dimension |
+| 4   | System         | Current dimension spec + examples                      | No — one dimension at a time         |
+| 5   | User           | Original query                                         | No — static                          |
+| 6   | User/Assistant | Follow-up Q&A for **this dimension only**              | +~200 tokens per follow-up turn      |
+| 7   | System         | Terminal reinforcement (only after ≥3 follow-up turns) | No — static repeat                   |
+
+The full dialogue from prior dimensions is **not** carried forward — only its assembled output value. This keeps the token budget flat and eliminates cross-dimension noise.
+
+### Context window budget
+
+At the synthesis stage (the most token-heavy call), the budget looks roughly like:
+
+| Component                                               | Approximate tokens |
+| ------------------------------------------------------- | ------------------ |
+| System prompts (global + user context + dimension spec) | ~2,000             |
+| All completed dimension values                          | ~1,500             |
+| Follow-up turns for current dimension                   | ~1,000             |
+| Original query                                          | ~100               |
+| **Total**                                               | **~4,600**         |
+
+Well within the 16 K window configured for Ollama (`num_ctx=16384`) and vLLM (`--max-model-len 16384`), and far below Anthropic Claude's 200 K limit.
+
+### Structured output strategy
+
+Every dimension evaluation and synthesis call returns a Pydantic-validated JSON object. Two strategies are used depending on provider:
+
+- **Anthropic / Ollama**: JSON is produced by instruction in the prompt. Occasional malformed responses are possible, particularly from smaller or under-prompted models.
+- **vLLM** (`QUERY_REFINEMENT_LLM_CONSTRAINED_DECODING=true`): guided JSON decoding enforces the full Pydantic schema at the token level — structurally invalid output is impossible. This is the most reliable option for a production research study.
+
+### Prompt caching
+
+`QUERY_REFINEMENT_ENABLE_PROMPT_CACHING=true` (Anthropic only) tells Anthropic's servers to cache the static system messages (messages 1–2 above) across calls. This reduces cost and latency for repeated calls within a session. It has no effect on what the model sees — the same tokens are always sent regardless of caching status. This setting must be `false` for Ollama and vLLM, which do not support the Anthropic cache-control header.
+
 ## User management
 
 Registration is disabled by default. Create accounts using the provided scripts:
