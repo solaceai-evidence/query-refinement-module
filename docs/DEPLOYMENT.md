@@ -22,7 +22,7 @@ cp .env.prod .env
 2. Edit `.env` and set these required values:
 
 - `SECRET_KEY` - protects login sessions
-- `QUERY_REFINEMENT_LLM_API_KEY` - lets the app talk to your AI provider
+- `QUERY_REFINEMENT_LLM_API_KEY` - required for cloud providers (Anthropic, OpenAI); leave blank for Ollama or vLLM
 - `POSTGRES_USER`, `POSTGRES_PASSWORD`, `POSTGRES_DB` - database login details
 - `ALLOWED_ORIGINS` - the browser addresses allowed to use the app
 
@@ -43,8 +43,10 @@ docker compose -f docker-compose.yml -f docker-compose.prod.yml up -d --build
 Before starting, verify the following:
 
 - Docker Engine and Docker Compose plugin are installed on the server
-- `.env.prod` has been copied to `.env`
-- `SECRET_KEY` and `QUERY_REFINEMENT_LLM_API_KEY` are set
+- `.env.prod` has been copied to `.env` (or `.env.ollama` / `.env.vllm` for local providers)
+- `SECRET_KEY` is set
+- `QUERY_REFINEMENT_LLM_API_KEY` is set **if using a cloud provider** (Anthropic, OpenAI); leave blank for Ollama or vLLM
+- `QUERY_REFINEMENT_LLM_API_BASE` is set **if using a local provider** (Ollama or vLLM)
 - `POSTGRES_USER`, `POSTGRES_PASSWORD`, and `POSTGRES_DB` are set
 - `ALLOWED_ORIGINS` includes every browser address that should be allowed to use the app
 - `ALLOW_REGISTRATION=false` unless self-signup is needed
@@ -75,18 +77,45 @@ Routing model:
 
 ## LLM Provider Configuration
 
-The API service connects to an LLM provider via LiteLLM.  Three pre-filled
+The API service connects to an LLM provider via LiteLLM.  Four pre-filled
 environment templates are provided:
 
-| Template      | Provider                                  | `CONSTRAINED_DECODING` |
-| ------------- | ----------------------------------------- | ---------------------- |
-| `.env.prod`   | Anthropic Claude (cloud, default)         | `false`                |
-| `.env.ollama` | Ollama (local CPU/GPU)                    | `false`                |
-| `.env.vllm`   | vLLM self-hosted OpenAI-compatible server | `true`                 |
+| Template      | Provider                                  | API key required | `CONSTRAINED_DECODING` |
+| ------------- | ----------------------------------------- | ---------------- | ---------------------- |
+| `.env`        | Anthropic Claude (development)            | yes              | `false`                |
+| `.env.prod`   | Anthropic Claude (cloud, production)      | yes              | `false`                |
+| `.env.ollama` | Ollama (local CPU/GPU)                    | no               | `false`                |
+| `.env.vllm`   | vLLM self-hosted OpenAI-compatible server | no               | `true`                 |
 
-### Switching to vLLM
+### Switching to Ollama
 
-1. Start a vLLM server (requires GPU and the `vllm` package):
+1. Install and start Ollama: https://ollama.com
+
+2. Pull the model you want to use:
+
+```bash
+ollama pull llama3.3:70b
+# Verify: ollama list
+```
+
+3. Copy the template and configure:
+
+```bash
+cp .env.ollama .env
+# Optionally edit QUERY_REFINEMENT_LLM_MODEL to switch models
+# No API key needed
+```
+
+Key Ollama-specific settings:
+
+| Variable                                 | Value                    | Notes                                          |
+| ---------------------------------------- | ------------------------ | ---------------------------------------------- |
+| `QUERY_REFINEMENT_LLM_API_BASE`          | `http://localhost:11434` | Default Ollama port                            |
+| `QUERY_REFINEMENT_LLM_API_KEY`           | *(leave blank)*          | Not required for local Ollama                  |
+| `QUERY_REFINEMENT_LLM_COMPLETION_KWARGS` | `{"num_ctx": 16384}`     | Overrides Ollama's 2 048-token context default |
+| `QUERY_REFINEMENT_ENABLE_PROMPT_CACHING` | `false`                  | Anthropic-specific; must be off for Ollama     |
+
+### Switching to vLLM (requires GPU and the `vllm` package):
 
 ```bash
 vllm serve meta-llama/Llama-3.3-70B-Instruct \
@@ -140,7 +169,8 @@ cp .env.prod .env
 - `POSTGRES_PASSWORD`
 - `POSTGRES_DB`
 - `ALLOWED_ORIGINS`
-- `QUERY_REFINEMENT_LLM_API_KEY`
+- `QUERY_REFINEMENT_LLM_API_KEY` — required for cloud providers (Anthropic, OpenAI); leave blank for Ollama or vLLM
+- `QUERY_REFINEMENT_LLM_API_BASE` — required for local providers (Ollama, vLLM); omit for cloud
 
 Notes:
 
@@ -312,6 +342,12 @@ docker compose -f docker-compose.yml -f docker-compose.prod.yml logs -f nginx
 poetry install
 poetry run alembic upgrade head
 poetry run uvicorn query_refinement_module.api.main:app --reload
+```
+
+Or use the startup script (checks env, runs migrations, starts Gunicorn):
+
+```bash
+./start_api.sh
 ```
 
 API default: `http://localhost:8001`

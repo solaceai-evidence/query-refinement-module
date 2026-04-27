@@ -4,18 +4,34 @@ This guide covers routine tasks and checks.
 
 ## Switching LLM backends
 
-Three env templates cover the supported backends:
+Four env templates cover the supported backends:
 
-| Template      | Provider                 | Constrained decoding |
-| ------------- | ------------------------ | -------------------- |
-| `.env.prod`   | Anthropic Claude (cloud) | off                  |
-| `.env.ollama` | Ollama (local)           | off                  |
-| `.env.vllm`   | vLLM (self-hosted)       | **on**               |
+| Template      | Provider                 | API key required | Constrained decoding |
+| ------------- | ------------------------ | ---------------- | -------------------- |
+| `.env`        | Anthropic Claude (dev)   | yes              | off                  |
+| `.env.prod`   | Anthropic Claude (cloud) | yes              | off                  |
+| `.env.ollama` | Ollama (local)           | no               | off                  |
+| `.env.vllm`   | vLLM (self-hosted)       | no               | **on**               |
 
-To switch, copy the relevant template to `.env` and restart the API container:
+To switch, copy the relevant template to `.env` and restart the API:
 
 ```bash
+# Ollama
+cp .env.ollama .env
+./start_api.sh
+
+# vLLM
 cp .env.vllm .env
+./start_api.sh
+
+# Anthropic cloud (production)
+cp .env.prod .env
+./start_production.sh
+```
+
+For a running Docker stack, rebuild only the API container:
+
+```bash
 docker compose -f docker-compose.yml -f docker-compose.prod.yml up -d --build api
 ```
 
@@ -34,6 +50,23 @@ If constrained decoding is active but the vLLM server is unreachable, the
 ```bash
 curl -f http://localhost:8001/ready
 ```
+
+### Ollama diagnostics
+
+```bash
+# Confirm Ollama is running and the model is available
+ollama list
+curl http://localhost:11434/v1/models
+
+# Test a basic completion
+curl -X POST http://localhost:11434/v1/chat/completions \
+  -H 'Content-Type: application/json' \
+  -d '{"model": "llama3.3:70b", "messages": [{"role": "user", "content": "ping"}]}'
+```
+
+> **Note:** `QUERY_REFINEMENT_LLM_COMPLETION_KWARGS={"num_ctx": 16384}` overrides Ollama's
+> default 2 048-token context window, which is too small for this application.
+> Increase to `32768` if you observe truncated responses; decrease to `8192` to reduce memory use.
 
 ### vLLM server diagnostics
 

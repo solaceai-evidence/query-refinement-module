@@ -43,6 +43,12 @@ poetry run alembic upgrade head
 poetry run uvicorn query_refinement_module.api.main:app --reload
 ```
 
+Or use the startup script, which checks the environment and runs migrations automatically:
+
+```bash
+./start_api.sh
+```
+
 Backend available at: http://localhost:8001 (interactive API docs at /docs)
 
 ### Frontend
@@ -69,7 +75,7 @@ cp .env.prod .env
 3. In `.env`, set the values that make the app safe and usable in your environment:
 
 - `SECRET_KEY`
-- `QUERY_REFINEMENT_LLM_API_KEY`
+- `QUERY_REFINEMENT_LLM_API_KEY` — required for cloud providers (Anthropic, OpenAI); leave blank for Ollama or vLLM
 - `POSTGRES_USER`
 - `POSTGRES_PASSWORD`
 - `POSTGRES_DB`
@@ -79,6 +85,12 @@ cp .env.prod .env
 
 ```bash
 docker compose -f docker-compose.yml -f docker-compose.prod.yml up -d
+```
+
+   Or use the pre-flight startup script, which checks connectivity and runs migrations before starting Gunicorn:
+
+```bash
+./start_production.sh
 ```
 
 5. Open the site in your browser and check the app, API docs, and sign-in flow.
@@ -110,11 +122,11 @@ poetry run query-refine --framework pico_advanced
 
 ## Configuration
 
-Key environment variables (copy `.env.example` to `.env` and fill in values):
+Key environment variables — pick the template for your provider and copy it to `.env`:
 
 | Variable                                    | Description                                                                                       |
 | ------------------------------------------- | ------------------------------------------------------------------------------------------------- |
-| `QUERY_REFINEMENT_LLM_API_KEY`              | API key for the LLM provider (use `EMPTY` for local vLLM)                                         |
+| `QUERY_REFINEMENT_LLM_API_KEY`              | API key for cloud providers (Anthropic, OpenAI); leave blank for Ollama or vLLM                   |
 | `QUERY_REFINEMENT_LLM_MODEL`                | Model identifier (default: `anthropic/claude-sonnet-4-6`)                                         |
 | `QUERY_REFINEMENT_LLM_API_BASE`             | Base URL for the LLM API; omit for Anthropic/OpenAI, set for vLLM/Ollama                          |
 | `QUERY_REFINEMENT_LLM_CONSTRAINED_DECODING` | `true` to enable vLLM guided JSON decoding — **vLLM only**; leave `false` for all other providers |
