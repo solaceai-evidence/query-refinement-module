@@ -963,3 +963,373 @@ async def test_run_split_call_filter_repair_removes_bad_values():
     assert result is not None
     assert result.fields_of_study == ["Medicine"]
     assert len(manager.llm_provider.calls) == 2
+
+
+# ---------------------------------------------------------------------------
+# field ownership correctness, deterministic assembly,
+#               split-call contract validity, structured-output reliability,
+#               and repair scope
+# ---------------------------------------------------------------------------
+
+class TestDeterministicAssembly:
+    """_assemble_dimensions_specifications and _assemble_deterministic_search_filters
+    derive field values from session state, never from LLM output."""
+
+    def _manager(self):
+        return QueryRefinementManager(llm_provider=StubLLMProvider([]))
+
+    # --- dimensions_specifications ---
+
+    def test_no_steps_returns_none(self):
+        session = RefinementSession(original_query="q")
+        assert self._manager()._assemble_dimensions_specifications(session) is None
+
+    def test_answered_step_serialised(self):
+        aspect = make_aspect(aspect_id="pop")
+        session = RefinementSession(original_query="q")
+        step = session.add_step(aspect)
+        step.normalized_value = "Adults 18-65"
+        step.is_complete = True
+        result = self._manager()._assemble_dimensions_specifications(session)
+        assert result == {"pop": "Adults 18-65"}
+
+    def test_skipped_step_is_none(self):
+        aspect = make_aspect(aspect_id="pop")
+        session = RefinementSession(original_query="q")
+        step = session.add_step(aspect)
+        step.was_skipped = True
+        step.is_complete = True
+        result = self._manager()._assemble_dimensions_specifications(session)
+        assert result == {"pop": None}
+
+    def test_dict_value_serialised_as_json(self):
+        aspect = make_aspect(aspect_id="setting")
+        session = RefinementSession(original_query="q")
+        step = session.add_step(aspect)
+        step.normalized_value = {"primary": "hospital", "secondary": "community"}
+        step.is_complete = True
+        result = self._manager()._assemble_dimensions_specifications(session)
+        import json as _json
+        assert _json.loads(result["setting"]) == {"primary": "hospital", "secondary": "community"}
+
+    def test_empty_string_value_serialised_as_none(self):
+        aspect = make_aspect(aspect_id="pop")
+        session = RefinementSession(original_query="q")
+        step = session.add_step(aspect)
+        step.normalized_value = ""
+        step.is_complete = True
+        result = self._manager()._assemble_dimensions_specifications(session)
+        assert result["pop"] is None
+
+    def test_mixed_skipped_and_answered(self):
+        a1, a2, a3 = (make_aspect(aspect_id=i) for i in ("a", "b", "c"))
+        session = RefinementSession(original_query="q")
+        s1 = session.add_step(a1); s1.normalized_value = "v1"; s1.is_complete = True
+        s2 = session.add_step(a2); s2.was_skipped = True; s2.is_complete = True
+        s3 = session.add_step(a3); s3.normalized_value = "v3"; s3.is_complete = True
+        result = self._manager()._assemble_dimensions_specifications(session)
+        assert result == {"a": "v1", "b": None, "c": "v3"}
+
+    # --- deterministic search filters ---
+
+    def test_publication_years_extracted(self):
+        session = RefinementSession(original_query="studies since 2015 on X")
+        import datetime as _dt
+        fixed_now = _dt.datetime(2026, 5, 5, tzinfo=_dt.timezone.utc)
+        with patch("query_refinement_module.core.datetime") as mock_dt:
+            mock_dt.now.return_value = fixed_now
+            result = self._manager()._assemble_deterministic_search_filters(session)
+        assert result.publication_years == "2015-2026"
+
+    def test_author_extracted(self):
+        session = RefinementSession(original_query="studies authored by Jane Smith on health")
+        result = self._manager()._assemble_deterministic_search_filters(session)
+        assert "Jane Smith" in result.authors
+
+    def test_venue_extracted(self):
+        session = RefinementSession(original_query="results published in The Lancet; adults 18-65")
+        result = self._manager()._assemble_deterministic_search_filters(session)
+        assert "The Lancet" in result.venues
+
+    def test_no_patterns_returns_empty_filters(self):
+        session = RefinementSession(original_query="some query with no temporal or venue hints")
+        result = self._manager()._assemble_deterministic_search_filters(session)
+        assert result.publication_years == ""
+        assert result.authors == []
+        assert result.venues == []
+        assert result.publication_types == []
+
+    def test_publication_type_extracted(self):
+        session = RefinementSession(original_query="systematic reviews of COPD treatment")
+        result = self._manager()._assemble_deterministic_search_filters(session)
+        assert "Systematic review" in result.publication_types
+
+
+class TestFieldOwnershipEndToEnd:
+    """Verify that deterministic fields in the final result_dict always reflect session state,
+    not LLM output — even under total LLM failure or partial failure."""
+
+    @pytest.mark.asyncio
+    async def test_deterministic_fields_survive_all_llm_failures(self):
+        """When every LLM call raises an exception, deterministic fields must still be
+        present in the result and must match session-state truth."""
+        aspect = make_aspect(aspect_id="population", name="Population")
+
+        # All 5 calls will raise — no responses provided
+        manager = build_manager(responses=[
+            RuntimeError("call 1 failed"),
+            RuntimeError("call 2 failed"),
+            RuntimeError("call 3 failed"),
+            RuntimeError("call 4 failed"),
+            RuntimeError("call 5 failed"),
+        ])
+        session = RefinementSession(
+            original_query="Studies since 2020 published in The Lancet"
+        )
+        step = session.add_step(aspect)
+        step.add_follow_up("Q", "Adults 18-65")
+        step.is_complete = True
+
+        import datetime as _dt
+        fixed_now = _dt.datetime(2026, 5, 5, tzinfo=_dt.timezone.utc)
+        with patch("query_refinement_module.core.datetime") as mock_dt:
+            mock_dt.now.return_value = fixed_now
+            result = await manager.synthesize_refined_query(session)
+
+        # Deterministic dimensions must be from session state
+        assert result["dimensions_specifications"] == {"population": "Adults 18-65"}
+        # Deterministic filter fields must be extracted from original_query
+        assert result["search_filters"].publication_years == "2020-2026"
+        assert "The Lancet" in result["search_filters"].venues
+        # LLM fallback: integrated_statement falls back to original_query
+        assert result["integrated_statement"] == "Studies since 2020 published in The Lancet"
+
+    @pytest.mark.asyncio
+    async def test_deterministic_fields_not_overridden_by_llm_output(self):
+        """Even when LLM calls succeed and return values, deterministic fields are
+        assembled from session state — LLM output for those positions is ignored."""
+        aspect = make_aspect(aspect_id="population", name="Population")
+        manager = build_manager(responses=make_split_responses(
+            integrated_statement="Some synthesized statement",
+            semantic="semantic query",
+            fields_of_study=["Medicine"],
+        ))
+        session = RefinementSession(original_query="query")
+        step = session.add_step(aspect)
+        step.add_follow_up("Q", "Adults 18-65")
+        step.is_complete = True
+
+        result = await manager.synthesize_refined_query(session)
+
+        # LLM-owned field present
+        assert result["search_filters"].fields_of_study == ["Medicine"]
+        # Deterministic field from session — never from LLM
+        assert result["dimensions_specifications"] == {"population": "Adults 18-65"}
+        # Deterministic filter fields empty (nothing in query text to extract)
+        assert result["search_filters"].publication_years == ""
+        assert result["search_filters"].authors == []
+        assert result["search_filters"].venues == []
+
+
+class TestSplitCallContractValidity:
+    """_run_split_synthesis routes each field to the correct owner."""
+
+    @pytest.mark.asyncio
+    async def test_semantic_routed_to_search_optimized(self):
+        manager = build_manager(responses=make_split_responses(
+            integrated_statement="stmt",
+            semantic="retrieval query about adults with COPD",
+        ))
+        session = RefinementSession(original_query="q")
+        result = await manager.synthesize_refined_query(session)
+        assert result["search_optimized"].semantic == "retrieval query about adults with COPD"
+
+    @pytest.mark.asyncio
+    async def test_synonyms_routed_to_terminology(self):
+        manager = build_manager(responses=make_split_responses(
+            integrated_statement="stmt",
+            synonyms={"COPD": ["chronic obstructive pulmonary disease", "COAD"]},
+        ))
+        session = RefinementSession(original_query="q")
+        result = await manager.synthesize_refined_query(session)
+        assert result["terminology"].synonyms == {
+            "COPD": ["chronic obstructive pulmonary disease", "COAD"]
+        }
+
+    @pytest.mark.asyncio
+    async def test_keyword_fields_routed_to_search_optimized_keyword(self):
+        manager = build_manager(responses=make_split_responses(
+            integrated_statement="stmt",
+            phrases=["COPD rehabilitation"],
+            required=["COPD"],
+            optional=["adults"],
+        ))
+        session = RefinementSession(original_query="q")
+        result = await manager.synthesize_refined_query(session)
+        kw = result["search_optimized"].keyword
+        assert "COPD rehabilitation" in kw.phrases
+        assert "COPD" in kw.terms.required
+        assert "adults" in kw.terms.optional
+
+    @pytest.mark.asyncio
+    async def test_fields_of_study_routed_to_search_filters(self):
+        manager = build_manager(responses=make_split_responses(
+            integrated_statement="stmt",
+            fields_of_study=["Medicine", "Psychology"],
+        ))
+        session = RefinementSession(original_query="q")
+        result = await manager.synthesize_refined_query(session)
+        assert result["search_filters"].fields_of_study == ["Medicine", "Psychology"]
+
+    @pytest.mark.asyncio
+    async def test_fields_of_study_absent_when_filter_call_fails(self):
+        """If filter_resolution call fails, fields_of_study defaults to empty."""
+        responses = make_split_responses(integrated_statement="stmt")
+        # Corrupt the filter response (4th in list: statement, semantic, terminology, filter, keyword)
+        responses[3] = "not json at all"
+        manager = build_manager(responses=responses)
+        session = RefinementSession(original_query="q")
+        result = await manager.synthesize_refined_query(session)
+        assert result["search_filters"].fields_of_study == []
+
+    @pytest.mark.asyncio
+    async def test_structured_query_compiled_from_required_and_synonyms(self):
+        """_compile_boolean_query produces AND-of-OR structure when required terms and synonyms exist."""
+        manager = build_manager(responses=make_split_responses(
+            integrated_statement="stmt",
+            synonyms={"COPD": ["chronic obstructive pulmonary disease"]},
+            required=["COPD"],
+            optional=[],
+        ))
+        session = RefinementSession(original_query="q")
+        result = await manager.synthesize_refined_query(session)
+        structured = result["search_optimized"].keyword.structured
+        # Must contain both the primary term and its synonym
+        assert "COPD" in structured
+        assert "chronic obstructive pulmonary disease" in structured
+
+
+class TestStructuredOutputReliability:
+    """result_dict always has the required shape, regardless of LLM reliability."""
+
+    _REQUIRED_KEYS = {
+        "integrated_statement", "used_llm", "clarifications", "baseline_summaries",
+        "refinement_aspect_values", "metadata", "dimensions_specifications",
+        "search_optimized", "search_filters", "terminology",
+    }
+
+    @pytest.mark.asyncio
+    async def test_result_shape_on_full_success(self):
+        manager = build_manager(responses=make_split_responses(
+            integrated_statement="stmt",
+        ))
+        session = RefinementSession(original_query="q")
+        result = await manager.synthesize_refined_query(session)
+        assert self._REQUIRED_KEYS.issubset(result.keys())
+
+    @pytest.mark.asyncio
+    async def test_result_shape_on_total_llm_failure(self):
+        """All calls raise; result_dict must still have every required key."""
+        manager = build_manager(responses=[
+            RuntimeError("fail"),
+            RuntimeError("fail"),
+            RuntimeError("fail"),
+            RuntimeError("fail"),
+            RuntimeError("fail"),
+        ])
+        session = RefinementSession(original_query="q")
+        result = await manager.synthesize_refined_query(session)
+        assert self._REQUIRED_KEYS.issubset(result.keys())
+        assert result["used_llm"] is True
+        assert isinstance(result["search_filters"].fields_of_study, list)
+
+    @pytest.mark.asyncio
+    async def test_result_shape_with_preparsed_models(self):
+        """Fast-path (provider returns pre-parsed Pydantic models) still produces the full shape."""
+        manager = build_manager(responses=[
+            StatementResponse(integrated_statement="fast path statement"),
+            SemanticQueryResponse(semantic="fast path semantic"),
+            TerminologyResponse(synonyms={}),
+            FilterSuggestionResponse(fields_of_study=["Medicine"]),
+            KeywordSupportResponse(phrases=[], required=[], optional=[]),
+        ])
+        session = RefinementSession(original_query="q")
+        result = await manager.synthesize_refined_query(session)
+        assert self._REQUIRED_KEYS.issubset(result.keys())
+        assert result["integrated_statement"] == "fast path statement"
+
+
+class TestRepairScope:
+    """Repair path is scoped strictly to generated fields; deterministic fields are unreachable."""
+
+    _DETERMINISTIC_FIELDS = (
+        "dimensions_specifications",
+        "publication_years",
+        "venues",
+        "authors",
+        "publication_types",
+    )
+
+    @pytest.mark.asyncio
+    async def test_repair_does_not_alter_deterministic_dimensions(self):
+        """Even when statement repair fires, dimensions_specifications is unchanged."""
+        aspect = make_aspect(aspect_id="population")
+        manager = build_manager(responses=[
+            json.dumps({"integrated_statement": ""}),          # statement: invalid → triggers repair
+            json.dumps({"integrated_statement": "repaired"}),  # repair
+            json.dumps({"semantic": "semantic"}),
+            json.dumps({"synonyms": {}}),
+            json.dumps({"fields_of_study": []}),
+            json.dumps({"phrases": [], "required": [], "optional": []}),
+        ])
+        session = RefinementSession(original_query="q")
+        step = session.add_step(aspect)
+        step.add_follow_up("Q", "Adults 18-65")
+        step.is_complete = True
+
+        result = await manager.synthesize_refined_query(session)
+        # dimensions_specifications is from session state, not from LLM
+        assert result["dimensions_specifications"] == {"population": "Adults 18-65"}
+
+    @pytest.mark.asyncio
+    async def test_repair_does_not_alter_deterministic_filters(self):
+        """Even when filter_resolution repair fires, publication_years/venues/authors/publication_types
+        come from deterministic extraction, never from the repair call."""
+        aspect = make_aspect(aspect_id="population")
+        manager = build_manager(responses=[
+            json.dumps({"integrated_statement": "stmt"}),
+            json.dumps({"semantic": "semantic"}),
+            json.dumps({"synonyms": {}}),
+            json.dumps({"fields_of_study": ["Astrology"]}),  # invalid → triggers repair
+            json.dumps({"fields_of_study": ["Medicine"]}),   # repair: valid
+            json.dumps({"phrases": [], "required": [], "optional": []}),
+        ])
+        session = RefinementSession(
+            original_query="Studies since 2020 published in The Lancet"
+        )
+        step = session.add_step(aspect)
+        step.add_follow_up("Q", "Adults 18-65")
+        step.is_complete = True
+
+        import datetime as _dt
+        fixed_now = _dt.datetime(2026, 5, 5, tzinfo=_dt.timezone.utc)
+        with patch("query_refinement_module.core.datetime") as mock_dt:
+            mock_dt.now.return_value = fixed_now
+            result = await manager.synthesize_refined_query(session)
+
+        # LLM-owned field: repaired value
+        assert result["search_filters"].fields_of_study == ["Medicine"]
+        # Deterministic fields: from extraction, unchanged by repair
+        assert result["search_filters"].publication_years == "2020-2026"
+        assert "The Lancet" in result["search_filters"].venues
+        assert result["search_filters"].authors == []
+
+    def test_repair_prompts_for_all_call_types_are_scoped(self):
+        """Exhaustive check: no repair prompt for any known call type mentions a deterministic field."""
+        call_types = ["statement", "semantic", "terminology", "keyword_support", "filter_resolution"]
+        for call_name in call_types:
+            prompt = QueryRefinementManager._build_repair_prompt("base", call_name, "some error")
+            for field in self._DETERMINISTIC_FIELDS:
+                assert field not in prompt, (
+                    f"Repair prompt for '{call_name}' must not mention deterministic field '{field}'"
+                )
