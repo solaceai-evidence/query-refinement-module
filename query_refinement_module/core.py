@@ -46,8 +46,10 @@ This module includes comprehensive logging and tracing support:
 """
 
 import asyncio
+from datetime import datetime, timezone
 import json
 import logging
+import re
 import textwrap
 from dataclasses import dataclass, field
 from enum import Enum
@@ -64,6 +66,7 @@ from .schema import (
     SynthesisPromptBuilder,
     QueryRefinementResponse,
 )
+from .schema.response import SearchFilters
 
 from .schema.templates.global_system import (
     GLOBAL_SYSTEM_PROMPT,
@@ -73,6 +76,37 @@ from .session_models import AspectRefinementState, RefinementSession
 
 # Module logger - use get_logger() in functions for request context
 logger = logging.getLogger(__name__)
+
+
+PUBLICATION_TYPE_PATTERNS = [
+    (r"\brcts?\b|\brandomi[sz]ed controlled trials?\b", "Randomized controlled trial"),
+    (r"\bsystematic reviews?\b", "Systematic review"),
+    (r"\bscoping reviews?\b", "Scoping review"),
+    (r"\brapid reviews?\b", "Rapid review"),
+    (r"\bliving reviews?\b", "Living review"),
+    (r"\bmeta-analys(?:is|es)\b", "Meta-analysis"),
+    (r"\bnarrative reviews?\b", "Narrative review"),
+    (r"\breviews?\b", "Review"),
+    (r"\bcohort studies?\b|\bcohort study\b", "Cohort study"),
+    (r"\bcase[- ]control studies?\b|\bcase control studies?\b", "Case control study"),
+    (r"\bcross[- ]sectional studies?\b|\bcross sectional studies?\b", "Cross-sectional study"),
+    (r"\bobservational studies?\b", "Observational study"),
+    (r"\bclinical trials?\b", "Clinical trial"),
+    (r"\bclinical studies?\b", "Clinical study"),
+    (r"\bcase reports?\b", "Case report"),
+    (r"\bcase series\b", "Case series"),
+    (r"\bpilot studies?\b", "Pilot study"),
+    (r"\bevaluation studies?\b", "Evaluation study"),
+    (r"\bquality improvement studies?\b|\bquality improvement\b", "Quality improvement study"),
+    (r"\bvalidation studies?\b", "Validation study"),
+    (r"\bdiagnostic test accuracy studies?\b", "Diagnostic test accuracy study"),
+    (r"\bbefore and after studies?\b", "Before and after study"),
+    (r"\bcomparative studies?\b", "Comparative study"),
+    (r"\bguidelines?\b", "Guideline"),
+    (r"\bpolicy documents?\b|\bpolicies\b", "Policy document"),
+    (r"\bgovernment documents?\b", "Government document"),
+    (r"\bconsensus conferences?\b", "Consensus conference"),
+]
 
 # =======
 # User Control Commands
@@ -1219,6 +1253,158 @@ class QueryRefinementManager:
 
         return clarifications, baseline_summaries
 
+    @staticmethod
+    def _serialize_dimension_value(value: Any) -> Optional[str]:
+        if value is None or value == "":
+            return None
+        if isinstance(value, (dict, list)):
+            return json.dumps(value, ensure_ascii=False)
+        return str(value)
+
+    def _assemble_dimensions_specifications(
+        self,
+        session: RefinementSession,
+    ) -> Optional[Dict[str, Optional[str]]]:
+        if not session.steps:
+            return None
+
+        dimensions_specifications: Dict[str, Optional[str]] = {}
+        for step in session.steps:
+            if step.was_skipped:
+                dimensions_specifications[step.refinement_aspect.id] = None
+                continue
+
+            dimensions_specifications[step.refinement_aspect.id] = self._serialize_dimension_value(
+                step.normalized_value
+            )
+
+        return dimensions_specifications
+
+    def _collect_synthesis_source_text(self, session: RefinementSession) -> str:
+        source_chunks = [session.original_query]
+        for step in session.steps:
+            serialized = self._serialize_dimension_value(step.normalized_value)
+            if serialized:
+                source_chunks.append(serialized)
+        return "\n".join(chunk for chunk in source_chunks if chunk)
+
+    @staticmethod
+    def _dedupe_preserve_order(values: List[str]) -> List[str]:
+        seen = set()
+        output = []
+        for value in values:
+            if value not in seen:
+                seen.add(value)
+                output.append(value)
+        return output
+
+    def _extract_publication_years(self, source_text: str) -> str:
+        anchor_year = datetime.now(timezone.utc).year
+
+        range_match = re.search(
+            r"\b((?:19|20)\d{2})\s*(?:-|–|to|through)\s*((?:19|20)\d{2})\b",
+            source_text,
+            re.IGNORECASE,
+        )
+        if range_match:
+            return f"{range_match.group(1)}-{range_match.group(2)}"
+
+        since_match = re.search(
+            r"\b(?:since|from)\s+((?:19|20)\d{2})\b(?:\s+(?:onward|onwards|forward|to date|to present))?",
+            source_text,
+            re.IGNORECASE,
+        )
+        if since_match:
+            return f"{since_match.group(1)}-{anchor_year}"
+
+        lower_source = source_text.lower()
+        if "last decade" in lower_source:
+            return f"{anchor_year - 10}-{anchor_year}"
+
+        if "recent" in lower_source:
+            health_keywords = (
+                "health", "medicine", "clinical", "patient", "disease", "public health",
+                "hospital", "treatment", "diagnosis", "epidemiolog",
+            )
+            start_year = 2020 if any(keyword in lower_source for keyword in health_keywords) else 2021
+            return f"{start_year}-{anchor_year}"
+
+        return ""
+
+    def _extract_publication_types(self, source_text: str) -> List[str]:
+        publication_types = []
+        matched_positions: set = set()
+        for pattern, canonical_name in PUBLICATION_TYPE_PATTERNS:
+            for m in re.finditer(pattern, source_text, re.IGNORECASE):
+                span = (m.start(), m.end())
+                # Skip if this span was already claimed by a more-specific earlier pattern
+                if not any(
+                    existing_start <= span[0] and span[1] <= existing_end
+                    for existing_start, existing_end in matched_positions
+                ):
+                    matched_positions.add(span)
+                    publication_types.append(canonical_name)
+        return self._dedupe_preserve_order(publication_types)
+
+    def _extract_authors(self, source_text: str) -> List[str]:
+        authors = []
+        patterns = [
+            r"\bauthors?\s*:\s*([^.;\n]+)",
+            r"\bauthored by\s+([^.;\n]+)",
+            r"\bby\s+([A-Z][A-Za-z.'-]+(?:[ \t]+[A-Z][A-Za-z.'-]+){0,2}(?:[ \t]*(?:,|and)[ \t]*[A-Z][A-Za-z.'-]+(?:[ \t]+[A-Z][A-Za-z.'-]+){0,2})*)",
+        ]
+        for pattern in patterns:
+            for match in re.finditer(pattern, source_text):
+                raw_names = re.split(r",|\band\b", match.group(1))
+                for raw_name in raw_names:
+                    candidate = raw_name.strip(" .")
+                    if re.match(r"^[A-Z][A-Za-z.'-]+(?:\s+[A-Z][A-Za-z.'-]+){0,2}$", candidate):
+                        authors.append(candidate)
+        return self._dedupe_preserve_order(authors)
+
+    def _extract_venues(self, source_text: str) -> List[str]:
+        venues = []
+        patterns = [
+            r"\bpublished in\s+([^.;\n]+)",
+            r"\bjournal\s*:\s*([^.;\n]+)",
+            r"\bconference\s*:\s*([^.;\n]+)",
+            r"\bvenue\s*:\s*([^.;\n]+)",
+        ]
+        for pattern in patterns:
+            for match in re.finditer(pattern, source_text, re.IGNORECASE):
+                candidate = re.split(r"\s+by\s+", match.group(1), maxsplit=1, flags=re.IGNORECASE)[0].strip(" .")
+                if candidate:
+                    venues.append(candidate)
+        return self._dedupe_preserve_order(venues)
+
+    def _assemble_deterministic_search_filters(self, session: RefinementSession) -> SearchFilters:
+        source_text = self._collect_synthesis_source_text(session)
+        return SearchFilters(
+            publication_years=self._extract_publication_years(source_text),
+            venues=self._extract_venues(source_text),
+            authors=self._extract_authors(source_text),
+            publication_types=self._extract_publication_types(source_text),
+            fields_of_study=[],
+        )
+
+    def _merge_search_filters(
+        self,
+        llm_filters: Optional[SearchFilters],
+        deterministic_filters: SearchFilters,
+    ) -> SearchFilters:
+        merged_filters = llm_filters.model_copy(deep=True) if llm_filters is not None else SearchFilters()
+
+        if deterministic_filters.publication_years:
+            merged_filters.publication_years = deterministic_filters.publication_years
+        if deterministic_filters.venues:
+            merged_filters.venues = deterministic_filters.venues
+        if deterministic_filters.authors:
+            merged_filters.authors = deterministic_filters.authors
+        if deterministic_filters.publication_types:
+            merged_filters.publication_types = deterministic_filters.publication_types
+
+        return merged_filters
+
     async def synthesize_refined_query(
         self,
         session: RefinementSession,
@@ -1261,6 +1447,8 @@ class QueryRefinementManager:
         )
 
         clarifications, baseline_summaries = self._gather_refinement_details(session)
+        deterministic_dimensions = self._assemble_dimensions_specifications(session)
+        deterministic_filters = self._assemble_deterministic_search_filters(session)
 
         # Build refinement_aspect_values map for structured consumption
         # ALL dimensions MUST be included in synthesis, even if [SKIPPED]
@@ -1498,12 +1686,20 @@ class QueryRefinementManager:
             "refinement_aspect_values": refinement_aspect_values,
             "metadata": result.metadata,
         }
+
+        if deterministic_dimensions is not None:
+            result_dict["dimensions_specifications"] = deterministic_dimensions
+        result_dict["search_filters"] = deterministic_filters
         
         # Include structured response fields if available
         if synthesis_response:
-            result_dict["dimensions_specifications"] = synthesis_response.dimensions_specifications
+            if deterministic_dimensions is None:
+                result_dict["dimensions_specifications"] = synthesis_response.dimensions_specifications
             result_dict["search_optimized"] = synthesis_response.search_optimized
-            result_dict["search_filters"] = synthesis_response.search_filters
+            result_dict["search_filters"] = self._merge_search_filters(
+                synthesis_response.search_filters,
+                deterministic_filters,
+            )
             result_dict["terminology"] = synthesis_response.terminology
             result_dict["integrated_statement"] = synthesis_response.integrated_statement
 

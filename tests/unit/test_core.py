@@ -1,6 +1,7 @@
 import json
 from dataclasses import dataclass
 from typing import Any, Dict, Iterable, List, Optional
+from unittest.mock import patch
 
 import pytest
 
@@ -682,6 +683,47 @@ async def test_synthesize_refined_query_with_clarifications():
     call = manager.llm_provider.calls[0]
     assert "original query" in call["user_prompt"].lower()
     assert "Adults 18-65" in call["user_prompt"]
+
+
+@pytest.mark.asyncio
+async def test_synthesize_refined_query_prefers_deterministic_dimensions_and_filters():
+    aspect = make_aspect(aspect_id="population", name="Population")
+    llm_response = json.dumps({
+        "synthesized_statement": "Refined query for adults 18-65 since 2018 published in New England Journal of Medicine by Jane Doe",
+        "refined_dimensions": {"population": "incorrect model value"},
+        "search_optimized": {
+            "semantic": "adults 18-65 health outcomes",
+            "keyword": {
+                "structured": "adults AND health",
+                "phrases": ["adults 18-65"],
+                "terms": {"required": ["adults"], "optional": [], "excluded": []}
+            }
+        },
+        "search_filters": {
+            "publication_years": "",
+            "venues": [],
+            "authors": [],
+            "publication_types": [],
+            "fields_of_study": []
+        },
+        "terminology": {"synonyms": {}, "colloquial": []}
+    })
+    manager = build_manager(responses=[llm_response])
+    session = RefinementSession(original_query="Studies since 2018 published in New England Journal of Medicine by Jane Doe")
+    step = session.add_step(aspect)
+    step.add_follow_up("Q", "Adults 18-65")
+    step.is_complete = True
+
+    import datetime as _dt
+    fixed_now = _dt.datetime(2026, 5, 5, tzinfo=_dt.timezone.utc)
+    with patch("query_refinement_module.core.datetime") as mock_dt:
+        mock_dt.now.return_value = fixed_now
+        result = await manager.synthesize_refined_query(session)
+
+    assert result["dimensions_specifications"] == {"population": "Adults 18-65"}
+    assert result["search_filters"].publication_years == "2018-2026"
+    assert "Jane Doe" in result["search_filters"].authors
+    assert "New England Journal of Medicine" in result["search_filters"].venues
 
 
 @pytest.mark.asyncio

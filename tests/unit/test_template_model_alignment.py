@@ -31,6 +31,12 @@ class TestSynthesisTemplateAlignment:
         
         assert "dimensions_specifications" in SYNTHESIS_TEMPLATE, \
             "Template must use 'dimensions_specifications' (LLM field name)"
+
+        assert "research_elements" not in SYNTHESIS_TEMPLATE, \
+            "Template must not document deprecated 'research_elements' field"
+
+        assert '"hyponyms"' not in SYNTHESIS_TEMPLATE, \
+            "Template must not document deprecated 'terminology.hyponyms' field"
     
     def test_synthesis_template_json_structure_matches_model(self):
         """Verify all required model fields (via validation_alias) are documented in template."""

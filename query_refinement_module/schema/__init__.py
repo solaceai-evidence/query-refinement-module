@@ -20,6 +20,11 @@ from .models import (
 from .response import (
     DimensionEvaluationResponse,
     QueryRefinementResponse,
+    StatementResponse,
+    SemanticQueryResponse,
+    TerminologyResponse,
+    KeywordSupportResponse,
+    FilterSuggestionResponse,
 )
 
 # Registry
@@ -80,6 +85,11 @@ __all__ = [
     # Response models
     "DimensionEvaluationResponse",
     "QueryRefinementResponse",
+    "StatementResponse",
+    "SemanticQueryResponse",
+    "TerminologyResponse",
+    "KeywordSupportResponse",
+    "FilterSuggestionResponse",
     
     # Registry
     "list_frameworks",

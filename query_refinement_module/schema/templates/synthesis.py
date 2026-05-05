@@ -39,15 +39,6 @@ Convert the user's research query into a structured, search-ready specification 
       "structured": "",
       "phrases": [],
       "terms": {"required": [], "optional": [], "excluded": []}
-    },
-    "research_elements": {
-      "subject": "",
-      "phenomenon": "",
-      "context": "",
-      "location": "",
-      "comparator": "",
-      "outcome": "",
-      "perspective": ""
     }
   },
   "search_filters": {
@@ -58,8 +49,10 @@ Convert the user's research query into a structured, search-ready specification 
     "fields_of_study": []
   },
   "terminology": {
+    "primary_terms": [],
     "synonyms": {},
-    "hyponyms": {}
+    "domain_specific": [],
+    "colloquial": []
   }
 }
 
@@ -112,10 +105,10 @@ Allowed block patterns:
 - `((qual1 OR qual2) AND (term1 OR term2))`
 
 Rules:
-- Build blocks from `integrated_statement`, `terminology.synonyms`, and `terminology.hyponyms`.
+- Build blocks from `integrated_statement`, `terminology.synonyms`, and explicit terminology already supported by the inputs.
 - Within each block, include only terms anchored to the same concept.
-- Include exact synonyms, established abbreviations, spelling variants, lexical variants, and necessary hyponyms.
-- Enumerate narrower drugs, devices, procedures, technologies, subtypes, subpopulations, or geographic members only when they are explicit, supplied via `terminology.hyponyms`, or are standard retrieval variants of the same concept.
+- Include exact synonyms, established abbreviations, spelling variants, and lexical variants.
+- Enumerate narrower drugs, devices, procedures, technologies, subtypes, subpopulations, or geographic members only when they are explicit in the input or are standard retrieval variants of the same concept.
 - For process concepts such as adoption, implementation, uptake, or diffusion, include only closely adjacent retrieval variants of that same process.
 - Exclude years, venues, authors, and publication types.
 - Do not include a term unless it is anchored to a concept present in `integrated_statement`.
@@ -146,36 +139,6 @@ Rules:
 - Use 3 `required` terms by default when the topic supports them.
 - Use 5 `optional` terms by default.
 - Use `excluded` only when clear confounders are present; otherwise return `[]`.
-
-### search_optimized.research_elements
-Extract seven research elements from `integrated_statement` only. Do not infer missing content. Use `""` when a field is absent, inapplicable, or indeterminate. Each non-empty value must be a concise phrase derived from the wording of `integrated_statement`.
-
-Geography-separation rule:
-- `location` is the only research element that may contain place names or place-defining qualifiers.
-- Treat country groups, regions, and development-status labels as location qualifiers, including `LMIC`, `LMICs`, `HIC`, `Global South`, `Sub-Saharan Africa`, and `South Asia`.
-- Remove geography from `subject`, `phenomenon`, `context`, `comparator`, `outcome`, and `perspective`.
-- If a phrase mixes a transferable concept with geography, place the full geographic constraint in `location` and keep the de-localized concept in the other field.
-- `context` is the operational or institutional setting, not the place in which it occurs.
-
-Field guide:
-
-| Field | Universal meaning | Clinical | Social Science | Engineering/CS | Humanities | Public Health |
-|---|---|---|---|---|---|---|
-| **subject** | Who or what is under study | Patient population | Community or group | System or algorithm | Text, period, or artifact | Target population |
-| **phenomenon** | What is being examined, applied, or experienced | Intervention or exposure | Policy, program, or practice | Method or technique | Theme, event, or argument | Exposure or intervention |
-| **context** | Operational or institutional environment | Clinical setting | Organizational or societal setting | Deployment environment or platform | Archival or cultural setting | Health system or community organization |
-| **location** | Physical, geopolitical, or place-defining qualifier | Country, region, urban/rural | Country, region, locality | Country or deployment region | Historical location | Country, LMIC/HIC, urban/rural |
-| **comparator** | Contrast, baseline, or alternative condition | Control or active comparator | Alternative condition | Baseline method | Contrasting tradition | Counterfactual or alternative |
-| **outcome** | Measured or assessed result | Clinical endpoint | Social or behavioral result | Performance metric | Interpretive finding | Health or policy outcome |
-| **perspective** | Whose viewpoint or intended recipient | Patient or clinician | Policymaker or community member | End-user or developer | Reader or historian | Patient, provider, or planner |
-
-Leave `phenomenon` empty for purely descriptive or exploratory questions.
-Leave `context` empty when no specific setting is stated.
-Leave `location` empty when geography is not part of the question.
-Leave `comparator` empty when no comparison is stated.
-Leave `outcome` empty for description, mapping, or theory-building questions.
-Leave `perspective` empty when no audience or viewpoint is stated.
-Leave a field empty rather than paraphrasing beyond the wording supported by `integrated_statement`.
 
 ### search_filters.publication_years
 Format: `"YYYY-YYYY"` or `""`.
@@ -216,18 +179,8 @@ For up to 8 core concepts from `integrated_statement`, provide 3-8 synonyms each
 Rules:
 - Include only same-level equivalents: lexical variants, spelling variants, established abbreviations, and equivalent phrasings.
 - Do not include broader terms, narrower terms, exemplars, components, neighboring process stages, or loosely associated terms.
-- Do not place hyponyms here.
+- Keep `primary_terms`, `domain_specific`, and `colloquial` optional; use them only when clearly supported by the input and useful for retrieval.
 - Use 3 synonyms per concept by default. Add more only when each additional synonym is a genuine retrieval variant.
-
-### terminology.hyponyms
-For up to 8 core concepts from `integrated_statement`, provide 3-8 true subtypes, members, or specific instances each.
-
-Rules:
-- Use only true members of the parent concept.
-- Prioritize concepts whose hyponym expansion materially affects recall: interventions, exposures, technologies, populations, settings, and geographies.
-- For geographic concepts, valid member countries or subregions may be included when they are concrete instances of the stated geography.
-- These terms directly support exhaustive enumerations in `keyword.structured`.
-- Use 3 hyponyms per concept by default. Add more only when each additional hyponym improves recall without broadening scope.
 
 ---
 
@@ -262,15 +215,6 @@ Output:
         "optional": ["DVT", "pulmonary embolism", "LMWH", "DOAC", "mechanical prophylaxis", "compression stockings", "hip fracture surgery"],
         "excluded": ["pediatric", "spine surgery", "upper extremity"]
       }
-    },
-    "research_elements": {
-      "subject": "Patients undergoing major orthopedic surgery (total hip replacement, knee replacement, hip fracture surgery)",
-      "phenomenon": "Thromboprophylaxis interventions including antithrombotic medications and mechanical interventions such as compression stockings",
-      "context": "",
-      "location": "",
-      "comparator": "Within and across classes",
-      "outcome": "",
-      "perspective": ""
     }
   },
   "search_filters": {
@@ -281,6 +225,7 @@ Output:
     "fields_of_study": ["Medicine"]
   },
   "terminology": {
+    "primary_terms": ["venous thromboembolism prophylaxis", "major orthopedic surgery"],
     "synonyms": {
       "venous thromboembolism": ["VTE", "venous thrombosis", "thromboembolism"],
       "prophylaxis": ["prevention", "thromboprophylaxis", "preventive therapy"],
@@ -288,12 +233,8 @@ Output:
       "antithrombotic medications": ["antithrombotic agents", "antithrombotic therapy", "antithrombotic drugs"],
       "mechanical prophylaxis": ["mechanical interventions", "physical prophylaxis", "mechanical preventive measures"]
     },
-    "hyponyms": {
-      "venous thromboembolism": ["deep vein thrombosis", "DVT", "pulmonary embolism", "PE"],
-      "major orthopedic surgery": ["total hip replacement", "total knee replacement", "hip fracture surgery", "hip arthroplasty", "knee arthroplasty"],
-      "antithrombotic medications": ["anticoagulants", "low molecular weight heparins", "direct oral anticoagulants", "vitamin K antagonists"],
-      "mechanical prophylaxis": ["compression stockings", "graduated compression stockings", "intermittent pneumatic compression", "venous foot pumps"]
-    }
+    "domain_specific": ["thromboprophylaxis", "intermittent pneumatic compression"],
+    "colloquial": []
   }
 }
 
@@ -336,15 +277,6 @@ Output:
         "optional": ["solar photovoltaic", "wind turbines", "micro-hydro", "policy frameworks", "financing mechanisms", "rural electrification", "smallholder farmers"],
         "excluded": ["high-income countries", "industrial scale", "fossil fuel"]
       }
-    },
-    "research_elements": {
-      "subject": "Rural households, smallholder farmers, and local enterprises",
-      "phenomenon": "Economic barriers, policy frameworks, infrastructure availability, cultural acceptance, and financing mechanisms influencing adoption",
-      "context": "Off-grid and rural electrification programs",
-      "location": "Low and middle-income countries in Sub-Saharan Africa and South Asia",
-      "comparator": "",
-      "outcome": "",
-      "perspective": "Energy policymakers and development aid organizations"
     }
   },
   "search_filters": {
@@ -355,6 +287,7 @@ Output:
     "fields_of_study": ["Environmental Science", "Engineering", "Economics"]
   },
   "terminology": {
+    "primary_terms": ["renewable energy", "low and middle-income countries"],
     "synonyms": {
       "renewable energy": ["clean energy", "sustainable energy", "green energy"],
       "adoption": ["uptake", "take-up", "implementation"],
@@ -362,12 +295,8 @@ Output:
       "economic barriers": ["financial barriers", "cost barriers", "affordability constraints"],
       "policy frameworks": ["regulatory frameworks", "policy environments", "governance structures"]
     },
-    "hyponyms": {
-      "renewable energy technologies": ["solar photovoltaic systems", "wind turbines", "small-scale hydroelectric installations", "solar home systems", "run-of-river hydro"],
-      "economic barriers": ["upfront capital costs", "credit access constraints", "affordability gaps", "financing gaps"],
-      "policy frameworks": ["feed-in tariffs", "net metering policies", "renewable energy subsidies", "rural electrification mandates"],
-      "low and middle-income countries in Sub-Saharan Africa and South Asia": ["Kenya", "Tanzania", "Uganda", "Ethiopia", "India", "Bangladesh", "Pakistan", "Nepal"]
-    }
+    "domain_specific": ["solar PV", "rural electrification", "micro-hydro"],
+    "colloquial": []
   }
 }
 

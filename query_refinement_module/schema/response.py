@@ -114,6 +114,37 @@ class Terminology(BaseModel):
     colloquial: List[str] = Field(default_factory=list)
 
 
+class StatementResponse(BaseModel):
+    """Structured output for the statement synthesis call."""
+    integrated_statement: str = Field(
+        description="Integrated research specification preserving accepted constraints"
+    )
+
+
+class SemanticQueryResponse(BaseModel):
+    """Structured output for the semantic retrieval phrasing call."""
+    semantic: str = Field(
+        description="Natural language retrieval query for semantic or embedding search"
+    )
+
+
+class TerminologyResponse(BaseModel):
+    """Structured output for the terminology expansion call."""
+    synonyms: Dict[str, List[str]] = Field(default_factory=dict)
+
+
+class KeywordSupportResponse(BaseModel):
+    """Structured output for keyword-support generation."""
+    phrases: List[str] = Field(default_factory=list)
+    required: List[str] = Field(default_factory=list)
+    optional: List[str] = Field(default_factory=list)
+
+
+class FilterSuggestionResponse(BaseModel):
+    """Structured output for constrained filter suggestions."""
+    fields_of_study: List[str] = Field(default_factory=list)
+
+
 
 
 
@@ -141,7 +172,7 @@ class QueryRefinementResponse(BaseModel):
         description="Integrated research specification preserving user's voice",
         alias="synthesized_statement"  # Database column name (for backward compatibility)
     )
-    dimensions_specifications: Dict[str, str] = Field(
+    dimensions_specifications: Dict[str, Optional[str]] = Field(
         description="Normalized value for each dimension (dimension_id -> value)",
         alias="refined_dimensions"  # Database column name (for backward compatibility)
     )
@@ -161,4 +192,9 @@ __all__ = [
     "SearchOptimized",
     "SearchFilters",
     "Terminology",
+    "StatementResponse",
+    "SemanticQueryResponse",
+    "TerminologyResponse",
+    "KeywordSupportResponse",
+    "FilterSuggestionResponse",
 ]
