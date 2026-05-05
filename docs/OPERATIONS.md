@@ -10,8 +10,8 @@ Four env templates cover the supported backends:
 | ---------------------------------- | ------------------------------------ | ---------------- | -------------------- |
 | `.env.anthropic-claude-sonnet-4-6` | Anthropic Claude Sonnet 4.6 (dev)    | yes              | off                  |
 | `.env.prod`                        | Anthropic Claude (cloud, production) | yes              | off                  |
-| `.env.ollama-llama3.3-70b`         | Ollama — Llama 3.3 70B (local)       | no               | off                  |
-| `.env.vllm`                        | vLLM — Llama 3.3 70B (self-hosted)   | no               | **on**               |
+| `.env.ollama-llama3.1-8b`          | Ollama — Llama 3.1 8B (local)        | no               | off                  |
+| `.env.vllm`                        | vLLM — Llama 3.1 8B                  | no               | **on**               |
 
 To switch, copy the relevant template to `.env` and restart the API:
 
@@ -20,12 +20,13 @@ To switch, copy the relevant template to `.env` and restart the API:
 cp .env.anthropic-claude-sonnet-4-6 .env
 ./start_api.sh
 
-# Ollama — Llama 3.3 70B (local)
-cp .env.ollama-llama3.3-70b .env
+# Ollama — Llama 3.1 8B (local)
+cp .env.ollama-llama3.1-8b .env
 ./start_api.sh
 
-# vLLM — Llama 3.3 70B (self-hosted GPU)
+# vLLM — self-hosted (Llama 3.1 8B)
 cp .env.vllm .env
+./start_vllm.sh
 ./start_api.sh
 
 # Anthropic cloud (production)
@@ -65,7 +66,7 @@ curl http://localhost:11434/v1/models
 # Test a basic completion
 curl -X POST http://localhost:11434/v1/chat/completions \
   -H 'Content-Type: application/json' \
-  -d '{"model": "llama3.3:70b", "messages": [{"role": "user", "content": "ping"}]}'
+  -d '{"model": "llama3.1:8b", "messages": [{"role": "user", "content": "ping"}]}'
 ```
 
 > **Note:** `QUERY_REFINEMENT_LLM_COMPLETION_KWARGS={"num_ctx": 16384}` overrides Ollama's
@@ -82,11 +83,13 @@ curl http://localhost:8000/v1/models
 curl -X POST http://localhost:8000/v1/chat/completions \
   -H 'Content-Type: application/json' \
   -d '{
-    "model": "meta-llama/Llama-3.3-70B-Instruct",
+    "model": "meta-llama/Llama-3.1-8B-Instruct",
     "messages": [{"role": "user", "content": "Reply with valid JSON only: {\"complete\": true, \"current\": \"test\", \"question\": \"\"}"}],
     "guided_json": {"type": "object", "properties": {"complete": {"type": "boolean"}, "current": {"type": "string"}, "question": {"type": "string"}}, "required": ["complete", "current", "question"]}
   }'
 ```
+
+On macOS, keep local vLLM testing on the 8B model; vLLM runs CPU-only there.
 
 ---
 

@@ -37,8 +37,8 @@ A web-based tool that helps people turn a rough research idea into a clearer que
 poetry install --with dev
 # Pick the template for your LLM provider:
 #   cp .env.anthropic-claude-sonnet-4-6 .env   # Anthropic Claude (cloud)
-#   cp .env.ollama-llama3.3-70b .env           # Ollama — Llama 3.3 70B (local)
-#   cp .env.vllm .env                          # vLLM (self-hosted GPU)
+#   cp .env.ollama-llama3.1-8b .env            # Ollama — Llama 3.1 8B (local)
+#   cp .env.vllm .env                          # vLLM (self-hosted; use ./start_vllm.sh)
 # Then set QUERY_REFINEMENT_LLM_API_KEY (cloud) or verify API_BASE (local)
 poetry run alembic upgrade head
 poetry run uvicorn query_refinement_module.api.main:app --reload
@@ -96,7 +96,7 @@ docker compose -f docker-compose.yml -f docker-compose.prod.yml up -d
 
 5. Open the site in your browser and check the app, API docs, and sign-in flow.
 
-If you are deploying against a local AI server instead of a hosted provider, use `.env.ollama-llama3.3-70b` or `.env.vllm` as the starting point instead of `.env.prod`. For local Anthropic Claude development, use `.env.anthropic-claude-sonnet-4-6`.
+If you are deploying against a local AI server instead of a hosted provider, use `.env.ollama-llama3.1-8b` or `.env.vllm` as the starting point instead of `.env.prod`. For local Anthropic Claude development, use `.env.anthropic-claude-sonnet-4-6`.
 
 See [docs/DEPLOYMENT.md](docs/DEPLOYMENT.md) for the full deployment guide.
 
@@ -145,19 +145,23 @@ After changing these values, restart the API process or container.
 
 ### LLM provider backends
 
-Three pre-filled environment templates are provided:
+Four pre-filled environment templates are provided:
 
-| File                               | Provider                       | Constrained decoding |
-| ---------------------------------- | ------------------------------ | -------------------- |
-| `.env.anthropic-claude-sonnet-4-6` | Anthropic Claude Sonnet 4.6    | off                  |
-| `.env.prod`                        | Anthropic Claude (production)  | off                  |
-| `.env.ollama-llama3.3-70b`         | Ollama — Llama 3.3 70B (local) | off                  |
-| `.env.vllm`                        | vLLM — Llama 3.3 70B (GPU)     | **on**               |
+| File                               | Provider                      | Constrained decoding |
+| ---------------------------------- | ----------------------------- | -------------------- |
+| `.env.anthropic-claude-sonnet-4-6` | Anthropic Claude Sonnet 4.6   | off                  |
+| `.env.prod`                        | Anthropic Claude (production) | off                  |
+| `.env.ollama-llama3.1-8b`          | Ollama — Llama 3.1 8B (local) | off                  |
+| `.env.vllm`                        | vLLM — Llama 3.1 8B           | **on**               |
 
 To switch to vLLM:
 
 ```bash
 cp .env.vllm .env
+# Local default:
+./start_vllm.sh
+# Explicit model example:
+# ./start_vllm.sh meta-llama/Llama-3.1-8B-Instruct
 # Edit QUERY_REFINEMENT_LLM_API_BASE to point at your vLLM server
 # Edit QUERY_REFINEMENT_LLM_MODEL to match the model loaded on the server
 ```
@@ -178,8 +182,8 @@ backends and copy the matching environment file to `.env`.
 Use this if you already have Ollama installed and want a simple local setup.
 
 ```bash
-ollama pull llama3.3:70b
-cp .env.ollama-llama3.3-70b .env
+ollama pull llama3.1:8b
+cp .env.ollama-llama3.1-8b .env
 ```
 
 Set the API base to Ollama's default endpoint if it is not already set:
@@ -193,10 +197,37 @@ QUERY_REFINEMENT_LLM_CONSTRAINED_DECODING=false
 #### Option 2: vLLM
 
 Use this if you have GPU resources and want the OpenAI-compatible vLLM server.
+On macOS, vLLM runs CPU-only, so keep local testing on the default 8B model or use Ollama instead.
+
+Note: `meta-llama/Llama-3.1-8B-Instruct` is a gated Hugging Face model. You
+must log in with Hugging Face access before vLLM can download it, or point
+vLLM at a local Hugging Face-compatible model directory that already contains
+the weights and tokenizer files.
+
+If you do not already have access to the model, first request access on the
+model page at Hugging Face, then authenticate locally:
 
 ```bash
+hf auth login
+```
+
+If you prefer to pre-download the model instead of letting vLLM fetch it on
+startup, download it into a Hugging Face-compatible directory and serve that
+path:
+
+```bash
+hf download meta-llama/Llama-3.1-8B-Instruct \
+  --local-dir /path/to/llama-3.1-8b
+vllm serve /path/to/llama-3.1-8b --port 8000 --dtype bfloat16 --max-model-len 16384
+```
+
+If you have already authenticated with Hugging Face, you can also let vLLM
+pull the model directly on startup:
+
+```bash
+export HF_TOKEN=your-hf-token
 pip install vllm
-vllm serve meta-llama/Llama-3.3-70B-Instruct \
+vllm serve meta-llama/Llama-3.1-8B-Instruct \
   --port 8000 --dtype bfloat16 --max-model-len 16384
 cp .env.vllm .env
 ```
@@ -204,9 +235,10 @@ cp .env.vllm .env
 Then point the app at the vLLM server:
 
 ```dotenv
-QUERY_REFINEMENT_LLM_MODEL=openai/meta-llama/Llama-3.3-70B-Instruct
+QUERY_REFINEMENT_LLM_MODEL=openai/meta-llama/Llama-3.1-8B-Instruct
 QUERY_REFINEMENT_LLM_API_BASE=http://localhost:8000/v1
 QUERY_REFINEMENT_LLM_API_KEY=EMPTY
+HF_TOKEN=your-hf-token
 QUERY_REFINEMENT_LLM_CONSTRAINED_DECODING=true
 ```
 

@@ -306,7 +306,7 @@ async def test_litellm_provider_constrained_decoding_dimension():
         mock_litellm.acompletion = AsyncMock(return_value=mock_response)
 
         provider = LiteLLMProvider(
-            default_model="meta-llama/Llama-3.3-70B-Instruct",
+            default_model="meta-llama/Llama-3.1-8B-Instruct",
             constrained_decoding=True,
             enable_circuit_breaker=False,
         )
@@ -342,7 +342,7 @@ async def test_litellm_provider_constrained_decoding_synthesis():
         mock_litellm.acompletion = AsyncMock(return_value=mock_response)
 
         provider = LiteLLMProvider(
-            default_model="meta-llama/Llama-3.3-70B-Instruct",
+            default_model="meta-llama/Llama-3.1-8B-Instruct",
             constrained_decoding=True,
             enable_circuit_breaker=False,
         )
@@ -379,7 +379,7 @@ async def test_litellm_provider_constrained_decoding_json_object_fallback():
         mock_litellm.acompletion = AsyncMock(return_value=mock_response)
 
         provider = LiteLLMProvider(
-            default_model="meta-llama/Llama-3.3-70B-Instruct",
+            default_model="meta-llama/Llama-3.1-8B-Instruct",
             constrained_decoding=True,
             enable_circuit_breaker=False,
         )

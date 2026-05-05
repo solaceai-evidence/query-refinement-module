@@ -43,7 +43,7 @@ docker compose -f docker-compose.yml -f docker-compose.prod.yml up -d --build
 Before starting, verify the following:
 
 - Docker Engine and Docker Compose plugin are installed on the server
-- The correct template has been copied to `.env` (`.env.anthropic-claude-sonnet-4-6`, `.env.prod`, `.env.ollama-llama3.3-70b`, or `.env.vllm`)
+- The correct template has been copied to `.env` (`.env.anthropic-claude-sonnet-4-6`, `.env.prod`, `.env.ollama-llama3.1-8b`, or `.env.vllm`)
 - `SECRET_KEY` is set
 - `QUERY_REFINEMENT_LLM_API_KEY` is set **if using a cloud provider** (Anthropic, OpenAI); leave blank for Ollama or vLLM
 - `QUERY_REFINEMENT_LLM_API_BASE` is set **if using a local provider** (Ollama or vLLM)
@@ -80,12 +80,12 @@ Routing model:
 The API service connects to an LLM provider via LiteLLM.  Four pre-filled
 environment templates are provided:
 
-| Template                           | Provider                               | API key required | `CONSTRAINED_DECODING` |
-| ---------------------------------- | -------------------------------------- | ---------------- | ---------------------- |
-| `.env.anthropic-claude-sonnet-4-6` | Anthropic Claude Sonnet 4.6 (dev)      | yes              | `false`                |
-| `.env.prod`                        | Anthropic Claude (cloud, production)   | yes              | `false`                |
-| `.env.ollama-llama3.3-70b`         | Ollama — Llama 3.3 70B (local)         | no               | `false`                |
-| `.env.vllm`                        | vLLM — Llama 3.3 70B (self-hosted GPU) | no               | `true`                 |
+| Template                           | Provider                             | API key required | `CONSTRAINED_DECODING` |
+| ---------------------------------- | ------------------------------------ | ---------------- | ---------------------- |
+| `.env.anthropic-claude-sonnet-4-6` | Anthropic Claude Sonnet 4.6 (dev)    | yes              | `false`                |
+| `.env.prod`                        | Anthropic Claude (cloud, production) | yes              | `false`                |
+| `.env.ollama-llama3.1-8b`          | Ollama — Llama 3.1 8B (local)        | no               | `false`                |
+| `.env.vllm`                        | vLLM — Llama 3.1 8B (self-hosted)    | no               | `true`                 |
 
 ### Switching to Ollama
 
@@ -94,15 +94,15 @@ environment templates are provided:
 2. Pull the model you want to use:
 
 ```bash
-ollama pull llama3.3:70b
+ollama pull llama3.1:8b
 # Verify: ollama list
 ```
 
 3. Copy the template and configure:
 
 ```bash
-cp .env.ollama-llama3.3-70b .env
-# No API key needed — model is already set to llama3.3:70b
+cp .env.ollama-llama3.1-8b .env
+# No API key needed — model is already set to llama3.1:8b
 ```
 
 Key Ollama-specific settings:
@@ -117,10 +117,17 @@ Key Ollama-specific settings:
 ### Switching to vLLM (requires GPU and the `vllm` package):
 
 ```bash
-vllm serve meta-llama/Llama-3.3-70B-Instruct \
-  --port 8000 --dtype bfloat16 --max-model-len 16384
+./start_vllm.sh
 # Verify: curl http://localhost:8000/v1/models
 ```
+
+For an explicit 8B model launch:
+
+```bash
+./start_vllm.sh meta-llama/Llama-3.1-8B-Instruct
+```
+
+On macOS, vLLM runs CPU-only; keep local testing on the 8B model.
 
 2. Copy the template and configure:
 
