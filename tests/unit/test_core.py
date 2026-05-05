@@ -22,12 +22,44 @@ from query_refinement_module.interfaces import (
     TracingProviderInterface,
 )
 from query_refinement_module.schema import RefinementAspect
-from query_refinement_module.schema.response import DimensionEvaluationResponse
+from query_refinement_module.schema.response import (
+    DimensionEvaluationResponse,
+    FilterSuggestionResponse,
+    KeywordSupportResponse,
+    SemanticQueryResponse,
+    StatementResponse,
+    TerminologyResponse,
+)
 
 
 # ---------------------------------------------------------------------------
 # Helper factories and doubles
 # ---------------------------------------------------------------------------
+
+def make_split_responses(
+    *,
+    integrated_statement: str = "synthesized statement",
+    semantic: str = "semantic query",
+    synonyms: Optional[Dict[str, Any]] = None,
+    fields_of_study: Optional[List[str]] = None,
+    phrases: Optional[List[str]] = None,
+    required: Optional[List[str]] = None,
+    optional: Optional[List[str]] = None,
+) -> List[str]:
+    """Return 5 JSON strings in split-call consumption order:
+    statement, semantic, terminology, filter_resolution, keyword_support.
+    """
+    return [
+        json.dumps({"integrated_statement": integrated_statement}),
+        json.dumps({"semantic": semantic}),
+        json.dumps({"synonyms": synonyms or {}}),
+        json.dumps({"fields_of_study": fields_of_study or []}),
+        json.dumps({
+            "phrases": phrases or [],
+            "required": required or [],
+            "optional": optional or [],
+        }),
+    ]
 
 def make_aspect(
     *,
@@ -610,30 +642,18 @@ def test_process_analysis_result_keeps_existing_value_when_current_empty():
 @pytest.mark.asyncio
 async def test_synthesize_refined_query_without_clarifications():
     """Even with no answered dimensions, the LLM is called to produce semantic/keyword expansions."""
-    llm_response = json.dumps({
-        "synthesized_statement": "expanded: original",
-        "refined_dimensions": {},
-        "search_optimized": {
-            "semantic": "original synonyms expansions",
-            "keyword": {
-                "structured": "original",
-                "phrases": ["original"],
-                "terms": {"required": ["original"], "optional": [], "excluded": []}
-            }
-        },
-        "search_filters": {
-            "publication_years": "", "venues": [], "authors": [],
-            "publication_types": [], "fields_of_study": []
-        },
-        "terminology": {"synonyms": {}, "colloquial": []}
-    })
-    manager = build_manager(responses=[llm_response])
+    manager = build_manager(responses=make_split_responses(
+        integrated_statement="expanded: original",
+        semantic="original synonyms expansions",
+        phrases=["original"],
+        required=["original"],
+    ))
     session = RefinementSession(original_query="original")
 
     result = await manager.synthesize_refined_query(session)
     assert result["used_llm"]
     assert result["integrated_statement"] == "expanded: original"
-    # Even with nothing answered, the original query must appear in the LLM prompt
+    # The original query must appear in the statement call prompt
     call = manager.llm_provider.calls[0]
     assert "original" in call["user_prompt"].lower()
 
@@ -641,37 +661,12 @@ async def test_synthesize_refined_query_without_clarifications():
 @pytest.mark.asyncio
 async def test_synthesize_refined_query_with_clarifications():
     aspect = make_aspect(aspect_id="a", name="Population")
-    # Synthesis expects JSON with required QueryRefinementResponse fields
-    # Optional fields (grey_literature, primary_terms, domain_specific, metadata, processing_log) omitted to test they're truly optional
-    llm_response = json.dumps({
-        "synthesized_statement": "Refined query for adults 18-65",
-        "refined_dimensions": {"population": "Adults 18-65"},
-        "search_optimized": {
-            "semantic": "adults 18-65 health outcomes",
-            "keyword": {
-                "structured": "adults AND (18-65)",
-                "phrases": ["adults 18-65"],
-                "terms": {"required": ["adults"], "optional": [], "excluded": []}
-            }
-            # grey_literature is optional - omitted
-        },
-        "search_filters": {
-            "publication_years": "",
-            "venues": [],
-            "authors": [],
-            "publication_types": [],
-            "fields_of_study": []
-        },
-        "terminology": {
-            # primary_terms is optional - omitted
-            "synonyms": {},
-            # domain_specific is optional - omitted
-            "colloquial": []
-        }
-        # metadata is optional - omitted
-        # processing_log is optional - omitted
-    })
-    manager = build_manager(responses=[llm_response])
+    manager = build_manager(responses=make_split_responses(
+        integrated_statement="Refined query for adults 18-65",
+        semantic="adults 18-65 health outcomes",
+        phrases=["adults 18-65"],
+        required=["adults"],
+    ))
     session = RefinementSession(original_query="original query")
     step = session.add_step(aspect)
     step.add_follow_up("Q", "Adults 18-65")
@@ -680,6 +675,7 @@ async def test_synthesize_refined_query_with_clarifications():
     result = await manager.synthesize_refined_query(session)
     assert result["used_llm"]
     assert result["integrated_statement"] == "Refined query for adults 18-65"
+    # Statement call must see both the original query and the accepted dimension value
     call = manager.llm_provider.calls[0]
     assert "original query" in call["user_prompt"].lower()
     assert "Adults 18-65" in call["user_prompt"]
@@ -688,27 +684,12 @@ async def test_synthesize_refined_query_with_clarifications():
 @pytest.mark.asyncio
 async def test_synthesize_refined_query_prefers_deterministic_dimensions_and_filters():
     aspect = make_aspect(aspect_id="population", name="Population")
-    llm_response = json.dumps({
-        "synthesized_statement": "Refined query for adults 18-65 since 2018 published in New England Journal of Medicine by Jane Doe",
-        "refined_dimensions": {"population": "incorrect model value"},
-        "search_optimized": {
-            "semantic": "adults 18-65 health outcomes",
-            "keyword": {
-                "structured": "adults AND health",
-                "phrases": ["adults 18-65"],
-                "terms": {"required": ["adults"], "optional": [], "excluded": []}
-            }
-        },
-        "search_filters": {
-            "publication_years": "",
-            "venues": [],
-            "authors": [],
-            "publication_types": [],
-            "fields_of_study": []
-        },
-        "terminology": {"synonyms": {}, "colloquial": []}
-    })
-    manager = build_manager(responses=[llm_response])
+    manager = build_manager(responses=make_split_responses(
+        integrated_statement="Refined query for adults 18-65 since 2018 published in New England Journal of Medicine by Jane Doe",
+        semantic="adults 18-65 health outcomes",
+        phrases=["adults 18-65"],
+        required=["adults"],
+    ))
     session = RefinementSession(original_query="Studies since 2018 published in New England Journal of Medicine by Jane Doe")
     step = session.add_step(aspect)
     step.add_follow_up("Q", "Adults 18-65")
@@ -749,45 +730,236 @@ async def test_run_full_refinement_processes_steps():
 
 @pytest.mark.asyncio
 async def test_synthesize_refined_query_uses_preparsed_context():
-    """When the provider returns a QueryRefinementResponse as result.context (vLLM / native structured
-    output), synthesize_refined_query must use it directly without attempting json.loads."""
-    from query_refinement_module.schema.response import (
-        QueryRefinementResponse,
-        SearchOptimized,
-        KeywordSearch,
-        SearchTerms,
-        SearchFilters,
-        Terminology,
-    )
-
-    preparsed = QueryRefinementResponse(**{
-        "synthesized_statement": "Pre-parsed integrated statement",
-        "refined_dimensions": {"population": "adults 18-65"},
-        "search_optimized": {
-            "semantic": "adults 18-65 health outcomes",
-            "keyword": {
-                "structured": "adults AND (18-65)",
-                "phrases": ["adults 18-65"],
-                "terms": {"required": ["adults"], "optional": [], "excluded": []},
-            },
-        },
-        "search_filters": {
-            "publication_years": "",
-            "venues": [],
-            "authors": [],
-            "publication_types": [],
-            "fields_of_study": [],
-        },
-        "terminology": {"synonyms": {}, "colloquial": []},
-    })
-
-    # StubLLMProvider wraps non-LLMCompletionResult items in DummyCompletionResult.
-    # Passing the QueryRefinementResponse directly makes result.context a QueryRefinementResponse.
-    manager = build_manager(responses=[preparsed])
+    """When the provider returns pre-parsed narrow models, each split call uses them directly
+    without attempting json.loads (fast path in _run_split_call)."""
+    # Provide pre-parsed narrow model instances in split-call order:
+    # statement, semantic, terminology, filter_resolution, keyword_support
+    manager = build_manager(responses=[
+        StatementResponse(integrated_statement="Pre-parsed integrated statement"),
+        SemanticQueryResponse(semantic="pre-parsed semantic query"),
+        TerminologyResponse(synonyms={"exercise": ["physical activity"]}),
+        FilterSuggestionResponse(fields_of_study=["Medicine"]),
+        KeywordSupportResponse(phrases=["pre-parsed"], required=["exercise"], optional=[]),
+    ])
     session = RefinementSession(original_query="original query")
 
     result = await manager.synthesize_refined_query(session)
 
     assert result["used_llm"]
     assert result["integrated_statement"] == "Pre-parsed integrated statement"
-    assert result["dimensions_specifications"] == {"population": "adults 18-65"}
+    assert result["search_optimized"].semantic == "pre-parsed semantic query"
+    assert result["terminology"].synonyms == {"exercise": ["physical activity"]}
+    assert result["search_filters"].fields_of_study == ["Medicine"]
+    # dimensions_specifications is always deterministic (from session state, never from LLM)
+    assert result["dimensions_specifications"] == {}
+
+
+# ---------------------------------------------------------------------------
+# Workstream 6: field-level validation and repair
+# ---------------------------------------------------------------------------
+
+class TestValidateSplitResult:
+    """_validate_split_result returns None on valid input and an error string on violation."""
+
+    def test_statement_valid(self):
+        r = StatementResponse(integrated_statement="some statement")
+        assert QueryRefinementManager._validate_split_result("statement", r) is None
+
+    def test_statement_empty(self):
+        r = StatementResponse(integrated_statement="")
+        assert QueryRefinementManager._validate_split_result("statement", r) is not None
+
+    def test_statement_whitespace_only(self):
+        r = StatementResponse(integrated_statement="   ")
+        assert QueryRefinementManager._validate_split_result("statement", r) is not None
+
+    def test_semantic_valid(self):
+        r = SemanticQueryResponse(semantic="adults with COPD receiving pulmonary rehab")
+        assert QueryRefinementManager._validate_split_result("semantic", r) is None
+
+    def test_semantic_empty(self):
+        r = SemanticQueryResponse(semantic="")
+        assert QueryRefinementManager._validate_split_result("semantic", r) is not None
+
+    def test_terminology_valid(self):
+        r = TerminologyResponse(synonyms={"COPD": ["chronic obstructive pulmonary disease"]})
+        assert QueryRefinementManager._validate_split_result("terminology", r) is None
+
+    def test_terminology_self_reference(self):
+        """A term must not list itself as its own synonym."""
+        r = TerminologyResponse(synonyms={"COPD": ["COPD", "lung disease"]})
+        err = QueryRefinementManager._validate_split_result("terminology", r)
+        assert err is not None
+        assert "synonym" in err
+
+    def test_terminology_empty_synonym_item(self):
+        r = TerminologyResponse(synonyms={"COPD": ["", "chronic obstructive pulmonary disease"]})
+        assert QueryRefinementManager._validate_split_result("terminology", r) is not None
+
+    def test_keyword_valid(self):
+        r = KeywordSupportResponse(phrases=["COPD rehab"], required=["COPD"], optional=["adults"])
+        assert QueryRefinementManager._validate_split_result("keyword_support", r) is None
+
+    def test_keyword_required_optional_overlap(self):
+        r = KeywordSupportResponse(phrases=[], required=["COPD"], optional=["COPD"])
+        err = QueryRefinementManager._validate_split_result("keyword_support", r)
+        assert err is not None
+        assert "overlap" in err
+
+    def test_keyword_empty_item(self):
+        r = KeywordSupportResponse(phrases=[""], required=[], optional=[])
+        assert QueryRefinementManager._validate_split_result("keyword_support", r) is not None
+
+    def test_filter_valid(self):
+        r = FilterSuggestionResponse(fields_of_study=["Medicine", "Psychology"])
+        assert QueryRefinementManager._validate_split_result("filter_resolution", r) is None
+
+    def test_filter_empty_list_valid(self):
+        r = FilterSuggestionResponse(fields_of_study=[])
+        assert QueryRefinementManager._validate_split_result("filter_resolution", r) is None
+
+    def test_filter_bad_value(self):
+        r = FilterSuggestionResponse(fields_of_study=["Medicine", "Astrology"])
+        err = QueryRefinementManager._validate_split_result("filter_resolution", r)
+        assert err is not None
+        assert "Astrology" in err
+
+    def test_unknown_call_name_always_valid(self):
+        """Calls we don't recognise should pass through without error."""
+        assert QueryRefinementManager._validate_split_result("unknown_call", object()) is None
+
+
+class TestBuildRepairPrompt:
+    """_build_repair_prompt appends a targeted instruction; never includes deterministic field names."""
+
+    _DETERMINISTIC_FIELDS = (
+        "dimensions_specifications",
+        "publication_years",
+        "venues",
+        "authors",
+        "publication_types",
+    )
+
+    def _check_no_deterministic_fields(self, prompt: str):
+        for field in self._DETERMINISTIC_FIELDS:
+            assert field not in prompt, f"Repair prompt must not mention deterministic field '{field}'"
+
+    def test_statement_repair_prompt(self):
+        prompt = QueryRefinementManager._build_repair_prompt("base prompt", "statement", "empty")
+        assert "REPAIR" in prompt
+        assert "integrated_statement" in prompt
+        self._check_no_deterministic_fields(prompt)
+
+    def test_semantic_repair_prompt(self):
+        prompt = QueryRefinementManager._build_repair_prompt("base", "semantic", "empty")
+        assert "REPAIR" in prompt
+        assert "semantic" in prompt
+        self._check_no_deterministic_fields(prompt)
+
+    def test_terminology_repair_prompt(self):
+        prompt = QueryRefinementManager._build_repair_prompt("base", "terminology", "self-ref")
+        assert "REPAIR" in prompt
+        self._check_no_deterministic_fields(prompt)
+
+    def test_keyword_repair_prompt(self):
+        prompt = QueryRefinementManager._build_repair_prompt("base", "keyword_support", "overlap")
+        assert "REPAIR" in prompt
+        self._check_no_deterministic_fields(prompt)
+
+    def test_filter_repair_prompt(self):
+        prompt = QueryRefinementManager._build_repair_prompt("base", "filter_resolution", "bad value")
+        assert "REPAIR" in prompt
+        assert "permitted" in prompt
+        self._check_no_deterministic_fields(prompt)
+
+    def test_original_prompt_preserved(self):
+        original = "## Original Input\n\nsome query"
+        prompt = QueryRefinementManager._build_repair_prompt(original, "statement", "empty")
+        assert original in prompt
+
+
+@pytest.mark.asyncio
+async def test_run_split_call_triggers_repair_on_validation_failure():
+    """When the first response fails validation, _run_split_call retries with a repair prompt
+    and returns the repaired result."""
+    # First response: empty statement (fails validation)
+    # Second response: valid statement (repair succeeds)
+    manager = build_manager(responses=[
+        json.dumps({"integrated_statement": ""}),
+        json.dumps({"integrated_statement": "valid repaired statement"}),
+    ])
+    from query_refinement_module.schema.synthesis import SynthesisPromptBuilder
+    pb = SynthesisPromptBuilder()
+    result, meta = await manager._run_split_call(
+        pb.get_statement_system_prompt(),
+        "some user prompt",
+        StatementResponse,
+        "statement",
+    )
+    assert result is not None
+    assert result.integrated_statement == "valid repaired statement"
+    # Two provider calls should have been made (initial + repair)
+    assert len(manager.llm_provider.calls) == 2
+    # The repair call's user prompt must include the REPAIR instruction
+    repair_user_prompt = manager.llm_provider.calls[1]["user_prompt"]
+    assert "REPAIR" in repair_user_prompt
+
+
+@pytest.mark.asyncio
+async def test_run_split_call_returns_none_when_repair_also_fails():
+    """When both the initial call and the repair attempt fail validation, return (None, ...)."""
+    manager = build_manager(responses=[
+        json.dumps({"integrated_statement": ""}),   # initial: invalid
+        json.dumps({"integrated_statement": ""}),   # repair: still invalid
+    ])
+    from query_refinement_module.schema.synthesis import SynthesisPromptBuilder
+    pb = SynthesisPromptBuilder()
+    result, meta = await manager._run_split_call(
+        pb.get_statement_system_prompt(),
+        "some user prompt",
+        StatementResponse,
+        "statement",
+    )
+    assert result is None
+    assert len(manager.llm_provider.calls) == 2
+
+
+@pytest.mark.asyncio
+async def test_run_split_call_no_repair_when_valid():
+    """When the first response is valid, only one provider call is made."""
+    manager = build_manager(responses=[
+        json.dumps({"integrated_statement": "valid statement on first try"}),
+    ])
+    from query_refinement_module.schema.synthesis import SynthesisPromptBuilder
+    pb = SynthesisPromptBuilder()
+    result, meta = await manager._run_split_call(
+        pb.get_statement_system_prompt(),
+        "some user prompt",
+        StatementResponse,
+        "statement",
+    )
+    assert result is not None
+    assert result.integrated_statement == "valid statement on first try"
+    assert len(manager.llm_provider.calls) == 1
+
+
+@pytest.mark.asyncio
+async def test_run_split_call_filter_repair_removes_bad_values():
+    """A filter_resolution result with unpermitted values triggers repair; the repair response
+    with valid values is returned."""
+    manager = build_manager(responses=[
+        json.dumps({"fields_of_study": ["Medicine", "Astrology"]}),  # invalid
+        json.dumps({"fields_of_study": ["Medicine"]}),               # repaired
+    ])
+    from query_refinement_module.schema.synthesis import SynthesisPromptBuilder
+    pb = SynthesisPromptBuilder()
+    from query_refinement_module.core import FIELDS_OF_STUDY_PERMITTED
+    result, meta = await manager._run_split_call(
+        pb.get_filter_resolution_system_prompt(),
+        pb.get_filter_resolution_prompt("query", {}, FIELDS_OF_STUDY_PERMITTED),
+        FilterSuggestionResponse,
+        "filter_resolution",
+    )
+    assert result is not None
+    assert result.fields_of_study == ["Medicine"]
+    assert len(manager.llm_provider.calls) == 2

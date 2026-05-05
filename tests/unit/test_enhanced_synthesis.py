@@ -8,6 +8,7 @@ Tests verify:
 4. Synthesis produces clean, professional output
 """
 
+import json
 import pytest
 from query_refinement_module.core import (
     AspectRefinementState,
@@ -204,25 +205,30 @@ def test_dependency_context_fallback_chain():
 
 @pytest.mark.asyncio
 async def test_synthesis_prompt_includes_quality_requirements():
-    """Verify synthesize_refined_query includes required content for synthesis."""
+    """Verify synthesize_refined_query builds and sends the statement prompt."""
     aspect = make_aspect(aspect_id="pop", name="Population")
-    llm = StubLLMProvider(responses=["Refined output"])
+    llm = StubLLMProvider(responses=[
+        json.dumps({"integrated_statement": "Refined output"}),  # statement
+        json.dumps({"semantic": "refined semantic"}),             # semantic
+        json.dumps({"synonyms": {}}),                             # terminology
+        json.dumps({"fields_of_study": []}),                      # filter_resolution
+        json.dumps({"phrases": [], "required": [], "optional": []}),  # keyword_support
+    ])
     manager = QueryRefinementManager(llm_provider=llm)
-    
+
     session = RefinementSession(original_query="I think maybe adults with diabetes")
     step = session.add_step(aspect)
     step.add_follow_up("Q", "Well, probably 18-65 years old")
     step.is_complete = True
-    
+
     result = await manager.synthesize_refined_query(session)
-    
-    # Check that the prompt was built
-    assert len(llm.calls) == 1
+
+    # 5 split calls are made
+    assert len(llm.calls) == 5
+    # Statement call (index 0) contains the original query and accepted dimensions
     user_prompt = llm.calls[0]["user_prompt"] or ""
-    
-    # Check for key sections in v2.0 simplified template
     assert "Original Input" in user_prompt or "original" in user_prompt.lower()
-    assert "Clarified Dimensions" in user_prompt or "dimensions" in user_prompt.lower() or "Population" in user_prompt
+    assert "Canonical Dimensions" in user_prompt or "dimensions" in user_prompt.lower() or "Population" in user_prompt
 
 
 @pytest.mark.asyncio

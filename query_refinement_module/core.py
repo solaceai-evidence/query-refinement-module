@@ -65,8 +65,19 @@ from .schema import (
     DimensionEvaluationResponse,
     SynthesisPromptBuilder,
     QueryRefinementResponse,
+    StatementResponse,
+    SemanticQueryResponse,
+    TerminologyResponse,
+    KeywordSupportResponse,
+    FilterSuggestionResponse,
 )
-from .schema.response import SearchFilters
+from .schema.response import (
+    SearchFilters,
+    SearchOptimized,
+    KeywordSearch,
+    SearchTerms,
+    Terminology,
+)
 
 from .schema.templates.global_system import (
     GLOBAL_SYSTEM_PROMPT,
@@ -106,6 +117,35 @@ PUBLICATION_TYPE_PATTERNS = [
     (r"\bpolicy documents?\b|\bpolicies\b", "Policy document"),
     (r"\bgovernment documents?\b", "Government document"),
     (r"\bconsensus conferences?\b", "Consensus conference"),
+]
+
+# Permitted values for the fields_of_study filter.
+# Sourced from the synthesis template; the LLM must pick only from this list.
+FIELDS_OF_STUDY_PERMITTED: List[str] = [
+    "Agricultural and Food Sciences",
+    "Art",
+    "Biology",
+    "Business",
+    "Chemistry",
+    "Computer Science",
+    "Economics",
+    "Education",
+    "Engineering",
+    "Environmental Science",
+    "Geography",
+    "Geology",
+    "History",
+    "Law",
+    "Linguistics",
+    "Materials Science",
+    "Mathematics",
+    "Medicine",
+    "Philosophy",
+    "Physics",
+    "Political Science",
+    "Psychology",
+    "Public Health",
+    "Sociology",
 ]
 
 # =======
@@ -1405,6 +1445,483 @@ class QueryRefinementManager:
 
         return merged_filters
 
+    # ------------------------------------------------------------------
+    # Split-call helpers (workstream 5)
+    # ------------------------------------------------------------------
+
+    def _build_concept_inventory(
+        self,
+        integrated_statement: str,
+        accepted_dimensions: Dict[str, Any],
+    ) -> Dict[str, List[str]]:
+        """Return a concept inventory keyed by accepted dimension values.
+
+        Keys are the serialized values of accepted (non-skipped) dimensions.
+        Values are empty lists; the terminology call populates synonyms.
+        """
+        inventory: Dict[str, List[str]] = {}
+        for value in accepted_dimensions.values():
+            serialized = self._serialize_dimension_value(value)
+            if serialized:
+                inventory[serialized] = []
+        return inventory
+
+    @staticmethod
+    def _compile_boolean_query(
+        required: List[str],
+        synonyms: Dict[str, List[str]],
+    ) -> str:
+        """Compile a Boolean AND-of-OR query from required terms and their synonyms.
+
+        Each required term becomes an OR-block with up to 3 additional synonyms.
+        Blocks are joined with AND.
+        """
+        if not required:
+            return ""
+        blocks = []
+        for term in required:
+            variants = [term] + synonyms.get(term, [])[:3]
+            if len(variants) == 1:
+                blocks.append(f'"{term}"' if " " in term else term)
+            else:
+                inner = " OR ".join(
+                    f'"{v}"' if " " in v else v for v in variants
+                )
+                blocks.append(f"({inner})")
+        return " AND ".join(blocks)
+
+    async def _execute_split_call(
+        self,
+        system_prompt: str,
+        user_prompt: str,
+        response_model: type,
+        call_name: str,
+        *,
+        model: Optional[str] = None,
+        temperature: float = 0.2,
+        max_tokens: int = 512,
+    ):
+        """Single LLM round-trip + JSON extraction + Pydantic parse.
+
+        Returns ``(parsed_model_or_None, metadata_dict)``.
+        No validation or repair is performed here; see :meth:`_run_split_call`.
+        """
+        try:
+            result = await self.llm_provider.complete_async(
+                system_prompt=system_prompt,
+                user_prompt=user_prompt,
+                model=model,
+                temperature=temperature,
+                max_tokens=max_tokens,
+                response_format=response_model,
+                cache_system_prompt=False,
+            )
+        except Exception as exc:
+            logger.warning("Split call '%s' failed (provider error): %s", call_name, exc)
+            self.trace_emitter.emit(
+                f"split_call_{call_name}_error",
+                level="warning",
+                metadata={"error": str(exc)},
+            )
+            return None, None
+
+        metadata = result.metadata or {}
+
+        # Fast path: provider pre-parsed the response (Claude / vLLM constrained decoding)
+        if isinstance(result.context, response_model):
+            return result.context, metadata
+
+        raw = (result.context or "").strip()
+
+        # Strip markdown code fences if present
+        if raw.startswith("```"):
+            lines = raw.splitlines()
+            body = lines[1:]
+            if body and body[-1].startswith("```"):
+                body = body[:-1]
+            raw = "\n".join(body).strip()
+
+        # Locate the JSON object
+        if not raw.startswith("{"):
+            start = raw.find("{")
+            if start == -1:
+                logger.warning(
+                    "Split call '%s': no JSON object found in response | preview: %.200s",
+                    call_name, raw,
+                )
+                return None, metadata
+            raw = raw[start:]
+            brace_count = 0
+            for i, ch in enumerate(raw):
+                if ch == "{":
+                    brace_count += 1
+                elif ch == "}":
+                    brace_count -= 1
+                    if brace_count == 0:
+                        raw = raw[: i + 1]
+                        break
+
+        try:
+            data = json.loads(raw)
+            parsed = response_model(**data)
+            return parsed, metadata
+        except Exception as exc:
+            logger.warning(
+                "Split call '%s' parse failed: %s | raw: %.200s",
+                call_name, exc, raw,
+            )
+            self.trace_emitter.emit(
+                f"split_call_{call_name}_parse_failed",
+                level="warning",
+                metadata={"error": str(exc), "response_preview": raw[:200]},
+            )
+            return None, metadata
+
+    @staticmethod
+    def _validate_split_result(call_name: str, result: Any) -> Optional[str]:
+        """Return an error string if ``result`` fails field-level constraints, else None.
+
+        Only generated fields are checked.  Deterministic fields
+        (``dimensions_specifications``, ``publication_years``, ``venues``,
+        ``authors``, ``publication_types``) are never produced by the LLM so
+        they are not in scope here.
+        """
+        if call_name == "statement":
+            val = getattr(result, "integrated_statement", None)
+            if not val or not val.strip():
+                return "integrated_statement is empty"
+
+        elif call_name == "semantic":
+            val = getattr(result, "semantic", None)
+            if not val or not val.strip():
+                return "semantic is empty"
+
+        elif call_name == "terminology":
+            synonyms = getattr(result, "synonyms", {}) or {}
+            issues = []
+            bad_keys = [k for k in synonyms if not isinstance(k, str) or not k.strip()]
+            if bad_keys:
+                issues.append(f"empty/non-string keys: {bad_keys[:3]}")
+            bad_values = [
+                k for k, vs in synonyms.items()
+                if not isinstance(vs, list)
+                or any(not isinstance(v, str) or not v.strip() for v in vs)
+            ]
+            if bad_values:
+                issues.append(f"invalid synonym lists for: {bad_values[:3]}")
+            self_ref = [k for k, vs in synonyms.items() if isinstance(vs, list) and k in vs]
+            if self_ref:
+                issues.append(f"term listed as its own synonym: {self_ref[:3]}")
+            if issues:
+                return "; ".join(issues)
+
+        elif call_name == "keyword_support":
+            required = getattr(result, "required", []) or []
+            optional = getattr(result, "optional", []) or []
+            phrases = getattr(result, "phrases", []) or []
+            issues = []
+            for fname, items in (("phrases", phrases), ("required", required), ("optional", optional)):
+                bad = [v for v in items if not isinstance(v, str) or not v.strip()]
+                if bad:
+                    issues.append(f"{fname} contains empty items: {bad[:3]}")
+            overlap = sorted(set(required) & set(optional))
+            if overlap:
+                issues.append(f"required ∩ optional overlap: {overlap[:3]}")
+            if issues:
+                return "; ".join(issues)
+
+        elif call_name == "filter_resolution":
+            fields = getattr(result, "fields_of_study", []) or []
+            bad = [f for f in fields if f not in FIELDS_OF_STUDY_PERMITTED]
+            if bad:
+                return f"fields_of_study not in permitted list: {bad}"
+
+        return None  # valid
+
+    @staticmethod
+    def _build_repair_prompt(user_prompt: str, call_name: str, error: str) -> str:
+        """Append a targeted repair instruction to an existing user prompt."""
+        _INSTRUCTIONS: Dict[str, str] = {
+            "statement": (
+                "REPAIR: The previous response was rejected. "
+                "Return a non-empty `integrated_statement` that synthesises the "
+                "original input and canonical dimensions. Do not return any other fields."
+            ),
+            "semantic": (
+                "REPAIR: The previous response was rejected. "
+                "Return a non-empty single-sentence `semantic` retrieval query. "
+                "Do not return any other fields."
+            ),
+            "terminology": (
+                "REPAIR: The previous synonyms contained invalid entries. "
+                "Each key must be a non-empty string. "
+                "Each value must be a list of distinct non-empty strings that are "
+                "lexical variants of the key — a term must not list itself as its own synonym."
+            ),
+            "keyword_support": (
+                "REPAIR: The previous keyword lists contained invalid entries. "
+                "Each item in phrases, required, and optional must be a non-empty string. "
+                "No term may appear in both `required` and `optional`."
+            ),
+            "filter_resolution": (
+                "REPAIR: Some `fields_of_study` values were not in the permitted list. "
+                "Return only values that appear verbatim in the permitted-values list above. "
+                "If none apply, return an empty list."
+            ),
+        }
+        instruction = _INSTRUCTIONS.get(
+            call_name,
+            f"REPAIR: Validation failed. Correct the output.",
+        )
+        return f"{user_prompt}\n\n{instruction}\nValidation error detail: {error}"
+
+    async def _run_split_call(
+        self,
+        system_prompt: str,
+        user_prompt: str,
+        response_model: type,
+        call_name: str,
+        *,
+        model: Optional[str] = None,
+        temperature: float = 0.2,
+        max_tokens: int = 512,
+    ):
+        """Execute one narrow LLM call with field-level validation and one repair attempt.
+
+        Returns ``(parsed_model, accumulated_metadata)`` on success, or
+        ``(None, accumulated_metadata)`` when both the initial call and the
+        repair attempt fail or remain invalid after repair.
+
+        Repair scope: only generated fields are validated and repaired.
+        Deterministic fields (``dimensions_specifications``, ``publication_years``,
+        ``venues``, ``authors``, ``publication_types``) are never passed to any
+        LLM call, so the repair path cannot reach or overwrite them.
+        """
+        logger.info("Split synthesis call: %s", call_name)
+        parsed, metadata = await self._execute_split_call(
+            system_prompt, user_prompt, response_model, call_name,
+            model=model, temperature=temperature, max_tokens=max_tokens,
+        )
+
+        if parsed is None:
+            return None, metadata
+
+        error = self._validate_split_result(call_name, parsed)
+        if error is None:
+            self.trace_emitter.emit(
+                f"split_call_{call_name}_ok",
+                metadata={"tokens": (metadata or {}).get("completion_tokens", 0)},
+            )
+            return parsed, metadata
+
+        # --- Validation failed: one targeted repair attempt ---
+        logger.warning(
+            "Split call '%s' validation failed: %s — attempting repair", call_name, error
+        )
+        self.trace_emitter.emit(
+            f"split_call_{call_name}_validation_failed",
+            level="warning",
+            metadata={"error": error},
+        )
+
+        repair_prompt = self._build_repair_prompt(user_prompt, call_name, error)
+        repaired, repair_meta = await self._execute_split_call(
+            system_prompt, repair_prompt, response_model, f"{call_name}_repair",
+            model=model, temperature=temperature, max_tokens=max_tokens,
+        )
+
+        # Accumulate repair token usage
+        agg_meta: Dict[str, Any] = dict(metadata or {})
+        if repair_meta:
+            for key in ("prompt_tokens", "completion_tokens", "total_tokens"):
+                agg_meta[key] = agg_meta.get(key, 0) + repair_meta.get(key, 0)
+
+        if repaired is not None:
+            repair_error = self._validate_split_result(call_name, repaired)
+            if repair_error is None:
+                logger.info("Split call '%s' repair succeeded", call_name)
+                self.trace_emitter.emit(
+                    f"split_call_{call_name}_repaired",
+                    metadata={"tokens": (repair_meta or {}).get("completion_tokens", 0)},
+                )
+                return repaired, agg_meta
+            logger.warning(
+                "Split call '%s' repair still invalid: %s — using safe default",
+                call_name, repair_error,
+            )
+
+        self.trace_emitter.emit(
+            f"split_call_{call_name}_repair_failed",
+            level="warning",
+            metadata={"original_error": error},
+        )
+        return None, agg_meta
+
+    async def _run_split_synthesis(
+        self,
+        session: "RefinementSession",
+        *,
+        canonical_dimensions: Dict[str, Any],
+        accepted_dimensions: Dict[str, Any],
+        deterministic_filters: SearchFilters,
+        additional_guidance: Optional[str] = None,
+        model: Optional[str] = None,
+        temperature: float = 0.2,
+    ):
+        """Execute the 5-call split synthesis graph and return
+        ``(QueryRefinementResponse, aggregated_metadata)``.
+
+        Call graph
+        ----------
+        1. Statement (serial) → ``integrated_statement``
+        2. Semantic phrasing  ⎤
+        3. Terminology        ⎥ parallel (depend on statement only)
+        5. Filter resolution  ⎦
+        4. Keyword support (depends on terminology output)
+
+        Deterministic fields are baked in before returning:
+        - ``dimensions_specifications`` from session state
+        - ``publication_years`` / ``venues`` / ``authors`` / ``publication_types``
+          from *deterministic_filters*
+        - ``fields_of_study`` from the LLM filter-resolution call
+        """
+        aspects = [step.refinement_aspect for step in session.steps]
+        pb = SynthesisPromptBuilder()
+
+        agg: Dict[str, Any] = {"prompt_tokens": 0, "completion_tokens": 0, "total_tokens": 0}
+
+        def _accumulate(meta: Optional[Dict[str, Any]]) -> None:
+            if not meta:
+                return
+            agg["prompt_tokens"] += meta.get("prompt_tokens", 0)
+            agg["completion_tokens"] += meta.get("completion_tokens", 0)
+            agg["total_tokens"] += meta.get("total_tokens", 0)
+
+        # --- Call 1: Statement -------------------------------------------
+        stmt_user = pb.get_statement_prompt(
+            session.original_query, canonical_dimensions, aspects
+        )
+        if additional_guidance:
+            stmt_user = f"{stmt_user}\n\nADDITIONAL GUIDANCE:\n{additional_guidance.strip()}"
+
+        stmt_result, stmt_meta = await self._run_split_call(
+            pb.get_statement_system_prompt(),
+            stmt_user,
+            StatementResponse,
+            "statement",
+            model=model,
+            temperature=temperature,
+            max_tokens=512,
+        )
+        _accumulate(stmt_meta)
+        integrated_statement: str = (
+            stmt_result.integrated_statement if stmt_result else session.original_query
+        )
+
+        # --- Calls 2, 3, 5: parallel (depend on statement) ---------------
+        concept_inventory = self._build_concept_inventory(
+            integrated_statement, accepted_dimensions
+        )
+
+        semantic_coro = self._run_split_call(
+            pb.get_semantic_query_system_prompt(),
+            pb.get_semantic_query_prompt(integrated_statement, accepted_dimensions),
+            SemanticQueryResponse,
+            "semantic",
+            model=model,
+            temperature=temperature,
+            max_tokens=256,
+        )
+        terminology_coro = self._run_split_call(
+            pb.get_terminology_system_prompt(),
+            pb.get_terminology_prompt(integrated_statement, concept_inventory),
+            TerminologyResponse,
+            "terminology",
+            model=model,
+            temperature=temperature,
+            max_tokens=1024,
+        )
+        filter_coro = self._run_split_call(
+            pb.get_filter_resolution_system_prompt(),
+            pb.get_filter_resolution_prompt(
+                session.original_query,
+                accepted_dimensions,
+                FIELDS_OF_STUDY_PERMITTED,
+            ),
+            FilterSuggestionResponse,
+            "filter_resolution",
+            model=model,
+            temperature=temperature,
+            max_tokens=256,
+        )
+
+        (sem_result, sem_meta), (term_result, term_meta), (filt_result, filt_meta) = (
+            await asyncio.gather(semantic_coro, terminology_coro, filter_coro)
+        )
+        for m in (sem_meta, term_meta, filt_meta):
+            _accumulate(m)
+
+        # --- Call 4: Keyword support (depends on terminology) -------------
+        terminology_synonyms: Dict[str, List[str]] = (
+            term_result.synonyms if term_result else {}
+        )
+        kw_result, kw_meta = await self._run_split_call(
+            pb.get_keyword_support_system_prompt(),
+            pb.get_keyword_support_prompt(
+                integrated_statement, concept_inventory, terminology_synonyms
+            ),
+            KeywordSupportResponse,
+            "keyword_support",
+            model=model,
+            temperature=temperature,
+            max_tokens=512,
+        )
+        _accumulate(kw_meta)
+
+        # --- Assemble ---------------------------------------------------
+        # Deterministic invariant: dimensions_specifications and the four
+        # deterministic filter fields (publication_years, venues, authors,
+        # publication_types) are assembled here from session state and
+        # deterministic_filters — they are never passed to any LLM call,
+        # so the repair path in _run_split_call cannot reach or overwrite them.
+        phrases: List[str] = kw_result.phrases if kw_result else []
+        required: List[str] = kw_result.required if kw_result else []
+        optional: List[str] = kw_result.optional if kw_result else []
+        fields_of_study: List[str] = filt_result.fields_of_study if filt_result else []
+        semantic_query: str = sem_result.semantic if sem_result else integrated_statement
+        structured_query: str = self._compile_boolean_query(required, terminology_synonyms)
+
+        # dimensions_specifications is always deterministic — never from the LLM
+        det_dimensions = self._assemble_dimensions_specifications(session) or {}
+
+        response = QueryRefinementResponse(
+            integrated_statement=integrated_statement,
+            dimensions_specifications=det_dimensions,
+            search_optimized=SearchOptimized(
+                semantic=semantic_query,
+                keyword=KeywordSearch(
+                    structured=structured_query,
+                    phrases=phrases,
+                    terms=SearchTerms(
+                        required=required,
+                        optional=optional,
+                        excluded=[],
+                    ),
+                ),
+            ),
+            search_filters=SearchFilters(
+                publication_years=deterministic_filters.publication_years,
+                venues=deterministic_filters.venues,
+                authors=deterministic_filters.authors,
+                publication_types=deterministic_filters.publication_types,
+                fields_of_study=fields_of_study,
+            ),
+            terminology=Terminology(
+                synonyms=terminology_synonyms,
+            ),
+        )
+        return response, agg
+
     async def synthesize_refined_query(
         self,
         session: RefinementSession,
@@ -1474,20 +1991,9 @@ class QueryRefinementManager:
                 },
             )
 
-        # Build prompts using SynthesisPromptBuilder for structured output
-        aspects = [step.refinement_aspect for step in session.steps]
-        prompt_builder = SynthesisPromptBuilder()
-        
-        user_prompt = prompt_builder.get_synthesis_prompt(
-            original_input=session.original_query,
-            aspectID_value_mapping=refinement_aspect_values,
-            aspect_list=aspects,
-        )
-        
-        if additional_guidance:
-            user_prompt = f"{user_prompt}\n\nADDITIONAL GUIDANCE:\n{additional_guidance.strip()}"
-        
-        system_prompt = prompt_builder.get_system_prompt()
+        accepted_dimensions = {
+            k: v for k, v in refinement_aspect_values.items() if v != "[SKIPPED]"
+        }
 
         self.trace_emitter.emit(
             "query_synthesis_start",
@@ -1498,28 +2004,18 @@ class QueryRefinementManager:
             },
         )
 
-        completion_kwargs: Dict[str, Any] = {}
-        if temperature is not None:
-            completion_kwargs["temperature"] = temperature
-        if max_tokens is not None:
-            completion_kwargs["max_tokens"] = max_tokens
-        
-        # Use QueryRefinementResponse Pydantic model for structured output.
-        # - litellm routes this to the appropriate mechanism per provider
-        #   (tool_use for Claude, json_schema for OpenAI, guided_json for vLLM)
-        # - The model is passed directly so the provider can enforce the full nested schema.
-        completion_kwargs["response_format"] = QueryRefinementResponse
-
         try:
-            result = await self.llm_provider.complete_async(
-                system_prompt=system_prompt,
-                user_prompt=user_prompt,
+            synthesis_response, aggregated_metadata = await self._run_split_synthesis(
+                session,
+                canonical_dimensions=refinement_aspect_values,
+                accepted_dimensions=accepted_dimensions,
+                deterministic_filters=deterministic_filters,
+                additional_guidance=additional_guidance,
                 model=model,
-                cache_system_prompt=True,  # Synthesis system prompt is static
-                **completion_kwargs,
+                temperature=temperature,
             )
-        except Exception as exc:  # pragma: no cover - provider errors surfaced
-            logger.exception("LLM synthesis failed: %s", exc)
+        except Exception as exc:
+            logger.exception("Split synthesis failed: %s", exc)
             self.trace_emitter.emit(
                 "query_synthesis_error",
                 level="error",
@@ -1527,137 +2023,13 @@ class QueryRefinementManager:
             )
             raise
 
-        refined_query = (result.context or "").strip() if not isinstance(result.context, QueryRefinementResponse) else ""
-        synthesis_response = None
-
-        # Fast path: provider already post-parsed the result into a QueryRefinementResponse
-        # (happens with Claude/OpenAI native structured output and vLLM constrained decoding).
-        if isinstance(result.context, QueryRefinementResponse):
-            synthesis_response = result.context
-            refined_query = synthesis_response.integrated_statement
-            logger.info("Synthesis response pre-parsed by provider (skipping JSON decode)")
-            self.trace_emitter.emit(
-                "synthesis_response_parsed",
-                metadata={
-                    "has_structured_response": True,
-                    "response_length": len(refined_query),
-                    "has_detail_values": bool(synthesis_response.dimensions_specifications),
-                    "detail_values_count": len(synthesis_response.dimensions_specifications) if synthesis_response.dimensions_specifications else 0,
-                }
-            )
-
-        # Try to parse as structured JSON response with robust error handling.
-        # Skipped when the provider already returned a parsed QueryRefinementResponse
-        # (native structured output from Claude/OpenAI, or vLLM constrained decoding).
-        if synthesis_response is None:
-            try:
-                # Strip markdown code fences if present (some models add these)
-                cleaned_text = refined_query
-                if cleaned_text.startswith("```"):
-                    lines = cleaned_text.splitlines()
-                    if len(lines) >= 2 and lines[0].startswith("```"):
-                        # Drop opening fence and optional closing fence
-                        body = lines[1:]
-                        if body and body[-1].startswith("```"):
-                            body = body[:-1]
-                        cleaned_text = "\n".join(body)
-                
-                # Try to find JSON if it's embedded in text
-                if not cleaned_text.startswith("{"):
-                    # Look for JSON object start
-                    json_start = cleaned_text.find("{")
-                    if json_start != -1:
-                        cleaned_text = cleaned_text[json_start:]
-                        # Find matching closing brace
-                        brace_count = 0
-                        for i, char in enumerate(cleaned_text):
-                            if char == "{":
-                                brace_count += 1
-                            elif char == "}":
-                                brace_count -= 1
-                                if brace_count == 0:
-                                    cleaned_text = cleaned_text[:i+1]
-                                    break
-                
-                # Log the full raw response before JSON parsing to debug malformed JSON
-                logger.info(
-                    "Raw synthesis LLM response | Length: %d chars | First 500 chars: %s",
-                    len(cleaned_text),
-                    cleaned_text[:500]
-                )
-                logger.debug("Full synthesis LLM response:\n%s", cleaned_text)
-                
-                # Parse JSON
-                response_data = json.loads(cleaned_text)
-                
-                # Validate with Pydantic model
-                synthesis_response = QueryRefinementResponse(**response_data)
-                refined_query = synthesis_response.integrated_statement
-                
-                logger.info(
-                    "Successfully parsed and validated structured synthesis response"
-                )
-                self.trace_emitter.emit(
-                    "synthesis_response_parsed",
-                    metadata={
-                        "has_structured_response": True,
-                        "response_length": len(refined_query),
-                        "has_detail_values": bool(synthesis_response.dimensions_specifications),
-                        "detail_values_count": len(synthesis_response.dimensions_specifications) if synthesis_response.dimensions_specifications else 0,
-                    }
-                )
-            except json.JSONDecodeError as parse_error:
-                # JSON parsing failed - log detailed error
-                logger.warning(
-                    "JSON parsing failed: %s at line %d column %d (char %d)",
-                    parse_error.msg,
-                    parse_error.lineno,
-                    parse_error.colno,
-                    parse_error.pos
-                )
-                self.trace_emitter.emit(
-                    "synthesis_response_parse_failed",
-                    level="warning",
-                    metadata={
-                        "error_type": "JSONDecodeError",
-                        "error_message": str(parse_error),
-                        "error_line": parse_error.lineno,
-                        "error_column": parse_error.colno,
-                        "response_preview": cleaned_text[:200] if cleaned_text else "<empty>",
-                        "response_length": len(cleaned_text) if cleaned_text else 0,
-                    }
-                )
-                # Use raw response as fallback
-                if not refined_query or refined_query == cleaned_text:
-                    logger.warning("Using original query as fallback due to parsing failure")
-                    refined_query = session.original_query
-            except (ValueError, TypeError) as validation_error:
-                # Pydantic validation failed - JSON structure doesn't match schema
-                logger.warning(
-                    "Response validation failed: %s",
-                    validation_error
-                )
-                self.trace_emitter.emit(
-                    "synthesis_response_parse_failed",
-                    level="warning",
-                    metadata={
-                        "error_type": type(validation_error).__name__,
-                        "error_message": str(validation_error),
-                        "response_preview": cleaned_text[:200] if cleaned_text else "<empty>",
-                        "response_length": len(cleaned_text) if cleaned_text else 0,
-                    }
-                )
-                if not refined_query:
-                    logger.warning("LLM synthesis returned empty response; using original query")
-                    refined_query = session.original_query
-
         self.trace_emitter.emit(
             "query_synthesis_complete",
             metadata={
                 "clarification_count": len(clarifications),
                 "baseline_count": len(baseline_summaries),
-                "response_length": len(refined_query),
-                "structured_response": synthesis_response is not None,
+                "response_length": len(synthesis_response.integrated_statement),
+                "structured_response": True,
             },
         )
 
@@ -1671,37 +2043,25 @@ class QueryRefinementManager:
                 "used_llm": True,
                 "clarification_count": len(clarifications),
                 "baseline_count": len(baseline_summaries),
-                "response_length": len(refined_query),
-                "structured_response": synthesis_response is not None,
-                "prompt_tokens": result.metadata.get("prompt_tokens", 0) if result.metadata else 0,
-                "completion_tokens": result.metadata.get("completion_tokens", 0) if result.metadata else 0,
+                "response_length": len(synthesis_response.integrated_statement),
+                "structured_response": True,
+                "prompt_tokens": aggregated_metadata.get("prompt_tokens", 0),
+                "completion_tokens": aggregated_metadata.get("completion_tokens", 0),
             },
         )
 
         result_dict = {
-            "integrated_statement": refined_query,
+            "integrated_statement": synthesis_response.integrated_statement,
             "used_llm": True,
             "clarifications": clarifications,
             "baseline_summaries": baseline_summaries,
             "refinement_aspect_values": refinement_aspect_values,
-            "metadata": result.metadata,
+            "metadata": aggregated_metadata,
+            "dimensions_specifications": synthesis_response.dimensions_specifications,
+            "search_optimized": synthesis_response.search_optimized,
+            "search_filters": synthesis_response.search_filters,
+            "terminology": synthesis_response.terminology,
         }
-
-        if deterministic_dimensions is not None:
-            result_dict["dimensions_specifications"] = deterministic_dimensions
-        result_dict["search_filters"] = deterministic_filters
-        
-        # Include structured response fields if available
-        if synthesis_response:
-            if deterministic_dimensions is None:
-                result_dict["dimensions_specifications"] = synthesis_response.dimensions_specifications
-            result_dict["search_optimized"] = synthesis_response.search_optimized
-            result_dict["search_filters"] = self._merge_search_filters(
-                synthesis_response.search_filters,
-                deterministic_filters,
-            )
-            result_dict["terminology"] = synthesis_response.terminology
-            result_dict["integrated_statement"] = synthesis_response.integrated_statement
 
         return result_dict
 
