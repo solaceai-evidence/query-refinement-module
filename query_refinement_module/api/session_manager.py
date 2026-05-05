@@ -571,10 +571,11 @@ class InMemorySessionManager:
             return None
     
     def delete_session(self, query_id: int, request_id: Optional[str] = None) -> bool:
-        """Delete session from memory."""
+        """Delete session from memory. Returns False if the session did not exist."""
+        had_session = query_id in self._sessions
         self._sessions.pop(query_id, None)
         self._timestamps.pop(query_id, None)
-        return True
+        return had_session
     
     def get_session_stats(self) -> Dict[str, Any]:
         """Get session statistics."""

@@ -108,6 +108,20 @@ Process:
 3. If partial, check whether the original query adds complementary context
 4. Combine if compatible; user's answer always takes priority
 
+**Negative and opt-out answers → always complete=true:**
+When the user declines to narrow further — "no specific X", "any",
+"all", "general", "doesn't matter", "no preference", "no particular X",
+"not important" — this IS a complete answer meaning no restriction applies:
+- Extract as the general form: append "(no [element] restriction)" to current,
+  or use the concept as-is if it already implies generality
+- Set complete=true immediately
+- Never return complete=false with an empty question
+
+✅ "no specific phase" → current="heat stroke (no phase restriction)", complete=true
+✅ "any age group" → current="any age group", complete=true
+✅ "I don't mind" → current="[existing value] (no restriction)", complete=true
+❌ Never: complete=false with question="" after a user opt-out
+
 Example:
 Query:    "barriers to implementing COPD management protocols"
 Question: "What outcomes will measure barriers? e.g., adoption rates,

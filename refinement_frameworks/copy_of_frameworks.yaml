@@ -2093,7 +2093,7 @@ cocopop:
           example_question: "Which specific population groups are you focusing on? (e.g.,
             Hispanic/Latino, African American, Asian, Native American). Do you
             have any specifications regarding gender?"
-  - id: Condition
+  - id: condition
     name: condition
     description: The health condition, disease, symptom, problem or social issue
       being studied, including how it is measured or diagnosed.
@@ -2122,55 +2122,66 @@ cocopop:
       - causes: if the user is interested in prevention or if the condition is defined by specific causes (e.g., "smoking-related lung disease")
     examples:
       clear:
-        - statement: newly diagnosed type 2 diabetes in adults aged 40-65
-          rationale: Specific condition (type 2 diabetes), with relevant diagnostic
-            qualifier (newly diagnosed) and population (adults aged 40-65)
+        - statement: Acute watery diarrhoea in children under 5 years, consistent with WHO
+            clinical case definition, following riverine flooding in a
+            displacement camp
+          rationale: Specific condition (acute watery diarrhoea), diagnostic reference
+            (WHO clinical case definition), age group (under 5), climate linkage
+            (flood-associated), and setting (displacement camp) all specified
+        - statement: Heat stroke and severe heat exhaustion (core temperature ≥40°C or
+            altered consciousness) in outdoor agricultural workers during an
+            extreme heat event in South Asia
+          rationale: Condition and severity threshold (heat stroke, ≥40°C or altered
+            consciousness), climate linkage (extreme heat event), and population
+            and occupational context (outdoor agricultural workers, South Asia)
+            all explicit
       needs_refinement:
-        - statement: "diabetes"
-          issue: Too broad - includes multiple types with different etiologies,
-            treatments, and outcomes
-          missing: Type specification (type 1, type 2, gestational, etc.), diagnostic
-            criteria, symptomatology if relevant
-          example_question: "Diabetes is a broad term that can refer to several different
-            conditions. Are you focusing on a specific type of diabetes (e.g.,
-            type 1, type 2, gestational)? Are there specific diagnostic criteria
-            or symptoms that are relevant to your question?"
+        - statement: Malnutrition
+          issue: Too broad — encompasses acute and chronic malnutrition, micronutrient
+            deficiency, and wasting, each with different case definitions,
+            thresholds, and interventions; climate linkage absent
+          missing: Specific form (e.g., acute wasting, stunting, micronutrient
+            deficiency), and climate-health driver (e.g., drought-driven food
+            insecurity)
+          example_question: "Are you focusing on acute wasting, stunting, or a specific
+            micronutrient deficiency? What diagnostic threshold or case
+            definition applies? Is this condition driven by a climate-related
+            stressor such as drought or crop failure?"
       partial:
-        - statement: Depression in adults
-          has: Condition category (depression), population (adults)
-          missing: Subtype (major depressive disorder, persistent depressive disorder,
-            bipolar depression), severity, diagnostic criteria used
-          example_question: Are you focusing on a specific type of depression (e.g., major
-            depressive disorder, persistent depressive disorder)? Should a
-            particular diagnostic criteria set be applied (e.g., DSM-5, ICD-11)?
-        - statement: Respiratory disease in children
-          has: Body system (respiratory) and population (children)
-          missing: Specific condition (asthma, bronchiolitis, pneumonia, COPD), severity
-            classification, diagnostic criteria
-          example_question: Which respiratory condition are you studying? (e.g., asthma,
-            bronchiolitis, community-acquired pneumonia) Are there specific
-            severity or diagnostic criteria that should apply?
+        - statement: Waterborne disease after flooding
+          has: Condition category (waterborne disease), climate linkage (flood)
+          missing: Specific pathogen or condition (e.g., cholera, typhoid, leptospirosis),
+            case definition or diagnostic criteria, temporal phase
+          example_question: Which waterborne condition are you focusing on? (e.g., cholera
+            using WHO case definition, typhoid fever, leptospirosis) Is this
+            during the acute flood phase, or in the weeks following flood
+            recession?
+        - statement: Mental health impacts of displacement
+          has: Condition domain (mental health), context (displacement)
+          missing: Specific disorder (e.g., PTSD, major depression, acute stress
+            reaction), diagnostic framework (DSM-5, ICD-11), climate-driver of
+            displacement
+          example_question: Which mental health condition are you focusing on — PTSD,
+            depression, anxiety, or acute stress reactions? What diagnostic
+            criteria apply? Is displacement climate-driven (e.g., flood,
+            drought, sea-level rise) or conflict-related?
       vague_ambiguous:
-        - statement: Patients with chronic conditions
-          issue: Umbrella term with no specific condition identified; encompasses hundreds
-            of unrelated diseases
-          missing: Named condition or disease category
-          example_question: Which specific chronic condition(s) are you studying? (e.g.,
-            type 2 diabetes, hypertension, COPD, chronic kidney disease)
-        - statement: Mental health problems
-          issue: Umbrella term covering dozens of distinct disorders with different
-            etiologies, treatments, and outcomes
-          missing: Specific disorder, diagnostic criteria or symptom cluster
-          example_question: Which mental health disorder(s) are you focusing on? (e.g.,
-            major depressive disorder, generalised anxiety disorder, PTSD,
-            schizophrenia)
-        - statement: Severe disease
-          issue: "'Severe' is both unspecified and relative — no condition is named and no
-            severity threshold is defined"
-          missing: Condition name, severity definition or diagnostic threshold
-          example_question: What condition are you studying? How is 'severe' defined in
-            your context? (e.g., hospitalisation required, specific score
-            threshold, organ involvement)
+        - statement: Climate-related illness
+          issue: Covers an unbounded range of conditions across all climate hazards; not a
+            recognised clinical entity and provides no synthesis anchor
+          missing: Specific named condition, climate hazard driving it, and case
+            definition or diagnostic criteria
+          example_question: Which specific health condition are you studying? (e.g., heat
+            stroke, acute respiratory illness from wildfire smoke, cholera
+            following flooding) Which climate hazard is causing or worsening it?
+        - statement: Health problems in affected communities
+          issue: "'Affected communities' and 'health problems' are both undefined — no
+            condition, no hazard, and no diagnostic reference point"
+          missing: Named condition or disease, specific hazard or stressor, and case
+            definition or measurement approach
+          example_question: Which health condition are you focusing on? Which climate or
+            environmental hazard has affected these communities? How is the
+            condition defined or diagnosed in this setting?
   - id: context
     name: Context
     description: the setting or environment in which the condition occurs, and can
@@ -2202,60 +2213,64 @@ cocopop:
       **Specificity guidance:**
       - Prefer named geographies over vague regional terms when the user's question implies a specific setting
       - Standardize income/resource descriptors: "poor countries" → "low- and middle-income countries (LMICs)"; "rich countries" → "high-income countries"
-      - Flag when a stated context is so heterogeneous it would preclude coherent synthesis (e.g., "global" or "all developing countries" without further constraint)
     examples:
       clear:
-        - statement: Rural primary care settings in sub-Saharan Africa during recurrent
-            drought seasons
-          rationale: Geography (sub-Saharan Africa), urbanicity (rural), health system
-            level (primary care), and temporal/climate setting (recurrent
-            drought seasons) all specified
-        - statement: Displacement camps in conflict-affected northern Syria, operating
-            under disrupted cold-chain conditions
-          rationale: Geography (northern Syria), political context (conflict-affected),
-            health system context (disrupted cold-chain), and implementation
-            constraint all explicit
+        - statement: Peri-urban informal settlements in coastal Mozambique following
+            Cyclone Idai, with damaged primary care infrastructure and limited
+            referral capacity
+          rationale: Geography (Mozambique, coastal), setting (peri-urban informal),
+            hazard (cyclone), health system capacity (damaged primary care,
+            limited referral), and temporal phase (post-event) all specified
+        - statement: Rural displacement camps in northeastern Ethiopia during a multi-year
+            drought, staffed by community health workers without diagnostic
+            laboratory capacity
+          rationale: Country (Ethiopia), sub-region (northeastern), setting (rural
+            displacement camp), hazard (prolonged drought), temporal phase
+            (chronic/ongoing), and health system constraint (no laboratory
+            capacity) all explicit
       needs_refinement:
-        - statement: Health outcomes in developing countries
-          issue: "No geographic anchor; 'developing countries' spans vastly different
-            epidemiological, health-system, and climate contexts"
-          missing: Region or country group, income classification, health system level
-          example_question: "Which region or country group are you focusing on? (e.g.,
-            sub-Saharan Africa, South Asia, Pacific Island states) What health
-            system level is relevant? (e.g., primary care, community level,
-            hospital)"
+        - statement: Communities affected by climate change
+          issue: No geographic anchor, hazard, setting, or health system context; provides
+            no usable anchor for evidence retrieval or applicability assessment
+          missing: Geographic region or country, specific climate hazard or stressor,
+            health system level or capacity
+          example_question: "Which country or region are you focusing on? Which climate
+            hazard is affecting this community? (e.g., flooding, drought,
+            extreme heat, cyclone) Is the focus on a community, primary care, or
+            hospital setting?"
       partial:
-        - statement: Low-income settings in Asia
-          has: Income setting (low-income), broad geography (Asia)
-          missing: Sub-region or country specification, urban/rural classification, health
-            system level
-          example_question: Which part of Asia? (e.g., South Asia, Southeast Asia, Central
-            Asia) Are you focusing on urban, rural, or both? What health system
-            level is relevant?
-        - statement: Post-disaster communities
-          has: Temporal/political context (post-disaster)
-          missing: Geographic region, type of disaster, health system capacity
-          example_question: Which region or country are you focusing on? What type of
-            disaster? (e.g., cyclone, flood, earthquake) What health system
-            capacity is assumed? (e.g., functional primary care, humanitarian
-            field operations)
+        - statement: Flood-affected districts in South Asia
+          has: Hazard (flood), broad region (South Asia)
+          missing: Country specification, urban/rural classification, health system level
+          example_question: Which country in South Asia? (e.g., Bangladesh, India,
+            Pakistan, Nepal) Are communities urban, peri-urban, or rural? What
+            health system level is relevant — community health workers, primary
+            care clinics, or district hospitals?
+        - statement: During a drought emergency in Africa
+          has: Hazard (drought), temporal phase (acute/emergency), broad region (Africa)
+          missing: Sub-region or country, specific setting type, health system capacity
+          example_question: Which country or sub-region of Africa? Is the setting a
+            displacement camp, rural community, or health facility? What health
+            system capacity is assumed? (e.g., functional primary care,
+            humanitarian field teams)
       vague_ambiguous:
-        - statement: Resource-limited settings
-          issue: "'Resource-limited' is relative and context-dependent — it provides no
-            geographic anchor and spans primary care to field hospitals"
-          missing: Geographic region, specific resource constraint (e.g., no laboratory
-            capacity, limited cold chain, shortage of trained staff), health
-            system level
-          example_question: Where specifically? (e.g., rural West Africa, peri-urban South
-            Asia) What resource constraint matters most for your question?
-            (e.g., laboratory access, cold-chain reliability, health worker
-            availability)
-        - statement: Tropical regions
-          issue: Vast and epidemiologically heterogeneous; encompasses high-income
-            Singapore and fragile-state contexts equally
-          missing: Specific country or sub-region, income/resource setting, urban or rural
-            classification
-          example_question: Which tropical setting are you interested in? (e.g., island
-            states in the Pacific, the Sahel, lowland South America) Is the
-            focus on high-income, middle-income, or low-income countries within
-            that region?
+        - statement: Low-resource settings during a crisis
+          issue: "'Low-resource' and 'crisis' are both underdefined — this spans primary
+            care in LMICs to humanitarian field hospitals, and any type of
+            emergency from conflict to disease outbreak to climate disaster"
+          missing: Geographic region, specific hazard or crisis type, health system level
+            and capacity
+          example_question: Where specifically? (e.g., rural Sahel, peri-urban South Asia,
+            Pacific Island state) What kind of crisis are you referring to?
+            (e.g., flood response, drought, disease outbreak following a
+            cyclone)
+        - statement: Vulnerable communities in the Global South
+          issue: "'Global South' is too heterogeneous for coherent synthesis — it spans
+            middle-income Brazil and fragile low-income states; 'vulnerable' is
+            undefined"
+          missing: Country or sub-region, type of vulnerability (climate exposure, food
+            insecurity, lack of health access), specific hazard or stressor
+          example_question: Which country or region? What makes these communities
+            vulnerable in your context — is it climate exposure, food
+            insecurity, limited healthcare access, or something else? What
+            specific hazard or stressor are they facing?

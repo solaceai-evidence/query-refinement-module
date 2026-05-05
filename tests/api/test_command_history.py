@@ -41,7 +41,12 @@ def db(test_db_session):
 def session_manager():
     """Get shared SessionManager and isolate Redis keys for deterministic tests."""
     from query_refinement_module.api.dependencies import get_session_manager
+    from query_refinement_module.api.session_manager import InMemorySessionManager
+
     manager = get_session_manager()
+
+    if isinstance(manager, InMemorySessionManager):
+        pytest.skip("Redis session manager required for command history tests — start Redis to run these")
 
     pattern = f"{manager.key_prefix}*"
     keys = manager.redis_client.keys(pattern)

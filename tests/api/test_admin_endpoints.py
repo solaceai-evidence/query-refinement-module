@@ -42,8 +42,12 @@ def db(test_db_session):
 def session_manager():
     """Get the same SessionManager used by admin routes and isolate its Redis keys."""
     from query_refinement_module.api.dependencies import get_session_manager
+    from query_refinement_module.api.session_manager import InMemorySessionManager
 
     manager = get_session_manager()
+
+    if isinstance(manager, InMemorySessionManager):
+        pytest.skip("Redis session manager required for admin endpoint tests — start Redis to run these")
 
     # Clear session namespace before each test for deterministic results
     pattern = f"{manager.key_prefix}*"
@@ -178,7 +182,7 @@ class TestCacheManagementEndpoints:
         assert "size_bytes" in data
         assert "data" in data
     
-    def test_inspect_session_not_found(self, superuser_token: str):
+    def test_inspect_session_not_found(self, superuser_token: str, session_manager):
         """Inspect returns 404 for non-existent session."""
         client = TestClient(app)
         response = client.get(
@@ -208,7 +212,7 @@ class TestCacheManagementEndpoints:
         # Verify session no longer exists
         assert not session_manager.session_exists(sample_query_with_cache.id)
     
-    def test_clear_session_not_found(self, superuser_token: str):
+    def test_clear_session_not_found(self, superuser_token: str, session_manager):
         """Clear returns 404 for non-existent session."""
         client = TestClient(app)
         response = client.delete(

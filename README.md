@@ -147,12 +147,13 @@ After changing these values, restart the API process or container.
 
 Four pre-filled environment templates are provided:
 
-| File                               | Provider                      | Constrained decoding |
-| ---------------------------------- | ----------------------------- | -------------------- |
-| `.env.anthropic-claude-sonnet-4-6` | Anthropic Claude Sonnet 4.6   | off                  |
-| `.env.prod`                        | Anthropic Claude (production) | off                  |
-| `.env.ollama-llama3.1-8b`          | Ollama — Llama 3.1 8B (local) | off                  |
-| `.env.vllm`                        | vLLM — Llama 3.1 8B           | **on**               |
+| File                               | Provider                       | Constrained decoding |
+| ---------------------------------- | ------------------------------ | -------------------- |
+| `.env.anthropic-claude-sonnet-4-6` | Anthropic Claude Sonnet 4.6    | off                  |
+| `.env.prod`                        | Anthropic Claude (production)  | off                  |
+| `.env.ollama-qwen2.5-32b`          | Ollama — Qwen 2.5 32B (local)  | off                  |
+| `.env.ollama-llama3.1-8b`          | Ollama — Llama 3.1 8B (local)  | off                  |
+| `.env.vllm`                        | vLLM — Llama 3.1 8B            | **on**               |
 
 To switch to vLLM:
 
@@ -180,6 +181,15 @@ backends and copy the matching environment file to `.env`.
 #### Option 1: Ollama
 
 Use this if you already have Ollama installed and want a simple local setup.
+
+**Recommended for synthesis quality** — Qwen 2.5 32B (~19 GB unified memory, Apple M-series):
+
+```bash
+ollama pull qwen2.5:32b
+cp .env.ollama-qwen2.5-32b .env
+```
+
+**Lighter alternative** — Llama 3.1 8B (~6 GB):
 
 ```bash
 ollama pull llama3.1:8b

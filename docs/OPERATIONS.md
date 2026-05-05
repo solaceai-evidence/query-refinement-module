@@ -10,6 +10,7 @@ Four env templates cover the supported backends:
 | ---------------------------------- | ------------------------------------ | ---------------- | -------------------- |
 | `.env.anthropic-claude-sonnet-4-6` | Anthropic Claude Sonnet 4.6 (dev)    | yes              | off                  |
 | `.env.prod`                        | Anthropic Claude (cloud, production) | yes              | off                  |
+| `.env.ollama-qwen2.5-32b`          | Ollama — Qwen 2.5 32B (local)        | no               | off                  |
 | `.env.ollama-llama3.1-8b`          | Ollama — Llama 3.1 8B (local)        | no               | off                  |
 | `.env.vllm`                        | vLLM — Llama 3.1 8B                  | no               | **on**               |
 
@@ -63,15 +64,17 @@ curl -f http://localhost:8001/ready
 ollama list
 curl http://localhost:11434/v1/models
 
-# Test a basic completion
+# Test a basic completion (replace model name to match your .env)
 curl -X POST http://localhost:11434/v1/chat/completions \
   -H 'Content-Type: application/json' \
-  -d '{"model": "llama3.1:8b", "messages": [{"role": "user", "content": "ping"}]}'
+  -d '{"model": "qwen2.5:32b", "messages": [{"role": "user", "content": "ping"}]}'
 ```
 
 > **Note:** `QUERY_REFINEMENT_LLM_COMPLETION_KWARGS={"num_ctx": 16384}` overrides Ollama's
-> default 2 048-token context window, which is too small for this application.
-> Increase to `32768` if you observe truncated responses; decrease to `8192` to reduce memory use.
+> default 2 048-token context window, which is too small for this application.
+> Synthesis runs 5 sequential and parallel LLM calls per request; each call shares
+> the same context budget. Increase to `32768` if you observe truncated responses;
+> decrease to `8192` only when memory is severely constrained.
 
 ### vLLM server diagnostics
 

@@ -281,8 +281,8 @@ async def run_cli(manager: QueryRefinementManager, framework_name: str, query: s
                 else:
                     print(f"Refined:  {session.original_query}\n")
                 
-                # Show refined dimensions
-                detail_values = synthesis.get("detail_values")
+                # Show refined dimensions (key is refinement_aspect_values in the result dict)
+                detail_values = synthesis.get("refinement_aspect_values") or synthesis.get("detail_values")
                 if detail_values:
                     print("─"*80)
                     print("REFINED DIMENSIONS")
@@ -294,36 +294,36 @@ async def run_cli(manager: QueryRefinementManager, framework_name: str, query: s
                             print(f"• {aspect_name}: {value}")
                     print()
                 
-                # Show search optimized queries
+                # Show search optimized queries (SearchOptimized Pydantic model)
                 search_optimized = synthesis.get("search_optimized")
                 if search_optimized:
                     print("─"*80)
                     print("SEARCH-OPTIMIZED QUERIES")
                     print("─"*80)
                     
-                    semantic = search_optimized.get("semantic", "")
+                    semantic = search_optimized.semantic or ""
                     if semantic:
                         print(f"\nSemantic Query (for vector search):")
                         print(f"  {semantic}")
                     
-                    keyword = search_optimized.get("keyword", {})
+                    keyword = search_optimized.keyword
                     if keyword:
-                        structured = keyword.get("structured", "")
+                        structured = keyword.structured or ""
                         if structured:
                             print(f"\nBoolean Query:")
                             print(f"  {structured}")
                         
-                        phrases = keyword.get("phrases", [])
+                        phrases = keyword.phrases or []
                         if phrases:
                             print(f"\nKey Phrases:")
                             for phrase in phrases:
                                 print(f"  • \"{phrase}\"")
                         
-                        terms = keyword.get("terms", {})
+                        terms = keyword.terms
                         if terms:
-                            required = terms.get("required", [])
-                            optional = terms.get("optional", [])
-                            excluded = terms.get("excluded", [])
+                            required = terms.required or []
+                            optional = terms.optional or []
+                            excluded = terms.excluded or []
                             
                             if required:
                                 print(f"\nRequired Terms: {', '.join(required)}")
@@ -332,71 +332,72 @@ async def run_cli(manager: QueryRefinementManager, framework_name: str, query: s
                             if excluded:
                                 print(f"Excluded Terms: {', '.join(excluded)}")
                     
-                    grey_lit = search_optimized.get("grey_literature", {})
-                    if grey_lit and any(grey_lit.values()):
-                        print(f"\nGrey Literature Search:")
-                        broad = grey_lit.get("broad_concepts", [])
-                        if broad:
-                            print(f"  Concepts: {', '.join(broad)}")
-                        org = grey_lit.get("organizational_terms", [])
-                        if org:
-                            print(f"  Organizations: {', '.join(org)}")
-                        geo = grey_lit.get("geographic_variants", [])
-                        if geo:
-                            print(f"  Geographic: {', '.join(geo)}")
+                    grey_lit = search_optimized.grey_literature
+                    if grey_lit:
+                        broad = grey_lit.broad_concepts or []
+                        org = grey_lit.organizational_terms or []
+                        geo = grey_lit.geographic_variants or []
+                        if broad or org or geo:
+                            print(f"\nGrey Literature Search:")
+                            if broad:
+                                print(f"  Concepts: {', '.join(broad)}")
+                            if org:
+                                print(f"  Organizations: {', '.join(org)}")
+                            if geo:
+                                print(f"  Geographic: {', '.join(geo)}")
                     print()
                 
-                # Show search filters
+                # Show search filters (SearchFilters Pydantic model)
                 search_filters = synthesis.get("search_filters")
                 if search_filters:
                     print("─"*80)
                     print("SEARCH FILTERS")
                     print("─"*80)
                     
-                    pub_years = search_filters.get("publication_years", "")
+                    pub_years = search_filters.publication_years or ""
                     if pub_years:
                         print(f"Publication Years: {pub_years}")
                     
-                    venues = search_filters.get("venues", [])
+                    venues = search_filters.venues or []
                     if venues:
                         print(f"Venues: {', '.join(venues)}")
                     
-                    authors = search_filters.get("authors", [])
+                    authors = search_filters.authors or []
                     if authors:
                         print(f"Authors: {', '.join(authors)}")
                     
-                    pub_types = search_filters.get("publication_types", [])
+                    pub_types = search_filters.publication_types or []
                     if pub_types:
                         print(f"Publication Types: {', '.join(pub_types)}")
                     
-                    fields = search_filters.get("fields_of_study", [])
+                    fields = search_filters.fields_of_study or []
                     if fields:
                         print(f"Fields of Study: {', '.join(fields)}")
                     print()
                 
-                # Show terminology
+                # Show terminology (Terminology Pydantic model)
                 terminology = synthesis.get("terminology")
                 if terminology:
                     print("─"*80)
                     print("TERMINOLOGY")
                     print("─"*80)
                     
-                    primary = terminology.get("primary_terms", [])
+                    primary = terminology.primary_terms or []
                     if primary:
                         print(f"Primary Terms: {', '.join(primary)}")
                     
-                    synonyms = terminology.get("synonyms", {})
+                    synonyms = terminology.synonyms or {}
                     if synonyms:
                         print(f"\nSynonyms:")
                         for term, syn_list in synonyms.items():
                             if syn_list:
                                 print(f"  {term}: {', '.join(syn_list)}")
                     
-                    domain = terminology.get("domain_specific", [])
+                    domain = terminology.domain_specific or []
                     if domain:
                         print(f"\nDomain-Specific: {', '.join(domain)}")
                     
-                    colloq = terminology.get("colloquial", [])
+                    colloq = terminology.colloquial or []
                     if colloq:
                         print(f"Colloquial: {', '.join(colloq)}")
                     print()

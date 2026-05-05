@@ -84,6 +84,7 @@ environment templates are provided:
 | ---------------------------------- | ------------------------------------ | ---------------- | ---------------------- |
 | `.env.anthropic-claude-sonnet-4-6` | Anthropic Claude Sonnet 4.6 (dev)    | yes              | `false`                |
 | `.env.prod`                        | Anthropic Claude (cloud, production) | yes              | `false`                |
+| `.env.ollama-qwen2.5-32b`          | Ollama — Qwen 2.5 32B (local)        | no               | `false`                |
 | `.env.ollama-llama3.1-8b`          | Ollama — Llama 3.1 8B (local)        | no               | `false`                |
 | `.env.vllm`                        | vLLM — Llama 3.1 8B (self-hosted)    | no               | `true`                 |
 
@@ -94,15 +95,23 @@ environment templates are provided:
 2. Pull the model you want to use:
 
 ```bash
+# Recommended for synthesis quality (~19 GB unified memory, Apple M-series)
+ollama pull qwen2.5:32b
+
+# Lighter alternative (~6 GB)
 ollama pull llama3.1:8b
+
 # Verify: ollama list
 ```
 
 3. Copy the template and configure:
 
 ```bash
-cp .env.ollama-llama3.1-8b .env
-# No API key needed — model is already set to llama3.1:8b
+# For Qwen 2.5 32B (recommended):
+cp .env.ollama-qwen2.5-32b .env
+
+# For Llama 3.1 8B (lighter):
+# cp .env.ollama-llama3.1-8b .env
 ```
 
 Key Ollama-specific settings:

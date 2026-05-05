@@ -402,12 +402,10 @@ class QueryRefinementManager:
                         break
                         
             except ValueError as e:
-                # LLM error - mark as complete with error
+                # LLM error - mark as complete but do NOT overwrite conversation history
+                # with an error string, as add_follow_up() would corrupt normalized_value
+                # (the user's real answer is already in history from before this call).
                 logger.error(f"LLM error in followup for {step.refinement_aspect.id}: {e}")
-                step.add_follow_up(
-                    question=step.follow_up_question or step.refinement_aspect.name,
-                    response=f"[Validation error: {e}]"
-                )
                 step.is_complete = True
                 break
 

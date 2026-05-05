@@ -92,6 +92,13 @@ def main():
     token = register_and_login()
     test_workflow(token)
 
+
+@pytest.fixture
+def token():
+    """Obtain an auth token by registering and logging in via the live API."""
+    return register_and_login()
+
+
 def test_workflow(token):
     """Run the workflow steps with the given token"""
     headers = {"Authorization": f"Bearer {token}"}

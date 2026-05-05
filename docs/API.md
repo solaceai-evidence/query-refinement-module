@@ -368,15 +368,6 @@ Command-specific fields to expect:
 					"optional": ["acetylsalicylic acid", "cerebrovascular", "older adults"],
 					"excluded": []
 				}
-			},
-			"research_elements": {
-				"subject": "Adults over 65",
-				"phenomenon": "Aspirin",
-				"context": "",
-				"location": "",
-				"comparator": "Placebo",
-				"outcome": "Stroke prevention",
-				"perspective": ""
 			}
 		},
 		"search_filters": {
@@ -391,10 +382,6 @@ Command-specific fields to expect:
 				"aspirin": ["acetylsalicylic acid", "ASA"],
 				"placebo": ["sham", "control"],
 				"stroke prevention": ["cerebrovascular prevention", "stroke prophylaxis"]
-			},
-			"hyponyms": {
-				"aspirin": ["low-dose aspirin", "enteric-coated aspirin"],
-				"stroke": ["ischemic stroke", "hemorrhagic stroke"]
 			}
 		}
 	}
@@ -405,14 +392,13 @@ Notes:
 
 - `structured_output` can be `null` when the service cannot derive a structured payload from the synthesis result.
 - When present, `structured_output` is a JSON object with four sections:
-  - `dimensions_specifications`: the refined value for each dimension, keyed by dimension id
-  - `search_optimized`: retrieval-ready search text and metadata, including `semantic`, `keyword`, and `research_elements`
-  - `search_filters`: optional narrowing filters such as year range, venues, authors, publication types, and fields of study
-  - `terminology`: synonym and hyponym mappings used to expand recall during search construction
+  - `dimensions_specifications`: the refined value for each dimension, keyed by dimension id — assembled deterministically from session state, never from the LLM
+  - `search_optimized`: retrieval-ready search text, including `semantic`, `keyword`, and optional `grey_literature`
+  - `search_filters`: optional narrowing filters — `publication_years`, `venues`, `authors`, and `publication_types` are extracted deterministically from the query text; `fields_of_study` is LLM-generated and constrained to a permitted-values list
+  - `terminology`: synonym mappings used to expand recall during search construction — LLM-generated
 - `search_optimized.keyword.terms.required` contains the smallest set of anchors that should remain in the query.
 - `search_optimized.keyword.terms.optional` contains precision-raising terms.
 - `search_optimized.keyword.terms.excluded` contains only true confounders, not close variants of the target concept.
-- `research_elements` is intentionally concise and may contain empty strings for fields that do not apply.
 
 #### `POST /api/v1/refinement/queries/{query_id}/forward-to-qa` (200)
 

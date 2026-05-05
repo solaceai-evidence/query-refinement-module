@@ -190,8 +190,15 @@ def inspect_cache_session(
     """
     try:
         from query_refinement_module.api.dependencies import get_session_manager
+        from query_refinement_module.api.session_manager import InMemorySessionManager as _InMemoryMgr
         session_manager = get_session_manager()
-        
+
+        if isinstance(session_manager, _InMemoryMgr):
+            raise HTTPException(
+                status_code=status.HTTP_503_SERVICE_UNAVAILABLE,
+                detail="Cache inspection requires Redis. Redis is currently unavailable."
+            )
+
         key = session_manager._make_key(query_id)
         exists = session_manager.redis_client.exists(key)
         
@@ -252,8 +259,15 @@ def clear_cache_session(
     """
     try:
         from query_refinement_module.api.dependencies import get_session_manager
+        from query_refinement_module.api.session_manager import InMemorySessionManager as _InMemoryMgr
         session_manager = get_session_manager()
-        
+
+        if isinstance(session_manager, _InMemoryMgr):
+            raise HTTPException(
+                status_code=status.HTTP_503_SERVICE_UNAVAILABLE,
+                detail="Cache operations require Redis. Redis is currently unavailable."
+            )
+
         deleted = session_manager.delete_session(query_id)
         
         # Audit the operation
