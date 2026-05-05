@@ -35,7 +35,6 @@ cocopop:
         - "During refinement, preserve context needed for local applicability
           and transferability, including geography, population vulnerability,
           setting, and implementation constraints when relevant"
-
         - "During refinement, push the user to operationalize key concepts
           clearly enough that inclusion, exclusion, and synthesis decisions can
           be explained and justified" # "Equity relevance: ensure the question captures equity-relevant groups, settings, or access barriers when they may shape differential impacts or intervention feasibility in climate-health emergencies"
@@ -48,6 +47,9 @@ cocopop:
   - id: population
     name: Population
     description: The group of individuals or entities that are being studied
+    depends_on:
+      - condition
+      - context
     strictness: MODERATE #(MODERATE | PERMISSIVE |  STRICT)
     specifications: |
       **Task:** Evaluate and assemble population specification, including its size, demographic characteristics, and any other relevant factors.
@@ -77,273 +79,184 @@ cocopop:
           rationale: Age (40-65) specified, with all-inclusive gender and ethnicity
             (adults)
         - statement: Postmenopausal women under 65 in urban clinical settings
-          rationale: clearly described age (postmenopausal under 65), gender (women),
-            setting (urban clinical)
+          rationale: clearly described age (postmenopausal under 65), gender (women)
         - statement: Black males aged 18-45 with hypertension in community health centers
-          rationale: clearly defined age (18-45), gender (males), ethnicity (Black),
-            setting (community health centers)
+          rationale: clearly defined age (18-45), gender (males), ethnicity (Black)
       needs_refinement:
         - statement: The effect of exercise on depression
           issue: Zero demographics specified; too broad
           missing: Age, gender at minimum
-          example_question: "You are including all ages, genders, ethnicities, and
-            settings. Is that correct or do you want to limit to you have any
-            specific age range, sex/gender, setting, and/or ethnicity/race?"
+          example_question: "You are including all ages, genders, ethnicities. Is that
+            correct or do you want to limit to any specific age range,
+            sex/gender, and/or ethnicity/race?"
       partial:
         - statement: Women over 40 with cardiovascular disease
           has: Gender (women) and minimum age (40)
-          missing: ethnicity (if CVD disparities relevant),setting (geographic/clinical
-            context)
-          example_question: Is there an upper age limit? Are you focusing on specific
-            ethnic groups given CVD disparities?
+          missing: ethnicity if CVD disparities relevant
+          example_question: "Are you focusing on specific ethnic groups given CVD disparities?"
       vague_ambiguous:
         - statement: Treatment outcomes in minority populations aged 65 and older in
             tertiary care hospitals
           issue: "'Minority populations' is vague and could mean multiple groups"
-          missing: precise ethnicity/race or setting; maybe gender as well
+          missing: precise ethnicity/race; maybe gender as well
           example_question: "Which specific population groups are you focusing on? (e.g.,
             Hispanic/Latino, African American, Asian, Native American). Do you
-            have any specifications regarding gender or geographic location?"
-  - id: response_or_comparison_frame
-    name: Response or Comparison Frame
-    description: The intervention, exposure, strategy, policy option, standard
-      practice, or comparison frame used to structure the question and guide
-      evidence retrieval.
+            have any specifications regarding gender?"
+  - id: Condition
+    name: condition
+    description: The health condition, disease, symptom, problem or social issue
+      being studied, including how it is measured or diagnosed.
     strictness: MODERATE #(MODERATE | PERMISSIVE |  STRICT)
-    depends_on:
-      - population
     specifications: |
-      **Task:** Evaluate and assemble response or comparison frame specification.
-
-      **Intervention source specification:**
+      **Task:** Evaluate and assemble the condition specifications, including its definition, symptoms and causes.
 
       **Elements to track:**
-      - Intervention type (pharmacological/procedural/behavioral/diagnostic)
-      - Specific agent or method
-      - Dosing/intensity (if applicable)
-      - Duration (if applicable)
-      - Delivery method (if applicable)
+      - the health condition, disease, symptom, problem, or social issue being studied
+      - diagnostic terms, synonyms, lay terms, and related symptom clusters.
 
       **Required:**
-      - Intervention type
-      - Specific agent/method name
+      - At least one condition or problem specified with some level of detail (e.g., "diabetes" is too broad, "type 2 diabetes" is better, "newly diagnosed type 2 diabetes in adults aged 40-65" is even better)
 
       **Required if applicable:**
-      - Dosing: for dose-dependent interventions
-      - Duration: if affects outcomes
-      - Delivery: if route/setting/provider affects outcomes
-
-      **Comparator source specification:**
-
-      **Elements to track:**
-      - Comparator type (placebo/standard care/active comparator/no treatment)
-      - Specific comparator details (matching intervention specificity)
-
-      **Required:**
-      - At least one comparator specified
-      - Comparator detail level matching intervention detail
-
-      **Comparator types:**
-      - Placebo: inert substance or mock procedure
-      - Standard care: specify which guideline or usual practice
-      - Active comparator: specify drug, dose, or technique
-      - No treatment: watchful waiting (justify if effective treatment exists)
+      - symptoms: if the condition is defined by a symptom cluster or if the user is interested in symptom management rather than disease modification
+      - diagnostic criteria: if the condition is defined by specific diagnostic criteria or if the user is interested in diagnostic accuracy or case identification
+      - causes: if the user is interested in prevention or if the condition is defined by specific causes (e.g., "smoking-related lung disease")
     examples:
       clear:
-        - statement: Metformin vs placebo in newly diagnosed Type 2 diabetes over 6
-            months.
-          rationale: Inferred intervention type (Pharmacological), Drug (metformin),
-            duration (6 months), and comparison (placebo) well specified.
-        - statement: Laparoscopic Roux-en-Y gastric bypass compared to other techniques
-          rationale: Specific intervention type (surgical technique, inferred) and method
-            (laparoscopic Roux-en-Y)
-        - statement: Cognitive Behavioral Therapy delivered by licensed clinical
-            psychologists
-          rationale: Inferred intervention type (nonpharmacological), method (CBT),
-            provider (licensed psychologists)
-        - statement: Metformin vs placebo in prediabetic adults
-          rationale: Clear active intervention (metformin) vs inert control (placebo)
-        - statement: New anticoagulant compared to warfarin (standard care) in atrial
-            fibrillation
-          rationale: Novel treatment (New anticoagulant) vs established standard of care
-            (warfarin)
-        - statement: High-intensity statins vs moderate-intensity statins in secondary
-            prevention
-          rationale: clear comparator (High-intensity statins vs moderate-intensity
-            statins)
+        - statement: newly diagnosed type 2 diabetes in adults aged 40-65
+          rationale: Specific condition (type 2 diabetes), with relevant diagnostic
+            qualifier (newly diagnosed) and population (adults aged 40-65)
       needs_refinement:
-        - statement: Effects of new drug on blood pressure
-          issue: No comparison group mentioned
-          missing: Comparator specification
-          example_question: What will you compare the new drug against? (e.g., any other
-            treatmentplacebo, current standard treatment, another active drug)
-        - statement: Study of surgical intervention
-          issue: No comparison - surgery vs what?
-          missing: Control/comparison group
-          example_question: What is the comparison? (e.g., surgery vs medical management,
-            surgery vs observation, one surgical technique vs another)
+        - statement: "diabetes"
+          issue: Too broad - includes multiple types with different etiologies,
+            treatments, and outcomes
+          missing: Type specification (type 1, type 2, gestational, etc.), diagnostic
+            criteria, symptomatology if relevant
+          example_question: "Diabetes is a broad term that can refer to several different
+            conditions. Are you focusing on a specific type of diabetes (e.g.,
+            type 1, type 2, gestational)? Are there specific diagnostic criteria
+            or symptoms that are relevant to your question?"
       partial:
-        - statement: Exercise intervention for weight loss
-          has: intervention type (exercise)
-          missing: exercise modality, intensity level, frequency, session duration
-            unspecified
-          example_question: What type of exercise? (aerobic, resistance, both) What
-            intensity, frequency, and exercise modality?
-        - statement: Effects of medication on blood pressure
-          has: intervention type (Pharmacological)
-          missing: Drug name (optional dose, frequency, duration, route)
-          example_question: Which medication are you studying? Please specify the drug
-            name, dose, frequency, and treatment duration if applicable.
+        - statement: Depression in adults
+          has: Condition category (depression), population (adults)
+          missing: Subtype (major depressive disorder, persistent depressive disorder,
+            bipolar depression), severity, diagnostic criteria used
+          example_question: Are you focusing on a specific type of depression (e.g., major
+            depressive disorder, persistent depressive disorder)? Should a
+            particular diagnostic criteria set be applied (e.g., DSM-5, ICD-11)?
+        - statement: Respiratory disease in children
+          has: Body system (respiratory) and population (children)
+          missing: Specific condition (asthma, bronchiolitis, pneumonia, COPD), severity
+            classification, diagnostic criteria
+          example_question: Which respiratory condition are you studying? (e.g., asthma,
+            bronchiolitis, community-acquired pneumonia) Are there specific
+            severity or diagnostic criteria that should apply?
       vague_ambiguous:
-        - statement: Intensive glycemic control in diabetes
-          issue: " Intervention type is clear (glycemic control); 'Intensive' is
-            subjective - it could be specified as a regimen or target"
-          missing: Specific regimen or glycemic targets
-          example_question: "Are you interested in a specific intervention and regimen or
-            a target that defines 'intensive control'?"
-        - statement: ACE inhibitors versus control in hypertension
-          issue: "'Control' could mean placebo, standard care, or no treatment"
-          example_question: What does 'control' mean in your study? (placebo, standard
-            antihypertensive therapy, or no treatment)
-        - statement: Intervention vs standard therapy
-          issue: "'Standard therapy' varies by geography, guidelines, and time period"
-          example_question: What specific treatment(s) constitute 'standard therapy' in
-            your context? (e.g., specific drugs, specific guidelines)
-  - id: decision_outcomes_and_evidence_scope
-    name: Decision Outcomes and Evidence Scope
-    description: The decision-relevant outcomes, indicators, endpoints, phenomena,
-      and evidence-source or study-type boundaries that determine what evidence
-      is useful, eligible, and interpretable.
+        - statement: Patients with chronic conditions
+          issue: Umbrella term with no specific condition identified; encompasses hundreds
+            of unrelated diseases
+          missing: Named condition or disease category
+          example_question: Which specific chronic condition(s) are you studying? (e.g.,
+            type 2 diabetes, hypertension, COPD, chronic kidney disease)
+        - statement: Mental health problems
+          issue: Umbrella term covering dozens of distinct disorders with different
+            etiologies, treatments, and outcomes
+          missing: Specific disorder, diagnostic criteria or symptom cluster
+          example_question: Which mental health disorder(s) are you focusing on? (e.g.,
+            major depressive disorder, generalised anxiety disorder, PTSD,
+            schizophrenia)
+        - statement: Severe disease
+          issue: "'Severe' is both unspecified and relative — no condition is named and no
+            severity threshold is defined"
+          missing: Condition name, severity definition or diagnostic threshold
+          example_question: What condition are you studying? How is 'severe' defined in
+            your context? (e.g., hospitalisation required, specific score
+            threshold, organ involvement)
+  - id: context
+    name: Context
+    description: the setting or environment in which the condition occurs, and can
+      include factors such as cultural, social, economic, and political
+      influences, as well as physical and environmental conditions.
     strictness: MODERATE #(MODERATE | PERMISSIVE |  STRICT)
     depends_on:
-      - population
-      - response_or_comparison_frame
+      - condition
     specifications: |
-      **Task:** Evaluate and assemble decision outcomes and evidence scope specification.
-
-      **Outcome source specification:**
+      **Task:** Evaluate and assemble the contextual setting in which the condition occurs and in which any response or intervention would be implemented.
 
       **Elements to track:**
-      - Primary outcome(s) or main variable(s) of interest
-      - Outcome type (clinical, behavioral, attitudinal, system-level)
-      - Measurement method, instrument, or data source
-      - Timepoint(s) or assessment period (if applicable)
+      - Geographic setting: country, region, or sub-national area (e.g., Sahel, Pacific Island states, peri-urban Bangladesh)
+      - Urban/rural classification (urban, peri-urban, rural, remote)
+      - Income or resource setting: World Bank income group (low, lower-middle, upper-middle, high) or explicit resource-availability descriptor (e.g., resource-limited, humanitarian field setting)
+      - Health system level and capacity: primary care, district hospital, tertiary referral, community health worker-based, fragile or disrupted health system
+      - Socioeconomic and political context: conflict-affected, fragile state, post-disaster, displacement camp, food-insecure region
+      - Environmental or climate setting: drought-prone, flood-prone, high-altitude, coastal/island, heat-stressed urban environment
+      - Cultural or social context (only if directly shaping condition manifestation, care-seeking, or intervention feasibility)
+      - Temporal context: acute emergency phase, recovery phase, seasonal window (e.g., monsoon season, lean season)
 
       **Required:**
-      - At least one primary outcome or main variable of interest
-      - Measurement method for vague outcomes (satisfaction, improvement, experiences)
+      - At least one contextual dimension that anchors where the condition occurs or where evidence should be applicable
 
-      **Conditionally required:**
-      - Timepoint: required if timing affects interpretation
-      - Instrument: required for subjective outcomes; not needed for self-evident measures
+      **Not required unless relevant:**
+      - All dimensions (a single well-specified dimension is sufficient to accept the element)
+      - Cultural context (only prompt if directly relevant to the condition or intervention)
 
-      **Evidence scope source specification:**
-
-      **Elements to track:**
-      - Primary Study Types 
-      - Secondary Study Types 
-      - Other Study Types
-
-      **Required:**
-      - At least one study design specified
-
-      **Category Definitions:**
-
-      PRIMARY STUDY TYPES: 
-      Before and after study, Case control study, Case report, Case series, Clinical study, Clinical trial, Cohort study, Comparative study, Cross-sectional study, Diagnostic test accuracy study, Evaluation study, Observational study, Pilot study, Quality improvement study, Randomized controlled trial, Validation study
-
-      SECONDARY STUDY TYPES
-      Living review, Meta-analysis, Rapid review, Scoping review, Systematic review, Narrative review, Review
-
-      OTHER STUDY TYPES: 
-      Government document, Policy document, Guideline, Consensus conference
-
-      **Assembly example:**
-      - User: "RCTs" → Current: "randomized controlled trials"
-      - User: "also cohort studies" → Current: "randomized controlled trials and cohort studies"
-      - User: "but not retrospective ones" → Current: "randomized controlled trials and prospective cohort studies"
-
-      **Showing Category Lists to User:**
-
-      ALWAYS show the relevant category list(s) when asking for clarification:
-
-      - If no study type specified yet → show ALL STUDY TYPES list
-      - If asking about PRIMARY types → show PRIMARY STUDY TYPES list
-      - If asking about SECONDARY types → show SECONDARY STUDY TYPES list
-      - If asking about OTHER types → show OTHER STUDY TYPES list
-      - If asking about multiple categories → show all relevant lists
-      - If user has specified one category and you're asking about others → show only the new category list(s)
-
-
-      **Clarification Behavior:**
-
-      - If user mentions only PRIMARY types → acknowledge, then ask: "Would you also like to include secondary sources (reviews, meta-analyses) or other document types (guidelines, policies)?" + show SECONDARY and OTHER lists
-
-      - If user mentions only SECONDARY types → acknowledge, then ask: "Should we also include primary research studies?" + show PRIMARY list
-
-      - If user mentions only OTHER types → acknowledge, then ask: "Should we also include primary research or secondary sources?" + show PRIMARY and SECONDARY lists
-
-      - If user mentions MIXED types (from multiple categories) → acknowledge, optionally ask about exclusions from shown lists or remaining categories
-
-      - If nothing specified yet → start by asking about PRIMARY types + show PRIMARY list
-
-      - If user mentions unlisted study type → map to closest category if possible, or ask for clarification
-
-      **Completion:**
-      Accept once at least one study design is clearly specified from any category.
+      **Specificity guidance:**
+      - Prefer named geographies over vague regional terms when the user's question implies a specific setting
+      - Standardize income/resource descriptors: "poor countries" → "low- and middle-income countries (LMICs)"; "rich countries" → "high-income countries"
+      - Flag when a stated context is so heterogeneous it would preclude coherent synthesis (e.g., "global" or "all developing countries" without further constraint)
     examples:
       clear:
-        - statement: Effect of intervention on all-cause mortality at 5 years or more
-          rationale: Specific outcome (all-cause mortality), clear timepoint (5 years or
-            more). With this outcome, a shorter duration may not be associated
-            with the intervention; thus the inclusion of a longer timepoint.
-        - statement: Change in HbA1c from baseline to 6 months
-          rationale: Outcome type (diabetes indicator) inferred, measurement method
-            -specific biomarker- (HbA1c) and timeframe (baseline to 6 months)
-            clearly defined
-        - statement: All RCTs on treatments for basal cell carcinomas
-          rationale: primary study types (RCT, clinical trials) clearly specified
+        - statement: Rural primary care settings in sub-Saharan Africa during recurrent
+            drought seasons
+          rationale: Geography (sub-Saharan Africa), urbanicity (rural), health system
+            level (primary care), and temporal/climate setting (recurrent
+            drought seasons) all specified
+        - statement: Displacement camps in conflict-affected northern Syria, operating
+            under disrupted cold-chain conditions
+          rationale: Geography (northern Syria), political context (conflict-affected),
+            health system context (disrupted cold-chain), and implementation
+            constraint all explicit
       needs_refinement:
-        - statement: Study on treatment effectiveness
-          issue: "'Effectiveness' not defined - needs specific measurable outcome"
-          missing: Specific outcome measure, measurement method, timepoint
-          example_question: How will you measure effectiveness? (e.g., specific clinical
-            outcomes, biomarkers, patient-reported measures)
-        - statement: Research on improving patient outcomes
-          issue: "'Outcomes' is vague - could mean dozens of different measures"
-          missing: Specific outcome(s), measurement tools, assessment timing
-          example_question: What specific outcome(s) will you measure? When will they be
-            assessed?
-        - statement: Trial measuring quality of life improvement
-          issue: QOL mentioned but no instrument specified
-          missing: QOL instrument, measurement timepoints, MCID
-          example_question: Which quality of life instrument will you use? (e.g., SF-36,
-            EQ-5D, disease-specific) When will you assess it?
-        - statement: Study comparing two diabetes medications
-          issue: Study type not specified
-          missing: Study type
-          example_question: What study design? (e.g., randomized controlled trial,
-            observational cohort, systematic review)
+        - statement: Health outcomes in developing countries
+          issue: "No geographic anchor; 'developing countries' spans vastly different
+            epidemiological, health-system, and climate contexts"
+          missing: Region or country group, income classification, health system level
+          example_question: "Which region or country group are you focusing on? (e.g.,
+            sub-Saharan Africa, South Asia, Pacific Island states) What health
+            system level is relevant? (e.g., primary care, community level,
+            hospital)"
       partial:
-        - statement: Effect on blood pressure reduction
-          has: General outcome category (blood pressure)
-          missing: Specific BP parameter (systolic, diastolic, mean arterial), target
-            reduction,measurement protocol, timepoint
-          example_question: Which BP parameter? (systolic, diastolic, or both) What
-            measurement protocol? When will it be assessed?
-        - statement: Change in depression scores using validated scales
-          has: Outcome type (depression), mentions validation
-          missing: Specific scale, timepoints, MCID
-          example_question: Which depression scale? (PHQ-9, Beck Depression Inventory,
-            HAM-D) At what timepoints? What change is clinically meaningful?
+        - statement: Low-income settings in Asia
+          has: Income setting (low-income), broad geography (Asia)
+          missing: Sub-region or country specification, urban/rural classification, health
+            system level
+          example_question: Which part of Asia? (e.g., South Asia, Southeast Asia, Central
+            Asia) Are you focusing on urban, rural, or both? What health system
+            level is relevant?
+        - statement: Post-disaster communities
+          has: Temporal/political context (post-disaster)
+          missing: Geographic region, type of disaster, health system capacity
+          example_question: Which region or country are you focusing on? What type of
+            disaster? (e.g., cyclone, flood, earthquake) What health system
+            capacity is assumed? (e.g., functional primary care, humanitarian
+            field operations)
       vague_ambiguous:
-        - statement: Study on long-term outcomes of surgery
-          issue: "'Long-term' is relative (could be 1 year or 10 years), 'outcomes'
-            unspecified"
-          example_question: What is the follow-up duration? What specific outcomes will
-            you measure? (e.g., survival, complications, functional status)
-        - statement: Research on significant improvement in symptoms
-          issue: "'Significant' (statistical vs clinical?) and 'symptoms' (which ones?)
-            both vague"
-          example_question: Which specific symptoms? How will you measure them? What
-            defines a clinically meaningful improvement?
+        - statement: Resource-limited settings
+          issue: "'Resource-limited' is relative and context-dependent — it provides no
+            geographic anchor and spans primary care to field hospitals"
+          missing: Geographic region, specific resource constraint (e.g., no laboratory
+            capacity, limited cold chain, shortage of trained staff), health
+            system level
+          example_question: Where specifically? (e.g., rural West Africa, peri-urban South
+            Asia) What resource constraint matters most for your question?
+            (e.g., laboratory access, cold-chain reliability, health worker
+            availability)
+        - statement: Tropical regions
+          issue: Vast and epidemiologically heterogeneous; encompasses high-income
+            Singapore and fragile-state contexts equally
+          missing: Specific country or sub-region, income/resource setting, urban or rural
+            classification
+          example_question: Which tropical setting are you interested in? (e.g., island
+            states in the Pacific, the Sahel, lowland South America) Is the
+            focus on high-income, middle-income, or low-income countries within
+            that region?
