@@ -1,19 +1,34 @@
-import { createContext, useContext, useState } from 'react';
-import { authUtils } from '../utils/auth';
+import { createContext, useContext, useState, useEffect } from 'react';
 import apiClient from '../services/api';
 import { logger } from '../utils/logger';
 
 const AuthContext = createContext(null);
 
 export const AuthProvider = ({ children }) => {
-    const [user, setUser] = useState(() => (authUtils.isAuthenticated() ? authUtils.getUserInfo() : null));
-    const [loading] = useState(false);
+    const [user, setUser] = useState(null);
+    const [loading, setLoading] = useState(true);
+
+    // On mount, check whether an httpOnly auth cookie exists by calling /auth/me.
+    // This is the only reliable way to restore session state after a page refresh
+    // since the cookie is not readable from JavaScript.
+    useEffect(() => {
+        apiClient.get('/auth/me')
+            .then(res => {
+                setUser({ sub: res.data.username, ...res.data });
+            })
+            .catch(() => {
+                setUser(null);
+            })
+            .finally(() => {
+                setLoading(false);
+            });
+    }, []);
 
     const login = async (username, password) => {
         try {
             logger.info('User login attempt', { username });
 
-            const response = await apiClient.post('/auth/login',
+            await apiClient.post('/auth/login',
                 new URLSearchParams({
                     username,
                     password,
@@ -26,16 +41,12 @@ export const AuthProvider = ({ children }) => {
                 }
             );
 
-            const { access_token } = response.data;
-            authUtils.setToken(access_token);
-
-            const userInfo = authUtils.getUserInfo();
+            // Fetch full user profile now that the cookie is set
+            const meRes = await apiClient.get('/auth/me');
+            const userInfo = { sub: meRes.data.username, ...meRes.data };
             setUser(userInfo);
 
-            logger.info('User login successful', { username, userId: userInfo?.sub });
-
-            // Wait for state update to complete before returning
-            await new Promise(resolve => setTimeout(resolve, 0));
+            logger.info('User login successful', { username, userId: userInfo?.id });
 
             return { success: true };
         } catch (error) {
@@ -54,11 +65,10 @@ export const AuthProvider = ({ children }) => {
         try {
             logger.info('User registration attempt', { username, hasEmail: !!email });
 
-            // Only include email in request if provided (for future production use)
             const requestData = {
                 username,
                 password,
-                ...(email && { email }) // Conditionally add email if it exists
+                ...(email && { email })
             };
 
             await apiClient.post('/auth/register', requestData);
@@ -79,9 +89,14 @@ export const AuthProvider = ({ children }) => {
         }
     };
 
-    const logout = () => {
+    const logout = async () => {
         logger.info('User logout', { username: user?.sub });
-        authUtils.removeTokens();
+        try {
+            // Tell the server to clear the httpOnly cookie
+            await apiClient.post('/auth/logout');
+        } catch {
+            // Ignore errors — we still clear client-side state
+        }
         setUser(null);
     };
 
@@ -91,8 +106,7 @@ export const AuthProvider = ({ children }) => {
         login,
         register,
         logout,
-        // Check both user state and localStorage to handle race conditions
-        isAuthenticated: !!user || authUtils.isAuthenticated()
+        isAuthenticated: !!user,
     };
 
     return (

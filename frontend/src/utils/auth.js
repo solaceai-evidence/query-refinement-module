@@ -1,61 +1,30 @@
-import { jwtDecode } from 'jwt-decode';
-
-const TOKEN_KEY = 'auth_token';
-const REFRESH_TOKEN_KEY = 'refresh_token';
+/**
+ * Auth utilities — cookie-based session model.
+ *
+ * The JWT lives in an httpOnly cookie and is never accessible to JavaScript.
+ * Auth state is managed entirely in React (AuthContext) by calling /auth/me on
+ * mount.  These helpers exist only to support the AuthContext interface; all
+ * localStorage token storage has been removed.
+ */
 
 export const authUtils = {
-    // Store tokens
-    setToken(token) {
-        localStorage.setItem(TOKEN_KEY, token);
-    },
+    // No-ops kept for call-site compatibility during the migration.
+    // The token is now an httpOnly cookie managed by the browser.
+    setToken(_token) { },
+    setRefreshToken(_token) { },
+    getToken() { return null; },
+    getRefreshToken() { return null; },
+    removeTokens() { },
 
-    setRefreshToken(token) {
-        localStorage.setItem(REFRESH_TOKEN_KEY, token);
-    },
+    // isTokenExpired is no longer meaningful (token is httpOnly); always false.
+    isTokenExpired(_token) { return false; },
 
-    // Get tokens
-    getToken() {
-        return localStorage.getItem(TOKEN_KEY);
-    },
+    // isAuthenticated must NOT be called for security checks — use the
+    // `isAuthenticated` value from AuthContext (populated via /auth/me) instead.
+    // This shim returns false so legacy call-sites fail safely rather than
+    // granting access without a server-verified session.
+    isAuthenticated() { return false; },
 
-    getRefreshToken() {
-        return localStorage.getItem(REFRESH_TOKEN_KEY);
-    },
-
-    // Remove tokens
-    removeTokens() {
-        localStorage.removeItem(TOKEN_KEY);
-        localStorage.removeItem(REFRESH_TOKEN_KEY);
-    },
-
-    // Check if token is expired
-    isTokenExpired(token) {
-        if (!token) return true;
-
-        try {
-            const decoded = jwtDecode(token);
-            const currentTime = Date.now() / 1000;
-            return decoded.exp < currentTime;
-        } catch {
-            return true;
-        }
-    },
-
-    // Check if user is authenticated
-    isAuthenticated() {
-        const token = this.getToken();
-        return token && !this.isTokenExpired(token);
-    },
-
-    // Get user info from token
-    getUserInfo() {
-        const token = this.getToken();
-        if (!token) return null;
-
-        try {
-            return jwtDecode(token);
-        } catch {
-            return null;
-        }
-    }
+    // getUserInfo is no longer available (token is httpOnly).
+    getUserInfo() { return null; },
 };

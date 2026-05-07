@@ -71,7 +71,9 @@ def get_session_manager() -> SessionManager:
         manager = SessionManager(
             redis_url=settings.redis_url,
             session_ttl_seconds=settings.session_ttl_seconds,
-            key_prefix=settings.session_key_prefix
+            key_prefix=settings.session_key_prefix,
+            lock_timeout_seconds=settings.session_lock_timeout_seconds,
+            lock_blocking_timeout_seconds=settings.session_lock_blocking_timeout_seconds,
         )
         return manager
     except Exception as e:

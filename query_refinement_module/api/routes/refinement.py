@@ -1184,20 +1184,28 @@ async def submit_answer(
     
     # Acquire a per-session lock for the entire load→mutate→save cycle so that
     # concurrent requests for the same query_id cannot overwrite each other's state.
-    async with session_manager.session_lock(query_id):
-        return await _submit_answer_locked(
-            query_id=query_id,
-            request=request,
-            http_request=http_request,
-            manager=manager,
-            current_user=current_user,
-            db=db,
-            session_manager=session_manager,
-            db_query=db_query,
-            framework=framework,
-            request_id=request_id,
-            start_time=start_time,
-            is_command=is_command,
+    # The lock is distributed across all gunicorn workers via Redis (see SessionManager).
+    try:
+        async with session_manager.session_lock(query_id):
+            return await _submit_answer_locked(
+                query_id=query_id,
+                request=request,
+                http_request=http_request,
+                manager=manager,
+                current_user=current_user,
+                db=db,
+                session_manager=session_manager,
+                db_query=db_query,
+                framework=framework,
+                request_id=request_id,
+                start_time=start_time,
+                is_command=is_command,
+            )
+    except RuntimeError as exc:
+        logger.warning("Could not acquire session lock for query %d: %s", query_id, exc)
+        raise HTTPException(
+            status_code=status.HTTP_503_SERVICE_UNAVAILABLE,
+            detail="Session is temporarily locked by another request. Please retry in a moment.",
         )
 
 

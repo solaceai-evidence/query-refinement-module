@@ -79,6 +79,17 @@ class Settings(BaseSettings):
     algorithm: str = "HS256"
     access_token_expire_minutes: int = 480  # 8 hours (increased from 30 minutes)
 
+    # Auth cookie settings (httpOnly cookie replaces localStorage JWT)
+    auth_cookie_name: str = Field(default="qrm_auth", description="Name of the httpOnly auth cookie")
+    auth_cookie_secure: bool = Field(
+        default=False,
+        description="Set Secure flag on auth cookie (must be True in production over HTTPS)",
+    )
+    auth_cookie_same_site: str = Field(
+        default="lax",
+        description="SameSite policy for auth cookie: lax (default) or strict",
+    )
+
     # Service-to-service integration auth (prototype)
     integration_api_key: Optional[str] = Field(
         default=None,
@@ -149,6 +160,15 @@ class Settings(BaseSettings):
     session_storage_backend: str = Field(default="redis", description="Session storage: 'redis' or 'memory'")
     session_ttl_seconds: int = Field(default=3600, description="Session expiration time in seconds (1 hour)")
     session_key_prefix: str = Field(default="qr:session:", description="Redis key prefix for sessions")
+    # Distributed session lock (cross-process mutual exclusion for submit_answer)
+    session_lock_timeout_seconds: int = Field(
+        default=60,
+        description="Max seconds a distributed session lock may be held (covers worst-case LLM call time)",
+    )
+    session_lock_blocking_timeout_seconds: int = Field(
+        default=30,
+        description="Max seconds to wait when acquiring a distributed session lock before giving up",
+    )
     
     # Rate limiter backend
     rate_limiter_backend: str = Field(default="memory", description="Rate limiter backend: 'memory' or 'redis'")

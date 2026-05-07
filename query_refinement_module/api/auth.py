@@ -6,7 +6,7 @@ from typing import Optional
 import secrets
 from jose import JWTError, jwt
 from passlib.context import CryptContext
-from fastapi import Depends, HTTPException, status, Security
+from fastapi import Depends, HTTPException, Request, status, Security
 from fastapi.security import OAuth2PasswordBearer, HTTPBearer, HTTPAuthorizationCredentials, APIKeyHeader
 from sqlalchemy.orm import Session
 
@@ -20,7 +20,7 @@ settings = get_settings()
 pwd_context = CryptContext(schemes=["bcrypt"], deprecated="auto")
 
 # OAuth2 scheme for token authentication
-oauth2_scheme = OAuth2PasswordBearer(tokenUrl="/api/v1/auth/login")
+oauth2_scheme = OAuth2PasswordBearer(tokenUrl="/api/v1/auth/login", auto_error=False)
 optional_bearer_scheme = HTTPBearer(auto_error=False)
 api_key_header = APIKeyHeader(name="X-API-Key", auto_error=False)
 
@@ -56,17 +56,35 @@ def decode_access_token(token: str) -> Optional[dict]:
         return None
 
 
+def _extract_token(request: Request, bearer_token: Optional[str]) -> Optional[str]:
+    """Extract JWT from httpOnly cookie or, as fallback, Authorization header.
+
+    Cookie takes precedence because it is the secure default for browser
+    clients.  The Authorization header fallback supports the integration
+    service and legacy curl / Swagger UI flows.
+    """
+    cookie_token = request.cookies.get(settings.auth_cookie_name)
+    if cookie_token:
+        return cookie_token
+    return bearer_token
+
+
 async def get_current_user(
-    token: str = Depends(oauth2_scheme),
+    request: Request,
+    bearer_token: Optional[str] = Depends(oauth2_scheme),
     db: Session = Depends(get_db)
 ):
-    """Get the current authenticated user from JWT token."""
+    """Get the current authenticated user from httpOnly cookie or Bearer token."""
     credentials_exception = HTTPException(
         status_code=status.HTTP_401_UNAUTHORIZED,
         detail="Could not validate credentials",
         headers={"WWW-Authenticate": "Bearer"},
     )
-    
+
+    token = _extract_token(request, bearer_token)
+    if not token:
+        raise credentials_exception
+
     payload = decode_access_token(token)
     if payload is None:
         raise credentials_exception
@@ -103,16 +121,31 @@ def _get_or_create_integration_service_user(db: Session):
 
 
 async def get_current_user_or_integration(
+    request: Request,
     bearer_credentials: Optional[HTTPAuthorizationCredentials] = Depends(optional_bearer_scheme),
     integration_api_key: Optional[str] = Security(api_key_header),
     db: Session = Depends(get_db),
 ):
-    """Authenticate either an end-user JWT token or trusted integration API key."""
+    """Authenticate either an end-user JWT token (cookie or Bearer) or trusted integration API key."""
     credentials_exception = HTTPException(
         status_code=status.HTTP_401_UNAUTHORIZED,
         detail="Could not validate credentials",
         headers={"WWW-Authenticate": "Bearer"},
     )
+
+    # Cookie takes precedence for browser clients
+    cookie_token = request.cookies.get(settings.auth_cookie_name)
+    if cookie_token:
+        payload = decode_access_token(cookie_token)
+        if payload is None:
+            raise credentials_exception
+        username: str = payload.get("sub")
+        if username is None:
+            raise credentials_exception
+        user = get_user_by_username(db, username=username)
+        if user is None:
+            raise credentials_exception
+        return user
 
     if bearer_credentials and bearer_credentials.scheme.lower() == "bearer":
         payload = decode_access_token(bearer_credentials.credentials)

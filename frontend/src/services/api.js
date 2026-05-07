@@ -1,5 +1,4 @@
 import axios from 'axios';
-import { authUtils } from '../utils/auth';
 import { logger } from '../utils/logger';
 import { toast } from '../utils/toast';
 
@@ -13,6 +12,7 @@ const baseURL = import.meta.env.PROD
 const apiClient = axios.create({
     baseURL: baseURL,
     timeout: parseInt(import.meta.env.VITE_API_TIMEOUT) || 90000,
+    withCredentials: true,  // Send httpOnly auth cookie on every request
     headers: {
         'Content-Type': 'application/json'
     }
@@ -20,29 +20,9 @@ const apiClient = axios.create({
 
 logger.info('API Client initialized (HTTPS-safe build)', { baseURL });
 
-// Request interceptor to add auth token
+// Request interceptor for tracing headers
 apiClient.interceptors.request.use(
-    async (config) => {
-        // Skip auth for login and register endpoints
-        const isAuthEndpoint = config.url?.includes('/auth/login') || config.url?.includes('/auth/register');
-
-        const token = authUtils.getToken();
-
-        // Skip token check for auth endpoints
-        if (isAuthEndpoint) {
-            return config;
-        }
-
-        // Check if token is expired
-        if (token && authUtils.isTokenExpired(token)) {
-            logger.warn('Token expired, redirecting to login');
-            authUtils.removeTokens();
-            window.location.href = '/login?expired=true';
-            return Promise.reject(new Error('Token expired'));
-        } else if (token) {
-            config.headers.Authorization = `Bearer ${token}`;
-        }
-
+    (config) => {
         return config;
     },
     (error) => {
@@ -94,8 +74,9 @@ apiClient.interceptors.response.use(
             });
             originalRequest._retry = true;
 
-            // Clear tokens and redirect to login
-            authUtils.removeTokens();
+            // The httpOnly cookie has expired or is invalid; redirect to login.
+            // The cookie is cleared server-side via POST /auth/logout — here we
+            // just navigate away so the user is prompted to re-authenticate.
             window.location.href = '/login?expired=true';
             return Promise.reject(error);
         }

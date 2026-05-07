@@ -14,7 +14,6 @@
  */
 
 import { getRequestId, getTraceId } from './logger';
-import { authUtils } from './auth';
 
 // In production builds, ALWAYS use relative path (same reasoning as api.js).
 const API_BASE_URL = import.meta.env.PROD
@@ -213,23 +212,15 @@ class FrontendLogForwarder {
             return;
         }
 
-        // Don't send if not authenticated
-        const token = authUtils.getToken();
-        if (!token) {
-            console.debug('FrontendLogForwarder: Not authenticated, skipping log forwarding');
-            this.logQueue = []; // Clear queue since we can't send
-            return;
-        }
-
         // Take logs from queue
         const logsToSend = this.logQueue.splice(0, BATCH_SIZE);
 
         try {
             const response = await fetch(API_ENDPOINT, {
                 method: 'POST',
+                credentials: 'include',  // Send httpOnly auth cookie automatically
                 headers: {
                     'Content-Type': 'application/json',
-                    'Authorization': `Bearer ${token}`,
                 },
                 body: JSON.stringify({ logs: logsToSend }),
             });

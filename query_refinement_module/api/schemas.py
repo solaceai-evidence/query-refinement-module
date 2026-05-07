@@ -79,8 +79,19 @@ class UserResponse(BaseModel):
 
 
 class Token(BaseModel):
-    """Schema for JWT token response."""
+    """Schema for JWT token response (legacy / integration-service use)."""
     access_token: str
+    token_type: str = "bearer"
+
+
+class LoginResponse(BaseModel):
+    """Schema for the browser login response.
+
+    The JWT is delivered as an httpOnly cookie; this body only carries
+    non-sensitive confirmation data needed by the frontend.
+    """
+    status: str = "ok"
+    username: str
     token_type: str = "bearer"
 
 

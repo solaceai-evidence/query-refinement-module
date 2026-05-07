@@ -1,14 +1,14 @@
 """
 Authentication API routes with comprehensive audit logging.
 """
-from fastapi import APIRouter, Depends, HTTPException, status, Request
+from fastapi import APIRouter, Depends, HTTPException, status, Request, Response
 from fastapi.security import OAuth2PasswordRequestForm
 from sqlalchemy.orm import Session
 from datetime import timedelta
 
 from query_refinement_module.db.session import get_db
 from query_refinement_module.db.crud import create_user, get_user_by_username, get_user_by_email, verify_user_password
-from query_refinement_module.api.schemas import UserCreate, UserResponse, Token
+from query_refinement_module.api.schemas import UserCreate, UserResponse, Token, LoginResponse
 from query_refinement_module.api.auth import (
     create_access_token,
     get_current_user,
@@ -106,20 +106,22 @@ def register(request: Request, user_data: UserCreate, db: Session = Depends(get_
     return user
 
 
-@router.post("/login", response_model=Token)
+@router.post("/login", response_model=LoginResponse)
 def login(
     request: Request,
+    response: Response,
     form_data: OAuth2PasswordRequestForm = Depends(),
     db: Session = Depends(get_db)
 ):
     """
-    Login with username/email and password to get an access token.
-    
-    - **username**: User's username or email address
-    - **password**: User's password
-    
-    Returns a JWT access token for authenticated requests.
-    The system automatically detects whether the identifier is a username or email.
+    Login with username/email and password.
+
+    On success the JWT is delivered as an ``httpOnly; SameSite=Lax`` cookie
+    so that browser clients never expose the token to JavaScript.  The
+    response body contains only non-sensitive confirmation data.
+
+    - **username**: User’s username or email address
+    - **password**: User’s password
     """
     # Verify user credentials (supports both username and email)
     user = verify_user_password(db, identifier=form_data.username, password=form_data.password)
@@ -152,6 +154,19 @@ def login(
     access_token = create_access_token(
         data={"sub": user.username}, expires_delta=access_token_expires
     )
+
+    # Deliver the token as an httpOnly cookie so browser JS cannot read it.
+    # SameSite=Lax prevents CSRF on state-changing cross-site requests while
+    # remaining compatible with same-site development workflows.
+    response.set_cookie(
+        key=settings.auth_cookie_name,
+        value=access_token,
+        httponly=True,
+        secure=settings.auth_cookie_secure,
+        samesite=settings.auth_cookie_same_site,
+        max_age=settings.access_token_expire_minutes * 60,
+        path="/",
+    )
     
     # Audit successful login
     audit_service.log_from_request(
@@ -170,7 +185,7 @@ def login(
         }
     )
     
-    return {"access_token": access_token, "token_type": "bearer"}
+    return LoginResponse(status="ok", username=user.username)
 
 
 @router.get("/me", response_model=UserResponse)
@@ -186,16 +201,26 @@ def get_current_user_info(current_user = Depends(get_current_user)):
 @router.post("/logout", status_code=status.HTTP_200_OK)
 def logout(
     request: Request,
+    response: Response,
     current_user = Depends(get_current_user),
     db: Session = Depends(get_db)
 ):
     """
-    Logout endpoint for audit logging.
-    
-    Note: JWT tokens cannot be invalidated server-side without additional infrastructure
-    (e.g., Redis blocklist). This endpoint primarily serves audit logging purposes.
-    Clients should discard the token on logout.
+    Logout the current user.
+
+    Clears the httpOnly auth cookie and writes an audit record.  Because the
+    JWT is ``httpOnly`` the browser cannot clear it from JS — this server-side
+    endpoint is the only way to end the session cleanly.
     """
+    # Clear the auth cookie by overwriting it with an expired value
+    response.delete_cookie(
+        key=settings.auth_cookie_name,
+        path="/",
+        httponly=True,
+        secure=settings.auth_cookie_secure,
+        samesite=settings.auth_cookie_same_site,
+    )
+
     # Audit logout event
     audit_service.log_from_request(
         db=db,
@@ -209,7 +234,7 @@ def logout(
         status="success"
     )
     
-    return {"message": "Logout successful. Please discard your access token."}
+    return {"message": "Logout successful."}
 
 
 @router.get("/me/status")

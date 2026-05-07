@@ -55,7 +55,9 @@ class SessionManager:
         session_ttl_seconds: int = 3600,
         key_prefix: str = "qr:session:",
         max_retries: int = 3,
-        retry_delay: float = 0.5
+        retry_delay: float = 0.5,
+        lock_timeout_seconds: int = 60,
+        lock_blocking_timeout_seconds: int = 30,
     ):
         """
         Initialize session manager with Redis connection.
@@ -78,7 +80,11 @@ class SessionManager:
         # the same query_id within a single process.
         self._session_locks: Dict[int, asyncio.Lock] = {}
         self._session_locks_meta = threading.Lock()  # protects the dict itself
-        
+
+        # Distributed lock settings (cross-process mutual exclusion)
+        self._lock_timeout = lock_timeout_seconds
+        self._lock_blocking_timeout = lock_blocking_timeout_seconds
+
         # Test connection
         try:
             self.redis_client.ping()
@@ -102,6 +108,14 @@ class SessionManager:
     async def session_lock(self, query_id: int):
         """Async context manager that serialises concurrent modifications of a session.
 
+        Acquires two locks in order:
+        1. A Redis distributed lock (cross-process) — acquired in a thread-pool
+           executor so the event loop is never blocked.
+        2. A per-process asyncio lock (within-process) — acquired after Redis.
+
+        Together these guarantee at most one coroutine, across *all* gunicorn
+        workers, holds the session at any moment.
+
         Usage::
 
             async with session_manager.session_lock(query_id):
@@ -109,13 +123,38 @@ class SessionManager:
                 # ... mutate session ...
                 session_manager.save_session(query_id, session)
 
-        Holding this lock guarantees that no other coroutine within the same
-        process can load or save the same session concurrently.  Across multiple
-        processes a Redis-level lock would be required; document accordingly.
+        Raises:
+            RuntimeError: If the Redis lock cannot be acquired within
+                ``lock_blocking_timeout_seconds``.
         """
-        lock = self._get_session_lock(query_id)
-        async with lock:
-            yield
+        lock_key = f"{self.key_prefix}lock:{query_id}"
+        redis_lock = self.redis_client.lock(
+            lock_key,
+            timeout=self._lock_timeout,
+            blocking_timeout=self._lock_blocking_timeout,
+        )
+
+        loop = asyncio.get_running_loop()
+        acquired = await loop.run_in_executor(None, redis_lock.acquire)
+        if not acquired:
+            raise RuntimeError(
+                f"Could not acquire distributed session lock for query {query_id} "
+                f"within {self._lock_blocking_timeout}s — another worker may be processing this session"
+            )
+
+        try:
+            asyncio_lock = self._get_session_lock(query_id)
+            async with asyncio_lock:
+                yield
+        finally:
+            try:
+                await loop.run_in_executor(None, redis_lock.release)
+            except Exception as exc:
+                logger.warning(
+                    "Failed to release Redis session lock for query %d: %s",
+                    query_id,
+                    exc,
+                )
     
     def _retry_operation(self, operation_name: str, operation_func):
         """
