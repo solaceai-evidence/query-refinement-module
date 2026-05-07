@@ -8,11 +8,7 @@ Covers:
 - ForwardToQA URL validation
 - Register.jsx username rules are consistent with backend schema
 """
-import inspect
-import ast
 import re
-import textwrap
-from types import SimpleNamespace
 from pathlib import Path
 
 import pytest

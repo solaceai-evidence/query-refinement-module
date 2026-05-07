@@ -1,13 +1,9 @@
 """
 Rate limiting infrastructure for LLM API calls.
 
-Provides multiple rate limiter implementations for controlling API usage:
-- TokenBucketRateLimiter: In-memory RPM/TPM limiting with sliding window
-- SemaphoreRateLimiter: Max concurrent request limiting
-- RedisRateLimiter: Distributed rate limiting using Redis
-- CompositeRateLimiter: Combines multiple limiters (global + per-user)
+Provides in-memory RPM/TPM rate limiting with sliding window.
 
-All limiters are thread-safe and support context manager protocol.
+TokenBucketRateLimiter is thread-safe and supports context manager protocol.
 """
 
 import asyncio
@@ -15,9 +11,8 @@ import logging
 import random
 import threading
 import time
-from abc import ABC, abstractmethod
-from contextlib import asynccontextmanager, contextmanager
 from dataclasses import dataclass
+from contextlib import asynccontextmanager, contextmanager
 from typing import Dict, List, Optional, Tuple
 
 from .interfaces import RateLimitConfig, RateLimitExceeded
@@ -33,7 +28,6 @@ except ImportError:
     redis = None
 
 
-# ======================
 # Backoff Strategy
 # ======================
 
@@ -78,113 +72,8 @@ class BackoffStrategy:
 # Rate Limiter Interface
 # ======================
 
-class RateLimiterInterface(ABC):
-    """
-    Abstract interface for rate limiters.
-    
-    All rate limiters must implement acquire/release pattern and support
-    both sync and async contexts for API and CLI compatibility.
-    """
-    
-    @abstractmethod
-    async def acquire(self, user_id: Optional[str] = None, tokens: int = 1) -> bool:
-        """
-        Acquire permission to proceed (async version).
-        
-        Args:
-            user_id: Optional user identifier for per-user limiting.
-            tokens: Number of tokens to consume (for TPM limiting).
-        
-        Returns:
-            True if allowed, False if rate limited.
-        
-        Raises:
-            RateLimitExceeded: If rate limit is exceeded and should block.
-        """
-        pass
-    
-    def acquire_sync(self, user_id: Optional[str] = None, tokens: int = 1) -> bool:
-        """
-        Acquire permission to proceed (sync version for CLI).
-        
-        Default implementation runs async version in new event loop.
-        Override for pure synchronous limiters.
-        """
-        try:
-            loop = asyncio.get_event_loop()
-            if loop.is_running():
-                # Already in async context, create task
-                return asyncio.create_task(self.acquire(user_id, tokens))
-            else:
-                return loop.run_until_complete(self.acquire(user_id, tokens))
-        except RuntimeError:
-            # No event loop, create one
-            return asyncio.run(self.acquire(user_id, tokens))
-    
-    @abstractmethod
-    async def release(self, user_id: Optional[str] = None, tokens: int = 1) -> None:
-        """
-        Release acquired resources (async version).
-        
-        Args:
-            user_id: Optional user identifier for per-user limiting.
-            tokens: Number of tokens to release.
-        """
-        pass
-    
-    def release_sync(self, user_id: Optional[str] = None, tokens: int = 1) -> None:
-        """
-        Release acquired resources (sync version for CLI).
-        
-        Default implementation runs async version in new event loop.
-        """
-        try:
-            loop = asyncio.get_event_loop()
-            if loop.is_running():
-                asyncio.create_task(self.release(user_id, tokens))
-            else:
-                loop.run_until_complete(self.release(user_id, tokens))
-        except RuntimeError:
-            asyncio.run(self.release(user_id, tokens))
-    
-    @asynccontextmanager
-    async def limit(self, user_id: Optional[str] = None, tokens: int = 1):
-        """
-        Context manager for automatic acquire/release (async).
-        
-        Usage:
-            async with rate_limiter.limit(user_id="user_123"):
-                # Make LLM API call
-                result = await llm_provider.complete(...)
-        """
-        await self.acquire(user_id, tokens)
-        try:
-            yield
-        finally:
-            await self.release(user_id, tokens)
-    
-    @contextmanager
-    def limit_sync(self, user_id: Optional[str] = None, tokens: int = 1):
-        """
-        Context manager for automatic acquire/release (sync).
-        
-        Usage:
-            with rate_limiter.limit_sync(user_id="user_123"):
-                # Make LLM API call
-                result = llm_provider.complete(...)
-        """
-        self.acquire_sync(user_id, tokens)
-        try:
-            yield
-        finally:
-            self.release_sync(user_id, tokens)
 
-
-# ======================
-# Token Bucket Rate Limiter (In-Memory)
-# ======================
-
-class TokenBucketRateLimiter(RateLimiterInterface):
+class TokenBucketRateLimiter:
     """
     Token bucket rate limiter with sliding window (in-memory).
     
@@ -361,265 +250,7 @@ class TokenBucketRateLimiter(RateLimiterInterface):
         pass
 
 
-# ======================
-# Semaphore Rate Limiter (Concurrent Requests)
-# ======================
-
-class SemaphoreRateLimiter(RateLimiterInterface):
-    """
-    Semaphore-based rate limiter for max concurrent requests.
-    
-    Enforces maximum concurrent LLM API calls.
-    Uses asyncio.Semaphore for async and threading.Semaphore for sync.
-    """
-    
-    def __init__(
-        self,
-        max_concurrent: int,
-        scope: str = "global"
-    ):
-        """
-        Initialize semaphore rate limiter.
-        
-        Args:
-            max_concurrent: Maximum concurrent requests (0 = unlimited).
-            scope: "global" or "user" for limiting scope.
-        """
-        self.max_concurrent = max_concurrent
-        self.scope = scope
-        
-        if max_concurrent <= 0:
-            # Unlimited - no semaphore needed
-            self._semaphore = None
-            self._user_semaphores: Dict[str, asyncio.Semaphore] = {}
-        else:
-            # Global semaphore for shared limiting
-            self._semaphore = asyncio.Semaphore(max_concurrent)
-            # Per-user semaphores for user limiting
-            self._user_semaphores: Dict[str, asyncio.Semaphore] = {}
-        
-        self._lock = threading.Lock()
-        
-        logger.debug(
-            "Initialized SemaphoreRateLimiter: scope=%s, max_concurrent=%d",
-            scope, max_concurrent
-        )
-    
-    def _get_semaphore(self, user_id: Optional[str]) -> Optional[asyncio.Semaphore]:
-        """Get appropriate semaphore for user or global."""
-        if self.max_concurrent <= 0:
-            return None
-        
-        if self.scope == "global" or user_id is None:
-            return self._semaphore
-        
-        # Per-user semaphore
-        if user_id not in self._user_semaphores:
-            with self._lock:
-                if user_id not in self._user_semaphores:
-                    self._user_semaphores[user_id] = asyncio.Semaphore(self.max_concurrent)
-        
-        return self._user_semaphores[user_id]
-    
-    async def acquire(self, user_id: Optional[str] = None, tokens: int = 1) -> bool:
-        """Acquire semaphore slot."""
-        semaphore = self._get_semaphore(user_id)
-        
-        if semaphore is None:
-            return True  # Unlimited
-        
-        # Try to acquire without blocking
-        acquired = semaphore.locked() is False
-        
-        if not acquired and semaphore.locked():
-            raise RateLimitExceeded(
-                f"Max concurrent requests reached: {self.max_concurrent}",
-                retry_after=1,  # Retry soon
-                limit_type="concurrent",
-                scope=self.scope,
-                user_id=user_id
-            )
-        
-        await semaphore.acquire()
-        return True
-    
-    async def release(self, user_id: Optional[str] = None, tokens: int = 1) -> None:
-        """Release semaphore slot."""
-        semaphore = self._get_semaphore(user_id)
-        
-        if semaphore is not None:
-            semaphore.release()
-
-
-# ======================
-# Redis Rate Limiter (Distributed)
-# ======================
-
-class RedisRateLimiter(RateLimiterInterface):
-    """
-    Redis-based distributed rate limiter using sliding window.
-    
-    Uses Redis sorted sets for accurate sliding window tracking.
-    Supports multi-instance deployments with shared rate limits.
-    """
-    
-    def __init__(
-        self,
-        redis_client,
-        config: RateLimitConfig,
-        key_prefix: str = "qr:ratelimit",
-        scope: str = "global"
-    ):
-        """
-        Initialize Redis rate limiter.
-        
-        Args:
-            redis_client: Redis client instance.
-            config: Rate limit configuration.
-            key_prefix: Redis key prefix for namespacing.
-            scope: "global" or "user" for limiting scope.
-        """
-        if not REDIS_AVAILABLE:
-            raise RuntimeError("redis package is required for RedisRateLimiter")
-        
-        self.redis = redis_client
-        self.config = config
-        self.key_prefix = key_prefix
-        self.scope = scope
-        
-        logger.debug(
-            "Initialized RedisRateLimiter: scope=%s, rpm=%d, prefix=%s",
-            scope, config.requests_per_minute, key_prefix
-        )
-    
-    def _get_key(self, user_id: Optional[str], limit_type: str) -> str:
-        """Generate Redis key for rate limit tracking."""
-        if self.scope == "global" or user_id is None:
-            return f"{self.key_prefix}:{limit_type}:global"
-        return f"{self.key_prefix}:{limit_type}:user:{user_id}"
-    
-    async def acquire(self, user_id: Optional[str] = None, tokens: int = 1) -> bool:
-        """Acquire using Redis sliding window."""
-        now = time.time()
-        window_start = now - 60  # 1 minute window
-        
-        # RPM check
-        if self.config.requests_per_minute > 0:
-            key = self._get_key(user_id, "rpm")
-            
-            # Remove old entries and count current
-            pipe = self.redis.pipeline()
-            pipe.zremrangebyscore(key, '-inf', window_start)
-            pipe.zcard(key)
-            pipe.zadd(key, {f"{now}:{random.random()}": now})
-            pipe.expire(key, 60)
-            results = pipe.execute()
-            
-            current_count = results[1]
-            
-            if current_count >= self.config.requests_per_minute:
-                # Get oldest request for retry_after
-                oldest = self.redis.zrange(key, 0, 0, withscores=True)
-                retry_after = int(oldest[0][1] + 60 - now) + 1 if oldest else 1
-                
-                # Remove the request we just added
-                self.redis.zrem(key, f"{now}:{random.random()}")
-                
-                raise RateLimitExceeded(
-                    f"Rate limit exceeded: {self.config.requests_per_minute} RPM",
-                    retry_after=retry_after,
-                    limit_type="requests",
-                    scope=self.scope,
-                    user_id=user_id
-                )
-        
-        # TPM check
-        if self.config.tokens_per_minute is not None and self.config.tokens_per_minute > 0:
-            key = self._get_key(user_id, "tpm")
-            
-            pipe = self.redis.pipeline()
-            pipe.zremrangebyscore(key, '-inf', window_start)
-            pipe.zrange(key, 0, -1, withscores=True)
-            results = pipe.execute()
-            
-            # Sum tokens in window
-            current_tokens = sum(int(score) for _, score in results[1])
-            
-            if current_tokens + tokens > self.config.tokens_per_minute:
-                oldest = results[1][0] if results[1] else (None, now)
-                retry_after = int(oldest[1] + 60 - now) + 1
-                
-                raise RateLimitExceeded(
-                    f"Token limit exceeded: {self.config.tokens_per_minute} TPM",
-                    retry_after=retry_after,
-                    limit_type="tokens",
-                    scope=self.scope,
-                    user_id=user_id
-                )
-            
-            # Add tokens
-            self.redis.zadd(key, {f"{now}:{random.random()}": tokens})
-            self.redis.expire(key, 60)
-        
-        return True
-    
-    async def release(self, user_id: Optional[str] = None, tokens: int = 1) -> None:
-        """Release is no-op for Redis (entries expire naturally)."""
-        pass
-
-
-# ======================
-# Composite Rate Limiter (Multiple Limits)
-# ======================
-
-class CompositeRateLimiter(RateLimiterInterface):
-    """
-    Composite rate limiter that enforces multiple limits simultaneously.
-    
-    Useful for combining:
-    - Global + per-user limits (hybrid approach)
-    - RPM + concurrent limits
-    - Multiple backend strategies
-    
-    All limiters must pass for request to be allowed.
-    """
-    
-    def __init__(self, limiters: List[RateLimiterInterface]):
-        """
-        Initialize composite rate limiter.
-        
-        Args:
-            limiters: List of rate limiters to enforce (all must pass).
-        """
-        self.limiters = limiters
-        logger.debug("Initialized CompositeRateLimiter with %d limiters", len(limiters))
-    
-    async def acquire(self, user_id: Optional[str] = None, tokens: int = 1) -> bool:
-        """Acquire from all limiters (all must succeed)."""
-        acquired = []
-        
-        try:
-            for limiter in self.limiters:
-                await limiter.acquire(user_id, tokens)
-                acquired.append(limiter)
-            return True
-        except RateLimitExceeded:
-            # Rollback acquired limiters
-            for limiter in acquired:
-                await limiter.release(user_id, tokens)
-            raise
-    
-    async def release(self, user_id: Optional[str] = None, tokens: int = 1) -> None:
-        """Release all limiters."""
-        for limiter in self.limiters:
-            await limiter.release(user_id, tokens)
-
 
 __all__ = [
-    "BackoffStrategy",
-    "RateLimiterInterface",
     "TokenBucketRateLimiter",
-    "SemaphoreRateLimiter",
-    "RedisRateLimiter",
-    "CompositeRateLimiter",
 ]

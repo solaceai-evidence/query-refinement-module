@@ -42,7 +42,6 @@ def build_manager_from_env(
     resolved_settings = settings or LLMSettings.from_env()
     provider = LiteLLMProvider(**resolved_settings.as_provider_kwargs())
     # Analyzer is deprecated - don't create one by default
-    # analyzer = LLMQueryAnalyzer(provider, **resolved_settings.as_analyzer_kwargs())
 
     return QueryRefinementManager(
         llm_provider=provider,

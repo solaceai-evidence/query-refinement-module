@@ -6,7 +6,6 @@ These interfaces define the contracts for external dependencies, enabling the mo
 from abc import ABC, abstractmethod
 from dataclasses import dataclass
 from typing import TYPE_CHECKING, Any, Dict, Optional, List, Union, Type
-import warnings
 
 if TYPE_CHECKING:
     from .schema import RefinementAspect
@@ -63,53 +62,6 @@ class RateLimitConfig:
             tokens_per_minute=None,
             max_concurrent_requests=0,
             adaptive_backoff=False,
-        )
-    
-    @classmethod
-    def from_env(
-        cls,
-        requests_per_minute: int = 0,
-        tokens_per_minute: Optional[int] = None,
-        max_concurrent_requests: int = 0,
-        adaptive_backoff: bool = False,
-        adaptive_decrease_factor: float = 0.8,
-        adaptive_increase_factor: float = 1.05,
-        adaptive_increase_interval: int = 60,
-    ) -> "RateLimitConfig":
-        """
-        Create a RateLimitConfig from provided configuration values.
-        
-        This method is designed to be called with values loaded from environment
-        variables or configuration files. All parameters have sensible defaults.
-        
-        Args:
-            requests_per_minute: Maximum requests per minute (0 = unlimited).
-            tokens_per_minute: Maximum tokens per minute (None = unlimited).
-            max_concurrent_requests: Maximum concurrent requests (0 = unlimited).
-            adaptive_backoff: Enable adaptive rate limit adjustments.
-            adaptive_decrease_factor: Decrease factor on rate limit errors (0.0-1.0).
-            adaptive_increase_factor: Increase factor during recovery (>1.0).
-            adaptive_increase_interval: Recovery adjustment interval (seconds).
-        
-        Returns:
-            RateLimitConfig instance with provided settings.
-        
-        Example:
-            # In your settings/config module:
-            config = RateLimitConfig.from_env(
-                requests_per_minute=settings.llm_rate_limit_rpm,
-                max_concurrent_requests=settings.llm_max_concurrent,
-                adaptive_backoff=settings.llm_adaptive_rate_limiting,
-            )
-        """
-        return cls(
-            requests_per_minute=requests_per_minute,
-            tokens_per_minute=tokens_per_minute,
-            max_concurrent_requests=max_concurrent_requests,
-            adaptive_backoff=adaptive_backoff,
-            adaptive_decrease_factor=adaptive_decrease_factor,
-            adaptive_increase_factor=adaptive_increase_factor,
-            adaptive_increase_interval=adaptive_increase_interval,
         )
     
 class RateLimitExceeded(Exception):
@@ -229,7 +181,6 @@ class LLMProviderInterface(ABC):
             RateLimitExceeded: If the request exceeds rate limits (provider should raise this).
             Exception: For any errors during the completion process (implementation-specific).
         """
-        pass
         raise NotImplementedError("LLMProviderInterface.complete() must be implemented by subclasses.")
     
     async def complete_async(

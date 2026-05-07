@@ -10,12 +10,10 @@ Extracted from core.py to improve modularity and reduce file complexity.
 
 import json
 import logging
-import textwrap
 from dataclasses import dataclass, field
 from typing import Any, Dict, List, Optional, Union
 
 from .schema import RefinementAspect
-from .schema.templates.global_system import GLOBAL_SYSTEM_PROMPT
 
 logger = logging.getLogger(__name__)
 
@@ -115,15 +113,6 @@ class AspectRefinementState:
         if response.strip():
             self.normalized_value = response.strip()
 
-    def get_global_system_role(self) -> str:
-        """
-        Get the global system role prompt for this refinement aspect.
-        
-        Returns:
-            Global system prompt string
-        """
-        return self.refinement_aspect.get_system_role()
-    
     def get_messages(
         self,
         query: str,

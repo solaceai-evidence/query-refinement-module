@@ -51,7 +51,6 @@ from datetime import datetime, timezone
 import json
 import logging
 import re
-import textwrap
 from dataclasses import dataclass, field
 from enum import Enum
 from typing import Any, Callable, Dict, List, Literal, Optional, Union
@@ -80,9 +79,6 @@ from .schema.response import (
     Terminology,
 )
 
-from .schema.templates.global_system import (
-    GLOBAL_SYSTEM_PROMPT,
-)
 from .session_commands import SessionCommands
 from .session_models import AspectRefinementState, RefinementSession
 
@@ -221,8 +217,6 @@ COMMAND_ALIASES: Dict[str, UserCommand] = {
 }
 
 
-COMMANDS_REQUIRING_ARGUMENT = set()  # No commands require arguments in sequential mode
-
 
 @dataclass
 class CommandResult:
@@ -289,22 +283,6 @@ def parse_user_command(user_input: str) -> CommandResult:
             error_message=f"Unknown command: /{cmd_str}. Type /help for available commands."
         )
 
-    if command in COMMANDS_REQUIRING_ARGUMENT:
-        if not argument:
-            return CommandResult(
-                command=command,
-                is_valid=False,
-                error_message=f"/{command.value} requires a step number. Example: /{command.value} 2"
-            )
-        # Validate numeric arguments (all current commands requiring arguments expect numbers)
-        if not argument.isdigit():
-            return CommandResult(
-                command=command,
-                argument=argument,
-                is_valid=False,
-                error_message=f"Step number must be an integer, got: {argument}"
-            )
-    
     return CommandResult(command=command, argument=argument, is_valid=True)
 
 
@@ -674,9 +652,6 @@ class QueryRefinementManager:
             },
         )
 
-        if self._maybe_autocomplete_dependent_step(session, step):
-            return False
-
         self.trace_emitter.emit(
             "step_ready_for_prompt",
             metadata={
@@ -685,46 +660,6 @@ class QueryRefinementManager:
             },
         )
         return True
-
-    def _maybe_autocomplete_dependent_step(
-        self,
-        session: RefinementSession,
-        step: AspectRefinementState,
-    ) -> bool:
-        aspect = step.refinement_aspect
-
-        if not aspect.depends_on:
-            return False
-
-        if step.conversation_history:
-            # User already supplied input; keep existing flow.
-            self.trace_emitter.emit(
-                "dependent_step_has_user_input",
-                metadata={"aspect_id": aspect.id, "follow_up_count": step.follow_up_count},
-            )
-            return False
-
-        dependency_context = session.get_dependency_context(aspect.id)
-        missing = [dep for dep in (aspect.depends_on or []) if dep not in dependency_context]
-        if missing:
-            # Dependencies not ready; rely on ordering to handle them first.
-            logger.debug(
-                "Aspect %s waiting for dependency context from %s",
-                aspect.id,
-                missing,
-            )
-            self.trace_emitter.emit(
-                "dependent_step_waiting_on_dependencies",
-                metadata={"aspect_id": aspect.id, "pending_dependencies": missing},
-            )
-            return False
-
-        # In v2.0, no analyzer - dependencies are handled via sequential processing
-        logger.debug(
-            "Skipping re-analysis for dependent aspect '%s' (sequential mode in v2.0)",
-            aspect.id,
-        )
-        return False
 
     async def process_next_step(self, session: RefinementSession) -> Optional[Dict[str, Any]]:
         """Process the next ready refinement step."""
@@ -867,9 +802,7 @@ class QueryRefinementManager:
     async def _get_llm_response_with_validation(
         self,
         aspect: RefinementAspect,
-        messages: Optional[List[Dict[str, str]]] = None,
-        system_prompt: Optional[str] = None,
-        user_prompt: Optional[str] = None,
+        messages: List[Dict[str, str]],
     ) -> tuple[str, Optional[Dict[str, Any]], bool, Optional[str]]:
         """
         Call the LLM asynchronously with structured response validation.
@@ -879,9 +812,7 @@ class QueryRefinementManager:
         
         Args:
             aspect: The refinement aspect being evaluated
-            messages: Structured messages array (preferred)
-            system_prompt: Legacy system prompt (deprecated, use messages)
-            user_prompt: Legacy user prompt (deprecated, use messages)
+            messages: Structured messages array
 
         Returns:
             Tuple of (normalized_response_text, parsed_payload, is_error, error_message)
@@ -897,8 +828,6 @@ class QueryRefinementManager:
         response_text, llm_error = await self._call_llm(
             aspect=aspect,
             messages=messages,
-            system_prompt=system_prompt,
-            user_prompt=user_prompt,
             attempt_number=1,
         )
         
@@ -929,9 +858,7 @@ class QueryRefinementManager:
     async def _call_llm(
         self,
         aspect: RefinementAspect,
-        messages: Optional[List[Dict[str, str]]] = None,
-        system_prompt: Optional[str] = None,
-        user_prompt: Optional[str] = None,
+        messages: List[Dict[str, str]],
         attempt_number: int = 1,
     ) -> tuple[str, Optional[str]]:
         """
@@ -939,9 +866,7 @@ class QueryRefinementManager:
         
         Args:
             aspect: The refinement aspect being evaluated
-            messages: Structured messages array (preferred)
-            system_prompt: Legacy system prompt (deprecated, use messages)
-            user_prompt: Legacy user prompt (deprecated, use messages)
+            messages: Structured messages array
             attempt_number: Attempt number for logging
             
         Returns:
@@ -951,24 +876,12 @@ class QueryRefinementManager:
             # Use structured outputs for guaranteed valid responses
             import time
             call_start = time.time()
-            
-            # Call LLM with messages or legacy prompts
-            if messages:
-                result = await self.llm_provider.complete_async(
-                    messages=messages,
-                    response_format=DimensionEvaluationResponse,  # ✨ Structured output
-                    cache_system_prompt=True  # System prompts are static per-aspect
-                )
-            else:
-                # Legacy path for backwards compatibility
-                if not system_prompt or not user_prompt:
-                    raise ValueError("Either messages or both system_prompt and user_prompt must be provided")
-                result = await self.llm_provider.complete_async(
-                    system_prompt=system_prompt,
-                    user_prompt=user_prompt,
-                    response_format=DimensionEvaluationResponse,  # ✨ Structured output
-                    cache_system_prompt=True  # System prompts are static per-aspect
-                )
+
+            result = await self.llm_provider.complete_async(
+                messages=messages,
+                response_format=DimensionEvaluationResponse,  # ✨ Structured output
+                cache_system_prompt=True  # System prompts are static per-aspect
+            )
             
             call_duration = (time.time() - call_start) * 1000
             

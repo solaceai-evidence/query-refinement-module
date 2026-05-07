@@ -59,18 +59,6 @@ def generate_trace_id() -> str:
     return str(uuid.uuid4())
 
 
-def generate_span_id() -> str:
-    """
-    Generate a unique span ID for operation tracing.
-    
-    Span IDs represent individual operations within a trace.
-    
-    Returns:
-        str: Unique span identifier (8-character hex)
-    """
-    return uuid.uuid4().hex[:8]
-
-
 def set_request_id(request_id: str) -> None:
     """
     Set the current request ID in the context.
@@ -114,16 +102,6 @@ def get_trace_id() -> Optional[str]:
     return _trace_id_ctx.get()
 
 
-def set_span_id(span_id: str) -> None:
-    """
-    Set the current span ID in the context.
-    
-    Args:
-        span_id: The span identifier to set
-    """
-    _span_id_ctx.set(span_id)
-
-
 def get_span_id() -> Optional[str]:
     """
     Get the current span ID from the context.
@@ -132,26 +110,6 @@ def get_span_id() -> Optional[str]:
         The current span ID if set, None otherwise
     """
     return _span_id_ctx.get()
-
-
-def set_parent_span_id(parent_span_id: Optional[str]) -> None:
-    """
-    Set the parent span ID in the context.
-    
-    Args:
-        parent_span_id: The parent span identifier to set
-    """
-    _parent_span_id_ctx.set(parent_span_id)
-
-
-def get_parent_span_id() -> Optional[str]:
-    """
-    Get the current parent span ID from the context.
-    
-    Returns:
-        The current parent span ID if set, None otherwise
-    """
-    return _parent_span_id_ctx.get()
 
 
 def clear_request_id() -> None:

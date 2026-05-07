@@ -226,7 +226,6 @@ class RefinementDimension(BaseModel):
     user_context: Optional[UserContext] = Field(default=None, description="User adaptation profile")
     
     # Optional fields
-    system_prompt: Optional[str] = Field(default=None, description="DEPRECATED: Use global system prompt")
     response_format: Optional[Dict[str, Any]] = Field(default=None, description="Response format config")
     allow_follow_up: bool = Field(default=True, description="Whether follow-ups are allowed")
     max_follow_ups: int = Field(default=50, description="Max follow-up limit")
@@ -271,17 +270,9 @@ class RefinementDimension(BaseModel):
                 return normalized
         raise ValueError("strictness must be one of: strict, moderate, permissive")
     
-    def get_evaluation_content(self) -> str:
-        """Get the full evaluation content (criteria + strategies)."""
-        return self.specifications
-    
     def has_examples(self) -> bool:
         """Check if this dimension has any examples."""
         return self.examples is not None and self.examples.has_examples()
-    
-    def get_dependencies(self) -> List[str]:
-        """Get list of dependency IDs."""
-        return self.depends_on
 
     # =========================================================================
     # Schema fields for response validation (matches DimensionEvaluationResponse)
@@ -304,24 +295,7 @@ class RefinementDimension(BaseModel):
     # =========================================================================
     
     def get_system_role(self) -> str:
-        """
-        Get the system role prompt for this refinement aspect.
-        
-        DEPRECATED: Custom system prompts are no longer supported to enable LLM prompt caching.
-        Always returns GLOBAL_SYSTEM_PROMPT regardless of aspect.system_prompt value.
-        
-        Returns:
-            GLOBAL_SYSTEM_PROMPT (static across all dimensions for caching)
-        """
-        if self.system_prompt and self.system_prompt.strip():
-            import warnings
-            warnings.warn(
-                f"system_prompt for aspect '{self.name}' is deprecated and ignored. "
-                "Move dimension-specific content to specifications and examples. "
-                "System prompts must be static for LLM caching to work.",
-                DeprecationWarning,
-                stacklevel=2
-            )
+        """Get the global system role prompt for this refinement aspect."""
         return GLOBAL_SYSTEM_PROMPT
     
     def get_evaluation_instructions_prompt(self, statement: str) -> str:
@@ -440,176 +414,6 @@ class RefinementDimension(BaseModel):
         instructions.append("- `complete=false` → `question` must be non-empty, `current` must be empty string")
         
         return "\n".join(instructions)
-    
-    # =========================================================================
-    # Unified prompt building methods (backward compatible)
-    # =========================================================================
-    
-    UNIFIED_ANALYSIS_PROMPT: ClassVar[str] = """You are analyzing the '{name}' dimension.
-
-**Description:** {description}
-
-**Original Research Input:** {original_input}
-
-{conversation_section}
-{dependency_section}
-{evaluation_instructions}
-{examples_section}
-{output_format_section}"""
-    
-    def build_unified_prompt(
-        self,
-        original_input: str,
-        follow_up_history: List[Dict[str, str]],
-        dependency_context: Dict[str, Dict[str, Any]],
-        mode: str = 'initial'
-    ) -> str:
-        """
-        Build complete unified prompt for dimension evaluation.
-        
-        Args:
-            original_input: The original user input
-            follow_up_history: List of Q&A exchanges for this aspect
-            dependency_context: Dict mapping aspect IDs to their completed values
-            mode: 'initial' or 'followup'
-        
-        Returns:
-            Complete formatted prompt ready for LLM
-        """
-        conversation_section = self._build_conversation_section(follow_up_history, mode)
-        dependency_section = self._build_dependency_section(dependency_context)
-        evaluation_instructions = self._build_evaluation_instructions_section(original_input)
-        examples_section = self._build_examples_section_for_prompt()
-        output_format_section = self._build_output_format_section()
-        
-        return self.UNIFIED_ANALYSIS_PROMPT.format(
-            name=self.name,
-            description=self.description,
-            original_input=original_input,
-            conversation_section=conversation_section,
-            dependency_section=dependency_section,
-            evaluation_instructions=evaluation_instructions,
-            examples_section=examples_section,
-            output_format_section=output_format_section
-        )
-    
-    def _build_conversation_section(
-        self,
-        follow_up_history: List[Dict[str, str]],
-        mode: str
-    ) -> str:
-        """Build conversation history section."""
-        if mode == 'initial' or not follow_up_history:
-            return ""
-        
-        lines = ["**Conversation History:**\n"]
-        for i, turn in enumerate(follow_up_history, 1):
-            question = turn.get('question', '')
-            response = turn.get('response', '')
-            lines.append(f"Q{i}: {question}")
-            lines.append(f"A{i}: {response}\n")
-        
-        return "\n".join(lines)
-    
-    def _build_dependency_section(
-        self,
-        dependency_context: Dict[str, Dict[str, Any]]
-    ) -> str:
-        """Build dependency context showing completed/clarified dimensions."""
-        if not dependency_context:
-            return ""
-        
-        lines = ["**Completed Dimensions (for context):**\n"]
-        has_dependencies = bool(self.depends_on)
-        
-        for dep_id, context in dependency_context.items():
-            aspect_name = context.get('name', dep_id)
-            aspect_desc = context.get('description', '')
-            refined_value = context.get('value', '')
-            
-            dependency_marker = ""
-            if has_dependencies and dep_id in self.depends_on:
-                dependency_marker = " ⚠️ (the current dimension depends on this)"
-            
-            lines.append(f"**{aspect_name}**{dependency_marker}")
-            if aspect_desc:
-                lines.append(f"  Description: {aspect_desc}")
-            lines.append(f"  Value: {refined_value}\n")
-        
-        if has_dependencies:
-            lines.append("\n⚠️ = Consider these values when analyzing the current aspect\n")
-        
-        return "\n".join(lines)
-    
-    def _build_evaluation_instructions_section(self, original_input: str) -> str:
-        """Build evaluation instructions section."""
-        instructions = self.get_evaluation_instructions_prompt(statement=original_input)
-        return f"# Evaluation Strategy:\n\n{instructions}\n"
-    
-    def _build_examples_section_for_prompt(self) -> str:
-        """Build examples section from aspect schema for unified prompt."""
-        if not self.examples or not self.examples.has_examples():
-            return ""
-        
-        lines = ["**Examples:**\n"]
-        
-        category_map = {
-            'clear': 'Clear Examples',
-            'needs_refinement': 'Needs Refinement',
-            'partial': 'Partial Examples',
-            'vague_ambiguous': 'Vague/Ambiguous Examples',
-            'other': 'Other Cases'
-        }
-        
-        for category in ['clear', 'needs_refinement', 'partial', 'vague_ambiguous', 'other']:
-            examples_list = getattr(self.examples, category, [])
-            if not examples_list:
-                continue
-            
-            category_title = category_map.get(category, category.replace('_', ' ').title())
-            lines.append(f"\n{category_title}:")
-            
-            for ex in examples_list:
-                statement = ex.get_text()
-                if statement:
-                    lines.append(f"- Example: {statement}.")
-                
-                for key in ['rationale', 'issue', 'missing', 'has', 'example_question', 'note', 'guidance']:
-                    value = getattr(ex, key, None)
-                    if value:
-                        key_title = key.replace('_', ' ').title()
-                        lines.append(f"  {key_title}: {value}")
-        
-        return "\n".join(lines)
-    
-    def _build_output_format_section(self) -> str:
-        """Build the output format section."""
-        lines = ["**OUTPUT (JSON):**", ""]
-        
-        for field_name, field_type in self.BASE_SCHEMA_FIELDS.items():
-            if field_type == "boolean":
-                example_value = "true/false"
-            elif field_type == "float":
-                example_value = "0.0-1.0"
-            elif field_name == "current":
-                example_value = '"clear, specific value (if complete) OR empty string"'
-            elif field_name == "question":
-                example_value = '"focused question with inline examples (if incomplete) OR empty string"'
-            else:
-                example_value = f'"<{field_type}>"'
-            
-            lines.append(f'  "{field_name}": {example_value},')
-        
-        if lines[-1].endswith(','):
-            lines[-1] = lines[-1][:-1]
-        
-        lines.append("}")
-        lines.append("")
-        lines.append("**Rules:**")
-        lines.append("- `complete=true` → `current` must be non-empty, `question` must be empty string")
-        lines.append("- `complete=false` → `question` must be non-empty, `current` must be empty string")
-        
-        return "\n".join(lines)
     
     # =========================================================================
     # Response validation methods

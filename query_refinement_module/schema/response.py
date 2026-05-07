@@ -189,7 +189,6 @@ class QueryRefinementResponse(BaseModel):
 
 
 # Backward compatibility alias
-QueryRefinementResponse = QueryRefinementResponse
 
 __all__ = [
     "DimensionEvaluationResponse",
