@@ -19,14 +19,6 @@ from .interfaces import RateLimitConfig, RateLimitExceeded
 
 logger = logging.getLogger(__name__)
 
-# Check for optional Redis dependency
-try:
-    import redis
-    REDIS_AVAILABLE = True
-except ImportError:
-    REDIS_AVAILABLE = False
-    redis = None
-
 
 # Backoff Strategy
 # ======================
