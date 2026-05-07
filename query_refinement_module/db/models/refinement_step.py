@@ -30,6 +30,7 @@ class RefinementStep(Base):
 
     id = Column(Integer, primary_key=True, autoincrement=True)
     query_id = Column(Integer, ForeignKey("queries.id"), nullable=False)
+    aspect_id = Column(Text, nullable=True)
     aspect_name = Column(Text, nullable=False)
     
     # From LLM: refinement_aspect_value - the final refined value
@@ -60,4 +61,5 @@ class RefinementStep(Base):
 
     def __repr__(self):
         status = "complete" if self.is_complete else ("skipped" if self.was_skipped else "pending")
-        return f"<RefinementStep(id={self.id}, aspect='{self.aspect_name}', status={status})>"
+        aspect = self.aspect_id or self.aspect_name
+        return f"<RefinementStep(id={self.id}, aspect='{aspect}', status={status})>"

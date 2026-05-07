@@ -36,6 +36,72 @@ from query_refinement_module.tracing import get_logger
 logger = logging.getLogger(__name__)
 
 
+def _serialize_step_state(step: AspectRefinementState) -> Dict[str, Any]:
+    """Serialize one step to the canonical session-state format."""
+    return {
+        "refinement_aspect_id": step.refinement_aspect.id,
+        "follow_up_history": step.conversation_history,
+        "is_complete": step.is_complete,
+        "needs_review": step.needs_review,
+        "was_skipped": step.was_skipped,
+        "needs_refinement_rationale": step.reasoning,
+        "refinement_question": step.follow_up_question,
+        "refinement_aspect_value": step.normalized_value,
+    }
+
+
+def serialize_session_state(session: RefinementSession) -> Dict[str, Any]:
+    """Serialize a session to the shared persistence format used by all backends."""
+    return {
+        "original_query": session.original_query,
+        "synthesis_requested": session.synthesis_requested,
+        "steps": [_serialize_step_state(step) for step in session.steps],
+        "complete_framework_ids": [aspect.id for aspect in session._complete_framework],
+    }
+
+
+def deserialize_session_state(
+    data: Dict[str, Any],
+    refinement_framework: List[RefinementAspect],
+) -> RefinementSession:
+    """Deserialize a session from the shared persistence format used by all backends."""
+    aspect_map = {aspect.id: aspect for aspect in refinement_framework}
+
+    session = RefinementSession(original_query=data["original_query"])
+    session.synthesis_requested = data.get("synthesis_requested", False)
+
+    framework_ids = data.get("complete_framework_ids", [])
+    if framework_ids:
+        session._complete_framework = [
+            aspect_map[aspect_id] for aspect_id in framework_ids if aspect_id in aspect_map
+        ]
+    else:
+        session._complete_framework = list(refinement_framework)
+
+    for step_data in data["steps"]:
+        aspect_id = step_data["refinement_aspect_id"]
+        aspect = aspect_map.get(aspect_id)
+
+        if not aspect:
+            logger.warning("Aspect '%s' not found in framework, skipping step", aspect_id)
+            continue
+
+        step = AspectRefinementState(
+            refinement_aspect=aspect,
+            conversation_history=step_data.get("follow_up_history", []),
+            is_complete=step_data.get("is_complete", False),
+            needs_review=step_data.get("needs_review", False),
+            was_skipped=step_data.get("was_skipped", False),
+            reasoning=step_data.get("needs_refinement_rationale"),
+            follow_up_question=step_data.get("refinement_question"),
+            normalized_value=step_data.get("refinement_aspect_value"),
+        )
+
+        session.steps.append(step)
+
+    return session
+
+
 class SessionManager:
     """
     Manages query refinement session state with Redis backend.
@@ -347,12 +413,7 @@ class SessionManager:
         Returns:
             Dictionary representation
         """
-        return {
-            "original_query": session.original_query,
-            "synthesis_requested": session.synthesis_requested,
-            "steps": [self._serialize_step(step) for step in session.steps],
-            "complete_framework_ids": [aspect.id for aspect in session._complete_framework]
-        }
+        return serialize_session_state(session)
     
     def _serialize_step(self, step: AspectRefinementState) -> Dict[str, Any]:
         """
@@ -364,16 +425,7 @@ class SessionManager:
         Returns:
             Dictionary representation
         """
-        return {
-            "refinement_aspect_id": step.refinement_aspect.id,
-            "follow_up_history": step.conversation_history,
-            "is_complete": step.is_complete,
-            "needs_review": step.needs_review,
-            "was_skipped": step.was_skipped,
-            "needs_refinement_rationale": step.reasoning,
-            "refinement_question": step.follow_up_question,
-            "refinement_aspect_value": step.normalized_value
-        }
+        return _serialize_step_state(step)
     
     def _deserialize_session(
         self,
@@ -390,48 +442,7 @@ class SessionManager:
         Returns:
             QueryRefinementSession instance
         """
-        # Build aspect lookup by ID
-        aspect_map = {aspect.id: aspect for aspect in refinement_framework}
-        
-        # Reconstruct session
-        session = RefinementSession(original_query=data["original_query"])
-        session.synthesis_requested = data.get("synthesis_requested", False)
-        
-        # Reconstruct complete framework (for /back command dimension recreation)
-        framework_ids = data.get("complete_framework_ids", [])
-        if framework_ids:
-            # Reconstruct framework in original order from stored IDs
-            session._complete_framework = [
-                aspect_map[aspect_id] for aspect_id in framework_ids 
-                if aspect_id in aspect_map
-            ]
-        else:
-            # Fallback: use entire framework if not stored (backwards compatibility)
-            session._complete_framework = list(refinement_framework)
-        
-        # Reconstruct steps
-        for step_data in data["steps"]:
-            aspect_id = step_data["refinement_aspect_id"]
-            aspect = aspect_map.get(aspect_id)
-            
-            if not aspect:
-                logger.warning("Aspect '%s' not found in framework, skipping step", aspect_id)
-                continue
-            
-            step = AspectRefinementState(
-                refinement_aspect=aspect,
-                conversation_history=step_data.get("follow_up_history", []),
-                is_complete=step_data.get("is_complete", False),
-                needs_review=step_data.get("needs_review", False),
-                was_skipped=step_data.get("was_skipped", False),
-                reasoning=step_data.get("needs_refinement_rationale"),
-                follow_up_question=step_data.get("refinement_question"),
-                normalized_value=step_data.get("refinement_aspect_value")
-            )
-            
-            session.steps.append(step)
-        
-        return session
+        return deserialize_session_state(data, refinement_framework)
     
     def get_session_stats(self) -> Dict[str, int]:
         """
@@ -614,13 +625,7 @@ class InMemorySessionManager:
         """Save session to memory."""
         self._cleanup_expired()
         try:
-            # Use same serialization schema as Redis manager (without relying on bound instance methods)
-            serialized = {
-                "original_query": session.original_query,
-                "synthesis_requested": session.synthesis_requested,
-                "steps": [SessionManager._serialize_step(None, step) for step in session.steps],
-                "complete_framework_ids": [aspect.id for aspect in session._complete_framework],
-            }
+            serialized = serialize_session_state(session)
             self._sessions[query_id] = serialized
             self._timestamps[query_id] = time.time()
             logger.debug(f"Saved session {query_id} to memory (steps={len(session.steps)})")
@@ -641,8 +646,7 @@ class InMemorySessionManager:
         if not serialized:
             return None
         try:
-            # Use same deserialization as Redis manager
-            return SessionManager._deserialize_session(None, serialized, refinement_framework)
+            return deserialize_session_state(serialized, refinement_framework)
         except Exception as e:
             logger.error(f"Failed to deserialize session {query_id}: {e}")
             return None

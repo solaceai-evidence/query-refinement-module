@@ -31,6 +31,7 @@ def test_restore_session_keeps_partial_done_value_without_followups():
 
     db_steps = [
         SimpleNamespace(
+            aspect_id="population",
             aspect_name="Population",
             final_value="adults with COPD",
             is_complete=True,
@@ -54,6 +55,7 @@ def test_restore_session_preserves_skipped_with_no_value():
 
     db_steps = [
         SimpleNamespace(
+            aspect_id="population",
             aspect_name="Population",
             final_value=None,
             is_complete=False,
@@ -77,6 +79,7 @@ def test_restore_session_deserializes_json_final_value():
 
     db_steps = [
         SimpleNamespace(
+            aspect_id="population",
             aspect_name="Population",
             final_value='["adults", "COPD"]',
             is_complete=True,
@@ -100,6 +103,7 @@ def test_restore_session_restores_generated_question_for_active_step():
 
     db_steps = [
         SimpleNamespace(
+            aspect_id="population",
             aspect_name="Population",
             final_value=None,
             is_complete=False,
@@ -122,6 +126,7 @@ def test_restore_session_no_generated_question_leaves_followup_question_unset():
 
     db_steps = [
         SimpleNamespace(
+            aspect_id="population",
             aspect_name="Population",
             final_value=None,
             is_complete=False,
@@ -138,6 +143,37 @@ def test_restore_session_no_generated_question_leaves_followup_question_unset():
     assert population_step.follow_up_question is None
 
 
+def test_restore_session_keeps_incomplete_step_active_with_followup_history():
+    """Answered follow-ups alone must not mark a step complete after session reconstruction."""
+    session = _make_session()
+
+    db_steps = [
+        SimpleNamespace(
+            aspect_id="population",
+            aspect_name="Population",
+            final_value=None,
+            is_complete=False,
+            was_skipped=False,
+            user_ended_early=False,
+            followup_history=[SimpleNamespace(question="Who is the target population?", answer="Adults with COPD")],
+            generated_question="Can you narrow that to a specific age group?",
+        )
+    ]
+
+    _restore_session_from_db_state(session, db_steps)
+
+    population_step = session.steps[0]
+    assert population_step.is_complete is False
+    assert population_step.follow_up_question == "Can you narrow that to a specific age group?"
+    assert population_step.conversation_history == [
+        {
+            "question": "Who is the target population?",
+            "response": "Adults with COPD",
+        }
+    ]
+    assert session.get_active_step() is population_step
+
+
 def test_generated_question_takes_priority_over_followup_history():
     """generated_question always wins: it holds the most recent LLM-issued question.
 
@@ -151,6 +187,7 @@ def test_generated_question_takes_priority_over_followup_history():
 
     db_steps = [
         SimpleNamespace(
+            aspect_id="population",
             aspect_name="Population",
             final_value="adults",
             is_complete=True,
@@ -165,3 +202,27 @@ def test_generated_question_takes_priority_over_followup_history():
 
     population_step = session.steps[0]
     assert population_step.follow_up_question == "This is the current active question"
+
+
+def test_restore_session_falls_back_to_legacy_aspect_name_matching():
+    """Older DB rows without aspect_id still restore correctly by aspect_name."""
+    session = _make_session()
+
+    db_steps = [
+        SimpleNamespace(
+            aspect_id=None,
+            aspect_name="Population",
+            final_value="legacy restored value",
+            is_complete=True,
+            was_skipped=False,
+            user_ended_early=False,
+            followup_history=[],
+            generated_question=None,
+        )
+    ]
+
+    _restore_session_from_db_state(session, db_steps)
+
+    population_step = session.steps[0]
+    assert population_step.is_complete is True
+    assert population_step.normalized_value_as_str == "legacy restored value"

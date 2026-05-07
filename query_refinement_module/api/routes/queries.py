@@ -272,7 +272,12 @@ def create_step(
     if session.user_id != current_user.id:
         raise HTTPException(status_code=status.HTTP_403_FORBIDDEN, detail="Access denied")
     
-    step = create_refinement_step(db, query_id=step_data.query_id, aspect_name=step_data.aspect_name)
+    step = create_refinement_step(
+        db,
+        query_id=step_data.query_id,
+        aspect_name=step_data.aspect_name,
+        aspect_id=step_data.aspect_id,
+    )
     return step
 
 

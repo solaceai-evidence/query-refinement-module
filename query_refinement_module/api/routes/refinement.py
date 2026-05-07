@@ -321,11 +321,24 @@ def _deserialize_refinement_value(value: Optional[str]) -> Optional[Any]:
     return value
 
 
+def _db_step_matches_aspect(db_step: Any, aspect: Any) -> bool:
+    """Match persisted step rows to framework aspects, preferring stable IDs."""
+    persisted_aspect_id = getattr(db_step, "aspect_id", None)
+    if persisted_aspect_id:
+        return persisted_aspect_id == aspect.id
+    return getattr(db_step, "aspect_name", None) == aspect.name
+
+
+def _find_db_step_for_aspect(db_steps: List[Any], aspect: Any) -> Optional[Any]:
+    """Locate the DB row corresponding to a framework aspect."""
+    return next((s for s in db_steps if _db_step_matches_aspect(s, aspect)), None)
+
+
 def _restore_session_from_db_state(session, db_steps: List[Any]) -> None:
     """Restore in-memory session state from persisted DB refinement step rows."""
     for db_step in db_steps:
         session_step = next(
-            (s for s in session.steps if s.refinement_aspect.name == db_step.aspect_name),
+            (s for s in session.steps if _db_step_matches_aspect(db_step, s.refinement_aspect)),
             None
         )
         if not session_step:
@@ -361,7 +374,6 @@ def _restore_session_from_db_state(session, db_steps: List[Any]) -> None:
             or db_step.was_skipped
             or db_step.user_ended_early
             or has_final_value
-            or session_step.conversation_history
         )
 
         # Explicit skip with no value should remain value-less
@@ -469,16 +481,24 @@ def _persist_generated_question(
     """Persist a generated question to DB so it survives server restarts."""
     if not next_prompt or not db:
         return
+    aspect_id = next_prompt.get("aspect_id")
     aspect_name = next_prompt.get("name")
     question = next_prompt.get("question")
-    if not aspect_name or not question:
+    if (not aspect_id and not aspect_name) or not question:
         return
-    db_step = next((s for s in db_steps if s.aspect_name == aspect_name), None)
+    db_step = next(
+        (
+            s for s in db_steps
+            if (aspect_id and getattr(s, "aspect_id", None) == aspect_id)
+            or (not getattr(s, "aspect_id", None) and aspect_name and getattr(s, "aspect_name", None) == aspect_name)
+        ),
+        None,
+    )
     if db_step:
         try:
             update_refinement_step_generated_question(db, db_step.id, question)
         except Exception as e:
-            logger.warning(f"Could not persist generated_question for '{aspect_name}': {e}")
+            logger.warning(f"Could not persist generated_question for '{aspect_id or aspect_name}': {e}")
 
 
 def _get_active_prompt(session) -> Optional[Dict[str, Any]]:
@@ -876,7 +896,8 @@ async def start_refinement(
         create_refinement_step(
             db,
             query_id=db_query.id,
-            aspect_name=step.refinement_aspect.name
+            aspect_name=step.refinement_aspect.name,
+            aspect_id=step.refinement_aspect.id,
         )
 
     # ── Fast path: skip all refinements, go straight to synthesis ──────────
@@ -998,10 +1019,7 @@ async def start_refinement(
             if current_step.normalized_value:
                 from query_refinement_module.db.crud import update_refinement_step_final_value
                 db_steps = get_query_refinement_steps(db, db_query.id)
-                db_step = next(
-                    (s for s in db_steps if s.aspect_name == current_step.refinement_aspect.name),
-                    None
-                )
+                db_step = _find_db_step_for_aspect(db_steps, current_step.refinement_aspect)
                 if db_step:
                     update_refinement_step_final_value(
                         db,
@@ -1365,10 +1383,7 @@ async def _submit_answer_locked(
                         reopened_step = session.get_active_step()
                         if reopened_step:
                             db_steps = get_query_refinement_steps(db, query_id)
-                            db_step = next(
-                                (s for s in db_steps if s.aspect_name == reopened_step.refinement_aspect.name),
-                                None
-                            )
+                            db_step = _find_db_step_for_aspect(db_steps, reopened_step.refinement_aspect)
                             if db_step:
                                 reset_refinement_step(db, step_id=db_step.id, clear_followup_history=True)
                                 logger.info(
@@ -1381,10 +1396,7 @@ async def _submit_answer_locked(
                     active_step = session.get_active_step()
                     if active_step:
                         db_steps = get_query_refinement_steps(db, query_id)
-                        db_step = next(
-                            (s for s in db_steps if s.aspect_name == active_step.refinement_aspect.name),
-                            None
-                        )
+                        db_step = _find_db_step_for_aspect(db_steps, active_step.refinement_aspect)
                         if db_step:
                             reset_refinement_step(db, step_id=db_step.id, clear_followup_history=True)
                             logger.info(
@@ -1402,10 +1414,7 @@ async def _submit_answer_locked(
                     command_step = pre_command_active_step or command_payload.get("step")
                     if command_step and command_step.is_complete:
                         db_steps = get_query_refinement_steps(db, query_id)
-                        db_step = next(
-                            (s for s in db_steps if s.aspect_name == command_step.refinement_aspect.name),
-                            None
-                        )
+                        db_step = _find_db_step_for_aspect(db_steps, command_step.refinement_aspect)
                         
                         if db_step:
                             if command_type == "skip":
@@ -1524,10 +1533,7 @@ async def _submit_answer_locked(
     
     # Get the corresponding database refinement step
     db_steps = get_query_refinement_steps(db, query_id)
-    db_step = next(
-        (s for s in db_steps if s.aspect_name == active_step.refinement_aspect.name),
-        None
-    )
+    db_step = _find_db_step_for_aspect(db_steps, active_step.refinement_aspect)
     
     if not db_step:
         logger.warning(
@@ -1541,6 +1547,7 @@ async def _submit_answer_locked(
             db,
             query_id=query_id,
             aspect_name=active_step.refinement_aspect.name,
+            aspect_id=active_step.refinement_aspect.id,
         )
     
     # Store the follow-up in database
@@ -1635,10 +1642,7 @@ async def _submit_answer_locked(
                 if next_step.normalized_value:
                     from query_refinement_module.db.crud import update_refinement_step_final_value
                     db_steps = get_query_refinement_steps(db, query_id)
-                    db_step = next(
-                        (s for s in db_steps if s.aspect_name == next_step.refinement_aspect.name),
-                        None
-                    )
+                    db_step = _find_db_step_for_aspect(db_steps, next_step.refinement_aspect)
                     if not db_step:
                         logger.warning(
                             "Missing refinement_step row during auto-cascade; recreating",
@@ -1651,6 +1655,7 @@ async def _submit_answer_locked(
                             db,
                             query_id=query_id,
                             aspect_name=next_step.refinement_aspect.name,
+                            aspect_id=next_step.refinement_aspect.id,
                         )
 
                     update_refinement_step_final_value(

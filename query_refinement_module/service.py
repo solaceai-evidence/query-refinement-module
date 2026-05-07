@@ -136,12 +136,29 @@ class QueryRefinementService:
                     or active_step.refinement_aspect.name
                 )
                 active_step.add_follow_up(question=question, response=message)
-                active_step.is_complete = True
                 active_step.needs_review = False
-                success = True
-                response_message = (
-                    f"Recorded response for {active_step.refinement_aspect.name}."
+
+                analysis_result = await self._manager.get_analysis_prompts(
+                    session=session,
+                    aspect_id=active_step.refinement_aspect.id,
+                    mode="followup",
                 )
+                analysis_status = self._manager.process_analysis_result(
+                    session=session,
+                    aspect_id=active_step.refinement_aspect.id,
+                    result=analysis_result,
+                )
+
+                success = True
+                if analysis_status.get("complete", False):
+                    response_message = (
+                        f"Recorded response for {active_step.refinement_aspect.name}."
+                    )
+                else:
+                    response_message = (
+                        f"Recorded response for {active_step.refinement_aspect.name}. "
+                        "More clarification is required."
+                    )
 
         summary = self._manager.get_initialization_summary(session)
         next_prompt = self._build_next_prompt(session)

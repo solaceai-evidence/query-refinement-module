@@ -10,6 +10,7 @@ from sqlalchemy.orm import Session
 
 from query_refinement_module.api.auth import get_current_user
 from query_refinement_module.api.routes.admin import require_superuser
+from query_refinement_module.api.dependencies import get_session_manager
 from query_refinement_module.api.session_manager import SessionManager
 from query_refinement_module.api.config import get_settings
 from query_refinement_module.db.models.user import User
@@ -21,14 +22,6 @@ from query_refinement_module.tracing import get_request_id
 
 router = APIRouter(prefix="/api/admin/sessions", tags=["admin", "sessions"])
 settings = get_settings()
-
-
-def get_session_manager() -> SessionManager:
-    """Get the singleton SessionManager instance."""
-    return SessionManager(
-        redis_url=settings.redis_url,
-        session_ttl_seconds=settings.session_ttl_seconds
-    )
 
 
 @router.get("/cache-metrics", response_model=Dict[str, Any])

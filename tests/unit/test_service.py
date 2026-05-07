@@ -107,6 +107,8 @@ class StubManager:
         self.summary = {"total_aspects": 1}
         self.initialize_calls: List[tuple] = []
         self.summary_calls = 0
+        self.analysis_result = types.SimpleNamespace(complete=True, current="normalized answer", question="")
+        self.analysis_calls: List[Dict[str, Any]] = []
 
     def initialize(self, query, framework):
         self.initialize_calls.append((query, framework))
@@ -119,6 +121,20 @@ class StubManager:
     def get_initialization_summary(self, session):
         self.summary_calls += 1
         return self.summary
+
+    async def get_analysis_prompts(self, *, session, aspect_id, mode):
+        self.analysis_calls.append({"session": session, "aspect_id": aspect_id, "mode": mode})
+        return self.analysis_result
+
+    def process_analysis_result(self, session, aspect_id, result):
+        step = session.get_active_step()
+        if result.complete:
+            step.is_complete = True
+            return {"complete": True, "aspect_id": aspect_id, "current": result.current}
+
+        step.is_complete = False
+        step.follow_up_question = result.question
+        return {"complete": False, "aspect_id": aspect_id, "next_question": result.question}
 
     def synthesize_refined_query(self, session):
         return {"refined_query": "refined", "used_llm": True}
@@ -259,8 +275,39 @@ async def test_submit_user_message_records_response(monkeypatch):
 
     assert resp.success is True
     assert step.is_complete is True
+    assert manager.analysis_calls == [{"session": session, "aspect_id": "aspect", "mode": "followup"}]
     assert step.follow_up_history[-1]["response"] == "Answer"
     assert resp.message.startswith("Recorded response")
+
+
+@pytest.mark.asyncio
+async def test_submit_user_message_keeps_step_active_when_followup_needed(monkeypatch):
+    step = ResponseStep()
+    session = ResponseSession(step)
+    manager = StubManager(session)
+    manager.analysis_result = types.SimpleNamespace(
+        complete=False,
+        current="partial answer",
+        question="Can you narrow that further?",
+    )
+    storage = StubStorage()
+    storage.sessions["sid"] = session
+
+    monkeypatch.setattr(
+        service.QueryRefinementService,
+        "_build_next_prompt",
+        staticmethod(lambda _: "prompt"),
+    )
+
+    svc = service.QueryRefinementService(manager, storage)
+    req = InteractionRequest(session_id="sid", message="Answer")
+
+    resp = await svc.submit_user_message(req)
+
+    assert resp.success is True
+    assert step.is_complete is False
+    assert step.follow_up_question == "Can you narrow that further?"
+    assert resp.message.endswith("More clarification is required.")
 
 
 @pytest.mark.asyncio

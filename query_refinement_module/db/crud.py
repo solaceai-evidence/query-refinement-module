@@ -338,9 +338,18 @@ def save_query_refinement_response(
 # RefinementStep CRUD Operations
 # ==========================================
 
-def create_refinement_step(db: Session, query_id: int, aspect_name: str) -> RefinementStep:
+def create_refinement_step(
+    db: Session,
+    query_id: int,
+    aspect_name: str,
+    aspect_id: Optional[str] = None,
+) -> RefinementStep:
     """Create a new refinement step for a query."""
-    step = RefinementStep(query_id=query_id, aspect_name=aspect_name)
+    step = RefinementStep(
+        query_id=query_id,
+        aspect_id=aspect_id or aspect_name,
+        aspect_name=aspect_name,
+    )
     db.add(step)
     db.commit()
     db.refresh(step)
@@ -352,12 +361,24 @@ def get_refinement_step(db: Session, step_id: int) -> Optional[RefinementStep]:
     return db.query(RefinementStep).filter(RefinementStep.id == step_id).first()
 
 
-def get_refinement_step_by_aspect(db: Session, query_id: int, aspect_name: str) -> Optional[RefinementStep]:
-    """Retrieve a refinement step by query ID and aspect name."""
-    return db.query(RefinementStep).filter(
-        RefinementStep.query_id == query_id,
-        RefinementStep.aspect_name == aspect_name
-    ).first()
+def get_refinement_step_by_aspect(
+    db: Session,
+    query_id: int,
+    aspect_name: Optional[str] = None,
+    aspect_id: Optional[str] = None,
+) -> Optional[RefinementStep]:
+    """Retrieve a refinement step by query ID and stable aspect identifier."""
+    query = db.query(RefinementStep).filter(RefinementStep.query_id == query_id)
+
+    if aspect_id:
+        step = query.filter(RefinementStep.aspect_id == aspect_id).first()
+        if step is not None:
+            return step
+
+    if aspect_name:
+        return query.filter(RefinementStep.aspect_name == aspect_name).first()
+
+    raise ValueError("Either aspect_id or aspect_name must be provided")
 
 
 def get_query_refinement_steps(db: Session, query_id: int) -> List[RefinementStep]:
@@ -454,7 +475,8 @@ def update_refinement_step_generated_question(
 def delete_refinement_steps_by_aspects(
     db: Session,
     query_id: int,
-    aspect_names: List[str]
+    aspect_names: Optional[List[str]] = None,
+    aspect_ids: Optional[List[str]] = None,
 ) -> int:
     """
     Delete refinement steps by aspect names (cascade delete for session truncation).
@@ -467,19 +489,23 @@ def delete_refinement_steps_by_aspects(
     Args:
         db: Database session
         query_id: Query ID to scope the deletion
-        aspect_names: List of aspect names to delete
+        aspect_names: List of aspect display names to delete
+        aspect_ids: List of stable aspect identifiers to delete
         
     Returns:
         Number of records deleted
     """
-    if not aspect_names:
+    if not aspect_names and not aspect_ids:
         return 0
-    
+
+    query = db.query(RefinementStep).filter(RefinementStep.query_id == query_id)
+    if aspect_ids:
+        query = query.filter(RefinementStep.aspect_id.in_(aspect_ids))
+    elif aspect_names:
+        query = query.filter(RefinementStep.aspect_name.in_(aspect_names))
+
     # Use ORM-level delete to trigger cascade relationships
-    steps_to_delete = db.query(RefinementStep).filter(
-        RefinementStep.query_id == query_id,
-        RefinementStep.aspect_name.in_(aspect_names)
-    ).all()
+    steps_to_delete = query.all()
     
     deleted_count = len(steps_to_delete)
     

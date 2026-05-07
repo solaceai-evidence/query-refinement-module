@@ -41,7 +41,7 @@ def _make_user_and_step(db):
     )
     qs = create_query_session(db, user_id=user.id)
     query = create_query(db, session_id=qs.id, original_query="test query")
-    step = create_refinement_step(db, query_id=query.id, aspect_name="Population")
+    step = create_refinement_step(db, query_id=query.id, aspect_name="Population", aspect_id="population")
     return step
 
 
@@ -99,8 +99,8 @@ def test_persist_generated_question_noop_when_db_is_none():
     """`db=None` returns immediately (guard against un-injected sessions)."""
     _persist_generated_question(
         db=None,
-        db_steps=[SimpleNamespace(aspect_name="Population", id=1)],
-        next_prompt={"name": "Population", "question": "What population?"},
+        db_steps=[SimpleNamespace(aspect_id="population", aspect_name="Population", id=1)],
+        next_prompt={"aspect_id": "population", "name": "Population", "question": "What population?"},
     )
     # No exception raised is the assertion; nothing to assert on a None db.
 
@@ -108,7 +108,7 @@ def test_persist_generated_question_noop_when_db_is_none():
 def test_persist_generated_question_noop_when_aspect_not_in_steps():
     """When no db_step matches the aspect_name, the CRUD function is not called."""
     db_mock = MagicMock()
-    db_steps = [SimpleNamespace(aspect_name="Intervention", id=2)]
+    db_steps = [SimpleNamespace(aspect_id="intervention", aspect_name="Intervention", id=2)]
 
     with patch(
         "query_refinement_module.api.routes.refinement.update_refinement_step_generated_question"
@@ -116,7 +116,7 @@ def test_persist_generated_question_noop_when_aspect_not_in_steps():
         _persist_generated_question(
             db_mock,
             db_steps=db_steps,
-            next_prompt={"name": "Population", "question": "What population?"},
+            next_prompt={"aspect_id": "population", "name": "Population", "question": "What population?"},
         )
         mock_crud.assert_not_called()
 
@@ -125,8 +125,8 @@ def test_persist_generated_question_calls_crud_when_aspect_matches():
     """When a step with the matching aspect_name exists, the CRUD function is called."""
     db_mock = MagicMock()
     db_steps = [
-        SimpleNamespace(aspect_name="Intervention", id=10),
-        SimpleNamespace(aspect_name="Population", id=7),
+        SimpleNamespace(aspect_id="intervention", aspect_name="Intervention", id=10),
+        SimpleNamespace(aspect_id="population", aspect_name="Population", id=7),
     ]
 
     with patch(
@@ -135,7 +135,7 @@ def test_persist_generated_question_calls_crud_when_aspect_matches():
         _persist_generated_question(
             db_mock,
             db_steps=db_steps,
-            next_prompt={"name": "Population", "question": "Who are the patients?"},
+            next_prompt={"aspect_id": "population", "name": "Population", "question": "Who are the patients?"},
         )
         mock_crud.assert_called_once_with(db_mock, 7, "Who are the patients?")
 
@@ -143,7 +143,7 @@ def test_persist_generated_question_calls_crud_when_aspect_matches():
 def test_persist_generated_question_noop_when_prompt_missing_question_key():
     """A next_prompt dict with no 'question' key is a noop."""
     db_mock = MagicMock()
-    db_steps = [SimpleNamespace(aspect_name="Population", id=1)]
+    db_steps = [SimpleNamespace(aspect_id="population", aspect_name="Population", id=1)]
 
     with patch(
         "query_refinement_module.api.routes.refinement.update_refinement_step_generated_question"
@@ -151,15 +151,15 @@ def test_persist_generated_question_noop_when_prompt_missing_question_key():
         _persist_generated_question(
             db_mock,
             db_steps=db_steps,
-            next_prompt={"name": "Population"},  # missing 'question'
+            next_prompt={"aspect_id": "population", "name": "Population"},  # missing 'question'
         )
         mock_crud.assert_not_called()
 
 
-def test_persist_generated_question_noop_when_prompt_missing_name_key():
-    """A next_prompt dict with no 'name' key is a noop."""
+def test_persist_generated_question_works_when_prompt_has_only_aspect_id():
+    """A stable aspect_id is sufficient to persist the generated question."""
     db_mock = MagicMock()
-    db_steps = [SimpleNamespace(aspect_name="Population", id=1)]
+    db_steps = [SimpleNamespace(aspect_id="population", aspect_name="Population", id=1)]
 
     with patch(
         "query_refinement_module.api.routes.refinement.update_refinement_step_generated_question"
@@ -167,15 +167,15 @@ def test_persist_generated_question_noop_when_prompt_missing_name_key():
         _persist_generated_question(
             db_mock,
             db_steps=db_steps,
-            next_prompt={"question": "Who are the patients?"},  # missing 'name'
+            next_prompt={"aspect_id": "population", "question": "Who are the patients?"},
         )
-        mock_crud.assert_not_called()
+        mock_crud.assert_called_once_with(db_mock, 1, "Who are the patients?")
 
 
 def test_persist_generated_question_swallows_crud_exception():
     """Exceptions from the CRUD call are caught and logged, never re-raised."""
     db_mock = MagicMock()
-    db_steps = [SimpleNamespace(aspect_name="Population", id=1)]
+    db_steps = [SimpleNamespace(aspect_id="population", aspect_name="Population", id=1)]
 
     with patch(
         "query_refinement_module.api.routes.refinement.update_refinement_step_generated_question",
@@ -185,5 +185,21 @@ def test_persist_generated_question_swallows_crud_exception():
         _persist_generated_question(
             db_mock,
             db_steps=db_steps,
-            next_prompt={"name": "Population", "question": "Who?"},
+            next_prompt={"aspect_id": "population", "name": "Population", "question": "Who?"},
         )
+
+
+def test_persist_generated_question_falls_back_to_legacy_aspect_name():
+    """Legacy rows without aspect_id still match by aspect_name."""
+    db_mock = MagicMock()
+    db_steps = [SimpleNamespace(aspect_id=None, aspect_name="Population", id=11)]
+
+    with patch(
+        "query_refinement_module.api.routes.refinement.update_refinement_step_generated_question"
+    ) as mock_crud:
+        _persist_generated_question(
+            db_mock,
+            db_steps=db_steps,
+            next_prompt={"aspect_id": "population", "name": "Population", "question": "Who?"},
+        )
+        mock_crud.assert_called_once_with(db_mock, 11, "Who?")

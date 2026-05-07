@@ -178,6 +178,7 @@ class RefinementStepCreate(BaseModel):
     """Schema for creating a refinement step."""
     query_id: int
     aspect_name: str
+    aspect_id: Optional[str] = None
 
 
 class RefinementStepResponse(BaseModel):
@@ -195,6 +196,7 @@ class RefinementStepResponse(BaseModel):
     
     id: int
     query_id: int
+    aspect_id: Optional[str] = None
     aspect_name: str
     final_value: Optional[str] = None  # From LLM: current value
     is_complete: bool = False          # From LLM: complete status
