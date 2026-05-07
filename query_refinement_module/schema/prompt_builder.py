@@ -443,6 +443,56 @@ class PromptBuilder:
         for qa in conversation_history:
             messages.append({'role': 'assistant', 'content': qa['question']})
             messages.append({'role': 'user', 'content': qa['response']})
+
+        # 6b. Style cue: re-append compact tone/complexity hint after conversation history
+        # to counter recency bias at ALL turn counts (incl. turn 0 where terminal
+        # reinforcement has not fired). The full user_context profile is cached early
+        # in the message list but is dominated by the dimension spec + user query when
+        # the model generates its response. This compact cue restores it at recency.
+        if dimension.user_context:
+            _ctx = dimension.user_context
+            _tone_hints = {
+                "educational": "warm, encouraging register — explain why each question matters",
+                "professional": "direct, formal register — no small talk or warmth phrases",
+                "pragmatic": "lead with the consequence of not knowing — brief and action-oriented",
+            }
+            _complexity_hints = {
+                "intermediate": "standard clinical/domain terminology, no need to define basics",
+                "advanced": "precise technical vocabulary, push back on vague or underspecified terms",
+                "expert": "methodological vocabulary, full domain fluency assumed, debate detail if needed",
+            }
+            _tone_hint = _tone_hints.get(_ctx.tone, _ctx.tone)
+            _complexity_hint = _complexity_hints.get(_ctx.complexity, _ctx.complexity)
+            messages.append({
+                'role': 'system',
+                'content': (
+                    f"**Style cue — apply when formulating your response:**\n"
+                    f"Tone: {_tone_hint}\n"
+                    f"Complexity: {_complexity_hint}"
+                )
+            })
+
+        # 6c. Completed-context reminder: re-append after conversation history so the model
+        # reads it in the most recent position. This combats recency bias in open-weight
+        # models that deprioritise early system messages when a user message dominates.
+        # Safe for all models — Claude ignores the redundancy; Qwen benefits from recency.
+        if completed_dims_for_context:
+            dependency_defs_reminder = [
+                {"id": dep_id, "name": dep_id.replace("_", " ").title()}
+                for dep_id in (dimension.depends_on or [])
+            ]
+            reminder_content = self.render_completed_dimensions(
+                completed_dimensions=completed_dims_for_context,
+                dependencies=dependency_defs_reminder,
+            )
+            messages.append({
+                'role': 'system',
+                'content': reminder_content + (
+                    "\n\n**Reminder:** Extract from the completed dimensions above "
+                    "before generating any question. If the value for the current "
+                    "dimension is present, set complete=true and question=\"\"."
+                )
+            })
         
         # 7. Terminal reinforcement: Repeat cached instructions at end for long conversations
         # Research-backed approach to combat recency bias and maintain instruction adherence

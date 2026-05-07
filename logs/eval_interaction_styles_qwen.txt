@@ -1,0 +1,133 @@
+
+[running] educational × novice ...
+  complete=False  current='people with depression'
+  question: Which specific population do you mean?
+
+[running] educational × advanced ...
+  complete=False  current='people with depression'
+  question: Which specific population do you mean?
+
+[running] professional × intermediate ...
+  complete=False  current='people with depression'
+  question: Which specific population do you mean?
+
+[running] professional × expert ...
+  complete=False  current='people with depression'
+  question: Which specific population do you mean?
+
+[running] pragmatic × novice ...
+  complete=False  current='people with depression'
+  question: Which specific population do you mean?
+
+[running] pragmatic × expert ...
+  complete=False  current='people with depression'
+  question: Which specific population do you mean?
+
+========================================================================
+QUESTION TEXT BY COMBINATION
+========================================================================
+
+[educational × novice]
+  Q: Which specific population do you mean?
+
+[educational × advanced]
+  Q: Which specific population do you mean?
+
+[professional × intermediate]
+  Q: Which specific population do you mean?
+
+[professional × expert]
+  Q: Which specific population do you mean?
+
+[pragmatic × novice]
+  Q: Which specific population do you mean?
+
+[pragmatic × expert]
+  Q: Which specific population do you mean?
+
+========================================================================
+AUTOMATED STYLE CHECKS
+========================================================================
+
+ISSUES FOUND:
+  [educational × novice] WARN — expected warm/rationale framing in educational tone. No marker found in: Which specific population do you mean?
+  [educational × advanced] WARN — expected warm/rationale framing in educational tone. No marker found in: Which specific population do you mean?
+  [professional × expert] WARN — expected technical vocabulary at expert complexity. No term found in: Which specific population do you mean?
+  [pragmatic × novice] WARN — expected consequence-framing in pragmatic tone. No marker found in: Which specific population do you mean?
+  [pragmatic × expert] WARN — expected consequence-framing in pragmatic tone. No marker found in: Which specific population do you mean?
+  [pragmatic × expert] WARN — expected technical vocabulary at expert complexity. No term found in: Which specific population do you mean?
+  [educational × advanced] FAIL — identical question as [educational × novice]
+  [professional × intermediate] FAIL — identical question as [educational × advanced]
+  [professional × expert] FAIL — identical question as [professional × intermediate]
+  [pragmatic × novice] FAIL — identical question as [professional × expert]
+  [pragmatic × expert] FAIL — identical question as [pragmatic × novice]
+
+{
+  "model": "ollama/qwen2.5:72b",
+  "query": "I'm looking at interventions for people with depression",
+  "dimension": "population",
+  "results": [
+    {
+      "label": "educational \u00d7 novice",
+      "tone": "educational",
+      "complexity": "novice",
+      "complete": false,
+      "current": "people with depression",
+      "question": "Which specific population do you mean?"
+    },
+    {
+      "label": "educational \u00d7 advanced",
+      "tone": "educational",
+      "complexity": "advanced",
+      "complete": false,
+      "current": "people with depression",
+      "question": "Which specific population do you mean?"
+    },
+    {
+      "label": "professional \u00d7 intermediate",
+      "tone": "professional",
+      "complexity": "intermediate",
+      "complete": false,
+      "current": "people with depression",
+      "question": "Which specific population do you mean?"
+    },
+    {
+      "label": "professional \u00d7 expert",
+      "tone": "professional",
+      "complexity": "expert",
+      "complete": false,
+      "current": "people with depression",
+      "question": "Which specific population do you mean?"
+    },
+    {
+      "label": "pragmatic \u00d7 novice",
+      "tone": "pragmatic",
+      "complexity": "novice",
+      "complete": false,
+      "current": "people with depression",
+      "question": "Which specific population do you mean?"
+    },
+    {
+      "label": "pragmatic \u00d7 expert",
+      "tone": "pragmatic",
+      "complexity": "expert",
+      "complete": false,
+      "current": "people with depression",
+      "question": "Which specific population do you mean?"
+    }
+  ],
+  "style_check_failures": [
+    "[educational \u00d7 novice] WARN \u2014 expected warm/rationale framing in educational tone. No marker found in: Which specific population do you mean?",
+    "[educational \u00d7 advanced] WARN \u2014 expected warm/rationale framing in educational tone. No marker found in: Which specific population do you mean?",
+    "[professional \u00d7 expert] WARN \u2014 expected technical vocabulary at expert complexity. No term found in: Which specific population do you mean?",
+    "[pragmatic \u00d7 novice] WARN \u2014 expected consequence-framing in pragmatic tone. No marker found in: Which specific population do you mean?",
+    "[pragmatic \u00d7 expert] WARN \u2014 expected consequence-framing in pragmatic tone. No marker found in: Which specific population do you mean?",
+    "[pragmatic \u00d7 expert] WARN \u2014 expected technical vocabulary at expert complexity. No term found in: Which specific population do you mean?",
+    "[educational \u00d7 advanced] FAIL \u2014 identical question as [educational \u00d7 novice]",
+    "[professional \u00d7 intermediate] FAIL \u2014 identical question as [educational \u00d7 advanced]",
+    "[professional \u00d7 expert] FAIL \u2014 identical question as [professional \u00d7 intermediate]",
+    "[pragmatic \u00d7 novice] FAIL \u2014 identical question as [professional \u00d7 expert]",
+    "[pragmatic \u00d7 expert] FAIL \u2014 identical question as [pragmatic \u00d7 novice]"
+  ],
+  "style_checks_passed": false
+}

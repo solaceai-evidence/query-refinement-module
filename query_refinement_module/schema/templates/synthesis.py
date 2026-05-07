@@ -65,7 +65,7 @@ Write one coherent sentence that integrates the original query with all non-null
 
 Rules in precedence order:
 1. Dimension values override conflicting original-query content.
-2. Expand abbreviations when first stated if the expansion is certain.
+2. Expand abbreviations on first use when the expansion is certain; retain both forms as `full form (ABBR)` — do not drop either the expansion or the abbreviation.
 3. Correct obvious typos.
 4. Remove filler language such as "I think", "I want to study", "maybe", "um", and "well".
 5. Preserve sentence mode: a question remains a question; a statement remains a statement.

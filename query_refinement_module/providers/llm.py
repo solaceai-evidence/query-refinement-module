@@ -13,6 +13,7 @@ from query_refinement_module.tracing import get_request_id, get_trace_id
 
 from ..interfaces import LLMCompletionResult, LLMProviderInterface, RateLimitConfig, RateLimitExceeded
 from .circuit_breaker import CircuitBreakerRegistry, CircuitBreakerConfig, CircuitBreakerOpen
+from ..rate_limiter import TokenBucketRateLimiter
 
 # Optional dependencies
 try:
@@ -42,6 +43,8 @@ class LiteLLMProvider(LLMProviderInterface):
         enable_circuit_breaker: bool = True,
         constrained_decoding: bool = False,
         circuit_breaker_config: Optional[CircuitBreakerConfig] = None,
+        rate_limit_config: Optional[RateLimitConfig] = None,
+        max_concurrent_requests: int = 20,
     ) -> None:
         if litellm is None:
             raise RuntimeError(
@@ -59,9 +62,30 @@ class LiteLLMProvider(LLMProviderInterface):
         self._constrained_decoding = constrained_decoding
 
         # Semaphore to limit concurrent LLM calls (prevent overwhelming server)
-        self._max_concurrent = 20  # Store for logging
-        self._semaphore = asyncio.Semaphore(self._max_concurrent)  # Max 20 concurrent calls
+        self._max_concurrent = max_concurrent_requests
+        self._semaphore = asyncio.Semaphore(max_concurrent_requests)
         
+        # Token-bucket rate limiter for proprietary LLM APIs (Anthropic, OpenAI, etc.)
+        # If no explicit config is provided, use provider defaults only when RPM > 0.
+        if rate_limit_config is None:
+            provider_defaults = self.get_rate_limits(default_model)
+            rate_limit_config = provider_defaults if provider_defaults.requests_per_minute > 0 else None
+
+        self._rate_limiter: Optional[TokenBucketRateLimiter] = None
+        if rate_limit_config is not None and rate_limit_config.requests_per_minute > 0:
+            self._rate_limiter = TokenBucketRateLimiter(rate_limit_config, scope="global")
+            logger.info(
+                "LLM rate limiter enabled: rpm=%d, tpm=%s, adaptive=%s",
+                rate_limit_config.requests_per_minute,
+                rate_limit_config.tokens_per_minute,
+                rate_limit_config.adaptive_backoff,
+            )
+        else:
+            logger.debug(
+                "LLM rate limiter disabled (unlimited). "
+                "Set QUERY_REFINEMENT_LLM_RATE_LIMIT_RPM to enable for proprietary APIs."
+            )
+
         # Circuit breaker for protecting against provider outages
         self._enable_circuit_breaker = enable_circuit_breaker
         if enable_circuit_breaker:
@@ -137,18 +161,7 @@ class LiteLLMProvider(LLMProviderInterface):
             # Use model prefix as provider name (handles custom models)
             return model.split("/")[0] if "/" in model else "unknown"
 
-    async def complete_async(
-        self,
-        user_prompt: str = "",
-        system_prompt: Optional[str] = None,
-        model: Optional[str] = None,
-        temperature: float = 0.0,
-        max_tokens: Optional[int] = None,
-        messages: Optional[List[Dict[str, str]]] = None,
-        response_format: Optional[Union[Dict[str, Any], Type["BaseModel"]]] = None,
-        cache_system_prompt: bool = False,
-        **kwargs: Any,
-    ) -> LLMCompletionResult:
+    async def complete_async(self, *args, **kwargs) -> "LLMCompletionResult":
         """Complete a prompt asynchronously with automatic retry on rate limit errors.
         
         Args:
@@ -159,12 +172,12 @@ class LiteLLMProvider(LLMProviderInterface):
             cache_system_prompt: If True and provider supports it, cache the system prompt
                                for reduced token usage and faster responses.
         """
+        # Apply outbound rate limit before acquiring the concurrency semaphore
+        if self._rate_limiter is not None:
+            await self._rate_limiter.acquire()
         # Apply semaphore to limit concurrent calls
         async with self._semaphore:
-            return await self._complete_async_internal(
-                user_prompt, system_prompt, model, temperature, max_tokens, 
-                cache_system_prompt, messages, response_format, **kwargs
-            )
+            return await self._complete_async_internal(*args, **kwargs)
     
     async def _complete_async_internal(
         self,
@@ -748,17 +761,8 @@ class LiteLLMProvider(LLMProviderInterface):
                         exc_info=False,
                     )
                     
-                    # Run async completion in sync context
-                    try:
-                        loop = asyncio.get_event_loop()
-                        if loop.is_running():
-                            # In async context already - can't block
-                            time.sleep(retry_after)
-                        else:
-                            loop.run_until_complete(asyncio.sleep(retry_after))
-                    except RuntimeError:
-                        # No event loop - just use regular sleep
-                        time.sleep(retry_after)
+                    # Sync method: use time.sleep directly (no event loop required)
+                    time.sleep(retry_after)
                     continue
                 
                 # For rate limit errors on final attempt, raise RateLimitExceeded

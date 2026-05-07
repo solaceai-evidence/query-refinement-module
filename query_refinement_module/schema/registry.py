@@ -150,11 +150,18 @@ def _load_frameworks(*, raise_on_error: bool = False) -> Dict[str, List[Refineme
                     continue
             
             if aspects:
-                # Sort by dependencies
+                # Sort by dependencies — also detects circular references
                 try:
                     aspects = sort_aspects_by_dependencies(aspects)
-                except Exception as e:
-                    logger.warning(f"Failed to sort dependencies for framework '{framework_name}': {e}")
+                except ValueError as e:
+                    error_msg = f"Invalid dependency graph in framework '{framework_name}': {e}"
+                    logger.error(error_msg)
+                    if raise_on_error:
+                        raise FrameworkLoadError(error_msg) from e
+                    # Skip the broken framework rather than loading it in an
+                    # undefined order that could produce incorrect refinements.
+                    _LAST_LOAD_ERROR = error_msg
+                    continue
                 
                 frameworks[framework_name] = aspects
                 logger.info(f"Loaded framework '{framework_name}' with {len(aspects)} aspects")

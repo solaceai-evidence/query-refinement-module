@@ -5,6 +5,7 @@ Integrates all refined dimensions into optimized research specification.
 """
 
 import json
+import re
 from typing import Any, Dict, List
 from jinja2 import Environment
 import logging
@@ -13,6 +14,41 @@ from .response import QueryRefinementResponse
 
 
 logger = logging.getLogger(__name__)
+
+
+# ---------------------------------------------------------------------------
+# Template section extractor
+# ---------------------------------------------------------------------------
+
+def _extract_template_section(heading: str) -> str:
+    """Return the body text under *heading* from SYNTHESIS_TEMPLATE.
+
+    Stops at the next heading of the same or higher level, or at a ``---``
+    separator.  The heading itself is not included in the returned text.
+    The original template is never modified.
+    """
+    from .templates import SYNTHESIS_TEMPLATE
+    level = len(heading) - len(heading.lstrip("#"))
+    # Locate the heading line
+    idx = SYNTHESIS_TEMPLATE.find("\n" + heading + "\n")
+    if idx == -1:
+        return ""
+    start = idx + len("\n" + heading + "\n")
+    end = len(SYNTHESIS_TEMPLATE)
+    # Stop at any heading with level <= current level, or at a --- separator
+    for match in re.finditer(r'\n(#{1,6}) ', SYNTHESIS_TEMPLATE[start:]):
+        if len(match.group(1)) <= level:
+            end = start + match.start()
+            break
+    sep = SYNTHESIS_TEMPLATE.find("\n---\n", start)
+    if sep != -1 and sep < end:
+        end = sep
+    return SYNTHESIS_TEMPLATE[start:end].strip()
+
+
+def _extract_general_rules() -> str:
+    """Return the ## General Rules block from SYNTHESIS_TEMPLATE verbatim."""
+    return _extract_template_section("## General Rules")
 
 
 
@@ -105,15 +141,14 @@ class SynthesisPromptBuilder:
 
     @staticmethod
     def get_statement_system_prompt() -> str:
-        return """
-You produce only one JSON object matching StatementResponse.
-Task: write `integrated_statement` from the original input and canonical dimensions.
-Rules:
-- use only supported input content
-- dimension values override conflicting original-query content
-- do not add unstated constraints
-- return a non-empty string
-""".strip()
+        general_rules = _extract_general_rules()
+        field_rules = _extract_template_section("### integrated_statement")
+        return (
+            "You produce only one JSON object matching StatementResponse: "
+            '{"integrated_statement": ""}\n\n'
+            f"## General Rules\n\n{general_rules}\n\n"
+            f"## Field Specification: integrated_statement\n\n{field_rules}"
+        )
 
     @classmethod
     def get_statement_prompt(
@@ -126,15 +161,14 @@ Rules:
 
     @staticmethod
     def get_semantic_query_system_prompt() -> str:
-        return """
-You produce only one JSON object matching SemanticQueryResponse.
-Task: write `semantic` as a natural-language retrieval query.
-Rules:
-- ground the output in `integrated_statement`
-- do not add new constraints
-- exclude authors, venues, and publication-type labels
-- return one non-empty sentence
-""".strip()
+        general_rules = _extract_general_rules()
+        field_rules = _extract_template_section("### search_optimized.semantic")
+        return (
+            "You produce only one JSON object matching SemanticQueryResponse: "
+            '{"semantic": ""}\n\n'
+            f"## General Rules\n\n{general_rules}\n\n"
+            f"## Field Specification: search_optimized.semantic\n\n{field_rules}"
+        )
 
     @staticmethod
     def get_semantic_query_prompt(integrated_statement: str, accepted_dimensions: Dict[str, Any]) -> str:
@@ -145,56 +179,73 @@ Rules:
 
     @staticmethod
     def get_terminology_system_prompt() -> str:
-        return """
-You produce only one JSON object matching TerminologyResponse.
-Task: return `synonyms` for grounded concepts only.
-Rules:
-- include only same-level lexical variants and established abbreviations
-- do not add broader terms, narrower terms, or loosely related concepts
-- use empty objects or arrays when support is insufficient
-""".strip()
+        general_rules = _extract_general_rules()
+        field_rules = _extract_template_section("### terminology.synonyms")
+        return (
+            "You produce only one JSON object matching TerminologyResponse: "
+            '{"synonyms": {}}\n\n'
+            f"## General Rules\n\n{general_rules}\n\n"
+            f"## Field Specification: terminology.synonyms\n\n{field_rules}"
+        )
 
     @staticmethod
-    def get_terminology_prompt(integrated_statement: str, concept_inventory: Dict[str, List[str]]) -> str:
+    def get_terminology_prompt(integrated_statement: str, concept_inventory: List[str]) -> str:
         return (
             f"## Integrated Statement\n\n{integrated_statement}\n\n"
-            f"## Concept Inventory\n\n{json.dumps(concept_inventory, ensure_ascii=False, indent=2)}\n"
+            f"## Concepts Requiring Synonyms\n\n"
+            + "\n".join(f"- {c}" for c in concept_inventory)
+            + "\n"
         )
 
     @staticmethod
     def get_keyword_support_system_prompt() -> str:
-        return """
-You produce only one JSON object matching KeywordSupportResponse.
-Task: return grounded `phrases`, `required`, and `optional` keyword support.
-Rules:
-- every term must be traceable to the provided concept inventory or terminology
-- do not output exclusions
-- do not duplicate the same concept across `required` and `optional`
-- keep lists short and retrieval-oriented
-""".strip()
+        general_rules = _extract_general_rules()
+        structured_rules = _extract_template_section("### search_optimized.keyword.structured")
+        phrases_rules = _extract_template_section("### search_optimized.keyword.phrases")
+        terms_rules = _extract_template_section("### search_optimized.keyword.terms")
+        return (
+            "You produce only one JSON object matching KeywordSupportResponse: "
+            '{"phrases": [], "required": [], "optional": [], "excluded": []}\n\n'
+            "Note: `structured` (the Boolean query string) is produced by a separate call. "
+            "Do not emit it here.\n\n"
+            f"## General Rules\n\n{general_rules}\n\n"
+            f"## Field Specification: search_optimized.keyword.structured (for context only)\n\n{structured_rules}\n\n"
+            f"## Field Specification: search_optimized.keyword.phrases\n\n{phrases_rules}\n\n"
+            f"## Field Specification: search_optimized.keyword.terms\n\n{terms_rules}"
+        )
 
     @staticmethod
     def get_keyword_support_prompt(
         integrated_statement: str,
-        concept_inventory: Dict[str, List[str]],
+        concept_inventory: List[str],
         terminology_synonyms: Dict[str, List[str]],
     ) -> str:
+        inventory_text = "\n".join(f"- {c}" for c in concept_inventory)
         return (
             f"## Integrated Statement\n\n{integrated_statement}\n\n"
-            f"## Concept Inventory\n\n{json.dumps(concept_inventory, ensure_ascii=False, indent=2)}\n\n"
+            f"## Concept Inventory\n\n{inventory_text}\n\n"
             f"## Terminology Synonyms\n\n{json.dumps(terminology_synonyms, ensure_ascii=False, indent=2)}\n"
         )
 
     @staticmethod
     def get_filter_resolution_system_prompt() -> str:
-        return """
-You produce only one JSON object matching FilterSuggestionResponse.
-Task: suggest `fields_of_study` only when the topic directly and unambiguously entails them.
-Rules:
-- choose only from the permitted-values list
-- return an empty list when classification requires interpretation rather than entailment
-- do not emit years, venues, authors, or publication types
-""".strip()
+        general_rules = _extract_general_rules()
+        years_rules = _extract_template_section("### search_filters.publication_years")
+        venues_rules = _extract_template_section("### search_filters.venues")
+        authors_rules = _extract_template_section("### search_filters.authors")
+        pub_types_rules = _extract_template_section("### search_filters.publication_types")
+        fos_rules = _extract_template_section("### search_filters.fields_of_study")
+        return (
+            "You produce only one JSON object matching FilterSuggestionResponse: "
+            '{"publication_years": "", "venues": [], "authors": [], '
+            '"publication_types": [], "fields_of_study": []}\n\n'
+            f"## General Rules\n\n{general_rules}\n\n"
+            f"## Field Specification: search_filters.publication_years\n\n{years_rules}\n\n"
+            f"## Field Specification: search_filters.venues\n\n{venues_rules}\n\n"
+            f"## Field Specification: search_filters.authors\n\n{authors_rules}\n\n"
+            f"## Field Specification: search_filters.publication_types\n\n{pub_types_rules}\n\n"
+            f"## Field Specification: search_filters.fields_of_study\n\n{fos_rules}"
+        )
 
     @staticmethod
     def get_filter_resolution_prompt(
@@ -202,10 +253,13 @@ Rules:
         accepted_dimensions: Dict[str, Any],
         permitted_values: List[str],
     ) -> str:
+        from datetime import datetime
+        current_year = datetime.now().year
         return (
+            f"## Current Year\n\n{current_year}\n\n"
             f"## Original Input\n\n{original_input}\n\n"
             f"## Accepted Dimensions\n\n{json.dumps(accepted_dimensions, ensure_ascii=False, indent=2)}\n\n"
-            f"## Permitted Values\n\n{json.dumps(permitted_values, ensure_ascii=False)}\n"
+            f"## Permitted Fields of Study Values\n\n{json.dumps(permitted_values, ensure_ascii=False)}\n"
         )
     
 

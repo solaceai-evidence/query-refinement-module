@@ -394,30 +394,45 @@ class AuditService:
     def _get_client_ip(self, request: Request) -> Optional[str]:
         """
         Extract client IP address from request.
-        
-        Handles X-Forwarded-For, X-Real-IP, and direct connection.
-        
+
+        ``X-Forwarded-For`` and ``X-Real-IP`` headers are only trusted when the
+        direct connection comes from a loopback address (127.x, ::1) or from a
+        private RFC-1918 / RFC-4193 range, indicating the request arrived through
+        a trusted reverse proxy (Nginx, load balancer).  Direct connections from
+        public IPs are never allowed to self-declare their address via these headers.
+
         Args:
             request: FastAPI Request
-            
+
         Returns:
             Client IP address or None
         """
-        # Check for proxy headers (in order of preference)
-        forwarded_for = request.headers.get("x-forwarded-for")
-        if forwarded_for:
-            # X-Forwarded-For can contain multiple IPs, first is the client
-            return forwarded_for.split(",")[0].strip()
-        
-        real_ip = request.headers.get("x-real-ip")
-        if real_ip:
-            return real_ip
-        
-        # Fallback to direct connection
-        if request.client:
-            return request.client.host
-        
-        return None
+        import ipaddress
+
+        def _is_trusted_proxy(host: Optional[str]) -> bool:
+            if not host:
+                return False
+            try:
+                addr = ipaddress.ip_address(host)
+                return addr.is_loopback or addr.is_private
+            except ValueError:
+                return False
+
+        direct_host = request.client.host if request.client else None
+
+        if _is_trusted_proxy(direct_host):
+            # Request arrived via a trusted proxy — honour forwarded headers.
+            forwarded_for = request.headers.get("x-forwarded-for")
+            if forwarded_for:
+                # X-Forwarded-For: <client>, <proxy1>, <proxy2> — first is the original client
+                return forwarded_for.split(",")[0].strip()
+
+            real_ip = request.headers.get("x-real-ip")
+            if real_ip:
+                return real_ip
+
+        # Fallback to the direct connection address.
+        return direct_host
 
 
 # Global audit service instance

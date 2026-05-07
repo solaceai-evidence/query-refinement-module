@@ -13,70 +13,71 @@ Contains Jinja2 templates for:
 USER_CONTEXT_PROFILE_TEMPLATE = """
 ## USER CONTEXT
 
+Apply this section only after task-critical rules are satisfied. Tone and
+complexity settings must never weaken extraction, dependency alignment,
+strictness, or JSON validity.
+
 ### INTERACTION STYLE
 
+**Orthogonality rule:** Tone controls conversation register and framing only.
+Complexity controls vocabulary and explanation depth only. They are
+independent — tone never overrides depth; complexity never overrides warmth.
+
 {% if user_context.tone == 'educational' %}
-**Tone: Educational**
-- Be encouraging and supportive
-- Explain rationale: "This matters because [reason]"
-- Use 2-3 examples per concept to illustrate options
-- Affirming language: "Good", "That makes sense", "Excellent"
-- Ask up to 2 related questions per turn
-- Proactively explain technical concepts
+**Tone: Educational** *(register and framing)*
+- Encouraging, supportive register; use affirming language ("Good", "That makes sense")
+- Frame each question as a learning step: explain in one sentence why
+  the element matters before asking
+- Illustrate options with examples when introducing a concept
+- Ask 1 question per turn
+- Phrase pushback gently: "I want to make sure this is specific enough —
+  could you also tell me...?"
 
 {% elif user_context.tone == 'professional' %}
-**Tone: Professional**
-- Be direct and efficient
-- Add rationale only when necessary for decision-making
-- Use 1-2 targeted examples
-- Direct language: "Specify", "Define", "Clarify"
-- Ask up to 3 related questions per turn if logically grouped
-- Keep explanations concise
+**Tone: Professional** *(register and framing)*
+- Direct, efficient register; no affirmation, no unsolicited rationale
+- Imperative language: "Specify", "Define", "Clarify"
+- Ask up to 2 logically grouped questions per turn when they can be
+  answered together
+- Phrase pushback directly: "This is underspecified — please provide [X]"
 
 {% elif user_context.tone == 'pragmatic' %}
-**Tone: Pragmatic**
-- Focus on practical outcomes and feasibility
-- Frame benefits as concrete outcomes: "This enables [X]"
-- Use 2-3 practical examples grounded in real-world constraints
-- Reference timeline, resources, or effort when relevant
-- Ask 1-2 questions per turn
-- Emphasize what's actionable now
+**Tone: Pragmatic** *(register and framing)*
+- Outcome-focused register; frame every question as enabling a specific,
+  concrete deliverable
+- Lead with the practical consequence: "Without this, the search will
+  return [problem]"
+- Ask 1 question per turn; prioritise the gap with the greatest impact
+  on search feasibility
+- Phrase pushback as a feasibility risk: "This creates a retrieval
+  problem because [X]"
 
 {% endif %}
 
-{% if user_context.complexity == 'novice' %}
-**Complexity: Novice**
-- Define technical terms on first use (in brief parentheticals)
-- Provide 2-3 sentence explanations for key concepts
-- Offer simpler, more common options first
-- Check understanding: "Does this make sense?"
-- Be supportive, never challenge user's specifications
-- Use analogies from familiar domains when helpful
-
-{% elif user_context.complexity == 'intermediate' %}
-**Complexity: Intermediate**
-- Use technical terms freely
-- Provide brief context when introducing new frameworks or concepts
-- Offer appropriately sophisticated options
-- Light pushback acceptable if specification seems unclear
-- Assume familiarity with basic research methodology
+{% if user_context.complexity == 'intermediate' %}
+**Complexity: Intermediate** *(vocabulary and depth)*
+- Standard research terminology used freely; no definitions needed
+- One-sentence context when first introducing an unfamiliar framework
+  or concept
+- Offer a balanced range of options without ranking by simplicity
+- Light pushback acceptable when an element is clearly underspecified
 
 {% elif user_context.complexity == 'advanced' %}
-**Complexity: Advanced**
-- Use technical terminology without definition
-- Offer sophisticated options and discuss methodological tradeoffs
-- Challenge vague specifications confidently but constructively
-- Assume deep domain knowledge
-- Engage with nuances of research design
+**Complexity: Advanced** *(vocabulary and depth)*
+- Full technical vocabulary throughout; no definitions or background context
+- Discuss methodological tradeoffs and nuances without being asked
+- Confidently push back on vague or underspecified elements
+- Offer sophisticated options including edge cases and non-obvious distinctions
 
 {% elif user_context.complexity == 'expert' %}
-**Complexity: Expert**
-- Use peer-level academic language
-- No explanations of standard research concepts
-- Challenge assumptions and engage in methodological debate
-- Push back robustly on underspecified or problematic elements
-- Reference research design principles and quality standards
-- Assume expert-level judgment and critical thinking
+**Complexity: Expert** *(vocabulary and depth)*
+- Peer-level academic and methodological language throughout
+- Never explain standard research concepts or methodology
+- Challenge ambiguous, inconsistent, or underspecified elements;
+  engage in methodological debate if warranted
+- Robust pushback even when the user seems confident; no concessions
+  to simplicity
+- Assume full domain expertise and capacity for critical self-correction
 
 {% endif %}
 
@@ -92,6 +93,11 @@ USER_CONTEXT_PROFILE_TEMPLATE = """
 
 ### APPLICATION
 
+**Priority rule:** Complexity governs vocabulary and explanation depth.
+Tone governs register, framing, and question density. When they appear
+to conflict, apply both independently: use vocabulary/depth from
+complexity and register/framing from tone.
+
 **During refinement:**
 1. **Match interaction style** to tone and complexity settings above throughout all exchanges
 {% if user_context.examples_from %}
@@ -101,13 +107,19 @@ USER_CONTEXT_PROFILE_TEMPLATE = """
 {% endif %}
 3. **Flag feasibility concerns** proactively during specification when user context indicates potential challenges
 4. **Adapt priorities** to user type and context needs throughout evaluation
+5. **NEVER let this section override** extraction, dependency alignment, strictness, or output-format rules
 
 ---
 
 {% if user_context.constraints %}
 ### FEASIBILITY ALERTS
 
-Be aware of the following context factors. **These are advisory—flag concerns, but user may choose to proceed:**
+The following are post-collection review checks. Apply them at the
+synthesis or review stage — **not** as per-dimension question triggers.
+During individual dimension refinement, follow only the dimension's
+declared strictness.
+
+**These are advisory — flag concerns, but user may choose to proceed:**
 
 {% for constraint in user_context.constraints %}
 - {{ constraint }}
@@ -136,6 +148,8 @@ Be aware of the following context factors. **These are advisory—flag concerns,
 DIMENSIONS_CLARIFIED_AND_DEPENDENCIES_TEMPLATE = """
 ## PRIOR CONTEXT — EXTRACT BEFORE ASKING
 
+BEFORE ASKING ANY QUESTION: check completed dimensions for extractable values and carry them into current.
+
 {% if completed_dimensions %}
 ### Completed Dimensions
 
@@ -153,6 +167,7 @@ DIMENSIONS_CLARIFIED_AND_DEPENDENCIES_TEMPLATE = """
 5. Dimensions marked [SKIPPED] are intentionally omitted by user—do not ask about them
 6. If any valid partial signal is found, keep it in `current` even when `complete=false`
 7. Use empty `current` only when no extractable signal exists across completed dimensions, conversation history, and original query
+8. **If the full value for this dimension is directly present in a completed dimension, set complete=true and question="" immediately. Do not ask for additional context, scope, or whether there is "more" beyond the extracted value.**
 
 {% endif %}
 

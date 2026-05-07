@@ -1,0 +1,242 @@
+Running 1 scenario(s) | model=ollama/qwen2.5:72b | variant=open_llm
+
+  Scenario 1: Metformin RCT — extraction-heavy
+  Query: 'Effect of metformin versus placebo on glycaemic control in adults aged 40-65 with type 2 diabetes in primary care settings — randomised controlled trials only'
+    [population] turns=0 completed_ctx=0 ...
+      -> PASS: []
+    [clinical_condition] turns=0 completed_ctx=1 ...
+      -> PASS: []
+    [intervention] turns=0 completed_ctx=2 ...
+      -> PASS: []
+    [comparator] turns=0 completed_ctx=3 ...
+      -> PASS: []
+    [outcome] turns=1 completed_ctx=4 ...
+      -> PASS: []
+    [study_type] turns=0 completed_ctx=5 ...
+      -> PASS: []
+    [synthesis] building messages ...
+      -> PASS: []
+{
+  "prompt_variant": "open_llm",
+  "model": "ollama/qwen2.5:72b",
+  "scenarios_total": 1,
+  "scenarios_passed": 1,
+  "scenarios_failed": 0,
+  "synthesis_passed": 1,
+  "synthesis_total": 1,
+  "dimension_totals": {
+    "population": {
+      "passed": 1,
+      "failed": 0
+    },
+    "clinical_condition": {
+      "passed": 1,
+      "failed": 0
+    },
+    "intervention": {
+      "passed": 1,
+      "failed": 0
+    },
+    "comparator": {
+      "passed": 1,
+      "failed": 0
+    },
+    "outcome": {
+      "passed": 1,
+      "failed": 0
+    },
+    "study_type": {
+      "passed": 1,
+      "failed": 0
+    }
+  },
+  "results": [
+    {
+      "id": "1",
+      "name": "Metformin RCT \u2014 extraction-heavy",
+      "query": "Effect of metformin versus placebo on glycaemic control in adults aged 40-65 with type 2 diabetes in primary care settings \u2014 randomised controlled trials only",
+      "passed": true,
+      "dimensions": [
+        {
+          "dimension": "population",
+          "passed": true,
+          "failures": [],
+          "expected": {
+            "complete": true,
+            "current": ""
+          },
+          "actual": {
+            "complete": false,
+            "current": "adults aged 40-65 with type 2 diabetes",
+            "question": "Which specific geographic setting or context do you mean?"
+          },
+          "raw": null
+        },
+        {
+          "dimension": "clinical_condition",
+          "passed": true,
+          "failures": [],
+          "expected": {
+            "complete": true,
+            "current": "type 2 diabetes"
+          },
+          "actual": {
+            "complete": true,
+            "current": "type 2 diabetes",
+            "question": ""
+          },
+          "raw": null
+        },
+        {
+          "dimension": "intervention",
+          "passed": true,
+          "failures": [],
+          "expected": {
+            "complete": true,
+            "current": ""
+          },
+          "actual": {
+            "complete": false,
+            "current": "metformin",
+            "question": "Which specific intervention do you mean? I have extracted 'metformin' from your query. Could you provide more details such as the dosing, frequency, and duration?"
+          },
+          "raw": null
+        },
+        {
+          "dimension": "comparator",
+          "passed": true,
+          "failures": [],
+          "expected": {
+            "complete": true,
+            "current": "placebo"
+          },
+          "actual": {
+            "complete": true,
+            "current": "placebo",
+            "question": ""
+          },
+          "raw": null
+        },
+        {
+          "dimension": "outcome",
+          "passed": true,
+          "failures": [],
+          "expected": {
+            "complete": true,
+            "current": ""
+          },
+          "actual": {
+            "complete": true,
+            "current": "HbA1c reduction at 6 months",
+            "question": ""
+          },
+          "raw": null
+        },
+        {
+          "dimension": "study_type",
+          "passed": true,
+          "failures": [],
+          "expected": {
+            "complete": true,
+            "current": "randomised controlled trials"
+          },
+          "actual": {
+            "complete": true,
+            "current": "randomised controlled trials",
+            "question": ""
+          },
+          "raw": null
+        }
+      ],
+      "synthesis": {
+        "passed": true,
+        "failures": [],
+        "actual": {
+          "integrated_statement": "Effect of metformin versus placebo on HbA1c reduction at 6 months in adults aged 40-65 with type 2 diabetes in primary care settings \u2014 randomised controlled trials only",
+          "dimensions_specifications": {
+            "population": "adults aged 40-65 with type 2 diabetes",
+            "clinical_condition": "type 2 diabetes",
+            "intervention": "metformin",
+            "comparator": "placebo",
+            "outcome": "HbA1c reduction at 6 months",
+            "study_type": "randomised controlled trials"
+          },
+          "search_optimized": {
+            "semantic": "Randomized controlled trials evaluating the effect of metformin compared to placebo on HbA1c reduction at 6 months in adults aged 40-65 with type 2 diabetes, conducted in primary care settings.",
+            "keyword": {
+              "structured": "((\"metformin\" OR \"biguanide\") AND (\"placebo\" OR \"control\")) AND ((\"type 2 diabetes\" OR \"T2DM\" OR \"non-insulin-dependent diabetes mellitus\" OR NIDDM) AND (adults OR patients)) AND (\"HbA1c reduction\" OR \"glycated hemoglobin reduction\" OR \"glycosylated hemoglobin reduction\") AND (\"primary care\" OR \"general practice\" OR \"family medicine\")",
+              "phrases": [
+                "metformin versus placebo",
+                "type 2 diabetes",
+                "HbA1c reduction",
+                "adults aged 40-65",
+                "primary care settings"
+              ],
+              "terms": {
+                "required": [
+                  "metformin",
+                  "placebo",
+                  "T2DM"
+                ],
+                "optional": [
+                  "HbA1c",
+                  "glycated hemoglobin",
+                  "primary care",
+                  "randomized controlled trials",
+                  "adults aged 40-65"
+                ],
+                "excluded": [
+                  "insulin-dependent diabetes",
+                  "type 1 diabetes"
+                ]
+              }
+            }
+          },
+          "search_filters": {
+            "publication_years": "",
+            "venues": [],
+            "authors": [],
+            "publication_types": [
+              "Randomized controlled trial"
+            ],
+            "fields_of_study": [
+              "Medicine"
+            ]
+          },
+          "terminology": {
+            "primary_terms": [
+              "metformin",
+              "placebo",
+              "type 2 diabetes",
+              "HbA1c reduction"
+            ],
+            "synonyms": {
+              "metformin": [
+                "biguanide",
+                "Fortamet",
+                "Glumetza",
+                "Glucophage"
+              ],
+              "placebo": [
+                "control",
+                "dummy treatment"
+              ],
+              "type 2 diabetes": [
+                "T2DM",
+                "non-insulin-dependent diabetes mellitus",
+                "NIDDM"
+              ],
+              "HbA1c reduction": [
+                "glycated hemoglobin reduction",
+                "glycosylated hemoglobin reduction"
+              ]
+            },
+            "domain_specific": [],
+            "colloquial": []
+          }
+        },
+        "raw": null
+      }
+    }
+  ]
+}

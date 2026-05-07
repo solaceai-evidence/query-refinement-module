@@ -3,8 +3,11 @@
 from __future__ import annotations
 
 import asyncio
+import logging
 import uuid
 from typing import Callable, Optional
+
+logger = logging.getLogger(__name__)
 
 from .api_models import (
     InteractionRequest,
@@ -72,7 +75,16 @@ class QueryRefinementService:
             request.refinement_framework,
         )
 
-        await asyncio.to_thread(self._storage.save_session, session_id, session)
+        try:
+            await asyncio.to_thread(self._storage.save_session, session_id, session)
+        except Exception as exc:
+            logger.error(
+                "Failed to save new session to storage: session_id=%s error=%s",
+                session_id,
+                exc,
+                exc_info=True,
+            )
+            raise
 
         summary = self._manager.get_initialization_summary(session)
         next_prompt = self._build_next_prompt(session)
@@ -90,9 +102,20 @@ class QueryRefinementService:
     async def submit_user_message(self, request: InteractionRequest) -> InteractionResponse:
         """Process a user message (command or free-form response)."""
 
-        session: RefinementSession = await asyncio.to_thread(
-            self._storage.load_session, request.session_id
-        )
+        try:
+            session: RefinementSession = await asyncio.to_thread(
+                self._storage.load_session, request.session_id
+            )
+        except KeyError:
+            raise
+        except Exception as exc:
+            logger.error(
+                "Failed to load session from storage: session_id=%s error=%s",
+                request.session_id,
+                exc,
+                exc_info=True,
+            )
+            raise
 
         message = request.message.strip()
         invalidated: list[str] = []
@@ -125,7 +148,16 @@ class QueryRefinementService:
         next_prompt = self._build_next_prompt(session)
         session_complete = session.is_complete()
 
-        await asyncio.to_thread(self._storage.save_session, request.session_id, session)
+        try:
+            await asyncio.to_thread(self._storage.save_session, request.session_id, session)
+        except Exception as exc:
+            logger.error(
+                "Failed to save session to storage after message: session_id=%s error=%s",
+                request.session_id,
+                exc,
+                exc_info=True,
+            )
+            raise
 
         metadata = request.metadata or {}
 
@@ -143,9 +175,20 @@ class QueryRefinementService:
     async def get_session_status(self, session_id: str) -> SessionStatusResponse:
         """Fetch a point-in-time view of the session state."""
 
-        session: RefinementSession = await asyncio.to_thread(
-            self._storage.load_session, session_id
-        )
+        try:
+            session: RefinementSession = await asyncio.to_thread(
+                self._storage.load_session, session_id
+            )
+        except KeyError:
+            raise
+        except Exception as exc:
+            logger.error(
+                "Failed to load session from storage: session_id=%s error=%s",
+                session_id,
+                exc,
+                exc_info=True,
+            )
+            raise
         summary = self._manager.get_initialization_summary(session)
         next_prompt = self._build_next_prompt(session)
         history = session.get_full_conversation() if summary["total_aspects"] else None
@@ -177,7 +220,12 @@ class QueryRefinementService:
                 question = step.refinement_aspect.get_evaluation_instructions_prompt(
                     statement=session.original_query
                 )
-            except Exception:  # pragma: no cover - best effort fallback
+            except Exception as exc:  # pragma: no cover - best effort fallback
+                logger.warning(
+                    "Failed to build evaluation instructions prompt for aspect '%s': %s",
+                    step.refinement_aspect.name,
+                    exc,
+                )
                 question = step.refinement_aspect.description
 
         dependency_context = {

@@ -8,11 +8,6 @@ from query_refinement_module.core import QueryRefinementManager
 from query_refinement_module.providers import LiteLLMProvider
 from query_refinement_module.settings import LLMSettings
 from query_refinement_module.schema import registry
-from query_refinement_module.rate_limiter import (
-    TokenBucketRateLimiter,
-    BackoffStrategy,
-)
-from query_refinement_module.interfaces import RateLimitConfig
 from .config import get_settings
 from .session_manager import SessionManager, InMemorySessionManager
 

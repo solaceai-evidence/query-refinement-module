@@ -483,10 +483,13 @@ def delete_refinement_steps_by_aspects(
     
     deleted_count = len(steps_to_delete)
     
-    for step in steps_to_delete:
-        db.delete(step)
-    
-    db.commit()
+    try:
+        for step in steps_to_delete:
+            db.delete(step)
+        db.commit()
+    except Exception:
+        db.rollback()
+        raise
     return deleted_count
 
 

@@ -83,7 +83,11 @@ async def get_current_user(
 
 
 def _get_or_create_integration_service_user(db: Session):
-    """Return the configured integration service user, creating it on first use."""
+    """Return the configured integration service user, creating it on first use.
+
+    The integration user is a regular (non-superuser) account.  Framework access
+    must be granted explicitly via the admin ``user_framework_access`` table.
+    """
     username = settings.integration_service_username
     user = get_user_by_username(db, username=username)
 
@@ -94,11 +98,6 @@ def _get_or_create_integration_service_user(db: Session):
             password=secrets.token_urlsafe(48),
             name="API Integration Service",
         )
-
-    if not user.is_superuser:
-        user.is_superuser = True
-        db.commit()
-        db.refresh(user)
 
     return user
 

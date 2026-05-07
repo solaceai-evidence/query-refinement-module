@@ -145,7 +145,7 @@ class UserContext(BaseModel):
     user_type: str = Field(description="Type of user (e.g., 'MPH student', 'researcher')")
     context: str = Field(description="Description of user's situation/needs")
     tone: str = Field(default="professional", description="Response tone: educational, professional, pragmatic")
-    complexity: str = Field(default="intermediate", description="Complexity level: novice, intermediate, advanced, expert")
+    complexity: str = Field(default="intermediate", description="Complexity level: intermediate, advanced, expert")
     examples_from: str = Field(default="general", description="Domain for examples")
     constraints: List[str] = Field(default_factory=list, description="User constraints (timeline, resources, etc.)")
     pitfalls: List[str] = Field(default_factory=list, description="Common pitfalls to watch for")

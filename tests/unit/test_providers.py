@@ -1,6 +1,5 @@
 import json
 import logging
-import pickle
 from pathlib import Path
 
 import pytest
@@ -134,7 +133,7 @@ def test_redis_session_storage_basic_operations(monkeypatch):
     storage.save_session(session_id, payload)
 
     key = "ns:xyz"
-    assert client.store[key] == pickle.dumps(payload, protocol=pickle.HIGHEST_PROTOCOL)
+    assert client.store[key] == json.dumps(payload)
     assert storage.session_exists(session_id)
     assert storage.load_session(session_id) == payload
 
@@ -225,6 +224,69 @@ def test_file_tracing_provider_writes_json(tmp_path):
     assert operations[0]["event"] == "start"
     assert operations[1]["status"] == "success"
     assert events[0]["event"] == "step_ready"
+
+
+def test_file_tracing_provider_includes_trace_context(tmp_path):
+    """FileTracingProvider embeds request_id/trace_id from ContextVars into every record."""
+    from query_refinement_module.tracing import set_request_id, set_trace_id, clear_trace_context
+
+    set_request_id("abc12345")
+    set_trace_id("trace-uuid-test")
+    try:
+        trace_dir = tmp_path / "logs_ctx"
+        tracer = FileTracingProvider(str(trace_dir))
+
+        with tracer.trace_operation("op_with_context"):
+            pass
+
+        tracer.log_event("event_with_context", metadata={"x": 1})
+    finally:
+        clear_trace_context()
+
+    operations = [
+        json.loads(line)
+        for line in (trace_dir / "trace_operations.log").read_text().splitlines()
+        if line
+    ]
+    events = [
+        json.loads(line)
+        for line in (trace_dir / "trace_events.log").read_text().splitlines()
+        if line
+    ]
+
+    for record in operations + events:
+        assert record.get("request_id") == "abc12345"
+        assert record.get("trace_id") == "trace-uuid-test"
+
+
+def test_file_tracing_provider_omits_trace_context_when_not_set(tmp_path):
+    """FileTracingProvider omits request_id/trace_id keys when ContextVars are unset."""
+    from query_refinement_module.tracing import clear_trace_context
+
+    clear_trace_context()
+
+    trace_dir = tmp_path / "logs_no_ctx"
+    tracer = FileTracingProvider(str(trace_dir))
+
+    with tracer.trace_operation("op_no_context"):
+        pass
+
+    tracer.log_event("event_no_context")
+
+    operations = [
+        json.loads(line)
+        for line in (trace_dir / "trace_operations.log").read_text().splitlines()
+        if line
+    ]
+    events = [
+        json.loads(line)
+        for line in (trace_dir / "trace_events.log").read_text().splitlines()
+        if line
+    ]
+
+    for record in operations + events:
+        assert "request_id" not in record
+        assert "trace_id" not in record
 
 
 def test_configure_file_logging_creates_directory(tmp_path):

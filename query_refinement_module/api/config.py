@@ -57,12 +57,24 @@ class Settings(BaseSettings):
     
     @model_validator(mode='after')
     def validate_secret_key_in_production(self) -> 'Settings':
-        """Ensure SECRET_KEY is not the default in production."""
-        if self.environment == "production" and self.secret_key == "your-secret-key-change-this-in-production":
-            raise ValueError(
-                "SECRET_KEY must be set to a secure value in production. "
-                "Generate one with: python -c \"import secrets; print(secrets.token_urlsafe(32))\""
-            )
+        """Ensure SECRET_KEY is not the default or weak in production."""
+        _INSECURE_DEFAULTS = {
+            "your-secret-key-change-this-in-production",
+            "please-change-this-secret-key-in-production",
+            "generate-with-python-c-import-secrets-print-secrets-token-urlsafe-32",
+        }
+        if self.environment == "production":
+            key = self.secret_key or ""
+            if not key or key in _INSECURE_DEFAULTS:
+                raise ValueError(
+                    "SECRET_KEY must be set to a secure value in production. "
+                    "Generate one with: python -c \"import secrets; print(secrets.token_urlsafe(32))\""
+                )
+            if len(key) < 32:
+                raise ValueError(
+                    "SECRET_KEY must be at least 32 characters long. "
+                    "Generate one with: python -c \"import secrets; print(secrets.token_urlsafe(32))\""
+                )
         return self
     algorithm: str = "HS256"
     access_token_expire_minutes: int = 480  # 8 hours (increased from 30 minutes)

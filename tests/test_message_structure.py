@@ -58,9 +58,12 @@ def test_message_structure_with_user_context():
     assert dimension_msg is not None, "Should contain current dimension specification"
     assert aspect.description in dimension_msg["content"], "Should include dimension description"
     
-    # 4. Last message should be user query
-    assert messages[-1]["role"] == "user", "Last message should be user query"
-    assert query in messages[-1]["content"], "Should contain original query"
+    # 4. A user message containing the query must be present.
+    # Note: a style-cue system message may appear after the user query (recency-bias
+    # counter for open-weight models), so we search rather than checking messages[-1].
+    user_msgs = [m for m in messages if m["role"] == "user"]
+    assert user_msgs, "Should contain a user query message"
+    assert query in user_msgs[-1]["content"], "Should contain original query"
 
 
 def test_message_structure_with_dependencies():

@@ -138,8 +138,13 @@ def test_restore_session_no_generated_question_leaves_followup_question_unset():
     assert population_step.follow_up_question is None
 
 
-def test_restore_session_followup_history_takes_priority_over_generated_question():
-    """When followup history exists, its last entry is used for follow_up_question, not generated_question."""
+def test_generated_question_takes_priority_over_followup_history():
+    """generated_question always wins: it holds the most recent LLM-issued question.
+
+    When followup history exists AND generated_question is set, the latter is
+    the active (possibly unanswered) question and must be restored so the user
+    is not shown a stale prompt that has already been answered.
+    """
     session = _make_session()
 
     last_followup = SimpleNamespace(question="Answered followup question?", answer="adults")
@@ -152,11 +157,11 @@ def test_restore_session_followup_history_takes_priority_over_generated_question
             was_skipped=False,
             user_ended_early=False,
             followup_history=[last_followup],
-            generated_question="This should be ignored when followups exist",
+            generated_question="This is the current active question",
         )
     ]
 
     _restore_session_from_db_state(session, db_steps)
 
     population_step = session.steps[0]
-    assert population_step.follow_up_question == "Answered followup question?"
+    assert population_step.follow_up_question == "This is the current active question"

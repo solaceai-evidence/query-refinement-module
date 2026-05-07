@@ -1,0 +1,33 @@
+[14/15] Running: Prior-context extraction ...
+  -> FAIL: ['complete expected True got False', "current expected 'urban clinics' got ''", "question expected '' got 'Which specific setting do you mean?'"]
+{
+  "prompt_variant": "open_llm",
+  "model": "ollama/qwen2.5:72b",
+  "total": 1,
+  "passed": 0,
+  "failed": 1,
+  "results": [
+    {
+      "id": "14",
+      "category": "completed-dimension extraction",
+      "name": "Prior-context extraction",
+      "passed": false,
+      "failures": [
+        "complete expected True got False",
+        "current expected 'urban clinics' got ''",
+        "question expected '' got 'Which specific setting do you mean?'"
+      ],
+      "expected": {
+        "complete": true,
+        "current": "urban clinics",
+        "question": ""
+      },
+      "actual": {
+        "complete": false,
+        "current": "",
+        "question": "Which specific setting do you mean?"
+      },
+      "raw": "```json\n{\"complete\": false, \"current\": \"\", \"question\": \"Which specific setting do you mean?\"}\n```"
+    }
+  ]
+}

@@ -138,10 +138,15 @@ class KeywordSupportResponse(BaseModel):
     phrases: List[str] = Field(default_factory=list)
     required: List[str] = Field(default_factory=list)
     optional: List[str] = Field(default_factory=list)
+    excluded: List[str] = Field(default_factory=list)
 
 
 class FilterSuggestionResponse(BaseModel):
     """Structured output for constrained filter suggestions."""
+    publication_years: str = Field(default="", description="Year range in YYYY-YYYY or YYYY- format, empty if not stated")
+    venues: List[str] = Field(default_factory=list, description="Journal or conference names, empty if not stated")
+    authors: List[str] = Field(default_factory=list, description="Author names, empty if not stated")
+    publication_types: List[str] = Field(default_factory=list, description="Publication types e.g. randomised controlled trial, systematic review")
     fields_of_study: List[str] = Field(default_factory=list)
 
 

@@ -19,6 +19,10 @@ _ENV_ENABLE_CIRCUIT_BREAKER = "QUERY_REFINEMENT_ENABLE_CIRCUIT_BREAKER"
 _ENV_CONSTRAINED_DECODING = "QUERY_REFINEMENT_LLM_CONSTRAINED_DECODING"
 _ENV_CIRCUIT_BREAKER_FAILURE_THRESHOLD = "QUERY_REFINEMENT_CIRCUIT_BREAKER_FAILURE_THRESHOLD"
 _ENV_CIRCUIT_BREAKER_RECOVERY_TIMEOUT = "QUERY_REFINEMENT_CIRCUIT_BREAKER_RECOVERY_TIMEOUT"
+_ENV_RATE_LIMIT_RPM = "QUERY_REFINEMENT_LLM_RATE_LIMIT_RPM"
+_ENV_RATE_LIMIT_TPM = "QUERY_REFINEMENT_LLM_RATE_LIMIT_TPM"
+_ENV_MAX_CONCURRENT = "QUERY_REFINEMENT_LLM_MAX_CONCURRENT"
+_ENV_ADAPTIVE_RATE_LIMIT = "QUERY_REFINEMENT_LLM_ADAPTIVE_RATE_LIMIT"
 
 
 def _parse_float(value: Optional[str], default: float) -> float:
@@ -37,6 +41,13 @@ def _parse_int(value: Optional[str]) -> Optional[int]:
         return int(value)
     except ValueError as exc:  # pragma: no cover - configuration error surface
         raise ValueError(f"Invalid integer value '{value}' for LLM configuration") from exc
+
+
+def _parse_optional_string(value: Optional[str]) -> Optional[str]:
+    if value is None:
+        return None
+    normalized = value.strip()
+    return normalized or None
 
 
 def _parse_completion_kwargs(raw: Optional[str]) -> Dict[str, Any]:
@@ -82,6 +93,11 @@ class LLMSettings:
     circuit_breaker_failure_threshold: int = 5
     circuit_breaker_recovery_timeout: float = 60.0
     terminal_reinforcement_threshold: int = 3  # Hardcoded optimal value (data-driven from 3,777 dimensions)
+    # Rate limiting for proprietary LLM APIs (0 / None = unlimited)
+    rate_limit_rpm: int = 0
+    rate_limit_tpm: Optional[int] = None
+    max_concurrent_requests: int = 20
+    adaptive_rate_limit: bool = False
 
     @classmethod
     def from_env(cls, *, require_model: bool = True) -> "LLMSettings":
@@ -98,16 +114,20 @@ class LLMSettings:
                 raise RuntimeError(
                     f"Environment variable {_ENV_MODEL} must be set to the default model id."
                 )
-        api_key = os.getenv(_ENV_API_KEY)
-        api_base = os.getenv(_ENV_API_BASE)
+        api_key = _parse_optional_string(os.getenv(_ENV_API_KEY))
+        api_base = _parse_optional_string(os.getenv(_ENV_API_BASE))
         temperature = _parse_float(os.getenv(_ENV_TEMPERATURE), default=0.0)
         max_tokens = _parse_int(os.getenv(_ENV_MAX_TOKENS))
         completion_kwargs = _parse_completion_kwargs(os.getenv(_ENV_COMPLETION_KWARGS))
         enable_prompt_caching = _parse_bool(os.getenv(_ENV_ENABLE_PROMPT_CACHING), default=True)
         enable_circuit_breaker = _parse_bool(os.getenv(_ENV_ENABLE_CIRCUIT_BREAKER), default=True)
         constrained_decoding = _parse_bool(os.getenv(_ENV_CONSTRAINED_DECODING), default=False)
-        circuit_breaker_failure_threshold = int(os.getenv(_ENV_CIRCUIT_BREAKER_FAILURE_THRESHOLD, "5"))
+        circuit_breaker_failure_threshold = _parse_int(os.getenv(_ENV_CIRCUIT_BREAKER_FAILURE_THRESHOLD, "5")) or 5
         circuit_breaker_recovery_timeout = float(os.getenv(_ENV_CIRCUIT_BREAKER_RECOVERY_TIMEOUT, "60.0"))
+        rate_limit_rpm = _parse_int(os.getenv(_ENV_RATE_LIMIT_RPM, "0")) or 0
+        rate_limit_tpm_raw = _parse_int(os.getenv(_ENV_RATE_LIMIT_TPM))
+        max_concurrent_requests = _parse_int(os.getenv(_ENV_MAX_CONCURRENT, "20")) or 20
+        adaptive_rate_limit = _parse_bool(os.getenv(_ENV_ADAPTIVE_RATE_LIMIT), default=False)
 
         return cls(
             model=model,
@@ -122,6 +142,10 @@ class LLMSettings:
             circuit_breaker_failure_threshold=circuit_breaker_failure_threshold,
             circuit_breaker_recovery_timeout=circuit_breaker_recovery_timeout,
             # terminal_reinforcement_threshold uses class default of 3 (data-driven optimal value)
+            rate_limit_rpm=rate_limit_rpm,
+            rate_limit_tpm=rate_limit_tpm_raw,
+            max_concurrent_requests=max_concurrent_requests,
+            adaptive_rate_limit=adaptive_rate_limit,
         )
 
     def as_provider_kwargs(self) -> Dict[str, Any]:
@@ -136,6 +160,16 @@ class LLMSettings:
                 recovery_timeout=self.circuit_breaker_recovery_timeout,
             )
         
+        rate_limit_config = None
+        if self.rate_limit_rpm > 0 or self.rate_limit_tpm is not None:
+            from query_refinement_module.interfaces import RateLimitConfig
+            rate_limit_config = RateLimitConfig(
+                requests_per_minute=self.rate_limit_rpm,
+                tokens_per_minute=self.rate_limit_tpm,
+                max_concurrent_requests=self.max_concurrent_requests,
+                adaptive_backoff=self.adaptive_rate_limit,
+            )
+
         return {
             "default_model": self.model,
             "api_key": self.api_key,
@@ -145,6 +179,8 @@ class LLMSettings:
             "enable_circuit_breaker": self.enable_circuit_breaker,
             "constrained_decoding": self.constrained_decoding,
             "circuit_breaker_config": circuit_breaker_config,
+            "rate_limit_config": rate_limit_config,
+            "max_concurrent_requests": self.max_concurrent_requests,
         }
 
     def as_analyzer_kwargs(self) -> Dict[str, Any]:

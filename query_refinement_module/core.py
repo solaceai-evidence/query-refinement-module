@@ -46,6 +46,7 @@ This module includes comprehensive logging and tracing support:
 """
 
 import asyncio
+import time
 from datetime import datetime, timezone
 import json
 import logging
@@ -147,6 +148,36 @@ FIELDS_OF_STUDY_PERMITTED: List[str] = [
     "Public Health",
     "Sociology",
 ]
+
+PUBLICATION_TYPES_PERMITTED: frozenset = frozenset([
+    "Before and after study",
+    "Case control study",
+    "Case report",
+    "Case series",
+    "Clinical study",
+    "Clinical trial",
+    "Cohort study",
+    "Comparative study",
+    "Consensus conference",
+    "Cross-sectional study",
+    "Diagnostic test accuracy study",
+    "Evaluation study",
+    "Government document",
+    "Guideline",
+    "Living review",
+    "Meta-analysis",
+    "Narrative review",
+    "Observational study",
+    "Pilot study",
+    "Policy document",
+    "Quality improvement study",
+    "Randomized controlled trial",
+    "Rapid review",
+    "Review",
+    "Scoping review",
+    "Systematic review",
+    "Validation study",
+])
 
 # =======
 # User Control Commands
@@ -1425,24 +1456,6 @@ class QueryRefinementManager:
             fields_of_study=[],
         )
 
-    def _merge_search_filters(
-        self,
-        llm_filters: Optional[SearchFilters],
-        deterministic_filters: SearchFilters,
-    ) -> SearchFilters:
-        merged_filters = llm_filters.model_copy(deep=True) if llm_filters is not None else SearchFilters()
-
-        if deterministic_filters.publication_years:
-            merged_filters.publication_years = deterministic_filters.publication_years
-        if deterministic_filters.venues:
-            merged_filters.venues = deterministic_filters.venues
-        if deterministic_filters.authors:
-            merged_filters.authors = deterministic_filters.authors
-        if deterministic_filters.publication_types:
-            merged_filters.publication_types = deterministic_filters.publication_types
-
-        return merged_filters
-
     # ------------------------------------------------------------------
     # Split-call helpers (workstream 5)
     # ------------------------------------------------------------------
@@ -1451,18 +1464,21 @@ class QueryRefinementManager:
         self,
         integrated_statement: str,
         accepted_dimensions: Dict[str, Any],
-    ) -> Dict[str, List[str]]:
-        """Return a concept inventory keyed by accepted dimension values.
+    ) -> List[str]:
+        """Return an ordered list of concept strings for the terminology call.
 
-        Keys are the serialized values of accepted (non-skipped) dimensions.
-        Values are empty lists; the terminology call populates synonyms.
+        Extracts one entry per accepted (non-skipped) dimension value so the
+        terminology model knows exactly which concepts to produce synonyms for.
+        Values are serialised to strings and deduplicated.
         """
-        inventory: Dict[str, List[str]] = {}
+        seen: set = set()
+        concepts: List[str] = []
         for value in accepted_dimensions.values():
             serialized = self._serialize_dimension_value(value)
-            if serialized:
-                inventory[serialized] = []
-        return inventory
+            if serialized and serialized not in seen:
+                seen.add(serialized)
+                concepts.append(serialized)
+        return concepts
 
     @staticmethod
     def _compile_boolean_query(
@@ -1471,20 +1487,50 @@ class QueryRefinementManager:
     ) -> str:
         """Compile a Boolean AND-of-OR query from required terms and their synonyms.
 
-        Each required term becomes an OR-block with up to 3 additional synonyms.
+        Each required term becomes an OR-block with up to 5 additional synonyms.
+        Single-word root-like terms get a truncated wildcard variant added.
         Blocks are joined with AND.
         """
         if not required:
             return ""
+
+        def _maybe_truncate(term: str) -> Optional[str]:
+            """Return a wildcard form for root words likely to have inflectional variants."""
+            # Only apply to single lowercase words of 5+ characters with no special chars
+            if " " in term or not term.replace("-", "").isalpha() or len(term) < 5:
+                return None
+            # Don't truncate if already ends in * or if it's an abbreviation (all caps)
+            if term.endswith("*") or term.isupper():
+                return None
+            # Common inflectional suffixes — truncate to stem
+            for suffix in ("isation", "ization", "ations", "ation", "ising", "izing",
+                           "ised", "ized", "ises", "izes", "ness", "ment", "ing",
+                           "tion", "ers", "ed", "es", "s"):
+                if term.endswith(suffix) and len(term) - len(suffix) >= 4:
+                    return term[: len(term) - len(suffix)] + "*"
+            return None
+
+        def _fmt(v: str) -> str:
+            return f'"{v}"' if " " in v else v
+
         blocks = []
         for term in required:
-            variants = [term] + synonyms.get(term, [])[:3]
-            if len(variants) == 1:
-                blocks.append(f'"{term}"' if " " in term else term)
+            variants: List[str] = [term] + synonyms.get(term, [])[:5]
+            # Add wildcard form of the base term if useful and not already covered
+            trunc = _maybe_truncate(term)
+            if trunc and trunc not in variants:
+                variants.append(trunc)
+            # Deduplicate preserving order
+            seen: set = set()
+            deduped = []
+            for v in variants:
+                if v not in seen:
+                    seen.add(v)
+                    deduped.append(v)
+            if len(deduped) == 1:
+                blocks.append(_fmt(deduped[0]))
             else:
-                inner = " OR ".join(
-                    f'"{v}"' if " " in v else v for v in variants
-                )
+                inner = " OR ".join(_fmt(v) for v in deduped)
                 blocks.append(f"({inner})")
         return " AND ".join(blocks)
 
@@ -1579,10 +1625,10 @@ class QueryRefinementManager:
     def _validate_split_result(call_name: str, result: Any) -> Optional[str]:
         """Return an error string if ``result`` fails field-level constraints, else None.
 
-        Only generated fields are checked.  Deterministic fields
-        (``dimensions_specifications``, ``publication_years``, ``venues``,
-        ``authors``, ``publication_types``) are never produced by the LLM so
-        they are not in scope here.
+        For ``filter_resolution``, all five filter fields are validated:
+        - ``fields_of_study`` must be from FIELDS_OF_STUDY_PERMITTED
+        - ``publication_types`` must be from PUBLICATION_TYPES_PERMITTED
+        - ``publication_years`` must match YYYY-YYYY or YYYY- format
         """
         if call_name == "statement":
             val = getattr(result, "integrated_statement", None)
@@ -1616,9 +1662,10 @@ class QueryRefinementManager:
         elif call_name == "keyword_support":
             required = getattr(result, "required", []) or []
             optional = getattr(result, "optional", []) or []
+            excluded = getattr(result, "excluded", []) or []
             phrases = getattr(result, "phrases", []) or []
             issues = []
-            for fname, items in (("phrases", phrases), ("required", required), ("optional", optional)):
+            for fname, items in (("phrases", phrases), ("required", required), ("optional", optional), ("excluded", excluded)):
                 bad = [v for v in items if not isinstance(v, str) or not v.strip()]
                 if bad:
                     issues.append(f"{fname} contains empty items: {bad[:3]}")
@@ -1633,12 +1680,24 @@ class QueryRefinementManager:
             bad = [f for f in fields if f not in FIELDS_OF_STUDY_PERMITTED]
             if bad:
                 return f"fields_of_study not in permitted list: {bad}"
+            years = getattr(result, "publication_years", "") or ""
+            if years and not re.match(r'^(19|20)\d{2}(-((19|20)\d{2})?)?$', years):
+                return f"publication_years format invalid (expected YYYY-YYYY or YYYY-): {years!r}"
+            pub_types = getattr(result, "publication_types", []) or []
+            bad_types = [t for t in pub_types if t not in PUBLICATION_TYPES_PERMITTED]
+            if bad_types:
+                return f"publication_types not in permitted list: {bad_types}"
 
         return None  # valid
 
     @staticmethod
-    def _build_repair_prompt(user_prompt: str, call_name: str, error: str) -> str:
-        """Append a targeted repair instruction to an existing user prompt."""
+    def _build_repair_prompt(user_prompt: str, call_name: str, error: str, previous_output: str = "") -> str:
+        """Append a targeted repair instruction to an existing user prompt.
+
+        If ``previous_output`` is provided it is shown to the model so the
+        repair response can address specific problems rather than producing a
+        generic retry.
+        """
         _INSTRUCTIONS: Dict[str, str] = {
             "statement": (
                 "REPAIR: The previous response was rejected. "
@@ -1658,20 +1717,25 @@ class QueryRefinementManager:
             ),
             "keyword_support": (
                 "REPAIR: The previous keyword lists contained invalid entries. "
-                "Each item in phrases, required, and optional must be a non-empty string. "
+                "Each item in phrases, required, optional, and excluded must be a non-empty string. "
                 "No term may appear in both `required` and `optional`."
             ),
             "filter_resolution": (
-                "REPAIR: Some `fields_of_study` values were not in the permitted list. "
-                "Return only values that appear verbatim in the permitted-values list above. "
-                "If none apply, return an empty list."
+                "REPAIR: Some filter values were invalid. "
+                "Return only fields_of_study values that appear verbatim in the permitted-values list. "
+                "Return only publication_types values that appear verbatim in the permitted-values list. "
+                "For publication_years use YYYY-YYYY format or empty string."
             ),
         }
         instruction = _INSTRUCTIONS.get(
             call_name,
             f"REPAIR: Validation failed. Correct the output.",
         )
-        return f"{user_prompt}\n\n{instruction}\nValidation error detail: {error}"
+        parts = [user_prompt]
+        if previous_output:
+            parts.append(f"## Your previous output (invalid)\n\n{previous_output[:600]}")
+        parts.append(f"{instruction}\nValidation error detail: {error}")
+        return "\n\n".join(parts)
 
     async def _run_split_call(
         self,
@@ -1689,13 +1753,9 @@ class QueryRefinementManager:
         Returns ``(parsed_model, accumulated_metadata)`` on success, or
         ``(None, accumulated_metadata)`` when both the initial call and the
         repair attempt fail or remain invalid after repair.
-
-        Repair scope: only generated fields are validated and repaired.
-        Deterministic fields (``dimensions_specifications``, ``publication_years``,
-        ``venues``, ``authors``, ``publication_types``) are never passed to any
-        LLM call, so the repair path cannot reach or overwrite them.
         """
         logger.info("Split synthesis call: %s", call_name)
+        t0 = time.monotonic()
         parsed, metadata = await self._execute_split_call(
             system_prompt, user_prompt, response_model, call_name,
             model=model, temperature=temperature, max_tokens=max_tokens,
@@ -1706,9 +1766,19 @@ class QueryRefinementManager:
 
         error = self._validate_split_result(call_name, parsed)
         if error is None:
+            duration_ms = round((time.monotonic() - t0) * 1000)
             self.trace_emitter.emit(
                 f"split_call_{call_name}_ok",
-                metadata={"tokens": (metadata or {}).get("completion_tokens", 0)},
+                metadata={
+                    "tokens": (metadata or {}).get("completion_tokens", 0),
+                    "prompt_tokens": (metadata or {}).get("prompt_tokens", 0),
+                    "total_tokens": (metadata or {}).get("total_tokens", 0),
+                    "duration_ms": duration_ms,
+                },
+            )
+            logger.info(
+                "Split synthesis call '%s' completed in %dms (completion_tokens=%d)",
+                call_name, duration_ms, (metadata or {}).get("completion_tokens", 0),
             )
             return parsed, metadata
 
@@ -1722,7 +1792,10 @@ class QueryRefinementManager:
             metadata={"error": error},
         )
 
-        repair_prompt = self._build_repair_prompt(user_prompt, call_name, error)
+        repair_prompt = self._build_repair_prompt(
+            user_prompt, call_name, error,
+            previous_output=parsed.model_dump_json(indent=2) if parsed is not None else "",
+        )
         repaired, repair_meta = await self._execute_split_call(
             system_prompt, repair_prompt, response_model, f"{call_name}_repair",
             model=model, temperature=temperature, max_tokens=max_tokens,
@@ -1878,19 +1951,24 @@ class QueryRefinementManager:
 
         # --- Assemble ---------------------------------------------------
         # Deterministic invariant: dimensions_specifications and the four
-        # deterministic filter fields (publication_years, venues, authors,
-        # publication_types) are assembled here from session state and
-        # deterministic_filters — they are never passed to any LLM call,
-        # so the repair path in _run_split_call cannot reach or overwrite them.
+        # Filter fields: prefer LLM extraction (filt_result), fall back to
+        # deterministic regex for any field the LLM left empty.
         phrases: List[str] = kw_result.phrases if kw_result else []
         required: List[str] = kw_result.required if kw_result else []
         optional: List[str] = kw_result.optional if kw_result else []
+        excluded: List[str] = kw_result.excluded if kw_result else []
         fields_of_study: List[str] = filt_result.fields_of_study if filt_result else []
         semantic_query: str = sem_result.semantic if sem_result else integrated_statement
         structured_query: str = self._compile_boolean_query(required, terminology_synonyms)
 
         # dimensions_specifications is always deterministic — never from the LLM
         det_dimensions = self._assemble_dimensions_specifications(session) or {}
+
+        # Publication filters: use LLM values when present, regex as fallback
+        pub_years = (filt_result.publication_years if filt_result else "") or deterministic_filters.publication_years
+        venues = (filt_result.venues if filt_result else []) or deterministic_filters.venues
+        authors = (filt_result.authors if filt_result else []) or deterministic_filters.authors
+        pub_types = (filt_result.publication_types if filt_result else []) or deterministic_filters.publication_types
 
         response = QueryRefinementResponse(
             integrated_statement=integrated_statement,
@@ -1903,19 +1981,23 @@ class QueryRefinementManager:
                     terms=SearchTerms(
                         required=required,
                         optional=optional,
-                        excluded=[],
+                        excluded=excluded,
                     ),
                 ),
             ),
             search_filters=SearchFilters(
-                publication_years=deterministic_filters.publication_years,
-                venues=deterministic_filters.venues,
-                authors=deterministic_filters.authors,
-                publication_types=deterministic_filters.publication_types,
+                publication_years=pub_years,
+                venues=venues,
+                authors=authors,
+                publication_types=pub_types,
                 fields_of_study=fields_of_study,
             ),
             terminology=Terminology(
+                primary_terms=required or None,
                 synonyms=terminology_synonyms,
+                domain_specific=sorted(
+                    k for k in terminology_synonyms if k not in set(required)
+                ) or None,
             ),
         )
         return response, agg
@@ -1962,7 +2044,6 @@ class QueryRefinementManager:
         )
 
         clarifications, baseline_summaries = self._gather_refinement_details(session)
-        deterministic_dimensions = self._assemble_dimensions_specifications(session)
         deterministic_filters = self._assemble_deterministic_search_filters(session)
 
         # Build refinement_aspect_values map for structured consumption
@@ -1998,6 +2079,7 @@ class QueryRefinementManager:
             metadata={
                 "clarification_count": len(clarifications),
                 "baseline_count": len(baseline_summaries),
+                "model": model or "(default)",
                 "model_override": model,
             },
         )
@@ -2028,6 +2110,9 @@ class QueryRefinementManager:
                 "baseline_count": len(baseline_summaries),
                 "response_length": len(synthesis_response.integrated_statement),
                 "structured_response": True,
+                "prompt_tokens": aggregated_metadata.get("prompt_tokens", 0),
+                "completion_tokens": aggregated_metadata.get("completion_tokens", 0),
+                "total_tokens": aggregated_metadata.get("total_tokens", 0),
             },
         )
 

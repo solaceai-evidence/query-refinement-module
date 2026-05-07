@@ -824,58 +824,150 @@ class TestValidateSplitResult:
         assert err is not None
         assert "Astrology" in err
 
+    # --- publication_types validation (new) ---
+
+    def test_filter_pub_types_valid(self):
+        r = FilterSuggestionResponse(publication_types=["Randomized controlled trial", "Systematic review"])
+        assert QueryRefinementManager._validate_split_result("filter_resolution", r) is None
+
+    def test_filter_pub_types_empty_valid(self):
+        r = FilterSuggestionResponse(publication_types=[])
+        assert QueryRefinementManager._validate_split_result("filter_resolution", r) is None
+
+    def test_filter_pub_types_invalid_abbreviation(self):
+        """'RCT' is not in the permitted list; the canonical form must be used."""
+        r = FilterSuggestionResponse(publication_types=["RCT"])
+        err = QueryRefinementManager._validate_split_result("filter_resolution", r)
+        assert err is not None
+        assert "RCT" in err
+
+    def test_filter_pub_types_mixed_valid_and_invalid(self):
+        r = FilterSuggestionResponse(publication_types=["Systematic review", "meta-analysis"])
+        err = QueryRefinementManager._validate_split_result("filter_resolution", r)
+        assert err is not None
+        assert "meta-analysis" in err
+
+    # --- publication_years format validation ---
+
+    def test_filter_pub_years_range_valid(self):
+        r = FilterSuggestionResponse(publication_years="2020-2026")
+        assert QueryRefinementManager._validate_split_result("filter_resolution", r) is None
+
+    def test_filter_pub_years_open_ended_valid(self):
+        r = FilterSuggestionResponse(publication_years="2015-")
+        assert QueryRefinementManager._validate_split_result("filter_resolution", r) is None
+
+    def test_filter_pub_years_single_year_valid(self):
+        r = FilterSuggestionResponse(publication_years="2023")
+        assert QueryRefinementManager._validate_split_result("filter_resolution", r) is None
+
+    def test_filter_pub_years_empty_valid(self):
+        r = FilterSuggestionResponse(publication_years="")
+        assert QueryRefinementManager._validate_split_result("filter_resolution", r) is None
+
+    def test_filter_pub_years_natural_language_invalid(self):
+        r = FilterSuggestionResponse(publication_years="last 5 years")
+        err = QueryRefinementManager._validate_split_result("filter_resolution", r)
+        assert err is not None
+        assert "publication_years" in err
+
+    def test_filter_pub_years_partial_century_invalid(self):
+        r = FilterSuggestionResponse(publication_years="15-2026")
+        err = QueryRefinementManager._validate_split_result("filter_resolution", r)
+        assert err is not None
+
     def test_unknown_call_name_always_valid(self):
         """Calls we don't recognise should pass through without error."""
         assert QueryRefinementManager._validate_split_result("unknown_call", object()) is None
 
 
 class TestBuildRepairPrompt:
-    """_build_repair_prompt appends a targeted instruction; never includes deterministic field names."""
+    """_build_repair_prompt appends a targeted instruction.
 
-    _DETERMINISTIC_FIELDS = (
-        "dimensions_specifications",
-        "publication_years",
-        "venues",
-        "authors",
-        "publication_types",
-    )
+    Fields that must NEVER appear in any repair prompt (always session-derived):
+      - dimensions_specifications
 
-    def _check_no_deterministic_fields(self, prompt: str):
-        for field in self._DETERMINISTIC_FIELDS:
-            assert field not in prompt, f"Repair prompt must not mention deterministic field '{field}'"
+    Fields that are off-limits for non-filter repair prompts but ARE expected in
+    the filter_resolution repair (venues and authors have no permitted list so
+    they never appear in any repair prompt either):
+      - venues
+      - authors
+    """
+
+    # Never appears in any repair prompt — always session-state, never LLM
+    _ALWAYS_FORBIDDEN = ("dimensions_specifications",)
+    # Off-limits for non-filter calls; NOT expected in filter_resolution repair
+    _NON_FILTER_FORBIDDEN = ("venues", "authors")
+
+    def _check_no_always_forbidden_fields(self, prompt: str):
+        for field in self._ALWAYS_FORBIDDEN:
+            assert field not in prompt, (
+                f"Repair prompt must never mention always-session field '{field}'"
+            )
+
+    def _check_non_filter_forbidden(self, prompt: str):
+        for field in self._NON_FILTER_FORBIDDEN:
+            assert field not in prompt, (
+                f"Non-filter repair prompt must not mention unvalidated filter field '{field}'"
+            )
 
     def test_statement_repair_prompt(self):
         prompt = QueryRefinementManager._build_repair_prompt("base prompt", "statement", "empty")
         assert "REPAIR" in prompt
         assert "integrated_statement" in prompt
-        self._check_no_deterministic_fields(prompt)
+        self._check_no_always_forbidden_fields(prompt)
+        self._check_non_filter_forbidden(prompt)
 
     def test_semantic_repair_prompt(self):
         prompt = QueryRefinementManager._build_repair_prompt("base", "semantic", "empty")
         assert "REPAIR" in prompt
         assert "semantic" in prompt
-        self._check_no_deterministic_fields(prompt)
+        self._check_no_always_forbidden_fields(prompt)
+        self._check_non_filter_forbidden(prompt)
 
     def test_terminology_repair_prompt(self):
         prompt = QueryRefinementManager._build_repair_prompt("base", "terminology", "self-ref")
         assert "REPAIR" in prompt
-        self._check_no_deterministic_fields(prompt)
+        self._check_no_always_forbidden_fields(prompt)
+        self._check_non_filter_forbidden(prompt)
 
     def test_keyword_repair_prompt(self):
         prompt = QueryRefinementManager._build_repair_prompt("base", "keyword_support", "overlap")
         assert "REPAIR" in prompt
-        self._check_no_deterministic_fields(prompt)
+        self._check_no_always_forbidden_fields(prompt)
+        self._check_non_filter_forbidden(prompt)
 
     def test_filter_repair_prompt(self):
         prompt = QueryRefinementManager._build_repair_prompt("base", "filter_resolution", "bad value")
         assert "REPAIR" in prompt
+        # Both validated fields must be named in the repair instruction
+        assert "publication_types" in prompt
+        assert "publication_years" in prompt
         assert "permitted" in prompt
-        self._check_no_deterministic_fields(prompt)
+        self._check_no_always_forbidden_fields(prompt)
 
     def test_original_prompt_preserved(self):
         original = "## Original Input\n\nsome query"
         prompt = QueryRefinementManager._build_repair_prompt(original, "statement", "empty")
         assert original in prompt
+
+    def test_previous_output_included_in_repair_prompt(self):
+        """When previous_output is supplied, it appears in the repair prompt body."""
+        prev = '{"integrated_statement": ""}'
+        prompt = QueryRefinementManager._build_repair_prompt(
+            "base", "statement", "empty", previous_output=prev
+        )
+        assert prev in prompt
+        assert "previous output" in prompt.lower()
+
+    def test_previous_output_truncated_at_600_chars(self):
+        long_output = "x" * 1200
+        prompt = QueryRefinementManager._build_repair_prompt(
+            "base", "statement", "empty", previous_output=long_output
+        )
+        # The full 1200-char string must NOT be present; the truncated form must be
+        assert long_output not in prompt
+        assert "x" * 600 in prompt
 
 
 @pytest.mark.asyncio
@@ -963,6 +1055,31 @@ async def test_run_split_call_filter_repair_removes_bad_values():
     assert result is not None
     assert result.fields_of_study == ["Medicine"]
     assert len(manager.llm_provider.calls) == 2
+
+
+@pytest.mark.asyncio
+async def test_run_split_call_filter_repair_removes_bad_pub_types():
+    """A filter_resolution result with unpermitted publication_types triggers repair."""
+    manager = build_manager(responses=[
+        json.dumps({"publication_types": ["RCT"]}),                          # invalid abbreviation
+        json.dumps({"publication_types": ["Randomized controlled trial"]}),  # repaired
+    ])
+    from query_refinement_module.schema.synthesis import SynthesisPromptBuilder
+    from query_refinement_module.core import FIELDS_OF_STUDY_PERMITTED
+    pb = SynthesisPromptBuilder()
+    result, meta = await manager._run_split_call(
+        pb.get_filter_resolution_system_prompt(),
+        pb.get_filter_resolution_prompt("query", {}, FIELDS_OF_STUDY_PERMITTED),
+        FilterSuggestionResponse,
+        "filter_resolution",
+    )
+    assert result is not None
+    assert result.publication_types == ["Randomized controlled trial"]
+    assert len(manager.llm_provider.calls) == 2
+    # The repair call's user prompt must mention the permitted-list constraint
+    repair_prompt = manager.llm_provider.calls[1]["user_prompt"]
+    assert "REPAIR" in repair_prompt
+    assert "publication_types" in repair_prompt
 
 
 # ---------------------------------------------------------------------------
@@ -1260,15 +1377,18 @@ class TestStructuredOutputReliability:
 
 
 class TestRepairScope:
-    """Repair path is scoped strictly to generated fields; deterministic fields are unreachable."""
+    """Repair path is scoped strictly to generated fields.
 
-    _DETERMINISTIC_FIELDS = (
-        "dimensions_specifications",
-        "publication_years",
-        "venues",
-        "authors",
-        "publication_types",
-    )
+    ``dimensions_specifications`` is always built from session state and must
+    never appear in any repair prompt.  ``venues`` and ``authors`` are
+    LLM-generated but not subject to permitted-list validation, so the repair
+    prompt for filter_resolution does not mention them either.
+    """
+
+    # Must never appear in any repair prompt
+    _ALWAYS_FORBIDDEN = ("dimensions_specifications",)
+    # Not mentioned in any repair prompt because there is no permitted list for them
+    _UNVALIDATED_FILTER_FIELDS = ("venues", "authors")
 
     @pytest.mark.asyncio
     async def test_repair_does_not_alter_deterministic_dimensions(self):
@@ -1324,12 +1444,124 @@ class TestRepairScope:
         assert "The Lancet" in result["search_filters"].venues
         assert result["search_filters"].authors == []
 
-    def test_repair_prompts_for_all_call_types_are_scoped(self):
-        """Exhaustive check: no repair prompt for any known call type mentions a deterministic field."""
+    def test_repair_prompts_never_mention_dimensions_specifications(self):
+        """dimensions_specifications must never appear in any repair prompt."""
         call_types = ["statement", "semantic", "terminology", "keyword_support", "filter_resolution"]
         for call_name in call_types:
             prompt = QueryRefinementManager._build_repair_prompt("base", call_name, "some error")
-            for field in self._DETERMINISTIC_FIELDS:
+            for field in self._ALWAYS_FORBIDDEN:
                 assert field not in prompt, (
-                    f"Repair prompt for '{call_name}' must not mention deterministic field '{field}'"
+                    f"Repair prompt for '{call_name}' must never mention '{field}'"
                 )
+
+    def test_filter_repair_mentions_both_validated_fields(self):
+        """filter_resolution repair must name both publication_types and publication_years."""
+        prompt = QueryRefinementManager._build_repair_prompt(
+            "base", "filter_resolution", "some error"
+        )
+        assert "publication_types" in prompt
+        assert "publication_years" in prompt
+
+    def test_unvalidated_filter_fields_absent_from_all_repair_prompts(self):
+        """venues and authors have no permitted list, so no repair prompt should name them."""
+        call_types = ["statement", "semantic", "terminology", "keyword_support", "filter_resolution"]
+        for call_name in call_types:
+            prompt = QueryRefinementManager._build_repair_prompt("base", call_name, "some error")
+            for field in self._UNVALIDATED_FILTER_FIELDS:
+                assert field not in prompt, (
+                    f"Repair prompt for '{call_name}' must not mention unvalidated field '{field}'"
+                )
+
+
+# ---------------------------------------------------------------------------
+# Synthesis tracing: token counts and timing
+# ---------------------------------------------------------------------------
+
+class TestSynthesisTracingTransparency:
+    """The query_synthesis_complete event must carry token counts for transparency.
+
+    split_call_*_ok events must carry duration_ms so latency can be tracked.
+    """
+
+    @pytest.mark.asyncio
+    async def test_query_synthesis_complete_includes_token_counts(self):
+        """query_synthesis_complete event metadata must include prompt/completion/total_tokens."""
+        manager = build_manager(responses=make_split_responses(integrated_statement="stmt"))
+        session = RefinementSession(original_query="q")
+
+        await manager.synthesize_refined_query(session)
+
+        tracer: StubTracingProvider = manager.trace_emitter._provider
+        complete_events = [e for e in tracer.events if e["event"] == "query_synthesis_complete"]
+        assert len(complete_events) == 1, "Expected exactly one query_synthesis_complete event"
+
+        meta = complete_events[0]["metadata"]
+        assert "prompt_tokens" in meta, "query_synthesis_complete must include prompt_tokens"
+        assert "completion_tokens" in meta, "query_synthesis_complete must include completion_tokens"
+        assert "total_tokens" in meta, "query_synthesis_complete must include total_tokens"
+        # All token counts must be non-negative integers
+        assert isinstance(meta["prompt_tokens"], int) and meta["prompt_tokens"] >= 0
+        assert isinstance(meta["completion_tokens"], int) and meta["completion_tokens"] >= 0
+        assert isinstance(meta["total_tokens"], int) and meta["total_tokens"] >= 0
+
+    @pytest.mark.asyncio
+    async def test_query_synthesis_complete_includes_structured_response_flag(self):
+        """query_synthesis_complete must still carry structured_response: True."""
+        manager = build_manager(responses=make_split_responses(integrated_statement="stmt"))
+        session = RefinementSession(original_query="q")
+
+        await manager.synthesize_refined_query(session)
+
+        tracer: StubTracingProvider = manager.trace_emitter._provider
+        complete_events = [e for e in tracer.events if e["event"] == "query_synthesis_complete"]
+        assert complete_events[0]["metadata"]["structured_response"] is True
+
+    @pytest.mark.asyncio
+    async def test_split_call_ok_events_include_duration_ms(self):
+        """Each split_call_*_ok event must carry a non-negative duration_ms for latency tracking."""
+        manager = build_manager(responses=make_split_responses(integrated_statement="stmt"))
+        session = RefinementSession(original_query="q")
+
+        await manager.synthesize_refined_query(session)
+
+        tracer: StubTracingProvider = manager.trace_emitter._provider
+        ok_events = [e for e in tracer.events if e["event"].endswith("_ok")]
+        # Expect at least one *_ok event (one per successful call in the 5-call graph)
+        assert ok_events, "No split_call_*_ok events were emitted"
+        for ev in ok_events:
+            meta = ev["metadata"]
+            assert "duration_ms" in meta, f"Event {ev['event']} is missing duration_ms"
+            assert isinstance(meta["duration_ms"], (int, float))
+            assert meta["duration_ms"] >= 0
+
+    @pytest.mark.asyncio
+    async def test_split_call_ok_events_include_token_info(self):
+        """Each split_call_*_ok event must carry tokens/prompt_tokens/total_tokens."""
+        manager = build_manager(responses=make_split_responses(integrated_statement="stmt"))
+        session = RefinementSession(original_query="q")
+
+        await manager.synthesize_refined_query(session)
+
+        tracer: StubTracingProvider = manager.trace_emitter._provider
+        ok_events = [e for e in tracer.events if e["event"].endswith("_ok")]
+        assert ok_events
+        for ev in ok_events:
+            meta = ev["metadata"]
+            assert "tokens" in meta
+            assert "prompt_tokens" in meta
+            assert "total_tokens" in meta
+
+    @pytest.mark.asyncio
+    async def test_query_synthesis_start_includes_model_field(self):
+        """query_synthesis_start event must carry the model (or '(default)' marker)."""
+        manager = build_manager(responses=make_split_responses(integrated_statement="stmt"))
+        session = RefinementSession(original_query="q")
+
+        await manager.synthesize_refined_query(session)
+
+        tracer: StubTracingProvider = manager.trace_emitter._provider
+        start_events = [e for e in tracer.events if e["event"] == "query_synthesis_start"]
+        assert len(start_events) == 1
+        meta = start_events[0]["metadata"]
+        assert "model" in meta
+        assert meta["model"] == "(default)"  # no override passed

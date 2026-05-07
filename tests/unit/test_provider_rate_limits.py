@@ -264,3 +264,105 @@ def test_provider_logs_retry_attempts(mock_litellm_module, caplog):
     
     # Check that retry was logged
     assert any("Rate limit hit, retrying" in record.message for record in caplog.records)
+
+
+# ---------------------------------------------------------------------------
+# TokenBucketRateLimiter wiring (proactive pre-request limiting)
+# ---------------------------------------------------------------------------
+
+def test_provider_creates_rate_limiter_for_explicit_rpm_config():
+    """When rate_limit_config with RPM > 0 is passed, a TokenBucketRateLimiter is created."""
+    from query_refinement_module.interfaces import RateLimitConfig
+    from query_refinement_module.rate_limiter import TokenBucketRateLimiter
+
+    config = RateLimitConfig(requests_per_minute=60)
+    provider = LiteLLMProvider(
+        default_model="anthropic/claude-sonnet-4-5",
+        rate_limit_config=config,
+    )
+
+    assert provider._rate_limiter is not None
+    assert isinstance(provider._rate_limiter, TokenBucketRateLimiter)
+    assert provider._rate_limiter.config.requests_per_minute == 60
+
+
+def test_provider_no_rate_limiter_when_rpm_zero():
+    """Passing rate_limit_config with rpm=0 keeps _rate_limiter as None."""
+    from query_refinement_module.interfaces import RateLimitConfig
+
+    config = RateLimitConfig(requests_per_minute=0)
+    provider = LiteLLMProvider(
+        default_model="ollama/qwen2.5:72b",
+        rate_limit_config=config,
+    )
+
+    assert provider._rate_limiter is None
+
+
+def test_provider_no_rate_limiter_for_unlimited():
+    """RateLimitConfig.unlimited() results in no rate limiter."""
+    from query_refinement_module.interfaces import RateLimitConfig
+
+    provider = LiteLLMProvider(
+        default_model="ollama/qwen2.5:72b",
+        rate_limit_config=RateLimitConfig.unlimited(),
+    )
+
+    assert provider._rate_limiter is None
+
+
+def test_provider_auto_selects_provider_defaults_for_claude():
+    """Without explicit rate_limit_config, claude-* models get a proactive rate limiter."""
+    from query_refinement_module.rate_limiter import TokenBucketRateLimiter
+
+    provider = LiteLLMProvider(default_model="claude-3-5-sonnet-20241022")
+
+    assert provider._rate_limiter is not None
+    assert isinstance(provider._rate_limiter, TokenBucketRateLimiter)
+    assert provider._rate_limiter.config.requests_per_minute == 50
+
+
+def test_provider_no_rate_limiter_for_local_model_by_default():
+    """ollama/llama models have unlimited defaults → no proactive limiter."""
+    provider = LiteLLMProvider(default_model="ollama/qwen2.5:72b")
+
+    assert provider._rate_limiter is None
+
+
+def test_provider_semaphore_respects_max_concurrent():
+    """max_concurrent_requests parameter wires through to the asyncio.Semaphore."""
+    provider = LiteLLMProvider(default_model="ollama/qwen2.5:72b", max_concurrent_requests=5)
+
+    assert provider._semaphore._value == 5
+
+
+@pytest.mark.asyncio
+async def test_provider_rate_limiter_acquire_called_on_complete_async(mock_litellm_module):
+    """complete_async calls rate_limiter.acquire() before dispatching the LLM call."""
+    from unittest.mock import AsyncMock
+    from query_refinement_module.interfaces import RateLimitConfig
+
+    mock_litellm_module.acompletion = AsyncMock(return_value={
+        "choices": [{"message": {"content": "ok"}, "finish_reason": "stop"}],
+        "usage": {"total_tokens": 5, "prompt_tokens": 3, "completion_tokens": 2},
+        "id": "test-id",
+    })
+
+    config = RateLimitConfig(requests_per_minute=600)
+    provider = LiteLLMProvider(
+        default_model="anthropic/claude-sonnet-4-5",
+        rate_limit_config=config,
+    )
+    acquire_calls = []
+
+    original_acquire = provider._rate_limiter.acquire
+
+    async def spy_acquire(*args, **kwargs):
+        acquire_calls.append(True)
+        return await original_acquire(*args, **kwargs)
+
+    provider._rate_limiter.acquire = spy_acquire
+
+    await provider.complete_async("hello")
+
+    assert len(acquire_calls) == 1

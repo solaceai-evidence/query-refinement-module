@@ -1,0 +1,121 @@
+
+[running] educational × novice ...
+  complete=False  current='middle-aged adults attending primary care clinics'
+  question: Which specific age range do you mean? And will this study include both men and women or just focus on women?
+
+[running] educational × advanced ...
+  complete=False  current='middle-aged adults attending primary care clinics'
+  question: Which specific age range do you mean? And will this study include both men and women, or just focus on women?
+
+[running] professional × intermediate ...
+  complete=False  current='middle-aged adults attending primary care clinics'
+  question: Which specific age range and sex/gender do you mean?
+
+[running] professional × expert ...
+  complete=False  current='middle-aged adults attending primary care clinics'
+  question: Which specific age range and sex/gender do you mean?
+
+[running] pragmatic × novice ...
+  complete=False  current='middle-aged adults attending primary care clinics (40 to 60 year olds)'
+  question: Will you include both men and women, or focus only on women?
+
+[running] pragmatic × expert ...
+  complete=False  current='middle-aged adults attending primary care clinics'
+  question: Which specific age range do you mean? And will the study include both men and women or only women?
+
+========================================================================
+QUESTION TEXT BY COMBINATION
+========================================================================
+
+[educational × novice]
+  Q: Which specific age range do you mean? And will this study include both men and women or just focus on women?
+
+[educational × advanced]
+  Q: Which specific age range do you mean? And will this study include both men and women, or just focus on women?
+
+[professional × intermediate]
+  Q: Which specific age range and sex/gender do you mean?
+
+[professional × expert]
+  Q: Which specific age range and sex/gender do you mean?
+
+[pragmatic × novice]
+  Q: Will you include both men and women, or focus only on women?
+
+[pragmatic × expert]
+  Q: Which specific age range do you mean? And will the study include both men and women or only women?
+
+========================================================================
+AUTOMATED STYLE CHECKS
+========================================================================
+
+ISSUES FOUND:
+  [educational × novice] WARN — expected warm/rationale framing in educational tone. No marker found in: Which specific age range do you mean? And will this study include both men and women or just focus on women?
+  [educational × advanced] WARN — expected warm/rationale framing in educational tone. No marker found in: Which specific age range do you mean? And will this study include both men and women, or just focus on women?
+  [pragmatic × novice] WARN — expected consequence-framing in pragmatic tone. No marker found in: Will you include both men and women, or focus only on women?
+  [pragmatic × expert] WARN — expected consequence-framing in pragmatic tone. No marker found in: Which specific age range do you mean? And will the study include both men and women or only women?
+  [professional × expert] FAIL — identical question as [professional × intermediate]
+
+{
+  "model": "ollama/qwen2.5:72b",
+  "query": "I want to study the effectiveness of antidepressants in middle-aged adults attending primary care clinics \u2014 I think around 40 to 60 year olds but I'm not sure whether to include both men and women or just focus on women.",
+  "dimension": "population",
+  "results": [
+    {
+      "label": "educational \u00d7 novice",
+      "tone": "educational",
+      "complexity": "novice",
+      "complete": false,
+      "current": "middle-aged adults attending primary care clinics",
+      "question": "Which specific age range do you mean? And will this study include both men and women or just focus on women?"
+    },
+    {
+      "label": "educational \u00d7 advanced",
+      "tone": "educational",
+      "complexity": "advanced",
+      "complete": false,
+      "current": "middle-aged adults attending primary care clinics",
+      "question": "Which specific age range do you mean? And will this study include both men and women, or just focus on women?"
+    },
+    {
+      "label": "professional \u00d7 intermediate",
+      "tone": "professional",
+      "complexity": "intermediate",
+      "complete": false,
+      "current": "middle-aged adults attending primary care clinics",
+      "question": "Which specific age range and sex/gender do you mean?"
+    },
+    {
+      "label": "professional \u00d7 expert",
+      "tone": "professional",
+      "complexity": "expert",
+      "complete": false,
+      "current": "middle-aged adults attending primary care clinics",
+      "question": "Which specific age range and sex/gender do you mean?"
+    },
+    {
+      "label": "pragmatic \u00d7 novice",
+      "tone": "pragmatic",
+      "complexity": "novice",
+      "complete": false,
+      "current": "middle-aged adults attending primary care clinics (40 to 60 year olds)",
+      "question": "Will you include both men and women, or focus only on women?"
+    },
+    {
+      "label": "pragmatic \u00d7 expert",
+      "tone": "pragmatic",
+      "complexity": "expert",
+      "complete": false,
+      "current": "middle-aged adults attending primary care clinics",
+      "question": "Which specific age range do you mean? And will the study include both men and women or only women?"
+    }
+  ],
+  "style_check_failures": [
+    "[educational \u00d7 novice] WARN \u2014 expected warm/rationale framing in educational tone. No marker found in: Which specific age range do you mean? And will this study include both men and women or just focus on women?",
+    "[educational \u00d7 advanced] WARN \u2014 expected warm/rationale framing in educational tone. No marker found in: Which specific age range do you mean? And will this study include both men and women, or just focus on women?",
+    "[pragmatic \u00d7 novice] WARN \u2014 expected consequence-framing in pragmatic tone. No marker found in: Will you include both men and women, or focus only on women?",
+    "[pragmatic \u00d7 expert] WARN \u2014 expected consequence-framing in pragmatic tone. No marker found in: Which specific age range do you mean? And will the study include both men and women or only women?",
+    "[professional \u00d7 expert] FAIL \u2014 identical question as [professional \u00d7 intermediate]"
+  ],
+  "style_checks_passed": false
+}

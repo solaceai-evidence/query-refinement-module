@@ -796,11 +796,6 @@ When assembling, standardize age terms:
   Example Q: "Are you focusing on specific ethnic groups given CVD disparities?"
 
 
-
-
----
-
-
 ---
 
 ## OUTPUT FORMAT
@@ -815,8 +810,3 @@ When assembling, standardize age terms:
 - ONLY these 3 fields
 
 ---
-
-
-
---- MESSAGE 5 | role=user | cache=False ---
-<original query placeholder>

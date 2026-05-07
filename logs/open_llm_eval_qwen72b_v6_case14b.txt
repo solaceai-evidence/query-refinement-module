@@ -1,0 +1,29 @@
+[14/15] Running: Prior-context extraction ...
+  -> PASS: []
+{
+  "prompt_variant": "open_llm",
+  "model": "ollama/qwen2.5:72b",
+  "total": 1,
+  "passed": 1,
+  "failed": 0,
+  "results": [
+    {
+      "id": "14",
+      "category": "completed-dimension extraction",
+      "name": "Prior-context extraction",
+      "passed": true,
+      "failures": [],
+      "expected": {
+        "complete": true,
+        "current": "urban clinics",
+        "question": ""
+      },
+      "actual": {
+        "complete": true,
+        "current": "urban clinics",
+        "question": ""
+      },
+      "raw": "```json\n{\"complete\": true, \"current\": \"urban clinics\", \"question\": \"\"}\n```"
+    }
+  ]
+}

@@ -1,0 +1,302 @@
+{
+  "prompt_variant": "open_llm",
+  "model": "ollama/qwen2.5:72b",
+  "total": 15,
+  "passed": 5,
+  "failed": 10,
+  "results": [
+    {
+      "id": "1",
+      "category": "stable-fact inference",
+      "name": "Stable fact inference: Ethiopia",
+      "passed": true,
+      "failures": [],
+      "expected": {
+        "complete": true,
+        "current": "rural displacement camps in northeastern Ethiopia",
+        "question": ""
+      },
+      "actual": {
+        "complete": true,
+        "current": "rural displacement camps in northeastern Ethiopia",
+        "question": ""
+      },
+      "raw": "```json\n{\"complete\": true, \"current\": \"rural displacement camps in northeastern Ethiopia\", \"question\": \"\"}\n```"
+    },
+    {
+      "id": "2",
+      "category": "stable-fact inference",
+      "name": "Stable fact inference: COPD acronym",
+      "passed": false,
+      "failures": [
+        "current expected 'COPD management protocols' got 'barriers to implementing COPD management protocols'"
+      ],
+      "expected": {
+        "complete": true,
+        "current": "COPD management protocols",
+        "question": ""
+      },
+      "actual": {
+        "complete": true,
+        "current": "barriers to implementing COPD management protocols",
+        "question": ""
+      },
+      "raw": "```json\n{\"complete\": true, \"current\": \"barriers to implementing COPD management protocols\", \"question\": \"\"}\n```"
+    },
+    {
+      "id": "3",
+      "category": "reference resolution",
+      "name": "Echo reference: both",
+      "passed": false,
+      "failures": [
+        "current expected 'prevention and treatment' got 'prevention and treatment approaches'"
+      ],
+      "expected": {
+        "complete": true,
+        "current": "prevention and treatment",
+        "question": ""
+      },
+      "actual": {
+        "complete": true,
+        "current": "prevention and treatment approaches",
+        "question": ""
+      },
+      "raw": "```json\n{\"complete\": true, \"current\": \"prevention and treatment approaches\", \"question\": \"\"}\n```"
+    },
+    {
+      "id": "4",
+      "category": "reference resolution",
+      "name": "Labeled multi-reference",
+      "passed": false,
+      "failures": [
+        "complete expected True got False",
+        "question expected '' got 'Are there any other aspects you would like to include in the scope of your research?'"
+      ],
+      "expected": {
+        "complete": true,
+        "current": "identifying barriers and comparing across groups",
+        "question": ""
+      },
+      "actual": {
+        "complete": false,
+        "current": "identifying barriers and comparing across groups",
+        "question": "Are there any other aspects you would like to include in the scope of your research?"
+      },
+      "raw": "```json\n{\"complete\": false, \"current\": \"identifying barriers and comparing across groups\", \"question\": \"Are there any other aspects you would like to include in the scope of your research?\"}\n```"
+    },
+    {
+      "id": "5",
+      "category": "reference resolution",
+      "name": "Positional multi-reference",
+      "passed": false,
+      "failures": [
+        "complete expected True got False",
+        "question expected '' got 'Are there any specific regions or types of communities you are focusing on?'"
+      ],
+      "expected": {
+        "complete": true,
+        "current": "primary care clinics and mobile outreach units",
+        "question": ""
+      },
+      "actual": {
+        "complete": false,
+        "current": "primary care clinics and mobile outreach units",
+        "question": "Are there any specific regions or types of communities you are focusing on?"
+      },
+      "raw": "```json\n{\"complete\": false, \"current\": \"primary care clinics and mobile outreach units\", \"question\": \"Are there any specific regions or types of communities you are focusing on?\"}\n```"
+    },
+    {
+      "id": "6",
+      "category": "opt-out handling",
+      "name": "Opt-out: any age group",
+      "passed": true,
+      "failures": [],
+      "expected": {
+        "complete": true,
+        "current": "any age group",
+        "question": ""
+      },
+      "actual": {
+        "complete": true,
+        "current": "any age group",
+        "question": ""
+      },
+      "raw": "```json\n{\"complete\": true, \"current\": \"any age group\", \"question\": \"\"}\n```"
+    },
+    {
+      "id": "7",
+      "category": "opt-out handling",
+      "name": "Opt-out with prior anchor",
+      "passed": true,
+      "failures": [],
+      "expected": {
+        "complete": true,
+        "current": "heat stroke (no phase restriction)",
+        "question": ""
+      },
+      "actual": {
+        "complete": true,
+        "current": "heat stroke (no phase restriction)",
+        "question": ""
+      },
+      "raw": "```json\n{\"complete\": true, \"current\": \"heat stroke (no phase restriction)\", \"question\": \"\"}\n```"
+    },
+    {
+      "id": "8",
+      "category": "carry-forward and extraction",
+      "name": "Extract from original query",
+      "passed": true,
+      "failures": [],
+      "expected": {
+        "complete": true,
+        "current": "enterprise users",
+        "question": ""
+      },
+      "actual": {
+        "complete": true,
+        "current": "enterprise users",
+        "question": ""
+      },
+      "raw": "```json\n{\"complete\": true, \"current\": \"enterprise users\", \"question\": \"\"}\n```"
+    },
+    {
+      "id": "9",
+      "category": "extraction vs examples",
+      "name": "Partial user answer outside examples",
+      "passed": false,
+      "failures": [
+        "question expected 'How will you measure protocol adoption and adherence?' got 'Will you use specific instruments or methods to measure protocol adoption and adherence?'"
+      ],
+      "expected": {
+        "complete": false,
+        "current": "protocol adoption and adherence",
+        "question": "How will you measure protocol adoption and adherence?"
+      },
+      "actual": {
+        "complete": false,
+        "current": "protocol adoption and adherence",
+        "question": "Will you use specific instruments or methods to measure protocol adoption and adherence?"
+      },
+      "raw": "```json\n{\"complete\": false, \"current\": \"protocol adoption and adherence\", \"question\": \"Will you use specific instruments or methods to measure protocol adoption and adherence?\"}\n```"
+    },
+    {
+      "id": "10",
+      "category": "dependency handling",
+      "name": "Dependency conflict",
+      "passed": false,
+      "failures": [
+        "question expected \"Your current answer conflicts with the dependency 'adults aged 18-65 with type 2 diabetes'. Which population should this dimension align with?\" got 'What is the age range for these children?'"
+      ],
+      "expected": {
+        "complete": false,
+        "current": "children with type 1 diabetes",
+        "question": "Your current answer conflicts with the dependency 'adults aged 18-65 with type 2 diabetes'. Which population should this dimension align with?"
+      },
+      "actual": {
+        "complete": false,
+        "current": "children with type 1 diabetes",
+        "question": "What is the age range for these children?"
+      },
+      "raw": "```json\n{\"complete\": false, \"current\": \"children with type 1 diabetes\", \"question\": \"What is the age range for these children?\"}\n```"
+    },
+    {
+      "id": "11",
+      "category": "strictness handling",
+      "name": "Strictness: MODERATE extract first",
+      "passed": false,
+      "failures": [
+        "question expected 'How will you assess depression severity?' got 'Which specific instrument will measure depression severity?'"
+      ],
+      "expected": {
+        "complete": false,
+        "current": "depression severity",
+        "question": "How will you assess depression severity?"
+      },
+      "actual": {
+        "complete": false,
+        "current": "depression severity",
+        "question": "Which specific instrument will measure depression severity?"
+      },
+      "raw": "```json\n{\"complete\": false, \"current\": \"depression severity\", \"question\": \"Which specific instrument will measure depression severity?\"}\n```"
+    },
+    {
+      "id": "12",
+      "category": "strictness handling",
+      "name": "Strictness: STRICT operationalize",
+      "passed": false,
+      "failures": [
+        "question expected 'Which specific population do you mean?' got 'Could you specify which group of people? For example, adults, children, patients with a specific condition, or a particular demographic?'"
+      ],
+      "expected": {
+        "complete": false,
+        "current": "people",
+        "question": "Which specific population do you mean?"
+      },
+      "actual": {
+        "complete": false,
+        "current": "people",
+        "question": "Could you specify which group of people? For example, adults, children, patients with a specific condition, or a particular demographic?"
+      },
+      "raw": "{\"complete\": false, \"current\": \"people\", \"question\": \"Could you specify which group of people? For example, adults, children, patients with a specific condition, or a particular demographic?\"}"
+    },
+    {
+      "id": "13",
+      "category": "output format",
+      "name": "Output format invalid trap",
+      "passed": true,
+      "failures": [],
+      "expected": {
+        "complete": false,
+        "current": "adults with diabetes",
+        "question": "Is this Type 1 or Type 2 diabetes, and what age range?"
+      },
+      "actual": {
+        "complete": false,
+        "current": "adults with diabetes",
+        "question": "Is this Type 1 or Type 2 diabetes, and what age range?"
+      },
+      "raw": "```json\n{\"complete\": false, \"current\": \"adults with diabetes\", \"question\": \"Is this Type 1 or Type 2 diabetes, and what age range?\"}\n```"
+    },
+    {
+      "id": "14",
+      "category": "completed-dimension extraction",
+      "name": "Prior-context extraction",
+      "passed": false,
+      "failures": [
+        "complete expected True got False",
+        "question expected '' got 'Is there a specific setting or context beyond urban clinics that you need to consider?'"
+      ],
+      "expected": {
+        "complete": true,
+        "current": "urban clinics",
+        "question": ""
+      },
+      "actual": {
+        "complete": false,
+        "current": "urban clinics",
+        "question": "Is there a specific setting or context beyond urban clinics that you need to consider?"
+      },
+      "raw": "```json\n{\"complete\": false, \"current\": \"urban clinics\", \"question\": \"Is there a specific setting or context beyond urban clinics that you need to consider?\"}\n```"
+    },
+    {
+      "id": "15",
+      "category": "long-turn priority retention",
+      "name": "Long-turn retention",
+      "passed": false,
+      "failures": [
+        "current expected 'primary care clinics and community centers' got 'community health services for both adults and children in primary care clinics and community centers across multiple countries'"
+      ],
+      "expected": {
+        "complete": true,
+        "current": "primary care clinics and community centers",
+        "question": ""
+      },
+      "actual": {
+        "complete": true,
+        "current": "community health services for both adults and children in primary care clinics and community centers across multiple countries",
+        "question": ""
+      },
+      "raw": "```json\n{\n  \"complete\": true,\n  \"current\": \"community health services for both adults and children in primary care clinics and community centers across multiple countries\",\n  \"question\": \"\"\n}\n```"
+    }
+  ]
+}

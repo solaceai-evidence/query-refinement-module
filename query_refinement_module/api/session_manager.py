@@ -16,8 +16,11 @@ Performance Impact:
 - Reduces API response times from ~2-5s to <100ms
 - Preserves analysis results, follow-up history, and completion state
 """
+import asyncio
+import contextlib
 import json
 import logging
+import threading
 import time
 from typing import Optional, Dict, Any, List
 from datetime import timedelta
@@ -70,6 +73,11 @@ class SessionManager:
         self.max_retries = max_retries
         self.retry_delay = retry_delay
         self.metrics_key = f"{key_prefix}metrics"
+
+        # Per-session asyncio locks: prevent concurrent load→mutate→save races for
+        # the same query_id within a single process.
+        self._session_locks: Dict[int, asyncio.Lock] = {}
+        self._session_locks_meta = threading.Lock()  # protects the dict itself
         
         # Test connection
         try:
@@ -78,6 +86,36 @@ class SessionManager:
         except RedisError as e:
             logger.error("Failed to connect to Redis: %s", e)
             raise
+
+    # ------------------------------------------------------------------
+    # Per-session locking
+    # ------------------------------------------------------------------
+
+    def _get_session_lock(self, query_id: int) -> asyncio.Lock:
+        """Return (and lazily create) the asyncio.Lock for *query_id*."""
+        with self._session_locks_meta:
+            if query_id not in self._session_locks:
+                self._session_locks[query_id] = asyncio.Lock()
+            return self._session_locks[query_id]
+
+    @contextlib.asynccontextmanager
+    async def session_lock(self, query_id: int):
+        """Async context manager that serialises concurrent modifications of a session.
+
+        Usage::
+
+            async with session_manager.session_lock(query_id):
+                session = session_manager.load_session(query_id, framework)
+                # ... mutate session ...
+                session_manager.save_session(query_id, session)
+
+        Holding this lock guarantees that no other coroutine within the same
+        process can load or save the same session concurrently.  Across multiple
+        processes a Redis-level lock would be required; document accordingly.
+        """
+        lock = self._get_session_lock(query_id)
+        async with lock:
+            yield
     
     def _retry_operation(self, operation_name: str, operation_func):
         """

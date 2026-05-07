@@ -21,7 +21,7 @@ cp .env.prod .env
 
 2. Edit `.env` and set these required values:
 
-- `SECRET_KEY` - protects login sessions
+- `SECRET_KEY` - protects login sessions. Must be at least 32 characters. Generate with: `python -c "import secrets; print(secrets.token_urlsafe(32))"`
 - `QUERY_REFINEMENT_LLM_API_KEY` - required for cloud providers (Anthropic, OpenAI); leave blank for Ollama or vLLM
 - `POSTGRES_USER`, `POSTGRES_PASSWORD`, `POSTGRES_DB` - database login details
 - `ALLOWED_ORIGINS` - the browser addresses allowed to use the app
@@ -44,7 +44,7 @@ Before starting, verify the following:
 
 - Docker Engine and Docker Compose plugin are installed on the server
 - The correct template has been copied to `.env` (`.env.anthropic-claude-sonnet-4-6`, `.env.prod`, `.env.ollama-llama3.1-8b`, or `.env.vllm`)
-- `SECRET_KEY` is set
+- `SECRET_KEY` is set, is at least 32 characters long, and is not one of the known placeholder values (the API will refuse to start in production mode if this check fails)
 - `QUERY_REFINEMENT_LLM_API_KEY` is set **if using a cloud provider** (Anthropic, OpenAI); leave blank for Ollama or vLLM
 - `QUERY_REFINEMENT_LLM_API_BASE` is set **if using a local provider** (Ollama or vLLM)
 - `POSTGRES_USER`, `POSTGRES_PASSWORD`, and `POSTGRES_DB` are set

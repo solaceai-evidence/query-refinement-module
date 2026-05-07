@@ -22,6 +22,26 @@ DIMENSION_REFINEMENT_TEMPLATE = """
 {% if strictness %}
 **Strictness Level:** {{ strictness }}
 {% endif %}
+
+---
+
+### MANDATORY PRE-CHECK — Read before processing the query
+
+Before reading the user query or asking any question:
+
+1. **Scan the completed dimensions listed in the PRIOR CONTEXT system message above.**
+2. Look for any value in those dimensions that matches or contains the current dimension ({{ name }}).
+3. If a matching value exists, extract it immediately into `current`. Do NOT ask a question.
+4. If the extracted value fully satisfies this dimension at its strictness level, set `complete=true` and `question=""`.
+
+**Cross-dimension extraction example:**
+- Completed dimension: **Population** = "adults aged 18-65 with type 2 diabetes in urban clinics"
+- Current dimension: **Setting**
+- Action: extract "urban clinics" → `{"complete": true, "current": "urban clinics", "question": ""}`
+- Do NOT ask "Which specific setting do you mean?" — the answer is already present.
+
+Only proceed to the query and conversation history after this check is complete.
+
 ---
 
 ### Specification

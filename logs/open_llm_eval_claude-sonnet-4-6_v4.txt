@@ -1,0 +1,309 @@
+[1/15] Running: Stable fact inference: Ethiopia ...
+  -> PASS: []
+[2/15] Running: Stable fact inference: COPD acronym ...
+  -> PASS: []
+[3/15] Running: Echo reference: both ...
+  -> PASS: []
+[4/15] Running: Labeled multi-reference ...
+  -> PASS: []
+[5/15] Running: Positional multi-reference ...
+  -> PASS: []
+[6/15] Running: Opt-out: any age group ...
+  -> PASS: []
+[7/15] Running: Opt-out with prior anchor ...
+  -> PASS: []
+[8/15] Running: Extract from original query ...
+  -> PASS: []
+[9/15] Running: Partial user answer outside examples ...
+  -> PASS: []
+[10/15] Running: Dependency conflict ...
+  -> PASS: []
+[11/15] Running: Strictness: MODERATE extract first ...
+  -> PASS: []
+[12/15] Running: Strictness: STRICT operationalize ...
+  -> PASS: []
+[13/15] Running: Output format invalid trap ...
+  -> PASS: []
+[14/15] Running: Prior-context extraction ...
+  -> PASS: []
+[15/15] Running: Long-turn retention ...
+  -> PASS: []
+{
+  "prompt_variant": "open_llm",
+  "model": "anthropic/claude-sonnet-4-6",
+  "total": 15,
+  "passed": 15,
+  "failed": 0,
+  "results": [
+    {
+      "id": "1",
+      "category": "stable-fact inference",
+      "name": "Stable fact inference: Ethiopia",
+      "passed": true,
+      "failures": [],
+      "expected": {
+        "complete": true,
+        "current": "rural displacement camps in northeastern Ethiopia",
+        "question": ""
+      },
+      "actual": {
+        "complete": true,
+        "current": "rural displacement camps in northeastern Ethiopia",
+        "question": ""
+      },
+      "raw": "```json\n{\"complete\": true, \"current\": \"rural displacement camps in northeastern Ethiopia\", \"question\": \"\"}\n```"
+    },
+    {
+      "id": "2",
+      "category": "stable-fact inference",
+      "name": "Stable fact inference: COPD acronym",
+      "passed": true,
+      "failures": [],
+      "expected": {
+        "complete": true,
+        "current": "COPD management protocols",
+        "question": ""
+      },
+      "actual": {
+        "complete": true,
+        "current": "COPD management protocols",
+        "question": ""
+      },
+      "raw": "```json\n{\"complete\": true, \"current\": \"COPD management protocols\", \"question\": \"\"}\n```"
+    },
+    {
+      "id": "3",
+      "category": "reference resolution",
+      "name": "Echo reference: both",
+      "passed": true,
+      "failures": [],
+      "expected": {
+        "complete": true,
+        "current": "prevention and treatment",
+        "question": ""
+      },
+      "actual": {
+        "complete": true,
+        "current": "prevention and treatment",
+        "question": ""
+      },
+      "raw": "```json\n{\"complete\": true, \"current\": \"prevention and treatment\", \"question\": \"\"}\n```"
+    },
+    {
+      "id": "4",
+      "category": "reference resolution",
+      "name": "Labeled multi-reference",
+      "passed": true,
+      "failures": [],
+      "expected": {
+        "complete": true,
+        "current": "identifying barriers and comparing across groups",
+        "question": ""
+      },
+      "actual": {
+        "complete": true,
+        "current": "identifying barriers and comparing across groups",
+        "question": ""
+      },
+      "raw": "```json\n{\"complete\": true, \"current\": \"identifying barriers and comparing across groups\", \"question\": \"\"}\n```"
+    },
+    {
+      "id": "5",
+      "category": "reference resolution",
+      "name": "Positional multi-reference",
+      "passed": true,
+      "failures": [],
+      "expected": {
+        "complete": true,
+        "current": "primary care clinics and mobile outreach units",
+        "question": ""
+      },
+      "actual": {
+        "complete": true,
+        "current": "primary care clinics and mobile outreach units",
+        "question": ""
+      },
+      "raw": "```json\n{\"complete\": true, \"current\": \"primary care clinics and mobile outreach units\", \"question\": \"\"}\n```"
+    },
+    {
+      "id": "6",
+      "category": "opt-out handling",
+      "name": "Opt-out: any age group",
+      "passed": true,
+      "failures": [],
+      "expected": {
+        "complete": true,
+        "current": "any age group",
+        "question": ""
+      },
+      "actual": {
+        "complete": true,
+        "current": "any age group",
+        "question": ""
+      },
+      "raw": "```json\n{\"complete\": true, \"current\": \"any age group\", \"question\": \"\"}\n```"
+    },
+    {
+      "id": "7",
+      "category": "opt-out handling",
+      "name": "Opt-out with prior anchor",
+      "passed": true,
+      "failures": [],
+      "expected": {
+        "complete": true,
+        "current": "heat stroke (no phase restriction)",
+        "question": ""
+      },
+      "actual": {
+        "complete": true,
+        "current": "heat stroke (no phase restriction)",
+        "question": ""
+      },
+      "raw": "```json\n{\"complete\": true, \"current\": \"heat stroke (no phase restriction)\", \"question\": \"\"}\n```"
+    },
+    {
+      "id": "8",
+      "category": "carry-forward and extraction",
+      "name": "Extract from original query",
+      "passed": true,
+      "failures": [],
+      "expected": {
+        "complete": true,
+        "current": "enterprise users",
+        "question": ""
+      },
+      "actual": {
+        "complete": true,
+        "current": "enterprise users",
+        "question": ""
+      },
+      "raw": "```json\n{\"complete\": true, \"current\": \"enterprise users\", \"question\": \"\"}\n```"
+    },
+    {
+      "id": "9",
+      "category": "extraction vs examples",
+      "name": "Partial user answer outside examples",
+      "passed": true,
+      "failures": [],
+      "expected": {
+        "complete": false,
+        "current": "protocol adoption and adherence",
+        "question": "How will you measure protocol adoption and adherence?"
+      },
+      "actual": {
+        "complete": false,
+        "current": "protocol adoption and adherence",
+        "question": "How will you measure protocol adoption and adherence?"
+      },
+      "raw": "```json\n{\"complete\": false, \"current\": \"protocol adoption and adherence\", \"question\": \"How will you measure protocol adoption and adherence?\"}\n```"
+    },
+    {
+      "id": "10",
+      "category": "dependency handling",
+      "name": "Dependency conflict",
+      "passed": true,
+      "failures": [],
+      "expected": {
+        "complete": false,
+        "current": "children with type 1 diabetes",
+        "question": "Your current answer conflicts with the dependency 'adults aged 18-65 with type 2 diabetes'. Which population should this dimension align with?"
+      },
+      "actual": {
+        "complete": false,
+        "current": "children with type 1 diabetes",
+        "question": "Your current answer conflicts with the dependency 'adults aged 18-65 with type 2 diabetes'. Which population should this dimension align with?"
+      },
+      "raw": "```json\n{\"complete\": false, \"current\": \"children with type 1 diabetes\", \"question\": \"Your current answer conflicts with the dependency 'adults aged 18-65 with type 2 diabetes'. Which population should this dimension align with?\"}\n```"
+    },
+    {
+      "id": "11",
+      "category": "strictness handling",
+      "name": "Strictness: MODERATE extract first",
+      "passed": true,
+      "failures": [],
+      "expected": {
+        "complete": false,
+        "current": "depression severity",
+        "question": "How will you measure depression severity?"
+      },
+      "actual": {
+        "complete": false,
+        "current": "depression severity",
+        "question": "How will you measure depression severity?"
+      },
+      "raw": "```json\n{\"complete\": false, \"current\": \"depression severity\", \"question\": \"How will you measure depression severity?\"}\n```"
+    },
+    {
+      "id": "12",
+      "category": "strictness handling",
+      "name": "Strictness: STRICT operationalize",
+      "passed": true,
+      "failures": [],
+      "expected": {
+        "complete": false,
+        "current": "people",
+        "question": "Which specific population do you mean?"
+      },
+      "actual": {
+        "complete": false,
+        "current": "people",
+        "question": "Which specific population do you mean?"
+      },
+      "raw": "```json\n{\"complete\": false, \"current\": \"people\", \"question\": \"Which specific population do you mean?\"}\n```"
+    },
+    {
+      "id": "13",
+      "category": "output format",
+      "name": "Output format invalid trap",
+      "passed": true,
+      "failures": [],
+      "expected": {
+        "complete": false,
+        "current": "adults with diabetes",
+        "question": ""
+      },
+      "actual": {
+        "complete": false,
+        "current": "adults with diabetes",
+        "question": "Which specific type of diabetes do you mean?"
+      },
+      "raw": "```json\n{\"complete\": false, \"current\": \"adults with diabetes\", \"question\": \"Which specific type of diabetes do you mean?\"}\n```"
+    },
+    {
+      "id": "14",
+      "category": "completed-dimension extraction",
+      "name": "Prior-context extraction",
+      "passed": true,
+      "failures": [],
+      "expected": {
+        "complete": true,
+        "current": "urban clinics",
+        "question": ""
+      },
+      "actual": {
+        "complete": true,
+        "current": "urban clinics",
+        "question": ""
+      },
+      "raw": "```json\n{\"complete\": true, \"current\": \"urban clinics\", \"question\": \"\"}\n```"
+    },
+    {
+      "id": "15",
+      "category": "long-turn priority retention",
+      "name": "Long-turn retention",
+      "passed": true,
+      "failures": [],
+      "expected": {
+        "complete": true,
+        "current": "primary care clinics and community centers",
+        "question": ""
+      },
+      "actual": {
+        "complete": true,
+        "current": "primary care clinics and community centers",
+        "question": ""
+      },
+      "raw": "```json\n{\"complete\": true, \"current\": \"primary care clinics and community centers\", \"question\": \"\"}\n```"
+    }
+  ]
+}

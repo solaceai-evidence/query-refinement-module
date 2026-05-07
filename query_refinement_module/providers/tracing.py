@@ -11,6 +11,7 @@ from pathlib import Path
 from typing import Any, Dict, Optional
 
 from ..interfaces import TracingProviderInterface
+from ..tracing import get_request_id, get_trace_id
 
 
 class TraceEventEmitter:
@@ -121,6 +122,7 @@ class FileTracingProvider(TracingProviderInterface):
             "operation_type": operation_type,
             "metadata": metadata or {},
             "event": "start",
+            **self._trace_context(),
         }
         self._write_json_line(self._operations_file, start_payload)
         try:
@@ -134,6 +136,7 @@ class FileTracingProvider(TracingProviderInterface):
                 "event": "end",
                 "status": "error",
                 "error": str(exc),
+                **self._trace_context(),
             }
             self._write_json_line(self._operations_file, failure_payload)
             raise
@@ -145,6 +148,7 @@ class FileTracingProvider(TracingProviderInterface):
                 "metadata": metadata or {},
                 "event": "end",
                 "status": "success",
+                **self._trace_context(),
             }
             self._write_json_line(self._operations_file, success_payload)
 
@@ -159,6 +163,7 @@ class FileTracingProvider(TracingProviderInterface):
             "event": event_name,
             "level": level,
             "metadata": metadata or {},
+            **self._trace_context(),
         }
         self._write_json_line(self._events_file, payload)
     
@@ -177,11 +182,24 @@ class FileTracingProvider(TracingProviderInterface):
             "value": value,
             "unit": unit,
             "metadata": metadata or {},
+            **self._trace_context(),
         }
         self._write_json_line(metrics_file, payload)
 
     def is_enabled(self) -> bool:
         return self._enabled
+
+    @staticmethod
+    def _trace_context() -> Dict[str, str]:
+        """Return current request_id and trace_id from ContextVars if set."""
+        ctx: Dict[str, str] = {}
+        request_id = get_request_id()
+        trace_id = get_trace_id()
+        if request_id:
+            ctx["request_id"] = request_id
+        if trace_id:
+            ctx["trace_id"] = trace_id
+        return ctx
 
     def _write_json_line(self, file_path: Path, payload: Dict[str, Any]) -> None:
         with self._lock:

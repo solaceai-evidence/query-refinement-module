@@ -151,3 +151,91 @@ def test_constrained_decoding_env_var(monkeypatch):
     settings = LLMSettings.from_env()
     assert settings.constrained_decoding is False
     assert settings.as_provider_kwargs()["constrained_decoding"] is False
+
+
+# ---------------------------------------------------------------------------
+# Rate-limit env vars
+# ---------------------------------------------------------------------------
+
+def _clear_rate_limit_env(monkeypatch):
+    for key in {
+        "QUERY_REFINEMENT_LLM_RATE_LIMIT_RPM",
+        "QUERY_REFINEMENT_LLM_RATE_LIMIT_TPM",
+        "QUERY_REFINEMENT_LLM_MAX_CONCURRENT",
+        "QUERY_REFINEMENT_LLM_ADAPTIVE_RATE_LIMIT",
+    }:
+        monkeypatch.delenv(key, raising=False)
+
+
+def test_rate_limit_defaults_when_absent(monkeypatch):
+    _clear_env(monkeypatch)
+    _clear_rate_limit_env(monkeypatch)
+    monkeypatch.setenv("QUERY_REFINEMENT_LLM_MODEL", "ollama/qwen2.5:72b")
+
+    settings = LLMSettings.from_env()
+
+    assert settings.rate_limit_rpm == 0
+    assert settings.rate_limit_tpm is None
+    assert settings.max_concurrent_requests == 20
+    assert settings.adaptive_rate_limit is False
+
+
+def test_rate_limit_env_vars_parsed(monkeypatch):
+    _clear_env(monkeypatch)
+    _clear_rate_limit_env(monkeypatch)
+    monkeypatch.setenv("QUERY_REFINEMENT_LLM_MODEL", "anthropic/claude-sonnet-4-5")
+    monkeypatch.setenv("QUERY_REFINEMENT_LLM_RATE_LIMIT_RPM", "50")
+    monkeypatch.setenv("QUERY_REFINEMENT_LLM_RATE_LIMIT_TPM", "40000")
+    monkeypatch.setenv("QUERY_REFINEMENT_LLM_MAX_CONCURRENT", "5")
+    monkeypatch.setenv("QUERY_REFINEMENT_LLM_ADAPTIVE_RATE_LIMIT", "true")
+
+    settings = LLMSettings.from_env()
+
+    assert settings.rate_limit_rpm == 50
+    assert settings.rate_limit_tpm == 40000
+    assert settings.max_concurrent_requests == 5
+    assert settings.adaptive_rate_limit is True
+
+
+def test_as_provider_kwargs_includes_rate_limit_config(monkeypatch):
+    """as_provider_kwargs builds a RateLimitConfig when RPM > 0."""
+    from query_refinement_module.interfaces import RateLimitConfig
+
+    _clear_env(monkeypatch)
+    _clear_rate_limit_env(monkeypatch)
+    monkeypatch.setenv("QUERY_REFINEMENT_LLM_MODEL", "anthropic/claude-sonnet-4-5")
+    monkeypatch.setenv("QUERY_REFINEMENT_LLM_RATE_LIMIT_RPM", "50")
+    monkeypatch.setenv("QUERY_REFINEMENT_LLM_RATE_LIMIT_TPM", "40000")
+
+    settings = LLMSettings.from_env()
+    kwargs = settings.as_provider_kwargs()
+
+    rate_cfg = kwargs["rate_limit_config"]
+    assert isinstance(rate_cfg, RateLimitConfig)
+    assert rate_cfg.requests_per_minute == 50
+    assert rate_cfg.tokens_per_minute == 40000
+
+
+def test_as_provider_kwargs_no_rate_limit_config_when_rpm_zero(monkeypatch):
+    """as_provider_kwargs returns None rate_limit_config when RPM is 0 (local model default)."""
+    _clear_env(monkeypatch)
+    _clear_rate_limit_env(monkeypatch)
+    monkeypatch.setenv("QUERY_REFINEMENT_LLM_MODEL", "ollama/qwen2.5:72b")
+
+    settings = LLMSettings.from_env()
+    kwargs = settings.as_provider_kwargs()
+
+    assert kwargs["rate_limit_config"] is None
+
+
+def test_as_provider_kwargs_max_concurrent_propagated(monkeypatch):
+    _clear_env(monkeypatch)
+    _clear_rate_limit_env(monkeypatch)
+    monkeypatch.setenv("QUERY_REFINEMENT_LLM_MODEL", "ollama/qwen2.5:72b")
+    monkeypatch.setenv("QUERY_REFINEMENT_LLM_MAX_CONCURRENT", "8")
+
+    settings = LLMSettings.from_env()
+    kwargs = settings.as_provider_kwargs()
+
+    assert kwargs["max_concurrent_requests"] == 8
+

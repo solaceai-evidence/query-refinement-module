@@ -4,8 +4,8 @@ Session storage provider implementations.
 Extracted from providers.py as part of v2.0.0 Phase 4 refactoring.
 """
 import asyncio
+import json
 import logging
-import pickle
 import threading
 from typing import Any, Dict
 
@@ -50,7 +50,14 @@ class InMemorySessionStorage(SessionStorageInterface):
 
 
 class RedisSessionStorage(SessionStorageInterface):
-    """Redis-backed session persistence using pickle serialization."""
+    """Redis-backed session persistence using JSON serialization.
+
+    Stored values must be JSON-serializable.  ``RefinementSession`` objects
+    are automatically encoded/decoded via ``_encode_session``/``_decode_session``.
+    """
+
+    # Marker key that identifies a serialised RefinementSession envelope.
+    _SESSION_MARKER = "_qrm_session_v1"
 
     def __init__(self, client: Any, namespace: str = "refinement:sessions") -> None:
         if redis is None:
@@ -61,21 +68,106 @@ class RedisSessionStorage(SessionStorageInterface):
     def _key(self, session_id: str) -> str:
         return f"{self._namespace}:{session_id}"
 
+    # ------------------------------------------------------------------
+    # Public interface
+    # ------------------------------------------------------------------
+
     def save_session(self, session_id: str, session: Any) -> None:
-        payload = pickle.dumps(session, protocol=pickle.HIGHEST_PROTOCOL)
+        """Persist *session* to Redis as a JSON string.
+
+        ``RefinementSession`` instances are encoded via ``_encode_session``.
+        All other values must already be JSON-serializable.
+        """
+        from query_refinement_module.session_models import RefinementSession  # local import to avoid cycles
+
+        if isinstance(session, RefinementSession):
+            payload = json.dumps(self._encode_session(session))
+        else:
+            payload = json.dumps(session)
         self._client.set(self._key(session_id), payload)
 
     def load_session(self, session_id: str) -> Any:
+        """Load and deserialise a previously saved session."""
         raw = self._client.get(self._key(session_id))
         if raw is None:
             raise KeyError(session_id)
-        return pickle.loads(raw)
+        # redis may return bytes or str depending on decode_responses setting
+        if isinstance(raw, (bytes, bytearray)):
+            raw = raw.decode("utf-8")
+        data = json.loads(raw)
+        if isinstance(data, dict) and data.get(self._SESSION_MARKER):
+            return self._decode_session(data)
+        return data
 
     def delete_session(self, session_id: str) -> None:
         self._client.delete(self._key(session_id))
 
     def session_exists(self, session_id: str) -> bool:
         return bool(self._client.exists(self._key(session_id)))
+
+    # ------------------------------------------------------------------
+    # Serialisation helpers
+    # ------------------------------------------------------------------
+
+    def _encode_session(self, session: Any) -> Dict[str, Any]:
+        """Encode a ``RefinementSession`` to a JSON-safe dict."""
+        return {
+            self._SESSION_MARKER: True,
+            "original_query": session.original_query,
+            "synthesis_requested": session.synthesis_requested,
+            # Store full Pydantic model data so we can reconstruct without the
+            # framework being passed separately (unlike SessionManager).
+            "_complete_framework": [
+                a.model_dump() for a in session._complete_framework
+            ],
+            "steps": [
+                {
+                    "refinement_aspect": step.refinement_aspect.model_dump(),
+                    "conversation_history": step.conversation_history,
+                    "is_complete": step.is_complete,
+                    "needs_review": step.needs_review,
+                    "was_skipped": step.was_skipped,
+                    "reasoning": step.reasoning,
+                    "follow_up_question": step.follow_up_question,
+                    "normalized_value": step.normalized_value,
+                }
+                for step in session.steps
+            ],
+        }
+
+    def _decode_session(self, data: Dict[str, Any]) -> Any:
+        """Reconstruct a ``RefinementSession`` from an encoded dict."""
+        from query_refinement_module.session_models import RefinementSession, AspectRefinementState
+        from query_refinement_module.schema import RefinementAspect
+
+        complete_framework = [
+            RefinementAspect.model_validate(a)
+            for a in data.get("_complete_framework", [])
+        ]
+        aspect_map = {a.id: a for a in complete_framework}
+
+        session = RefinementSession(original_query=data["original_query"])
+        session.synthesis_requested = data.get("synthesis_requested", False)
+        session._complete_framework = complete_framework
+
+        for s in data.get("steps", []):
+            aspect_id = s["refinement_aspect"]["id"]
+            aspect = aspect_map.get(aspect_id) or RefinementAspect.model_validate(
+                s["refinement_aspect"]
+            )
+            step = AspectRefinementState(
+                refinement_aspect=aspect,
+                conversation_history=s.get("conversation_history", []),
+                is_complete=s.get("is_complete", False),
+                needs_review=s.get("needs_review", False),
+                was_skipped=s.get("was_skipped", False),
+                reasoning=s.get("reasoning"),
+                follow_up_question=s.get("follow_up_question"),
+                normalized_value=s.get("normalized_value"),
+            )
+            session.steps.append(step)
+
+        return session
 
 
 class ConcurrentSessionStorage(SessionStorageInterface):
@@ -254,7 +346,11 @@ class ConcurrentSessionStorage(SessionStorageInterface):
         return self._backend.load_session(session_id)
 
     def delete_session(self, session_id: str) -> None:
-        """Synchronous delete - delegates to backend directly."""
+        """Synchronous delete - delegates to backend directly.
+
+        Note: This does NOT acquire the per-session asyncio.Lock; use
+        ``delete_session_async`` in async contexts to ensure mutual exclusion.
+        """
         self._backend.delete_session(session_id)
         self._cleanup_lock(session_id)
 

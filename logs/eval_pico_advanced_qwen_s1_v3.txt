@@ -1,0 +1,161 @@
+Running 1 scenario(s) | model=ollama/qwen2.5:72b | variant=open_llm
+
+  Scenario 1: Metformin RCT — extraction-heavy
+  Query: 'Effect of metformin versus placebo on glycaemic control in adults aged 40-65 with type 2 diabetes in primary care settings — randomised controlled trials only'
+    [population] turns=0 completed_ctx=0 ...
+      -> PASS: []
+    [clinical_condition] turns=0 completed_ctx=1 ...
+      -> PASS: []
+    [intervention] turns=0 completed_ctx=2 ...
+      -> PASS: []
+    [comparator] turns=0 completed_ctx=3 ...
+      -> PASS: []
+    [outcome] turns=1 completed_ctx=4 ...
+      -> PASS: []
+    [study_type] turns=0 completed_ctx=5 ...
+      -> PASS: []
+    [synthesis] building messages ...
+      -> ERROR: JSONDecodeError: Expecting ',' delimiter: line 14 column 25 (char 778)
+{
+  "prompt_variant": "open_llm",
+  "model": "ollama/qwen2.5:72b",
+  "scenarios_total": 1,
+  "scenarios_passed": 0,
+  "scenarios_failed": 1,
+  "synthesis_passed": 0,
+  "synthesis_total": 1,
+  "dimension_totals": {
+    "population": {
+      "passed": 1,
+      "failed": 0
+    },
+    "clinical_condition": {
+      "passed": 1,
+      "failed": 0
+    },
+    "intervention": {
+      "passed": 1,
+      "failed": 0
+    },
+    "comparator": {
+      "passed": 1,
+      "failed": 0
+    },
+    "outcome": {
+      "passed": 1,
+      "failed": 0
+    },
+    "study_type": {
+      "passed": 1,
+      "failed": 0
+    }
+  },
+  "results": [
+    {
+      "id": "1",
+      "name": "Metformin RCT \u2014 extraction-heavy",
+      "query": "Effect of metformin versus placebo on glycaemic control in adults aged 40-65 with type 2 diabetes in primary care settings \u2014 randomised controlled trials only",
+      "passed": false,
+      "dimensions": [
+        {
+          "dimension": "population",
+          "passed": true,
+          "failures": [],
+          "expected": {
+            "complete": true,
+            "current": ""
+          },
+          "actual": {
+            "complete": false,
+            "current": "adults aged 40-65 with type 2 diabetes",
+            "question": "Which specific geographic setting or context do you mean?"
+          },
+          "raw": null
+        },
+        {
+          "dimension": "clinical_condition",
+          "passed": true,
+          "failures": [],
+          "expected": {
+            "complete": true,
+            "current": "type 2 diabetes"
+          },
+          "actual": {
+            "complete": true,
+            "current": "type 2 diabetes",
+            "question": ""
+          },
+          "raw": null
+        },
+        {
+          "dimension": "intervention",
+          "passed": true,
+          "failures": [],
+          "expected": {
+            "complete": true,
+            "current": ""
+          },
+          "actual": {
+            "complete": false,
+            "current": "metformin",
+            "question": "Which specific intervention do you mean? I have extracted 'metformin' from your query. Could you provide more details such as the dosing, frequency, and duration?"
+          },
+          "raw": null
+        },
+        {
+          "dimension": "comparator",
+          "passed": true,
+          "failures": [],
+          "expected": {
+            "complete": true,
+            "current": "placebo"
+          },
+          "actual": {
+            "complete": true,
+            "current": "placebo",
+            "question": ""
+          },
+          "raw": null
+        },
+        {
+          "dimension": "outcome",
+          "passed": true,
+          "failures": [],
+          "expected": {
+            "complete": true,
+            "current": ""
+          },
+          "actual": {
+            "complete": true,
+            "current": "HbA1c reduction at 6 months",
+            "question": ""
+          },
+          "raw": null
+        },
+        {
+          "dimension": "study_type",
+          "passed": true,
+          "failures": [],
+          "expected": {
+            "complete": true,
+            "current": "randomised controlled trials"
+          },
+          "actual": {
+            "complete": true,
+            "current": "randomised controlled trials",
+            "question": ""
+          },
+          "raw": null
+        }
+      ],
+      "synthesis": {
+        "passed": false,
+        "failures": [
+          "execution error: JSONDecodeError: Expecting ',' delimiter: line 14 column 25 (char 778)"
+        ],
+        "actual": null,
+        "raw": null
+      }
+    }
+  ]
+}
