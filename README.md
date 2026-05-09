@@ -37,6 +37,7 @@ A web-based tool that helps people turn a rough research idea into a clearer que
 poetry install --with dev
 # Pick the template for your LLM provider:
 #   cp .env.anthropic-claude-sonnet-4-6 .env   # Anthropic Claude (cloud)
+#   cp .env.openai-gpt-4o .env                  # OpenAI GPT-4o (cloud)
 #   cp .env.ollama-qwen2.5-72b .env            # Ollama — Qwen 2.5 72B (local)
 #   cp .env.vllm .env                          # vLLM (self-hosted; use ./start_vllm.sh)
 # Then set QUERY_REFINEMENT_LLM_API_KEY (cloud) or verify API_BASE for vLLM / non-default local hosts
@@ -72,6 +73,8 @@ The simplest deployment path is Docker. This is the recommended option if you ar
 ```bash
 cp .env.prod .env                    # Anthropic Claude Sonnet 4.6
 # or
+cp .env.prod.openai-gpt-4o .env      # OpenAI GPT-4o
+# or
 cp .env.prod.ollama-qwen2.5-72b .env # Ollama / Qwen 2.5 72B
 ```
 
@@ -98,7 +101,7 @@ docker compose -f docker-compose.yml -f docker-compose.prod.yml up -d
 
 5. Open the site in your browser and check the app, API docs, and sign-in flow.
 
-If you are deploying to production against Ollama / Qwen 2.5 72B, use `.env.prod.ollama-qwen2.5-72b` instead of `.env.prod`. For local development against Ollama or vLLM, use `.env.ollama-qwen2.5-72b` or `.env.vllm`. For local Anthropic Claude development, use `.env.anthropic-claude-sonnet-4-6`.
+If you are deploying to production against OpenAI GPT-4o or Ollama / Qwen 2.5 72B, use `.env.prod.openai-gpt-4o` or `.env.prod.ollama-qwen2.5-72b` instead of `.env.prod`. For local development against OpenAI, Anthropic, Ollama, or vLLM, use `.env.openai-gpt-4o`, `.env.anthropic-claude-sonnet-4-6`, `.env.ollama-qwen2.5-72b`, or `.env.vllm`.
 
 See [docs/DEPLOYMENT.md](docs/DEPLOYMENT.md) for the full deployment guide.
 
@@ -127,22 +130,36 @@ poetry run query-refine --framework pico_advanced
 
 Key environment variables — pick the template for your provider and copy it to `.env`:
 
-| Variable                                    | Description                                                                                       |
-| ------------------------------------------- | ------------------------------------------------------------------------------------------------- |
-| `QUERY_REFINEMENT_LLM_API_KEY`              | API key for cloud providers (Anthropic, OpenAI); leave blank for Ollama or vLLM                   |
-| `QUERY_REFINEMENT_LLM_MODEL`                | Model identifier (default: `anthropic/claude-sonnet-4-6`)                                         |
-| `QUERY_REFINEMENT_LLM_API_BASE`             | Optional base URL override; Ollama defaults to `http://localhost:11434`, set explicitly for vLLM  |
-| `QUERY_REFINEMENT_LLM_CONSTRAINED_DECODING` | `true` to enable vLLM guided JSON decoding — **vLLM only**; leave `false` for all other providers |
-| `SECRET_KEY`                                | Secret key for session tokens — change this in production                                         |
-| `DATABASE_URL`                              | Database connection string (default: SQLite for local development)                                |
-| `ALLOW_REGISTRATION`                        | Set to `false` to disable self-registration                                                       |
-| `ENFORCE_WORKFLOW_LIMIT`                    | `true` = one workflow per user; `false` = unlimited                                               |
-| `INTEGRATION_API_KEY`                       | Optional: for server-to-server API access without a user login                                    |
+| Variable                                    | Description                                                                                            |
+| ------------------------------------------- | ------------------------------------------------------------------------------------------------------ |
+| `QUERY_REFINEMENT_LLM_API_KEY`              | API key for cloud providers (Anthropic, OpenAI); leave blank for Ollama or vLLM                        |
+| `QUERY_REFINEMENT_LLM_MODEL`                | Model identifier (default: `anthropic/claude-sonnet-4-6`)                                              |
+| `QUERY_REFINEMENT_LLM_API_BASE`             | Optional base URL override; Ollama defaults to `http://localhost:11434`, set explicitly for vLLM       |
+| `QUERY_REFINEMENT_LLM_CONTEXT_WINDOW`       | Optional client-side context window override for local backends that expose one; currently Ollama only |
+| `QUERY_REFINEMENT_LLM_CONSTRAINED_DECODING` | `true` to enable vLLM guided JSON decoding — **vLLM only**; leave `false` for all other providers      |
+| `SECRET_KEY`                                | Secret key for session tokens — change this in production                                              |
+| `DATABASE_URL`                              | Database connection string (default: SQLite for local development)                                     |
+| `ALLOW_REGISTRATION`                        | Set to `false` to disable self-registration                                                            |
+| `ENFORCE_WORKFLOW_LIMIT`                    | `true` = one workflow per user; `false` = unlimited                                                    |
+| `INTEGRATION_API_KEY`                       | Optional: for server-to-server API access without a user login                                         |
 
 For the built-in templates, most provider-specific knobs are now internal defaults:
 - Anthropic defaults prompt caching on and keeps the production prompt variant.
+- OpenAI defaults prompt caching off and uses the standard cloud path with no local API base.
 - Ollama defaults the API base to `http://localhost:11434`, the prompt variant to `open_llm`, and the context window to `num_ctx=16384`.
-- vLLM still needs an explicit API base and should keep constrained decoding enabled.
+- OpenAI-compatible self-hosted endpoints such as vLLM still need an explicit API base and should keep constrained decoding enabled when using vLLM.
+- Rate-limit values in the templates are prefilled starting points, not required blanks to complete. Only change them if your provider tier or deployment load differs.
+
+Configuration ownership is intentionally split:
+- `query_refinement_module/api/config.py` owns API/web settings such as auth, CORS, sessions, Redis, and HTTP ingress throttling.
+- `query_refinement_module/settings.py` owns outbound LLM runtime settings such as model, API base, prompt caching, context window, constrained decoding, and provider-side throttling.
+
+The template-facing throughput variables use the `LLM_*` names:
+- `LLM_RATE_LIMIT_RPM` is the shared request budget knob used for API ingress throttling and provider-side throttling.
+- `LLM_MAX_CONCURRENT` applies to outbound LLM concurrency only.
+- `LLM_RATE_LIMIT_PER_USER_RPM` and `LLM_MAX_CONCURRENT_PER_USER` apply to API fairness controls only.
+
+`QUERY_REFINEMENT_LLM_CONTEXT_WINDOW` is only for backends that support a client-side context-size parameter. Today that means Ollama via `num_ctx`. It does not change the provider-managed context window for Anthropic or OpenAI.
 
 For external systems calling the API without a user login, also set:
 - `INTEGRATION_API_KEY` — shared key sent via the `X-API-Key` header
@@ -152,12 +169,14 @@ After changing these values, restart the API process or container.
 
 ### LLM provider backends
 
-Five pre-filled environment templates are provided:
+Seven pre-filled environment templates are provided:
 
 | File                               | Provider                                 | Constrained decoding |
 | ---------------------------------- | ---------------------------------------- | -------------------- |
 | `.env.anthropic-claude-sonnet-4-6` | Anthropic Claude Sonnet 4.6              | off                  |
+| `.env.openai-gpt-4o`               | OpenAI GPT-4o                            | off                  |
 | `.env.prod`                        | Anthropic Claude Sonnet 4.6 (production) | off                  |
+| `.env.prod.openai-gpt-4o`          | OpenAI GPT-4o (production)               | off                  |
 | `.env.prod.ollama-qwen2.5-72b`     | Ollama — Qwen 2.5 72B (production)       | off                  |
 | `.env.ollama-qwen2.5-72b`          | Ollama — Qwen 2.5 72B (local)            | off                  |
 | `.env.vllm`                        | vLLM — Llama 3.1 8B                      | **on**               |

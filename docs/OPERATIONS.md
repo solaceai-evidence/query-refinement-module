@@ -4,21 +4,35 @@ This guide covers routine tasks and checks.
 
 ## Switching LLM backends
 
-Five env templates cover the supported backends:
+Seven env templates cover the supported backends:
 
 | Template                           | Provider                                 | API key required | Constrained decoding |
 | ---------------------------------- | ---------------------------------------- | ---------------- | -------------------- |
 | `.env.anthropic-claude-sonnet-4-6` | Anthropic Claude Sonnet 4.6 (dev)        | yes              | off                  |
+| `.env.openai-gpt-4o`               | OpenAI GPT-4o (dev)                      | yes              | off                  |
 | `.env.prod`                        | Anthropic Claude Sonnet 4.6 (production) | yes              | off                  |
+| `.env.prod.openai-gpt-4o`          | OpenAI GPT-4o (production)               | yes              | off                  |
 | `.env.prod.ollama-qwen2.5-72b`     | Ollama — Qwen 2.5 72B (production)       | no               | off                  |
 | `.env.ollama-qwen2.5-72b`          | Ollama — Qwen 2.5 72B (local)            | no               | off                  |
 | `.env.vllm`                        | vLLM — Llama 3.1 8B                      | no               | **on**               |
+
+The rate-limit values inside these templates are prefilled starting points. In normal deployments, leave them alone unless your provider tier or host capacity requires tuning.
+
+Config ownership is split on purpose:
+- `query_refinement_module/api/config.py` owns API/web settings and HTTP ingress throttling.
+- `query_refinement_module/settings.py` owns outbound LLM runtime settings and provider-side throttling.
+
+`LLM_RATE_LIMIT_RPM` is shared between those layers. `LLM_MAX_CONCURRENT` is outbound-only. `LLM_RATE_LIMIT_PER_USER_RPM` and `LLM_MAX_CONCURRENT_PER_USER` are API fairness controls only.
 
 To switch, copy the relevant template to `.env` and restart the API:
 
 ```bash
 # Anthropic Claude Sonnet 4.6 (local development)
 cp .env.anthropic-claude-sonnet-4-6 .env
+./start_api.sh
+
+# OpenAI GPT-4o (local development)
+cp .env.openai-gpt-4o .env
 ./start_api.sh
 
 # Ollama — Qwen 2.5 72B (local)
@@ -32,6 +46,10 @@ cp .env.vllm .env
 
 # Anthropic cloud (production)
 cp .env.prod .env
+./start_production.sh
+
+# OpenAI GPT-4o (production)
+cp .env.prod.openai-gpt-4o .env
 ./start_production.sh
 
 # Ollama — Qwen 2.5 72B (production)
@@ -79,6 +97,8 @@ curl -X POST http://localhost:11434/v1/chat/completions \
 > Synthesis runs 5 sequential and parallel LLM calls per request; each call shares
 > the same context budget. Increase to `32768` if you observe truncated responses;
 > decrease to `8192` only when memory is severely constrained.
+
+OpenAI and Anthropic do not expose an equivalent client-side context-window knob in this app. For those providers, use `QUERY_REFINEMENT_LLM_MAX_TOKENS` to control output length only.
 
 ### vLLM server diagnostics
 

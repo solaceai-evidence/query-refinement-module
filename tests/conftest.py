@@ -9,6 +9,7 @@ from sqlalchemy.orm import sessionmaker
 from sqlalchemy.pool import StaticPool
 
 from query_refinement_module.db.database import Base
+from query_refinement_module.api.config import get_settings
 
 # Ensure logging internals do not raise during late interpreter/test teardown.
 # Some third-party cleanup hooks emit logs after pytest capture streams close.
@@ -76,3 +77,23 @@ def reset_test_env():
     # Restore original environment
     os.environ.clear()
     os.environ.update(original_env)
+
+
+@pytest.fixture
+def login_and_get_auth_token():
+    """Log in through the cookie-based auth flow and return the JWT from the auth cookie."""
+
+    cookie_name = get_settings().auth_cookie_name
+
+    def _login(client, username: str, password: str) -> str:
+        response = client.post(
+            "/api/v1/auth/login",
+            data={"username": username, "password": password},
+        )
+        assert response.status_code == 200
+        token = response.cookies.get(cookie_name)
+        assert token is not None
+        client.cookies.clear()
+        return token
+
+    return _login

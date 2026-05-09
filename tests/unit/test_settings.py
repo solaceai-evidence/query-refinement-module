@@ -10,6 +10,7 @@ def _clear_env(monkeypatch):
         "QUERY_REFINEMENT_LLM_API_BASE",
         "QUERY_REFINEMENT_LLM_TEMPERATURE",
         "QUERY_REFINEMENT_LLM_MAX_TOKENS",
+        "QUERY_REFINEMENT_LLM_CONTEXT_WINDOW",
         "QUERY_REFINEMENT_LLM_COMPLETION_KWARGS",
     }:
         monkeypatch.delenv(key, raising=False)
@@ -96,7 +97,7 @@ def test_from_env_defaults_when_missing(monkeypatch):
     settings = LLMSettings.from_env()
 
     assert settings.temperature == 0.0
-    assert settings.max_tokens is None
+    assert settings.max_tokens == 4096
     assert settings.completion_kwargs == {}
     assert settings.api_base is None
     assert settings.enable_prompt_caching is False
@@ -134,6 +135,48 @@ def test_from_env_infers_anthropic_prompt_caching(monkeypatch):
     settings = LLMSettings.from_env()
 
     assert settings.enable_prompt_caching is True
+    assert settings.max_tokens == 4096
+
+
+def test_from_env_infers_openai_defaults(monkeypatch):
+    _clear_env(monkeypatch)
+    monkeypatch.setenv("QUERY_REFINEMENT_LLM_MODEL", "openai/gpt-4o")
+
+    settings = LLMSettings.from_env()
+
+    assert settings.enable_prompt_caching is False
+    assert settings.api_base is None
+    assert settings.max_tokens == 4096
+
+
+def test_context_window_override_applies_to_ollama(monkeypatch):
+    _clear_env(monkeypatch)
+    monkeypatch.setenv("QUERY_REFINEMENT_LLM_MODEL", "ollama/qwen2.5:72b")
+    monkeypatch.setenv("QUERY_REFINEMENT_LLM_CONTEXT_WINDOW", "32768")
+
+    settings = LLMSettings.from_env()
+
+    assert settings.completion_kwargs == {"num_ctx": 32768}
+
+
+def test_context_window_override_respects_explicit_completion_kwargs(monkeypatch):
+    _clear_env(monkeypatch)
+    monkeypatch.setenv("QUERY_REFINEMENT_LLM_MODEL", "ollama/qwen2.5:72b")
+    monkeypatch.setenv("QUERY_REFINEMENT_LLM_CONTEXT_WINDOW", "32768")
+    monkeypatch.setenv("QUERY_REFINEMENT_LLM_COMPLETION_KWARGS", '{"num_ctx": 8192}')
+
+    settings = LLMSettings.from_env()
+
+    assert settings.completion_kwargs == {"num_ctx": 8192}
+
+
+def test_context_window_override_rejected_for_openai(monkeypatch):
+    _clear_env(monkeypatch)
+    monkeypatch.setenv("QUERY_REFINEMENT_LLM_MODEL", "openai/gpt-4o")
+    monkeypatch.setenv("QUERY_REFINEMENT_LLM_CONTEXT_WINDOW", "32768")
+
+    with pytest.raises(ValueError, match="QUERY_REFINEMENT_LLM_CONTEXT_WINDOW"):
+        LLMSettings.from_env()
 
 
 def test_provider_kwargs_returns_copy(monkeypatch):
@@ -195,6 +238,10 @@ def test_constrained_decoding_env_var(monkeypatch):
 
 def _clear_rate_limit_env(monkeypatch):
     for key in {
+        "LLM_RATE_LIMIT_RPM",
+        "LLM_RATE_LIMIT_TPM",
+        "LLM_MAX_CONCURRENT",
+        "LLM_ADAPTIVE_RATE_LIMITING",
         "QUERY_REFINEMENT_LLM_RATE_LIMIT_RPM",
         "QUERY_REFINEMENT_LLM_RATE_LIMIT_TPM",
         "QUERY_REFINEMENT_LLM_MAX_CONCURRENT",
@@ -216,7 +263,49 @@ def test_rate_limit_defaults_when_absent(monkeypatch):
     assert settings.adaptive_rate_limit is False
 
 
-def test_rate_limit_env_vars_parsed(monkeypatch):
+def test_openai_cloud_rate_limit_defaults(monkeypatch):
+    _clear_env(monkeypatch)
+    _clear_rate_limit_env(monkeypatch)
+    monkeypatch.setenv("QUERY_REFINEMENT_LLM_MODEL", "openai/gpt-4o")
+
+    settings = LLMSettings.from_env()
+
+    assert settings.rate_limit_rpm == 500
+    assert settings.rate_limit_tpm == 30000
+    assert settings.max_concurrent_requests == 10
+
+
+def test_self_hosted_openai_compatible_defaults(monkeypatch):
+    _clear_env(monkeypatch)
+    _clear_rate_limit_env(monkeypatch)
+    monkeypatch.setenv("QUERY_REFINEMENT_LLM_MODEL", "openai/meta-llama/Llama-3.1-8B-Instruct")
+    monkeypatch.setenv("QUERY_REFINEMENT_LLM_API_BASE", "http://localhost:8000/v1")
+
+    settings = LLMSettings.from_env()
+
+    assert settings.rate_limit_rpm == 0
+    assert settings.rate_limit_tpm is None
+    assert settings.max_concurrent_requests == 20
+
+
+def test_rate_limit_env_vars_parsed_from_template_names(monkeypatch):
+    _clear_env(monkeypatch)
+    _clear_rate_limit_env(monkeypatch)
+    monkeypatch.setenv("QUERY_REFINEMENT_LLM_MODEL", "anthropic/claude-sonnet-4-5")
+    monkeypatch.setenv("LLM_RATE_LIMIT_RPM", "50")
+    monkeypatch.setenv("LLM_RATE_LIMIT_TPM", "40000")
+    monkeypatch.setenv("LLM_MAX_CONCURRENT", "5")
+    monkeypatch.setenv("LLM_ADAPTIVE_RATE_LIMITING", "true")
+
+    settings = LLMSettings.from_env()
+
+    assert settings.rate_limit_rpm == 50
+    assert settings.rate_limit_tpm == 40000
+    assert settings.max_concurrent_requests == 5
+    assert settings.adaptive_rate_limit is True
+
+
+def test_legacy_rate_limit_env_vars_still_parsed(monkeypatch):
     _clear_env(monkeypatch)
     _clear_rate_limit_env(monkeypatch)
     monkeypatch.setenv("QUERY_REFINEMENT_LLM_MODEL", "anthropic/claude-sonnet-4-5")
@@ -240,8 +329,8 @@ def test_as_provider_kwargs_includes_rate_limit_config(monkeypatch):
     _clear_env(monkeypatch)
     _clear_rate_limit_env(monkeypatch)
     monkeypatch.setenv("QUERY_REFINEMENT_LLM_MODEL", "anthropic/claude-sonnet-4-5")
-    monkeypatch.setenv("QUERY_REFINEMENT_LLM_RATE_LIMIT_RPM", "50")
-    monkeypatch.setenv("QUERY_REFINEMENT_LLM_RATE_LIMIT_TPM", "40000")
+    monkeypatch.setenv("LLM_RATE_LIMIT_RPM", "50")
+    monkeypatch.setenv("LLM_RATE_LIMIT_TPM", "40000")
 
     settings = LLMSettings.from_env()
     kwargs = settings.as_provider_kwargs()
@@ -268,7 +357,7 @@ def test_as_provider_kwargs_max_concurrent_propagated(monkeypatch):
     _clear_env(monkeypatch)
     _clear_rate_limit_env(monkeypatch)
     monkeypatch.setenv("QUERY_REFINEMENT_LLM_MODEL", "ollama/qwen2.5:72b")
-    monkeypatch.setenv("QUERY_REFINEMENT_LLM_MAX_CONCURRENT", "8")
+    monkeypatch.setenv("LLM_MAX_CONCURRENT", "8")
 
     settings = LLMSettings.from_env()
     kwargs = settings.as_provider_kwargs()

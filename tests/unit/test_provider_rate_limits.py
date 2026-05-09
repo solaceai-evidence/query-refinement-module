@@ -218,6 +218,22 @@ def test_is_rate_limit_error_detection():
     assert provider._is_rate_limit_error(Exception("Rate limit exceeded"))
     assert provider._is_rate_limit_error(Exception("HTTP 429 Too Many Requests"))
     assert provider._is_rate_limit_error(Exception("Quota exceeded for this model"))
+
+
+def test_provider_uses_openai_cloud_defaults_when_unspecified():
+    provider = LiteLLMProvider(default_model="openai/gpt-4o")
+
+    assert provider._max_concurrent == 10
+    assert provider._rate_limiter is not None
+
+
+def test_provider_disables_cloud_rate_limits_for_openai_compatible_api_base():
+    provider = LiteLLMProvider(
+        default_model="openai/meta-llama/Llama-3.1-8B-Instruct",
+        api_base="http://localhost:8000/v1",
+    )
+
+    assert provider._rate_limiter is None
     assert provider._is_rate_limit_error(Exception("Service temporarily unavailable: 503"))
     assert provider._is_rate_limit_error(MockLiteLLMError("RateLimitError occurred"))
     
@@ -320,6 +336,17 @@ def test_provider_auto_selects_provider_defaults_for_claude():
     assert provider._rate_limiter is not None
     assert isinstance(provider._rate_limiter, TokenBucketRateLimiter)
     assert provider._rate_limiter.config.requests_per_minute == 50
+
+
+def test_provider_auto_selects_provider_defaults_for_openai_prefixed_models():
+    """Without explicit rate_limit_config, openai/* models get OpenAI-specific defaults."""
+    from query_refinement_module.rate_limiter import TokenBucketRateLimiter
+
+    provider = LiteLLMProvider(default_model="openai/gpt-4o")
+
+    assert provider._rate_limiter is not None
+    assert isinstance(provider._rate_limiter, TokenBucketRateLimiter)
+    assert provider._rate_limiter.config.requests_per_minute == 500
 
 
 def test_provider_no_rate_limiter_for_local_model_by_default():

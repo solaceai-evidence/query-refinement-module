@@ -64,7 +64,7 @@ def session_manager():
 
 
 @pytest.fixture
-def superuser_token(db: Session) -> str:
+def superuser_token(db: Session, login_and_get_auth_token) -> str:
     """Create a superuser and return their auth token."""
     superuser = create_user(
         db,
@@ -78,16 +78,11 @@ def superuser_token(db: Session) -> str:
     db.commit()
     
     client = TestClient(app)
-    response = client.post(
-        "/api/v1/auth/login",
-        data={"username": "admin@test.com", "password": "SuperSecret123!"}
-    )
-    assert response.status_code == 200
-    return response.json()["access_token"]
+    return login_and_get_auth_token(client, "admin@test.com", "SuperSecret123!")
 
 
 @pytest.fixture
-def regular_user_token(db: Session) -> str:
+def regular_user_token(db: Session, login_and_get_auth_token) -> str:
     """Create a regular user and return their auth token."""
     user = create_user(
         db,
@@ -98,12 +93,7 @@ def regular_user_token(db: Session) -> str:
     )
     
     client = TestClient(app)
-    response = client.post(
-        "/api/v1/auth/login",
-        data={"username": "user@test.com", "password": "UserSecret123!"}
-    )
-    assert response.status_code == 200
-    return response.json()["access_token"]
+    return login_and_get_auth_token(client, "user@test.com", "UserSecret123!")
 
 
 @pytest.fixture

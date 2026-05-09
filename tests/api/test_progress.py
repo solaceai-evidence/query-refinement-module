@@ -4,9 +4,10 @@ Tests for real-time progress tracking.
 import pytest
 from datetime import datetime
 from fastapi.testclient import TestClient
-from unittest.mock import AsyncMock, patch
+from unittest.mock import AsyncMock, Mock, patch
 
 from query_refinement_module.api.main import app
+from query_refinement_module.api.routes import refinement as refinement_routes
 from query_refinement_module.models.progress import (
     ProgressStage,
     ProgressStatus,
@@ -157,22 +158,26 @@ class TestProgressAPI:
         
         assert response.status_code == 401
     
-    @patch("query_refinement_module.api.routes.refinement.get_current_user")
-    @patch("query_refinement_module.api.routes.refinement.get_db")
-    def test_get_progress_not_found(self, mock_db, mock_user):
+    def test_get_progress_not_found(self):
         """Test getting progress for nonexistent query."""
-        # Mock user
-        mock_user.return_value.id = 1
-        
-        # Mock DB - query not found
-        mock_db_session = mock_db.return_value
-        with patch("query_refinement_module.api.routes.refinement.get_query", return_value=None):
-            response = client.get(
-                "/api/v1/refinement/queries/999/progress",
-                headers={"Authorization": "Bearer fake_token"}
-            )
-            
-            assert response.status_code in (401, 404)
+        mock_user = Mock(id=1)
+        mock_db = Mock()
+
+        app.dependency_overrides[refinement_routes.get_current_user_or_integration] = lambda: mock_user
+
+        def override_get_db():
+            yield mock_db
+
+        app.dependency_overrides[refinement_routes.get_db] = override_get_db
+
+        try:
+            with patch("query_refinement_module.api.routes.refinement.get_query", return_value=None):
+                response = client.get("/api/v1/refinement/queries/999/progress")
+
+                assert response.status_code == 404
+        finally:
+            app.dependency_overrides.pop(refinement_routes.get_current_user_or_integration, None)
+            app.dependency_overrides.pop(refinement_routes.get_db, None)
     
     @pytest.mark.asyncio
     async def test_track_progress_helper(self):

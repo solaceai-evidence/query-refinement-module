@@ -26,14 +26,23 @@ class TestFrontendContracts:
         Frontend expects:
         - session_id: number
         - query_id: number
-        - summary: { total_aspects, aspects_needing_refinement, aspects_clear, is_complete }
+        - source: 'gui' | 'api_integration'
+        - summary: object with at least an aspects array
         - next_prompt: NextPrompt | null
+        - ready_for_synthesis: boolean
         """
         # Simulate API response
         response_dict = {
             "session_id": 1,
             "query_id": 1,
+            "source": "gui",
             "summary": {
+                "aspects": [
+                    {
+                        "aspect_name": "Population",
+                        "status": "needs_refinement",
+                    }
+                ],
                 "total_aspects": 4,
                 "aspects_needing_refinement": 2,
                 "aspects_clear": 2,
@@ -41,10 +50,12 @@ class TestFrontendContracts:
             },
             "next_prompt": {
                 "aspect_id": "population",
+                "name": "Population",
                 "aspect_name": "Population",
                 "question": "Who is the target population?",
                 "description": "Define the population group"
-            }
+            },
+            "ready_for_synthesis": False,
         }
         
         # Validate Pydantic model can be created (validates structure)
@@ -53,11 +64,14 @@ class TestFrontendContracts:
         # Validate required fields exist
         assert hasattr(response, 'session_id')
         assert hasattr(response, 'query_id')
+        assert hasattr(response, 'source')
         assert hasattr(response, 'summary')
         assert hasattr(response, 'next_prompt')
+        assert hasattr(response, 'ready_for_synthesis')
         
         # Validate summary structure matches frontend expectations
         summary = response.summary
+        assert "aspects" in summary
         assert "total_aspects" in summary
         assert "aspects_needing_refinement" in summary
         assert "aspects_clear" in summary
@@ -66,8 +80,11 @@ class TestFrontendContracts:
         # Validate types
         assert isinstance(response.session_id, int)
         assert isinstance(response.query_id, int)
+        assert response.source in {"gui", "api_integration"}
         assert isinstance(summary["is_complete"], bool)
         assert isinstance(summary["total_aspects"], int)
+        assert response.next_prompt["name"] == "Population"
+        assert isinstance(response.ready_for_synthesis, bool)
         
         print("✓ StartRefinementResponse contract valid")
     

@@ -15,6 +15,7 @@ from threading import Thread
 import queue
 
 from query_refinement_module.api.main import app
+from query_refinement_module.db.crud import assign_user_framework_access
 from query_refinement_module.db.session import get_db
 from query_refinement_module.db.models.user import User
 from query_refinement_module.db.models.webhook import Webhook, WebhookDelivery
@@ -63,13 +64,25 @@ def webhook_server():
 
 
 @pytest.fixture
-def client():
+def client(db):
     """Create test client."""
     return TestClient(app)
 
 
 @pytest.fixture
-def test_user(client):
+def db(test_db_session):
+    """Override the app database dependency for webhook tests."""
+
+    def override_get_db():
+        yield test_db_session
+
+    app.dependency_overrides[get_db] = override_get_db
+    yield test_db_session
+    app.dependency_overrides.clear()
+
+
+@pytest.fixture
+def test_user(client, login_and_get_auth_token):
     """Create a test user and return auth token."""
     # Register user (collision-safe)
     unique = uuid.uuid4().hex[:12]
@@ -83,13 +96,7 @@ def test_user(client):
     assert response.status_code == 201
     
     # Login
-    response = client.post('/api/v1/auth/login', data={
-        'username': username,
-        'password': password
-    })
-    assert response.status_code == 200
-    
-    return response.json()['access_token']
+    return login_and_get_auth_token(client, username, password)
 
 
 class TestWebhookCRUD:
@@ -378,7 +385,7 @@ class TestWebhookSecurity:
         response = client.get('/api/v1/webhooks')
         assert response.status_code == 401
     
-    def test_webhook_ownership(self, client, webhook_server):
+    def test_webhook_ownership(self, client, webhook_server, login_and_get_auth_token):
         """Test that users can only access their own webhooks."""
         # Create two users
         user1_response = client.post('/api/v1/auth/register', json={
@@ -386,20 +393,22 @@ class TestWebhookSecurity:
             'password': 'Pass123!Aa',
             'email': f'user1_{int(time.time())}@test.com'
         })
-        user1_token = client.post('/api/v1/auth/login', data={
-            'username': user1_response.json()['username'],
-            'password': 'Pass123!Aa'
-        }).json()['access_token']
+        user1_token = login_and_get_auth_token(
+            client,
+            user1_response.json()['username'],
+            'Pass123!Aa',
+        )
         
         user2_response = client.post('/api/v1/auth/register', json={
             'username': f'user2_{int(time.time())}',
             'password': 'Pass123!Aa',
             'email': f'user2_{int(time.time())}@test.com'
         })
-        user2_token = client.post('/api/v1/auth/login', data={
-            'username': user2_response.json()['username'],
-            'password': 'Pass123!Aa'
-        }).json()['access_token']
+        user2_token = login_and_get_auth_token(
+            client,
+            user2_response.json()['username'],
+            'Pass123!Aa',
+        )
         
         # User 1 creates webhook
         create_response = client.post(
@@ -436,7 +445,7 @@ class TestWebhookSecurity:
 class TestWebhookIntegration:
     """Test webhook integration with refinement workflow."""
     
-    def test_refinement_started_event(self, client, test_user, webhook_server):
+    def test_refinement_started_event(self, client, test_user, webhook_server, db):
         """Test that refinement.started event is triggered."""
         # Clear webhook queue
         while not webhook_payloads.empty():
@@ -452,6 +461,18 @@ class TestWebhookIntegration:
             }
         )
         assert create_response.status_code == 201
+
+        me_response = client.get(
+            '/api/v1/auth/me',
+            headers={'Authorization': f'Bearer {test_user}'},
+        )
+        assert me_response.status_code == 200
+        assign_user_framework_access(
+            db,
+            user_id=me_response.json()['id'],
+            framework_name='pico_advanced',
+        )
+        db.commit()
         
         # Start refinement workflow
         response = client.post(

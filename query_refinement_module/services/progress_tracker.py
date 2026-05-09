@@ -6,7 +6,7 @@ Provides in-memory and Redis-backed progress tracking with TTL.
 import asyncio
 import logging
 import time
-from datetime import datetime
+from datetime import datetime, timezone
 from typing import Dict, Optional
 
 from query_refinement_module.models.progress import (
@@ -18,6 +18,10 @@ from query_refinement_module.models.progress import (
 )
 
 logger = logging.getLogger(__name__)
+
+
+def _utc_now() -> datetime:
+    return datetime.now(timezone.utc)
 
 
 class ProgressTracker:
@@ -59,7 +63,7 @@ class ProgressTracker:
             Initial progress status
         """
         async with self._lock:
-            now = datetime.utcnow()
+            now = _utc_now()
             
             progress = ProgressStatus(
                 query_id=query_id,
@@ -101,7 +105,7 @@ class ProgressTracker:
                 return None
             
             progress = self._progress[query_id]
-            now = datetime.utcnow()
+            now = _utc_now()
             
             # Update fields
             progress.stage = update.stage
@@ -155,7 +159,7 @@ class ProgressTracker:
             
             if progress:
                 # Update elapsed time
-                now = datetime.utcnow()
+                now = _utc_now()
                 progress.elapsed_seconds = (now - progress.started_at).total_seconds()
             
             return progress
@@ -185,7 +189,7 @@ class ProgressTracker:
             Number of entries removed
         """
         async with self._lock:
-            now = datetime.utcnow()
+            now = _utc_now()
             expired_ids = []
             
             for query_id, progress in self._progress.items():

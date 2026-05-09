@@ -131,27 +131,13 @@ class Settings(BaseSettings):
     max_requests: int = Field(default=1000, description="Max requests per worker before restart")
     max_requests_jitter: int = Field(default=100, description="Jitter for max_requests")
     
-    # LLM Provider (automatically loaded from .env with case-insensitive matching)
-    refinement_framework_path: str = Field(default="/dev/null")
-    query_refinement_llm_model: str = Field(default="anthropic/claude-sonnet-4-20250514")
-    query_refinement_llm_api_key: str = Field(default="")
-    query_refinement_llm_temperature: float = Field(default=0.2)
-    
-    # Rate Limiting Configuration
-    # Global limits (across all users and sessions)
+    # API ingress rate limiting.
+    # LLM provider/runtime configuration lives in query_refinement_module.settings.
+    # Only the HTTP request-per-minute limits are enforced at this layer.
     llm_rate_limit_rpm: int = Field(default=50, description="Global requests per minute limit")
-    llm_rate_limit_tpm: Optional[int] = Field(default=None, description="Global tokens per minute limit (None = unlimited)")
-    llm_max_concurrent: int = Field(default=5, description="Global max concurrent requests")
     
     # Per-user limits (fairness in multi-tenant deployments)
     llm_rate_limit_per_user_rpm: int = Field(default=10, description="Per-user requests per minute limit")
-    llm_max_concurrent_per_user: int = Field(default=3, description="Per-user max concurrent requests")
-    
-    # Adaptive rate limiting
-    llm_adaptive_rate_limiting: bool = Field(default=True, description="Enable adaptive rate limit adjustments")
-    llm_adaptive_decrease_factor: float = Field(default=0.8, description="Decrease factor on 429 errors (0.8 = 20% reduction)")
-    llm_adaptive_increase_factor: float = Field(default=1.05, description="Increase factor during recovery (1.05 = 5% increase)")
-    llm_adaptive_increase_interval: int = Field(default=60, description="Recovery adjustment interval in seconds")
     
     # Redis Configuration (shared across features)
     redis_url: str = Field(default="redis://localhost:6379/0", description="Redis URL for caching and rate limiting")

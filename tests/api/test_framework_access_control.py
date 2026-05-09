@@ -32,7 +32,7 @@ def framework_name():
 
 
 @pytest.fixture
-def superuser_token(db: Session) -> str:
+def superuser_token(db: Session, login_and_get_auth_token) -> str:
     user = create_user(
         db,
         username="framework_admin",
@@ -44,12 +44,7 @@ def superuser_token(db: Session) -> str:
     db.commit()
 
     client = TestClient(app)
-    response = client.post(
-        "/api/v1/auth/login",
-        data={"username": "framework_admin@test.com", "password": "AdminSecret123!"},
-    )
-    assert response.status_code == 200
-    return response.json()["access_token"]
+    return login_and_get_auth_token(client, "framework_admin@test.com", "AdminSecret123!")
 
 
 @pytest.fixture
@@ -66,14 +61,9 @@ def regular_user(db: Session):
 
 
 @pytest.fixture
-def regular_user_token(regular_user) -> str:
+def regular_user_token(regular_user, login_and_get_auth_token) -> str:
     client = TestClient(app)
-    response = client.post(
-        "/api/v1/auth/login",
-        data={"username": regular_user.email, "password": "UserSecret123!"},
-    )
-    assert response.status_code == 200
-    return response.json()["access_token"]
+    return login_and_get_auth_token(client, regular_user.email, "UserSecret123!")
 
 
 class TestFrameworkAccessAdminEndpoints:

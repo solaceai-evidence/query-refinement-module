@@ -10,7 +10,7 @@ from query_refinement_module.interfaces import LLMCompletionResult
 async def test_prompt_caching_enabled_adds_cache_control():
     """Test that cache_control is added to system message when caching is enabled."""
     provider = LiteLLMProvider(
-        default_model="anthropic/claude-sonnet-4-20250514",
+        default_model="anthropic/claude-sonnet-4-6",
         enable_prompt_caching=True
     )
     
@@ -47,7 +47,7 @@ async def test_prompt_caching_enabled_adds_cache_control():
 async def test_prompt_caching_disabled_no_cache_control():
     """Test that cache_control is not added when caching is disabled."""
     provider = LiteLLMProvider(
-        default_model="anthropic/claude-sonnet-4-20250514",
+        default_model="anthropic/claude-sonnet-4-6",
         enable_prompt_caching=False
     )
     
@@ -82,7 +82,7 @@ async def test_prompt_caching_disabled_no_cache_control():
 async def test_prompt_caching_not_requested():
     """Test that cache_control is not added when not requested."""
     provider = LiteLLMProvider(
-        default_model="anthropic/claude-sonnet-4-20250514",
+        default_model="anthropic/claude-sonnet-4-6",
         enable_prompt_caching=True
     )
     
@@ -117,7 +117,7 @@ async def test_prompt_caching_not_requested():
 async def test_prompt_caching_without_system_prompt():
     """Test that caching works correctly when no system prompt is provided."""
     provider = LiteLLMProvider(
-        default_model="anthropic/claude-sonnet-4-20250514",
+        default_model="anthropic/claude-sonnet-4-6",
         enable_prompt_caching=True
     )
     

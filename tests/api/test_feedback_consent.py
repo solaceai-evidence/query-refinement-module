@@ -27,7 +27,7 @@ def db(test_db_session):
 
 
 @pytest.fixture
-def user_token(db: Session) -> str:
+def user_token(db: Session, login_and_get_auth_token) -> str:
     user = create_user(
         db,
         username="mph_user",
@@ -37,12 +37,7 @@ def user_token(db: Session) -> str:
     )
 
     client = TestClient(app)
-    response = client.post(
-        "/api/v1/auth/login",
-        data={"username": user.email, "password": "UserSecret123!"},
-    )
-    assert response.status_code == 200
-    return response.json()["access_token"]
+    return login_and_get_auth_token(client, user.email, "UserSecret123!")
 
 
 def _create_query(db: Session, user_email: str = "mph@test.com") -> int:

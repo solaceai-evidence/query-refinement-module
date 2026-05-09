@@ -10,6 +10,7 @@ import time
 from typing import Any, Dict, List, Optional, Type, Union
 
 from query_refinement_module.tracing import get_request_id, get_trace_id
+from query_refinement_module.llm_model_defaults import get_model_defaults
 
 from ..interfaces import LLMCompletionResult, LLMProviderInterface, RateLimitConfig, RateLimitExceeded
 from .circuit_breaker import CircuitBreakerRegistry, CircuitBreakerConfig, CircuitBreakerOpen
@@ -44,7 +45,7 @@ class LiteLLMProvider(LLMProviderInterface):
         constrained_decoding: bool = False,
         circuit_breaker_config: Optional[CircuitBreakerConfig] = None,
         rate_limit_config: Optional[RateLimitConfig] = None,
-        max_concurrent_requests: int = 20,
+        max_concurrent_requests: Optional[int] = None,
     ) -> None:
         if litellm is None:
             raise RuntimeError(
@@ -61,14 +62,21 @@ class LiteLLMProvider(LLMProviderInterface):
         self._enable_prompt_caching = enable_prompt_caching
         self._constrained_decoding = constrained_decoding
 
+        provider_defaults = self.get_rate_limits(default_model, api_base=api_base)
+        resolved_max_concurrent = max_concurrent_requests
+        if resolved_max_concurrent is None:
+            if provider_defaults.max_concurrent_requests > 0:
+                resolved_max_concurrent = provider_defaults.max_concurrent_requests
+            else:
+                resolved_max_concurrent = 20
+
         # Semaphore to limit concurrent LLM calls (prevent overwhelming server)
-        self._max_concurrent = max_concurrent_requests
-        self._semaphore = asyncio.Semaphore(max_concurrent_requests)
+        self._max_concurrent = resolved_max_concurrent
+        self._semaphore = asyncio.Semaphore(resolved_max_concurrent)
         
         # Token-bucket rate limiter for proprietary LLM APIs (Anthropic, OpenAI, etc.)
         # If no explicit config is provided, use provider defaults only when RPM > 0.
         if rate_limit_config is None:
-            provider_defaults = self.get_rate_limits(default_model)
             rate_limit_config = provider_defaults if provider_defaults.requests_per_minute > 0 else None
 
         self._rate_limiter: Optional[TokenBucketRateLimiter] = None
@@ -83,7 +91,7 @@ class LiteLLMProvider(LLMProviderInterface):
         else:
             logger.debug(
                 "LLM rate limiter disabled (unlimited). "
-                "Set QUERY_REFINEMENT_LLM_RATE_LIMIT_RPM to enable for proprietary APIs."
+                "Set LLM_RATE_LIMIT_RPM to enable or override provider throttling."
             )
 
         # Circuit breaker for protecting against provider outages
@@ -799,7 +807,11 @@ class LiteLLMProvider(LLMProviderInterface):
 
         return info
     
-    def get_rate_limits(self, model: Optional[str] = None) -> "RateLimitConfig":
+    def get_rate_limits(
+        self,
+        model: Optional[str] = None,
+        api_base: Optional[str] = None,
+    ) -> "RateLimitConfig":
         """
         Get rate limits for the provider/model.
         
@@ -807,52 +819,15 @@ class LiteLLMProvider(LLMProviderInterface):
         Falls back to conservative defaults for unknown providers.
         """
         target_model = model or self._default_model
-        
-        # Provider-specific rate limits based on model prefix
-        # These are conservative estimates - users should configure actual limits in .env
-        
-        if target_model.startswith("gpt-"):
-            # OpenAI GPT models
-            if "gpt-4" in target_model:
-                return RateLimitConfig(
-                    requests_per_minute=500,
-                    tokens_per_minute=30000,
-                    max_concurrent_requests=10,
-                )
-            else:  # GPT-3.5 and others
-                return RateLimitConfig(
-                    requests_per_minute=3500,
-                    tokens_per_minute=90000,
-                    max_concurrent_requests=10,
-                )
-        
-        elif target_model.startswith("claude-"):
-            # Anthropic Claude models
-            return RateLimitConfig(
-                requests_per_minute=50,
-                tokens_per_minute=40000,
-                max_concurrent_requests=5,
-            )
-        
-        elif target_model.startswith("gemini-"):
-            # Google Gemini models
-            return RateLimitConfig(
-                requests_per_minute=60,
-                tokens_per_minute=32000,
-                max_concurrent_requests=5,
-            )
-        
-        elif "ollama" in target_model or "llama" in target_model.lower():
-            # Local models (Ollama, Llama)
-            return RateLimitConfig.unlimited()
-        
-        else:
-            # Unknown provider - use conservative defaults
-            return RateLimitConfig(
-                requests_per_minute=60,
-                tokens_per_minute=10000,
-                max_concurrent_requests=5,
-            )
+        target_api_base = self._api_base if api_base is None else api_base
+        defaults = get_model_defaults(target_model, api_base=target_api_base)
+        if defaults.rate_limit is not None:
+            return defaults.rate_limit
+        return RateLimitConfig(
+            requests_per_minute=60,
+            tokens_per_minute=10000,
+            max_concurrent_requests=5,
+        )
     
     def _is_rate_limit_error(self, error: Exception) -> bool:
         """Check if an exception is a rate limit error."""

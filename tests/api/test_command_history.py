@@ -61,7 +61,7 @@ def session_manager():
 
 
 @pytest.fixture
-def auth_user_and_token(db: Session):
+def auth_user_and_token(db: Session, login_and_get_auth_token):
     """Create a user and return both user object and auth token."""
     user = create_user(
         db,
@@ -72,12 +72,7 @@ def auth_user_and_token(db: Session):
     )
     
     client = TestClient(app)
-    response = client.post(
-        "/api/v1/auth/login",
-        data={"username": "cmdtest@test.com", "password": "CmdTest123!"}
-    )
-    assert response.status_code == 200
-    token = response.json()["access_token"]
+    token = login_and_get_auth_token(client, "cmdtest@test.com", "CmdTest123!")
     
     return user, token
 
@@ -346,11 +341,7 @@ class TestCommandHistoryEndpoint:
             name="Other User"
         )
         
-        login_response = client.post(
-            "/api/v1/auth/login",
-            data={"username": "other@test.com", "password": "Other123!"}
-        )
-        other_token = login_response.json()["access_token"]
+        other_token = login_and_get_auth_token(client, "other@test.com", "Other123!")
         
         response = client.get(
             f"/api/v1/refinement/queries/{db_query.id}/command-history",

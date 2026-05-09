@@ -6,7 +6,7 @@ Provides polling-based progress tracking for long-running operations.
 from datetime import datetime
 from enum import Enum
 from typing import Optional, Dict, Any
-from pydantic import BaseModel, Field
+from pydantic import BaseModel, Field, ConfigDict
 
 
 class ProgressStage(str, Enum):
@@ -40,6 +40,31 @@ class ProgressStage(str, Enum):
 
 class ProgressStatus(BaseModel):
     """Real-time progress status for a refinement query."""
+
+    model_config = ConfigDict(
+        json_schema_extra={
+            "example": {
+                "query_id": "query_abc123",
+                "stage": "generating_suggestions",
+                "progress": 0.4,
+                "message": "Generating refinement suggestions (turn 2 of 3)...",
+                "details": {
+                    "framework": "pico_advanced",
+                    "current_aspect": "Intervention"
+                },
+                "started_at": "2026-02-11T10:30:00Z",
+                "updated_at": "2026-02-11T10:30:08Z",
+                "elapsed_seconds": 8.2,
+                "turn_number": 2,
+                "total_turns": 3,
+                "aspects_count": 5,
+                "suggestions_count": 12,
+                "llm_calls_made": 2,
+                "estimated_completion_seconds": 12.0,
+                "error": None
+            }
+        }
+    )
     
     query_id: str = Field(..., description="Unique query identifier")
     stage: ProgressStage = Field(..., description="Current processing stage")
@@ -65,31 +90,6 @@ class ProgressStatus(BaseModel):
     # Error information (for failed state)
     error: Optional[str] = Field(None, description="Error message if failed")
     
-    class Config:
-        json_schema_extra = {
-            "example": {
-                "query_id": "query_abc123",
-                "stage": "generating_suggestions",
-                "progress": 0.4,
-                "message": "Generating refinement suggestions (turn 2 of 3)...",
-                "details": {
-                    "framework": "pico_advanced",
-                    "current_aspect": "Intervention"
-                },
-                "started_at": "2026-02-11T10:30:00Z",
-                "updated_at": "2026-02-11T10:30:08Z",
-                "elapsed_seconds": 8.2,
-                "turn_number": 2,
-                "total_turns": 3,
-                "aspects_count": 5,
-                "suggestions_count": 12,
-                "llm_calls_made": 2,
-                "estimated_completion_seconds": 12.0,
-                "error": None
-            }
-        }
-
-
 class ProgressUpdate(BaseModel):
     """Internal model for updating progress (not exposed via API)."""
     

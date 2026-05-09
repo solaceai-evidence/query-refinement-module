@@ -55,6 +55,7 @@ required_files=(
     "gunicorn_conf.py"
     "nginx/nginx.conf"
     ".env.prod"
+    ".env.prod.openai-gpt-4o"
     ".env.prod.ollama-qwen2.5-72b"
 )
 
@@ -102,7 +103,7 @@ if [ -f ".env" ]; then
     fi
     
 else
-    check_warn ".env file not found - copy from .env.prod or .env.prod.ollama-qwen2.5-72b and configure"
+    check_warn ".env file not found - copy from .env.prod, .env.prod.openai-gpt-4o, or .env.prod.ollama-qwen2.5-72b and configure"
 fi
 
 # 5. Validate Docker Compose configuration

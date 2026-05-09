@@ -8,25 +8,31 @@ import os
 from dataclasses import dataclass, field
 from typing import Any, Dict, Optional
 
+from query_refinement_module.llm_model_defaults import get_model_defaults
+
 _ENV_MODEL = "QUERY_REFINEMENT_LLM_MODEL"
 _ENV_API_KEY = "QUERY_REFINEMENT_LLM_API_KEY"
 _ENV_API_BASE = "QUERY_REFINEMENT_LLM_API_BASE"
 _ENV_TEMPERATURE = "QUERY_REFINEMENT_LLM_TEMPERATURE"
 _ENV_MAX_TOKENS = "QUERY_REFINEMENT_LLM_MAX_TOKENS"
+_ENV_CONTEXT_WINDOW = "QUERY_REFINEMENT_LLM_CONTEXT_WINDOW"
 _ENV_COMPLETION_KWARGS = "QUERY_REFINEMENT_LLM_COMPLETION_KWARGS"
 _ENV_ENABLE_PROMPT_CACHING = "QUERY_REFINEMENT_ENABLE_PROMPT_CACHING"
 _ENV_ENABLE_CIRCUIT_BREAKER = "QUERY_REFINEMENT_ENABLE_CIRCUIT_BREAKER"
 _ENV_CONSTRAINED_DECODING = "QUERY_REFINEMENT_LLM_CONSTRAINED_DECODING"
 _ENV_CIRCUIT_BREAKER_FAILURE_THRESHOLD = "QUERY_REFINEMENT_CIRCUIT_BREAKER_FAILURE_THRESHOLD"
 _ENV_CIRCUIT_BREAKER_RECOVERY_TIMEOUT = "QUERY_REFINEMENT_CIRCUIT_BREAKER_RECOVERY_TIMEOUT"
-_ENV_RATE_LIMIT_RPM = "QUERY_REFINEMENT_LLM_RATE_LIMIT_RPM"
-_ENV_RATE_LIMIT_TPM = "QUERY_REFINEMENT_LLM_RATE_LIMIT_TPM"
-_ENV_MAX_CONCURRENT = "QUERY_REFINEMENT_LLM_MAX_CONCURRENT"
-_ENV_ADAPTIVE_RATE_LIMIT = "QUERY_REFINEMENT_LLM_ADAPTIVE_RATE_LIMIT"
+_ENV_RATE_LIMIT_RPM = ("LLM_RATE_LIMIT_RPM", "QUERY_REFINEMENT_LLM_RATE_LIMIT_RPM")
+_ENV_RATE_LIMIT_TPM = ("LLM_RATE_LIMIT_TPM", "QUERY_REFINEMENT_LLM_RATE_LIMIT_TPM")
+_ENV_MAX_CONCURRENT = ("LLM_MAX_CONCURRENT", "QUERY_REFINEMENT_LLM_MAX_CONCURRENT")
+_ENV_ADAPTIVE_RATE_LIMIT = ("LLM_ADAPTIVE_RATE_LIMITING", "QUERY_REFINEMENT_LLM_ADAPTIVE_RATE_LIMIT")
 
-_DEFAULT_OLLAMA_API_BASE = "http://localhost:11434"
-_DEFAULT_OLLAMA_NUM_CTX = 16384
 
+def _get_env_value(*names: str) -> Optional[str]:
+    for name in names:
+        if name in os.environ:
+            return os.environ[name]
+    return None
 
 def _parse_float(value: Optional[str], default: float) -> float:
     if value is None or value.strip() == "":
@@ -80,34 +86,6 @@ def _parse_bool(value: Optional[str], default: bool) -> bool:
         return default  # For unrecognized values, use default
 
 
-def _normalize_model(model: str) -> str:
-    return model.strip().lower()
-
-
-def _is_anthropic_model(model: str) -> bool:
-    return _normalize_model(model).startswith("anthropic/")
-
-
-def _is_ollama_model(model: str) -> bool:
-    return _normalize_model(model).startswith("ollama/")
-
-
-def _default_api_base(model: str) -> Optional[str]:
-    if _is_ollama_model(model):
-        return _DEFAULT_OLLAMA_API_BASE
-    return None
-
-
-def _default_completion_kwargs(model: str) -> Dict[str, Any]:
-    if _is_ollama_model(model):
-        return {"num_ctx": _DEFAULT_OLLAMA_NUM_CTX}
-    return {}
-
-
-def _default_prompt_caching(model: str) -> bool:
-    return _is_anthropic_model(model)
-
-
 @dataclass
 class LLMSettings:
     """Centralised configuration for the default LLM provider/analyzer stack."""
@@ -145,25 +123,60 @@ class LLMSettings:
                 raise RuntimeError(
                     f"Environment variable {_ENV_MODEL} must be set to the default model id."
                 )
+        explicit_api_base = _parse_optional_string(os.getenv(_ENV_API_BASE))
+        model_defaults = get_model_defaults(model, api_base=explicit_api_base)
         api_key = _parse_optional_string(os.getenv(_ENV_API_KEY))
-        api_base = _parse_optional_string(os.getenv(_ENV_API_BASE)) or _default_api_base(model)
+        api_base = explicit_api_base or model_defaults.default_api_base
         temperature = _parse_float(os.getenv(_ENV_TEMPERATURE), default=0.0)
         max_tokens = _parse_int(os.getenv(_ENV_MAX_TOKENS))
-        completion_kwargs = _parse_completion_kwargs(os.getenv(_ENV_COMPLETION_KWARGS))
+        if max_tokens is None:
+            max_tokens = model_defaults.default_max_tokens
+        explicit_completion_kwargs = _parse_completion_kwargs(os.getenv(_ENV_COMPLETION_KWARGS))
+        completion_kwargs = copy.deepcopy(explicit_completion_kwargs)
         if not completion_kwargs:
-            completion_kwargs = _default_completion_kwargs(model)
+            completion_kwargs = copy.deepcopy(model_defaults.default_completion_kwargs)
+        context_window = _parse_int(os.getenv(_ENV_CONTEXT_WINDOW))
+        if context_window is not None:
+            if model_defaults.context_window_kwarg is None:
+                raise ValueError(
+                    f"{_ENV_CONTEXT_WINDOW} is not supported for model '{model}'. "
+                    "Use QUERY_REFINEMENT_LLM_COMPLETION_KWARGS only for backends that expose a client-side context size control."
+                )
+            if model_defaults.context_window_kwarg not in explicit_completion_kwargs:
+                completion_kwargs[model_defaults.context_window_kwarg] = context_window
         enable_prompt_caching = _parse_bool(
             os.getenv(_ENV_ENABLE_PROMPT_CACHING),
-            default=_default_prompt_caching(model),
+            default=model_defaults.prompt_caching,
         )
         enable_circuit_breaker = _parse_bool(os.getenv(_ENV_ENABLE_CIRCUIT_BREAKER), default=True)
         constrained_decoding = _parse_bool(os.getenv(_ENV_CONSTRAINED_DECODING), default=False)
         circuit_breaker_failure_threshold = _parse_int(os.getenv(_ENV_CIRCUIT_BREAKER_FAILURE_THRESHOLD, "5")) or 5
         circuit_breaker_recovery_timeout = float(os.getenv(_ENV_CIRCUIT_BREAKER_RECOVERY_TIMEOUT, "60.0"))
-        rate_limit_rpm = _parse_int(os.getenv(_ENV_RATE_LIMIT_RPM, "0")) or 0
-        rate_limit_tpm_raw = _parse_int(os.getenv(_ENV_RATE_LIMIT_TPM))
-        max_concurrent_requests = _parse_int(os.getenv(_ENV_MAX_CONCURRENT, "20")) or 20
-        adaptive_rate_limit = _parse_bool(os.getenv(_ENV_ADAPTIVE_RATE_LIMIT), default=False)
+
+        default_rate_limit = model_defaults.rate_limit
+        rate_limit_rpm_raw = _parse_int(_get_env_value(*_ENV_RATE_LIMIT_RPM))
+        if rate_limit_rpm_raw is None:
+            rate_limit_rpm = default_rate_limit.requests_per_minute if default_rate_limit is not None else 0
+        else:
+            rate_limit_rpm = rate_limit_rpm_raw
+
+        rate_limit_tpm_raw = _parse_int(_get_env_value(*_ENV_RATE_LIMIT_TPM))
+        if rate_limit_tpm_raw is None and default_rate_limit is not None:
+            rate_limit_tpm_raw = default_rate_limit.tokens_per_minute
+
+        max_concurrent_raw = _parse_int(_get_env_value(*_ENV_MAX_CONCURRENT))
+        if max_concurrent_raw is None:
+            if default_rate_limit is not None and default_rate_limit.max_concurrent_requests > 0:
+                max_concurrent_requests = default_rate_limit.max_concurrent_requests
+            else:
+                max_concurrent_requests = 20
+        else:
+            max_concurrent_requests = max_concurrent_raw
+
+        adaptive_rate_limit = _parse_bool(
+            _get_env_value(*_ENV_ADAPTIVE_RATE_LIMIT),
+            default=default_rate_limit.adaptive_backoff if default_rate_limit is not None else False,
+        )
 
         return cls(
             model=model,

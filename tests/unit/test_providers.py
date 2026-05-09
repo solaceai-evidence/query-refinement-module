@@ -470,7 +470,7 @@ async def test_litellm_provider_no_regression_constrained_decoding_off():
         mock_litellm.acompletion = AsyncMock(return_value=mock_response)
 
         provider = LiteLLMProvider(
-            default_model="anthropic/claude-sonnet-4-20250514",
+            default_model="anthropic/claude-sonnet-4-6",
             constrained_decoding=False,
             enable_circuit_breaker=False,
         )

@@ -7,7 +7,7 @@ This guide is written for someone who needs to put the application on a server a
 For a normal production deployment, you will need:
 
 - Docker Engine and the Docker Compose plugin on the server
-- A copy of the production environment file (`.env.prod` for Claude or `.env.prod.ollama-qwen2.5-72b` for Qwen)
+- A copy of the production environment file (`.env.prod` for Claude, `.env.prod.openai-gpt-4o` for OpenAI, or `.env.prod.ollama-qwen2.5-72b` for Qwen)
 - Values for the database, AI provider, and website addresses
 - A writable location for logs
 
@@ -17,6 +17,8 @@ For a normal production deployment, you will need:
 
 ```bash
 cp .env.prod .env
+# or
+cp .env.prod.openai-gpt-4o .env
 # or
 cp .env.prod.ollama-qwen2.5-72b .env
 ```
@@ -45,7 +47,7 @@ docker compose -f docker-compose.yml -f docker-compose.prod.yml up -d --build
 Before starting, verify the following:
 
 - Docker Engine and Docker Compose plugin are installed on the server
-- The correct template has been copied to `.env` (`.env.anthropic-claude-sonnet-4-6`, `.env.prod`, `.env.prod.ollama-qwen2.5-72b`, `.env.ollama-qwen2.5-72b`, or `.env.vllm`)
+- The correct template has been copied to `.env` (`.env.anthropic-claude-sonnet-4-6`, `.env.openai-gpt-4o`, `.env.prod`, `.env.prod.openai-gpt-4o`, `.env.prod.ollama-qwen2.5-72b`, `.env.ollama-qwen2.5-72b`, or `.env.vllm`)
 - `SECRET_KEY` is set, is at least 32 characters long, and is not one of the known placeholder values (the API will refuse to start in production mode if this check fails)
 - `QUERY_REFINEMENT_LLM_API_KEY` is set **if using a cloud provider** (Anthropic, OpenAI); leave blank for Ollama or vLLM
 - `QUERY_REFINEMENT_LLM_API_BASE` is set **if needed** for vLLM or for an Ollama server that is not using the default `http://localhost:11434`
@@ -79,16 +81,37 @@ Routing model:
 
 ## LLM Provider Configuration
 
-The API service connects to an LLM provider via LiteLLM.  Five pre-filled
+The API service connects to an LLM provider via LiteLLM.  Seven pre-filled
 environment templates are provided:
 
 | Template                           | Provider                                 | API key required | `CONSTRAINED_DECODING` |
 | ---------------------------------- | ---------------------------------------- | ---------------- | ---------------------- |
 | `.env.anthropic-claude-sonnet-4-6` | Anthropic Claude Sonnet 4.6 (dev)        | yes              | `false`                |
+| `.env.openai-gpt-4o`               | OpenAI GPT-4o (dev)                      | yes              | `false`                |
 | `.env.prod`                        | Anthropic Claude Sonnet 4.6 (production) | yes              | `false`                |
+| `.env.prod.openai-gpt-4o`          | OpenAI GPT-4o (production)               | yes              | `false`                |
 | `.env.prod.ollama-qwen2.5-72b`     | Ollama — Qwen 2.5 72B (production)       | no               | `false`                |
 | `.env.ollama-qwen2.5-72b`          | Ollama — Qwen 2.5 72B (local)            | no               | `false`                |
 | `.env.vllm`                        | vLLM — Llama 3.1 8B (self-hosted)        | no               | `true`                 |
+
+### Switching to OpenAI
+
+1. Generate or retrieve an OpenAI API key.
+
+2. Copy the template and configure:
+
+```bash
+cp .env.openai-gpt-4o .env
+```
+
+Key OpenAI-specific settings:
+
+| Variable                              | Value           | Notes                                                                                |
+| ------------------------------------- | --------------- | ------------------------------------------------------------------------------------ |
+| `QUERY_REFINEMENT_LLM_API_KEY`        | required        | Required for OpenAI cloud access                                                     |
+| `QUERY_REFINEMENT_LLM_API_BASE`       | *(leave blank)* | Leave blank for OpenAI cloud; set only for an OpenAI-compatible self-hosted endpoint |
+| `QUERY_REFINEMENT_LLM_MAX_TOKENS`     | `4096`          | Default output cap; does not change the model context window                         |
+| `QUERY_REFINEMENT_LLM_CONTEXT_WINDOW` | unsupported     | Do not set for OpenAI; the provider manages context window                           |
 
 ### Switching to Ollama
 
@@ -171,6 +194,8 @@ stages without any post-hoc JSON repair.
 ```bash
 cp .env.prod .env
 # or
+cp .env.prod.openai-gpt-4o .env
+# or
 cp .env.prod.ollama-qwen2.5-72b .env
 ```
 
@@ -184,10 +209,17 @@ cp .env.prod.ollama-qwen2.5-72b .env
 - `QUERY_REFINEMENT_LLM_API_KEY` — required for cloud providers (Anthropic, OpenAI); leave blank for Ollama or vLLM
 - `QUERY_REFINEMENT_LLM_API_BASE` — required for vLLM and optional for Ollama when not using the default `http://localhost:11434`; omit for cloud
 
+Context-window note:
+
+- `QUERY_REFINEMENT_LLM_CONTEXT_WINDOW` only applies to backends that expose a client-side context-size parameter. Today that means Ollama. It does not change the provider-managed context window for Anthropic or OpenAI.
+
 Notes:
 
 - Canonical compose derives API database connectivity from `POSTGRES_*`.
 - Do not set a separate `DATABASE_URL` in canonical compose unless you intentionally override derived settings.
+- `LLM_RATE_LIMIT_RPM` is the shared request budget knob used for API ingress throttling and provider-side throttling.
+- `LLM_MAX_CONCURRENT` applies to outbound LLM concurrency only.
+- `LLM_RATE_LIMIT_PER_USER_RPM` and `LLM_MAX_CONCURRENT_PER_USER` apply to API fairness controls only.
 
 If external systems call refinement APIs without user JWT login, also set:
 
@@ -214,11 +246,17 @@ Recommended values by operating mode:
 
 5. Optional throughput tuning:
 
+- Leave the template rate-limit values alone unless your provider tier or expected load differs.
 - `LLM_RATE_LIMIT_RPM`
 - `LLM_RATE_LIMIT_PER_USER_RPM`
 - `LLM_MAX_CONCURRENT`
 - `LLM_MAX_CONCURRENT_PER_USER`
 - `WORKERS`
+
+Ownership model:
+
+- `query_refinement_module/api/config.py` owns the HTTP/API layer.
+- `query_refinement_module/settings.py` owns outbound LLM runtime configuration.
 
 ## Deployment Runbook
 
