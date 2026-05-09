@@ -210,11 +210,6 @@ class RefinementDimension(BaseModel):
         default="", 
         description="Instructions for evaluating this dimension"
     )
-
-    strictness: Optional[Literal["strict", "moderate", "permissive"]] = Field(
-        default=None,
-        description="Dimension strictness level for completeness threshold"
-    )
     
     # Examples for few-shot learning
     examples: Optional[ExamplesCollection] = Field(default=None, description="Few-shot examples")
@@ -257,18 +252,6 @@ class RefinementDimension(BaseModel):
         if isinstance(v, dict):
             return UserContext(**v)
         return v
-
-    @field_validator('strictness', mode='before')
-    @classmethod
-    def parse_strictness(cls, v):
-        """Normalize strictness values to lower-case accepted literals."""
-        if v is None:
-            return None
-        if isinstance(v, str):
-            normalized = v.strip().lower()
-            if normalized in {"strict", "moderate", "permissive"}:
-                return normalized
-        raise ValueError("strictness must be one of: strict, moderate, permissive")
     
     def has_examples(self) -> bool:
         """Check if this dimension has any examples."""

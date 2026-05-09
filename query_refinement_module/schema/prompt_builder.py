@@ -216,7 +216,6 @@ class PromptBuilder:
         return self._dimension_template.render(
             name=dimension.name,
             description=dimension.description,
-            strictness=getattr(dimension, "strictness", None),
             specifications=dimension.specifications,
             examples=examples_dict,
             examples_section=has_examples
@@ -501,6 +500,12 @@ class PromptBuilder:
             reinforcement_parts = [GLOBAL_SYSTEM_PROMPT]
             if dimension.user_context:
                 reinforcement_parts.append(self.render_user_context(dimension.user_context))
+            reinforcement_parts.append(
+                self.render_dimension_prompt(
+                    dimension=dimension,
+                    include_examples=True,
+                )
+            )
             
             messages.append({
                 'role': 'system',

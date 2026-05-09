@@ -1,0 +1,458 @@
+Running 3 scenario(s) | model=ollama/qwen2.5:72b | variant=open_llm
+
+  Scenario 1: Flood-associated diarrhoea — extraction-heavy
+  Query: 'Acute watery diarrhoea in children under 5 following riverine flooding in rural displacement camps in Bangladesh'
+    [condition] turns=0 completed_ctx=0 ...
+      -> FAIL: ['complete expected True got False']
+    [context] turns=0 completed_ctx=1 ...
+      -> PASS: []
+    [population] turns=1 completed_ctx=2 ...
+      -> PASS: []
+    [synthesis] running split synthesis ...
+Split call 'filter_resolution' failed (provider error): litellm.APIConnectionError: OllamaException - {"error":"model runner has unexpectedly stopped, this may be due to resource limitations or an internal error, check ollama server logs for details"}
+Split call 'semantic' failed (provider error): litellm.APIConnectionError: OllamaException - litellm.Timeout: Connection timed out. Timeout passed=600.0, time taken=1104.128 seconds
+Split call 'terminology' failed (provider error): litellm.APIConnectionError: OllamaException - litellm.Timeout: Connection timed out. Timeout passed=600.0, time taken=1104.151 seconds
+Split call 'keyword_support' failed (provider error): litellm.APIConnectionError: OllamaException - litellm.Timeout: Connection timed out. Timeout passed=600.0, time taken=5769.135 seconds
+      -> PASS: []
+
+  Scenario 2: Heat illness in agricultural workers — multi-turn
+  Query: 'health problems in farm workers during summer'
+    [condition] turns=2 completed_ctx=0 ...
+      -> PASS: []
+    [context] turns=2 completed_ctx=1 ...
+      -> PASS: []
+    [population] turns=1 completed_ctx=2 ...
+      -> PASS: []
+    [synthesis] running split synthesis ...
+Split call 'statement' failed (provider error): litellm.APIConnectionError: OllamaException - litellm.Timeout: Connection timed out. Timeout passed=600.0, time taken=600.009 seconds
+Split call 'filter_resolution' failed (provider error): litellm.APIConnectionError: OllamaException - {"error":"model runner has unexpectedly stopped, this may be due to resource limitations or an internal error, check ollama server logs for details"}
+Split call 'terminology' failed (provider error): litellm.APIConnectionError: OllamaException - litellm.Timeout: Connection timed out. Timeout passed=600.0, time taken=600.013 seconds
+Split call 'semantic' failed (provider error): litellm.APIConnectionError: OllamaException - litellm.Timeout: Connection timed out. Timeout passed=600.0, time taken=600.03 seconds
+Split call 'keyword_support' failed (provider error): litellm.APIConnectionError: OllamaException - litellm.Timeout: Connection timed out. Timeout passed=600.0, time taken=600.002 seconds
+      -> FAIL: ["integrated_statement missing term 'heat stroke'", "integrated_statement missing term 'South Asia'", "integrated_statement missing term 'agricultural workers'"]
+
+  Scenario 3: Drought malnutrition — vague-to-specific
+  Query: 'malnutrition in poor countries during a drought'
+    [condition] turns=1 completed_ctx=0 ...
+      -> FAIL: ['complete expected True got False', "current missing required term 'drought' (got 'acute wasting using the WHO MUAC threshold of under 12.5 cm')"]
+    [context] turns=1 completed_ctx=1 ...
+      -> FAIL: ['complete expected True got False']
+    [population] turns=1 completed_ctx=2 ...
+      -> FAIL: ['complete expected True got False']
+    [synthesis] running split synthesis ...
+Split call 'filter_resolution' failed (provider error): litellm.APIConnectionError: OllamaException - {"error":"model runner has unexpectedly stopped, this may be due to resource limitations or an internal error, check ollama server logs for details"}
+Split call 'semantic' failed (provider error): litellm.APIConnectionError: OllamaException - litellm.Timeout: Connection timed out. Timeout passed=600.0, time taken=600.049 seconds
+Split call 'terminology' failed (provider error): litellm.APIConnectionError: OllamaException - litellm.Timeout: Connection timed out. Timeout passed=600.0, time taken=600.064 seconds
+Split call 'keyword_support' failed (provider error): litellm.APIConnectionError: OllamaException - litellm.Timeout: Connection timed out. Timeout passed=600.0, time taken=600.022 seconds
+      -> PASS: []
+
+[1;31mGive Feedback / Get Help: https://github.com/BerriAI/litellm/issues/new[0m
+LiteLLM.Info: If you need to debug this error, use `litellm._turn_on_debug()'.
+
+
+[1;31mGive Feedback / Get Help: https://github.com/BerriAI/litellm/issues/new[0m
+LiteLLM.Info: If you need to debug this error, use `litellm._turn_on_debug()'.
+
+
+[1;31mGive Feedback / Get Help: https://github.com/BerriAI/litellm/issues/new[0m
+LiteLLM.Info: If you need to debug this error, use `litellm._turn_on_debug()'.
+
+
+[1;31mGive Feedback / Get Help: https://github.com/BerriAI/litellm/issues/new[0m
+LiteLLM.Info: If you need to debug this error, use `litellm._turn_on_debug()'.
+
+
+[1;31mGive Feedback / Get Help: https://github.com/BerriAI/litellm/issues/new[0m
+LiteLLM.Info: If you need to debug this error, use `litellm._turn_on_debug()'.
+
+
+[1;31mGive Feedback / Get Help: https://github.com/BerriAI/litellm/issues/new[0m
+LiteLLM.Info: If you need to debug this error, use `litellm._turn_on_debug()'.
+
+
+[1;31mGive Feedback / Get Help: https://github.com/BerriAI/litellm/issues/new[0m
+LiteLLM.Info: If you need to debug this error, use `litellm._turn_on_debug()'.
+
+
+[1;31mGive Feedback / Get Help: https://github.com/BerriAI/litellm/issues/new[0m
+LiteLLM.Info: If you need to debug this error, use `litellm._turn_on_debug()'.
+
+
+[1;31mGive Feedback / Get Help: https://github.com/BerriAI/litellm/issues/new[0m
+LiteLLM.Info: If you need to debug this error, use `litellm._turn_on_debug()'.
+
+
+[1;31mGive Feedback / Get Help: https://github.com/BerriAI/litellm/issues/new[0m
+LiteLLM.Info: If you need to debug this error, use `litellm._turn_on_debug()'.
+
+
+[1;31mGive Feedback / Get Help: https://github.com/BerriAI/litellm/issues/new[0m
+LiteLLM.Info: If you need to debug this error, use `litellm._turn_on_debug()'.
+
+
+[1;31mGive Feedback / Get Help: https://github.com/BerriAI/litellm/issues/new[0m
+LiteLLM.Info: If you need to debug this error, use `litellm._turn_on_debug()'.
+
+
+[1;31mGive Feedback / Get Help: https://github.com/BerriAI/litellm/issues/new[0m
+LiteLLM.Info: If you need to debug this error, use `litellm._turn_on_debug()'.
+
+{
+  "prompt_variant": "open_llm",
+  "model": "ollama/qwen2.5:72b",
+  "scenarios_total": 3,
+  "scenarios_passed": 0,
+  "scenarios_failed": 3,
+  "synthesis_passed": 2,
+  "synthesis_total": 3,
+  "dimension_totals": {
+    "condition": {
+      "passed": 1,
+      "failed": 2
+    },
+    "context": {
+      "passed": 2,
+      "failed": 1
+    },
+    "population": {
+      "passed": 2,
+      "failed": 1
+    }
+  },
+  "results": [
+    {
+      "id": "1",
+      "name": "Flood-associated diarrhoea \u2014 extraction-heavy",
+      "query": "Acute watery diarrhoea in children under 5 following riverine flooding in rural displacement camps in Bangladesh",
+      "passed": false,
+      "dimensions": [
+        {
+          "dimension": "condition",
+          "passed": false,
+          "failures": [
+            "complete expected True got False"
+          ],
+          "expected": {
+            "complete": true,
+            "current": "",
+            "key_terms": [
+              "diarrhoea",
+              "flood"
+            ]
+          },
+          "actual": {
+            "complete": false,
+            "current": "Acute watery diarrhoea in children under 5 following riverine flooding in rural displacement camps in Bangladesh",
+            "question": "Could you provide the specific case definition or diagnostic criteria for acute watery diarrhoea that will be used in this context?"
+          },
+          "raw": null
+        },
+        {
+          "dimension": "context",
+          "passed": true,
+          "failures": [],
+          "expected": {
+            "complete": true,
+            "current": "",
+            "key_terms": [
+              "Bangladesh",
+              "displacement"
+            ]
+          },
+          "actual": {
+            "complete": true,
+            "current": "rural displacement camps in Bangladesh",
+            "question": ""
+          },
+          "raw": null
+        },
+        {
+          "dimension": "population",
+          "passed": true,
+          "failures": [],
+          "expected": {
+            "complete": true,
+            "current": "",
+            "key_terms": [
+              "children",
+              "under 5"
+            ]
+          },
+          "actual": {
+            "complete": true,
+            "current": "children under 5, both sexes",
+            "question": ""
+          },
+          "raw": null
+        }
+      ],
+      "synthesis": {
+        "passed": true,
+        "failures": [],
+        "actual": {
+          "integrated_statement": "Acute watery diarrhoea in children under 5 following riverine flooding in rural displacement camps in Bangladesh.",
+          "dimensions_specifications": {
+            "condition": "Acute watery diarrhoea in children under 5 following riverine flooding in rural displacement camps in Bangladesh",
+            "context": "rural displacement camps in Bangladesh",
+            "population": "children under 5, both sexes"
+          },
+          "search_optimized": {
+            "semantic": "Acute watery diarrhoea in children under 5 following riverine flooding in rural displacement camps in Bangladesh.",
+            "keyword": {
+              "structured": "",
+              "phrases": [],
+              "terms": {
+                "required": [],
+                "optional": [],
+                "excluded": []
+              }
+            },
+            "grey_literature": null
+          },
+          "search_filters": {
+            "publication_years": "",
+            "venues": [],
+            "authors": [],
+            "publication_types": [],
+            "fields_of_study": []
+          },
+          "terminology": {
+            "primary_terms": null,
+            "synonyms": {},
+            "domain_specific": null,
+            "colloquial": []
+          },
+          "metadata": null,
+          "processing_log": null
+        },
+        "raw": null
+      }
+    },
+    {
+      "id": "2",
+      "name": "Heat illness in agricultural workers \u2014 multi-turn",
+      "query": "health problems in farm workers during summer",
+      "passed": false,
+      "dimensions": [
+        {
+          "dimension": "condition",
+          "passed": true,
+          "failures": [],
+          "expected": {
+            "complete": true,
+            "current": "",
+            "key_terms": [
+              "heat stroke",
+              "heat exhaustion",
+              "\u226540\u00b0C"
+            ]
+          },
+          "actual": {
+            "complete": true,
+            "current": "heat stroke and heat exhaustion during extreme heat events, core temperature \u226540\u00b0C or altered consciousness",
+            "question": ""
+          },
+          "raw": null
+        },
+        {
+          "dimension": "context",
+          "passed": true,
+          "failures": [],
+          "expected": {
+            "complete": true,
+            "current": "",
+            "key_terms": [
+              "South Asia",
+              "rural"
+            ]
+          },
+          "actual": {
+            "complete": true,
+            "current": "South Asia, primarily India and Pakistan; rural agricultural fields with limited access to primary care",
+            "question": ""
+          },
+          "raw": null
+        },
+        {
+          "dimension": "population",
+          "passed": true,
+          "failures": [],
+          "expected": {
+            "complete": true,
+            "current": "",
+            "key_terms": [
+              "adult",
+              "migrant",
+              "18"
+            ]
+          },
+          "actual": {
+            "complete": false,
+            "current": "adult male migrant workers aged 18 to 50",
+            "question": "Are there any specific ethnic or socioeconomic characteristics of these workers that are relevant to your question?"
+          },
+          "raw": null
+        }
+      ],
+      "synthesis": {
+        "passed": false,
+        "failures": [
+          "integrated_statement missing term 'heat stroke'",
+          "integrated_statement missing term 'South Asia'",
+          "integrated_statement missing term 'agricultural workers'"
+        ],
+        "actual": {
+          "integrated_statement": "health problems in farm workers during summer",
+          "dimensions_specifications": {
+            "condition": "heat stroke and heat exhaustion during extreme heat events, core temperature \u226540\u00b0C or altered consciousness",
+            "context": "South Asia, primarily India and Pakistan; rural agricultural fields with limited access to primary care",
+            "population": "adult male migrant workers aged 18 to 50"
+          },
+          "search_optimized": {
+            "semantic": "health problems in farm workers during summer",
+            "keyword": {
+              "structured": "",
+              "phrases": [],
+              "terms": {
+                "required": [],
+                "optional": [],
+                "excluded": []
+              }
+            },
+            "grey_literature": null
+          },
+          "search_filters": {
+            "publication_years": "",
+            "venues": [],
+            "authors": [],
+            "publication_types": [],
+            "fields_of_study": []
+          },
+          "terminology": {
+            "primary_terms": null,
+            "synonyms": {},
+            "domain_specific": null,
+            "colloquial": []
+          },
+          "metadata": null,
+          "processing_log": null
+        },
+        "raw": null
+      }
+    },
+    {
+      "id": "3",
+      "name": "Drought malnutrition \u2014 vague-to-specific",
+      "query": "malnutrition in poor countries during a drought",
+      "passed": false,
+      "dimensions": [
+        {
+          "dimension": "condition",
+          "passed": false,
+          "failures": [
+            "complete expected True got False",
+            "current missing required term 'drought' (got 'acute wasting using the WHO MUAC threshold of under 12.5 cm')"
+          ],
+          "expected": {
+            "complete": true,
+            "current": "",
+            "key_terms": [
+              "wasting",
+              "MUAC",
+              "drought"
+            ]
+          },
+          "actual": {
+            "complete": false,
+            "current": "acute wasting using the WHO MUAC threshold of under 12.5 cm",
+            "question": "What is the climate-health linkage? Specifically, how does the drought drive or exacerbate acute wasting in poor countries?"
+          },
+          "raw": null
+        },
+        {
+          "dimension": "context",
+          "passed": false,
+          "failures": [
+            "complete expected True got False"
+          ],
+          "expected": {
+            "complete": true,
+            "current": "",
+            "key_terms": [
+              "Sahel",
+              "Niger"
+            ]
+          },
+          "actual": {
+            "complete": false,
+            "current": "rural communities in the Sahel, specifically Niger and Mali",
+            "question": "What is the health system capacity in these rural communities? Are they community health worker-based, primary care facilities, or district hospitals?"
+          },
+          "raw": null
+        },
+        {
+          "dimension": "population",
+          "passed": false,
+          "failures": [
+            "complete expected True got False"
+          ],
+          "expected": {
+            "complete": true,
+            "current": "",
+            "key_terms": [
+              "children",
+              "under 5"
+            ]
+          },
+          "actual": {
+            "complete": false,
+            "current": "children under 5 years",
+            "question": "Are there any specific vulnerability or exposure characteristics you want to focus on, such as displaced persons, outdoor workers, or food-insecure households?"
+          },
+          "raw": null
+        }
+      ],
+      "synthesis": {
+        "passed": true,
+        "failures": [],
+        "actual": {
+          "integrated_statement": "Acute wasting, defined as a Mid-Upper Arm Circumference (MUAC) of under 12.5 cm, affects children under 5 years in rural communities of the Sahel, specifically Niger and Mali, during a drought.",
+          "dimensions_specifications": {
+            "condition": "acute wasting using the WHO MUAC threshold of under 12.5 cm",
+            "context": "rural communities in the Sahel, specifically Niger and Mali",
+            "population": "children under 5 years"
+          },
+          "search_optimized": {
+            "semantic": "Acute wasting, defined as a Mid-Upper Arm Circumference (MUAC) of under 12.5 cm, affects children under 5 years in rural communities of the Sahel, specifically Niger and Mali, during a drought.",
+            "keyword": {
+              "structured": "",
+              "phrases": [],
+              "terms": {
+                "required": [],
+                "optional": [],
+                "excluded": []
+              }
+            },
+            "grey_literature": null
+          },
+          "search_filters": {
+            "publication_years": "",
+            "venues": [],
+            "authors": [],
+            "publication_types": [],
+            "fields_of_study": []
+          },
+          "terminology": {
+            "primary_terms": null,
+            "synonyms": {},
+            "domain_specific": null,
+            "colloquial": []
+          },
+          "metadata": null,
+          "processing_log": null
+        },
+        "raw": null
+      }
+    }
+  ]
+}

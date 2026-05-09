@@ -1,0 +1,469 @@
+Running 3 scenario(s) | model=ollama/qwen2.5:72b | variant=open_llm
+
+  Scenario 1: Flood-associated diarrhoea — extraction-heavy
+  Query: 'Acute watery diarrhoea in children under 5 following riverine flooding in rural displacement camps in Bangladesh'
+    [condition] turns=0 completed_ctx=0 ...
+      -> FAIL: ['complete expected True got False']
+    [context] turns=0 completed_ctx=1 ...
+      -> FAIL: ['complete expected True got False']
+    [population] turns=1 completed_ctx=2 ...
+      -> PASS: []
+    [synthesis] running split synthesis ...
+Split call 'filter_resolution' failed (provider error): litellm.APIConnectionError: OllamaException - Server disconnected
+Split call 'terminology' failed (provider error): litellm.APIConnectionError: OllamaException - Server disconnected
+Split call 'keyword_support' failed (provider error): litellm.APIConnectionError: OllamaException - Cannot connect to host localhost:11434 ssl:default [Multiple exceptions: [Errno 61] Connect call failed ('::1', 11434, 0, 0), [Errno 61] Connect call failed ('127.0.0.1', 11434)]
+      -> PASS: []
+
+  Scenario 2: Heat illness in agricultural workers — multi-turn
+  Query: 'health problems in farm workers during summer'
+    [condition] turns=2 completed_ctx=0 ...
+      -> ERROR: APIConnectionError: litellm.APIConnectionError: OllamaException - [Errno 61] Connection refused
+    [context] turns=2 completed_ctx=1 ...
+      -> ERROR: APIConnectionError: litellm.APIConnectionError: OllamaException - [Errno 61] Connection refused
+    [population] turns=1 completed_ctx=2 ...
+      -> ERROR: APIConnectionError: litellm.APIConnectionError: OllamaException - [Errno 61] Connection refused
+    [synthesis] running split synthesis ...
+Split call 'statement' failed (provider error): litellm.APIConnectionError: OllamaException - Cannot connect to host localhost:11434 ssl:default [Multiple exceptions: [Errno 61] Connect call failed ('::1', 11434, 0, 0), [Errno 61] Connect call failed ('127.0.0.1', 11434)]
+Split call 'semantic' failed (provider error): litellm.APIConnectionError: OllamaException - Cannot connect to host localhost:11434 ssl:default [Multiple exceptions: [Errno 61] Connect call failed ('::1', 11434, 0, 0), [Errno 61] Connect call failed ('127.0.0.1', 11434)]
+Split call 'terminology' failed (provider error): litellm.APIConnectionError: OllamaException - Cannot connect to host localhost:11434 ssl:default [Multiple exceptions: [Errno 61] Connect call failed ('::1', 11434, 0, 0), [Errno 61] Connect call failed ('127.0.0.1', 11434)]
+Split call 'filter_resolution' failed (provider error): litellm.APIConnectionError: OllamaException - Cannot connect to host localhost:11434 ssl:default [Multiple exceptions: [Errno 61] Connect call failed ('::1', 11434, 0, 0), [Errno 61] Connect call failed ('127.0.0.1', 11434)]
+Split call 'keyword_support' failed (provider error): litellm.APIConnectionError: OllamaException - Cannot connect to host localhost:11434 ssl:default [Multiple exceptions: [Errno 61] Connect call failed ('::1', 11434, 0, 0), [Errno 61] Connect call failed ('127.0.0.1', 11434)]
+      -> FAIL: ["integrated_statement missing term 'heat stroke'", "integrated_statement missing term 'South Asia'", "integrated_statement missing term 'agricultural workers'"]
+
+  Scenario 3: Drought malnutrition — vague-to-specific
+  Query: 'malnutrition in poor countries during a drought'
+    [condition] turns=1 completed_ctx=0 ...
+      -> ERROR: APIConnectionError: litellm.APIConnectionError: OllamaException - [Errno 61] Connection refused
+    [context] turns=1 completed_ctx=1 ...
+      -> ERROR: APIConnectionError: litellm.APIConnectionError: OllamaException - [Errno 61] Connection refused
+    [population] turns=1 completed_ctx=2 ...
+      -> ERROR: APIConnectionError: litellm.APIConnectionError: OllamaException - [Errno 61] Connection refused
+    [synthesis] running split synthesis ...
+Split call 'statement' failed (provider error): litellm.APIConnectionError: OllamaException - Cannot connect to host localhost:11434 ssl:default [Multiple exceptions: [Errno 61] Connect call failed ('::1', 11434, 0, 0), [Errno 61] Connect call failed ('127.0.0.1', 11434)]
+Split call 'terminology' failed (provider error): litellm.APIConnectionError: OllamaException - Cannot connect to host localhost:11434 ssl:default [Multiple exceptions: [Errno 61] Connect call failed ('::1', 11434, 0, 0), [Errno 61] Connect call failed ('127.0.0.1', 11434)]
+Split call 'semantic' failed (provider error): litellm.APIConnectionError: OllamaException - Cannot connect to host localhost:11434 ssl:default [Multiple exceptions: [Errno 61] Connect call failed ('::1', 11434, 0, 0), [Errno 61] Connect call failed ('127.0.0.1', 11434)]
+Split call 'filter_resolution' failed (provider error): litellm.APIConnectionError: OllamaException - Cannot connect to host localhost:11434 ssl:default [Multiple exceptions: [Errno 61] Connect call failed ('::1', 11434, 0, 0), [Errno 61] Connect call failed ('127.0.0.1', 11434)]
+Split call 'keyword_support' failed (provider error): litellm.APIConnectionError: OllamaException - Cannot connect to host localhost:11434 ssl:default [Multiple exceptions: [Errno 61] Connect call failed ('::1', 11434, 0, 0), [Errno 61] Connect call failed ('127.0.0.1', 11434)]
+      -> FAIL: ["integrated_statement missing term 'wasting'", "integrated_statement missing term 'Sahel'", "integrated_statement missing term 'children'"]
+
+[1;31mGive Feedback / Get Help: https://github.com/BerriAI/litellm/issues/new[0m
+LiteLLM.Info: If you need to debug this error, use `litellm._turn_on_debug()'.
+
+
+[1;31mGive Feedback / Get Help: https://github.com/BerriAI/litellm/issues/new[0m
+LiteLLM.Info: If you need to debug this error, use `litellm._turn_on_debug()'.
+
+
+[1;31mGive Feedback / Get Help: https://github.com/BerriAI/litellm/issues/new[0m
+LiteLLM.Info: If you need to debug this error, use `litellm._turn_on_debug()'.
+
+
+[1;31mGive Feedback / Get Help: https://github.com/BerriAI/litellm/issues/new[0m
+LiteLLM.Info: If you need to debug this error, use `litellm._turn_on_debug()'.
+
+
+[1;31mGive Feedback / Get Help: https://github.com/BerriAI/litellm/issues/new[0m
+LiteLLM.Info: If you need to debug this error, use `litellm._turn_on_debug()'.
+
+
+[1;31mGive Feedback / Get Help: https://github.com/BerriAI/litellm/issues/new[0m
+LiteLLM.Info: If you need to debug this error, use `litellm._turn_on_debug()'.
+
+
+[1;31mGive Feedback / Get Help: https://github.com/BerriAI/litellm/issues/new[0m
+LiteLLM.Info: If you need to debug this error, use `litellm._turn_on_debug()'.
+
+
+[1;31mGive Feedback / Get Help: https://github.com/BerriAI/litellm/issues/new[0m
+LiteLLM.Info: If you need to debug this error, use `litellm._turn_on_debug()'.
+
+
+[1;31mGive Feedback / Get Help: https://github.com/BerriAI/litellm/issues/new[0m
+LiteLLM.Info: If you need to debug this error, use `litellm._turn_on_debug()'.
+
+
+[1;31mGive Feedback / Get Help: https://github.com/BerriAI/litellm/issues/new[0m
+LiteLLM.Info: If you need to debug this error, use `litellm._turn_on_debug()'.
+
+
+[1;31mGive Feedback / Get Help: https://github.com/BerriAI/litellm/issues/new[0m
+LiteLLM.Info: If you need to debug this error, use `litellm._turn_on_debug()'.
+
+
+[1;31mGive Feedback / Get Help: https://github.com/BerriAI/litellm/issues/new[0m
+LiteLLM.Info: If you need to debug this error, use `litellm._turn_on_debug()'.
+
+
+[1;31mGive Feedback / Get Help: https://github.com/BerriAI/litellm/issues/new[0m
+LiteLLM.Info: If you need to debug this error, use `litellm._turn_on_debug()'.
+
+
+[1;31mGive Feedback / Get Help: https://github.com/BerriAI/litellm/issues/new[0m
+LiteLLM.Info: If you need to debug this error, use `litellm._turn_on_debug()'.
+
+
+[1;31mGive Feedback / Get Help: https://github.com/BerriAI/litellm/issues/new[0m
+LiteLLM.Info: If you need to debug this error, use `litellm._turn_on_debug()'.
+
+
+[1;31mGive Feedback / Get Help: https://github.com/BerriAI/litellm/issues/new[0m
+LiteLLM.Info: If you need to debug this error, use `litellm._turn_on_debug()'.
+
+
+[1;31mGive Feedback / Get Help: https://github.com/BerriAI/litellm/issues/new[0m
+LiteLLM.Info: If you need to debug this error, use `litellm._turn_on_debug()'.
+
+
+[1;31mGive Feedback / Get Help: https://github.com/BerriAI/litellm/issues/new[0m
+LiteLLM.Info: If you need to debug this error, use `litellm._turn_on_debug()'.
+
+
+[1;31mGive Feedback / Get Help: https://github.com/BerriAI/litellm/issues/new[0m
+LiteLLM.Info: If you need to debug this error, use `litellm._turn_on_debug()'.
+
+{
+  "prompt_variant": "open_llm",
+  "model": "ollama/qwen2.5:72b",
+  "scenarios_total": 3,
+  "scenarios_passed": 0,
+  "scenarios_failed": 3,
+  "synthesis_passed": 1,
+  "synthesis_total": 3,
+  "dimension_totals": {
+    "condition": {
+      "passed": 0,
+      "failed": 3
+    },
+    "context": {
+      "passed": 0,
+      "failed": 3
+    },
+    "population": {
+      "passed": 1,
+      "failed": 2
+    }
+  },
+  "results": [
+    {
+      "id": "1",
+      "name": "Flood-associated diarrhoea \u2014 extraction-heavy",
+      "query": "Acute watery diarrhoea in children under 5 following riverine flooding in rural displacement camps in Bangladesh",
+      "passed": false,
+      "dimensions": [
+        {
+          "dimension": "condition",
+          "passed": false,
+          "failures": [
+            "complete expected True got False"
+          ],
+          "expected": {
+            "complete": true,
+            "current": "",
+            "key_terms": [
+              "diarrhoea",
+              "flood"
+            ]
+          },
+          "actual": {
+            "complete": false,
+            "current": "acute watery diarrhoea in children under 5 following riverine flooding",
+            "question": "Could you specify the case definition or diagnostic criteria for acute watery diarrhoea, and any temporal qualifier if applicable?"
+          },
+          "raw": null
+        },
+        {
+          "dimension": "context",
+          "passed": false,
+          "failures": [
+            "complete expected True got False"
+          ],
+          "expected": {
+            "complete": true,
+            "current": "",
+            "key_terms": [
+              "Bangladesh",
+              "displacement"
+            ]
+          },
+          "actual": {
+            "complete": false,
+            "current": "rural displacement camps in Bangladesh",
+            "question": "Could you specify the health system capacity or temporal context of these rural displacement camps?"
+          },
+          "raw": null
+        },
+        {
+          "dimension": "population",
+          "passed": true,
+          "failures": [],
+          "expected": {
+            "complete": true,
+            "current": "",
+            "key_terms": [
+              "children",
+              "under 5"
+            ]
+          },
+          "actual": {
+            "complete": true,
+            "current": "children under 5, both sexes",
+            "question": ""
+          },
+          "raw": null
+        }
+      ],
+      "synthesis": {
+        "passed": true,
+        "failures": [],
+        "actual": {
+          "integrated_statement": "Acute watery diarrhoea in children under 5 following riverine flooding in rural displacement camps in Bangladesh.",
+          "dimensions_specifications": {
+            "condition": "acute watery diarrhoea in children under 5 following riverine flooding",
+            "context": "rural displacement camps in Bangladesh",
+            "population": "children under 5, both sexes"
+          },
+          "search_optimized": {
+            "semantic": "Investigate the incidence and risk factors of acute watery diarrhoea in children under 5 following riverine flooding in rural displacement camps in Bangladesh.",
+            "keyword": {
+              "structured": "",
+              "phrases": [],
+              "terms": {
+                "required": [],
+                "optional": [],
+                "excluded": []
+              }
+            },
+            "grey_literature": null
+          },
+          "search_filters": {
+            "publication_years": "",
+            "venues": [],
+            "authors": [],
+            "publication_types": [],
+            "fields_of_study": []
+          },
+          "terminology": {
+            "primary_terms": null,
+            "synonyms": {},
+            "domain_specific": null,
+            "colloquial": []
+          },
+          "metadata": null,
+          "processing_log": null
+        },
+        "raw": null
+      }
+    },
+    {
+      "id": "2",
+      "name": "Heat illness in agricultural workers \u2014 multi-turn",
+      "query": "health problems in farm workers during summer",
+      "passed": false,
+      "dimensions": [
+        {
+          "dimension": "condition",
+          "passed": false,
+          "failures": [
+            "execution error: APIConnectionError: litellm.APIConnectionError: OllamaException - [Errno 61] Connection refused"
+          ],
+          "expected": {
+            "complete": true,
+            "current": "",
+            "key_terms": [
+              "heat stroke",
+              "heat exhaustion",
+              "\u226540\u00b0C"
+            ]
+          },
+          "actual": null,
+          "raw": null
+        },
+        {
+          "dimension": "context",
+          "passed": false,
+          "failures": [
+            "execution error: APIConnectionError: litellm.APIConnectionError: OllamaException - [Errno 61] Connection refused"
+          ],
+          "expected": {
+            "complete": true,
+            "current": "",
+            "key_terms": [
+              "South Asia",
+              "rural"
+            ]
+          },
+          "actual": null,
+          "raw": null
+        },
+        {
+          "dimension": "population",
+          "passed": false,
+          "failures": [
+            "execution error: APIConnectionError: litellm.APIConnectionError: OllamaException - [Errno 61] Connection refused"
+          ],
+          "expected": {
+            "complete": true,
+            "current": "",
+            "key_terms": [
+              "adult",
+              "migrant",
+              "18"
+            ]
+          },
+          "actual": null,
+          "raw": null
+        }
+      ],
+      "synthesis": {
+        "passed": false,
+        "failures": [
+          "integrated_statement missing term 'heat stroke'",
+          "integrated_statement missing term 'South Asia'",
+          "integrated_statement missing term 'agricultural workers'"
+        ],
+        "actual": {
+          "integrated_statement": "health problems in farm workers during summer",
+          "dimensions_specifications": {
+            "condition": null,
+            "context": null,
+            "population": null
+          },
+          "search_optimized": {
+            "semantic": "health problems in farm workers during summer",
+            "keyword": {
+              "structured": "",
+              "phrases": [],
+              "terms": {
+                "required": [],
+                "optional": [],
+                "excluded": []
+              }
+            },
+            "grey_literature": null
+          },
+          "search_filters": {
+            "publication_years": "",
+            "venues": [],
+            "authors": [],
+            "publication_types": [],
+            "fields_of_study": []
+          },
+          "terminology": {
+            "primary_terms": null,
+            "synonyms": {},
+            "domain_specific": null,
+            "colloquial": []
+          },
+          "metadata": null,
+          "processing_log": null
+        },
+        "raw": null
+      }
+    },
+    {
+      "id": "3",
+      "name": "Drought malnutrition \u2014 vague-to-specific",
+      "query": "malnutrition in poor countries during a drought",
+      "passed": false,
+      "dimensions": [
+        {
+          "dimension": "condition",
+          "passed": false,
+          "failures": [
+            "execution error: APIConnectionError: litellm.APIConnectionError: OllamaException - [Errno 61] Connection refused"
+          ],
+          "expected": {
+            "complete": true,
+            "current": "",
+            "key_terms": [
+              "wasting",
+              "MUAC",
+              "drought"
+            ]
+          },
+          "actual": null,
+          "raw": null
+        },
+        {
+          "dimension": "context",
+          "passed": false,
+          "failures": [
+            "execution error: APIConnectionError: litellm.APIConnectionError: OllamaException - [Errno 61] Connection refused"
+          ],
+          "expected": {
+            "complete": true,
+            "current": "",
+            "key_terms": [
+              "Sahel",
+              "Niger"
+            ]
+          },
+          "actual": null,
+          "raw": null
+        },
+        {
+          "dimension": "population",
+          "passed": false,
+          "failures": [
+            "execution error: APIConnectionError: litellm.APIConnectionError: OllamaException - [Errno 61] Connection refused"
+          ],
+          "expected": {
+            "complete": true,
+            "current": "",
+            "key_terms": [
+              "children",
+              "under 5"
+            ]
+          },
+          "actual": null,
+          "raw": null
+        }
+      ],
+      "synthesis": {
+        "passed": false,
+        "failures": [
+          "integrated_statement missing term 'wasting'",
+          "integrated_statement missing term 'Sahel'",
+          "integrated_statement missing term 'children'"
+        ],
+        "actual": {
+          "integrated_statement": "malnutrition in poor countries during a drought",
+          "dimensions_specifications": {
+            "condition": null,
+            "context": null,
+            "population": null
+          },
+          "search_optimized": {
+            "semantic": "malnutrition in poor countries during a drought",
+            "keyword": {
+              "structured": "",
+              "phrases": [],
+              "terms": {
+                "required": [],
+                "optional": [],
+                "excluded": []
+              }
+            },
+            "grey_literature": null
+          },
+          "search_filters": {
+            "publication_years": "",
+            "venues": [],
+            "authors": [],
+            "publication_types": [],
+            "fields_of_study": []
+          },
+          "terminology": {
+            "primary_terms": null,
+            "synonyms": {},
+            "domain_specific": null,
+            "colloquial": []
+          },
+          "metadata": null,
+          "processing_log": null
+        },
+        "raw": null
+      }
+    }
+  ]
+}

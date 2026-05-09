@@ -61,7 +61,6 @@ class Case:
     dimension_name: str
     dimension_description: str
     specifications: str
-    strictness: str | None = None
     conversation_history: list[dict[str, str]] = field(default_factory=list)
     completed_context: list[dict[str, Any]] = field(default_factory=list)
     depends_on: list[str] = field(default_factory=list)
@@ -75,7 +74,7 @@ class Case:
 def _population_specs() -> str:
     return (
         "Determine the specific population for this query. Extract any valid population signal first. "
-        "Complete only when the population is specific enough for the current strictness level."
+        "Complete only when the population is specific enough to satisfy the current dimension requirements."
     )
 
 
@@ -124,7 +123,6 @@ def build_cases() -> list[Case]:
             dimension_name="Setting",
             dimension_description="Geographic or institutional setting",
             specifications=_setting_specs(),
-            strictness="moderate",
             expected_complete=True,
             expected_current="rural displacement camps in northeastern Ethiopia",
             expected_question="",
@@ -137,7 +135,6 @@ def build_cases() -> list[Case]:
             dimension_name="Topic/Domain",
             dimension_description="Research topic or domain",
             specifications=_topic_specs(),
-            strictness="moderate",
             expected_complete=True,
             expected_current="COPD management protocols",
             expected_question="",
@@ -150,7 +147,6 @@ def build_cases() -> list[Case]:
             dimension_name="Investigative Focus",
             dimension_description="Which focus areas matter",
             specifications="Determine which focus areas the user wants included.",
-            strictness="moderate",
             conversation_history=[
                 {
                     "question": "Are you interested in prevention or treatment? Or both?",
@@ -169,7 +165,6 @@ def build_cases() -> list[Case]:
             dimension_name="Investigative Focus",
             dimension_description="Which aspects are in scope",
             specifications="Determine which aspects the user wants included.",
-            strictness="moderate",
             conversation_history=[
                 {
                     "question": "What aspects interest you? (a) identifying barriers, (b) comparing across groups, (c) evaluating impact?",
@@ -188,7 +183,6 @@ def build_cases() -> list[Case]:
             dimension_name="Setting",
             dimension_description="Which settings are in scope",
             specifications=_setting_specs(),
-            strictness="moderate",
             conversation_history=[
                 {
                     "question": "Which settings matter most? (1) primary care clinics (2) hospitals (3) community centers (4) mobile outreach units",
@@ -207,7 +201,6 @@ def build_cases() -> list[Case]:
             dimension_name="Population Age Restriction",
             dimension_description="Age-based population restriction",
             specifications="Determine any age restriction. If the user opts out of restricting age, mark complete.",
-            strictness="moderate",
             conversation_history=[
                 {
                     "question": "What age group should this focus on?",
@@ -226,7 +219,6 @@ def build_cases() -> list[Case]:
             dimension_name="Phase Restriction",
             dimension_description="Phase or stage restriction",
             specifications=_phase_specs(),
-            strictness="moderate",
             conversation_history=[
                 {
                     "question": "Which condition is this about?",
@@ -249,7 +241,6 @@ def build_cases() -> list[Case]:
             dimension_name="Target Group",
             dimension_description="Who the work focuses on",
             specifications="Determine the target group from the query or prior context before asking anything.",
-            strictness="moderate",
             expected_complete=True,
             expected_current="enterprise users",
             expected_question="",
@@ -262,7 +253,6 @@ def build_cases() -> list[Case]:
             dimension_name="Outcome",
             dimension_description="How the outcome will be assessed",
             specifications=_outcome_specs(),
-            strictness="moderate",
             conversation_history=[
                 {
                     "question": "What outcomes will measure barriers? e.g., adoption rates, adherence scores, implementation time?",
@@ -281,7 +271,6 @@ def build_cases() -> list[Case]:
             dimension_name="Population",
             dimension_description="Population for the current dimension",
             specifications=_population_specs(),
-            strictness="moderate",
             depends_on=["population_dependency"],
             completed_context=[
                 {
@@ -304,13 +293,12 @@ def build_cases() -> list[Case]:
         ),
         Case(
             identifier="11",
-            category="strictness handling",
-            name="Strictness: MODERATE extract first",
+            category="completeness handling",
+            name="Extract first, ask for remaining required detail",
             query="depression outcomes",
             dimension_name="Outcome",
             dimension_description="Outcome measure",
             specifications=_outcome_specs(),
-            strictness="moderate",
             conversation_history=[
                 {
                     "question": "What outcome are you focusing on?",
@@ -323,13 +311,15 @@ def build_cases() -> list[Case]:
         ),
         Case(
             identifier="12",
-            category="strictness handling",
-            name="Strictness: STRICT operationalize",
+            category="completeness handling",
+            name="Generic label remains incomplete when the spec requires specificity",
             query="population needed",
             dimension_name="Population",
             dimension_description="Specific population",
-            specifications=_population_specs(),
-            strictness="strict",
+            specifications=(
+                "Determine the specific population for this query. Extract any valid population signal first. "
+                "A generic label like 'people' is not sufficient; the population must identify a concrete group."
+            ),
             conversation_history=[
                 {
                     "question": "Which specific population do you mean?",
@@ -347,8 +337,10 @@ def build_cases() -> list[Case]:
             query="adults with diabetes",
             dimension_name="Population",
             dimension_description="Specific population",
-            specifications=_population_specs(),
-            strictness="strict",
+            specifications=(
+                "Determine the specific population for this query. Extract any valid population signal first. "
+                "A generic label like 'people' is not sufficient; the population must identify a concrete group."
+            ),
             expected_complete=False,
             expected_current="adults with diabetes",
             expected_question="",  # phrasing varies; this case tests JSON shape only
@@ -362,7 +354,6 @@ def build_cases() -> list[Case]:
             dimension_name="Setting",
             dimension_description="Specific setting",
             specifications=_setting_specs(),
-            strictness="moderate",
             completed_context=[
                 {
                     "id": "population",
@@ -384,7 +375,6 @@ def build_cases() -> list[Case]:
             dimension_name="Setting",
             dimension_description="Specific setting",
             specifications=_setting_specs(),
-            strictness="moderate",
             user_context=educational_novice,
             conversation_history=[
                 {
@@ -408,6 +398,56 @@ def build_cases() -> list[Case]:
             expected_current="primary care clinics and community centers",
             expected_question="",
         ),
+        Case(
+            identifier="16",
+            category="opt-out scope validation",
+            name="Content dimension opt-out stays incomplete",
+            query="population needed",
+            dimension_name="Population",
+            dimension_description="Specific population",
+            specifications=(
+                "Determine the specific population for this query. Extract any valid population signal first. "
+                "If the user declines to narrow population, keep their wording in current, but do not mark the "
+                "dimension complete unless a concrete population anchor is present."
+            ),
+            conversation_history=[
+                {
+                    "question": "Which population should this focus on?",
+                    "response": "no specific population",
+                }
+            ],
+            expected_complete=False,
+            expected_current="no specific population",
+            expected_question="",
+            ignore_question=True,
+        ),
+        Case(
+            identifier="17",
+            category="constraint non-interference",
+            name="Constraints do not inject side-questioning",
+            query="implementation in district hospitals",
+            dimension_name="Setting",
+            dimension_description="Geographic or institutional setting",
+            specifications="Determine the setting or context. Extract setting information and complete when a concrete setting is named.",
+            user_context=UserContext(
+                user_type="practitioner",
+                context="Working under practical delivery constraints",
+                tone="pragmatic",
+                complexity="intermediate",
+                examples_from="general",
+                constraints=["Limited budget", "Rural service footprint"],
+                pitfalls=[],
+            ),
+            conversation_history=[
+                {
+                    "question": "Which setting should this focus on?",
+                    "response": "district hospital",
+                }
+            ],
+            expected_complete=True,
+            expected_current="district hospital",
+            expected_question="",
+        ),
     ]
 
 
@@ -417,7 +457,6 @@ def build_dimension(case: Case) -> RefinementDimension:
         name=case.dimension_name,
         description=case.dimension_description,
         specifications=case.specifications,
-        strictness=case.strictness,
         depends_on=case.depends_on,
         user_context=case.user_context,
     )
@@ -492,8 +531,9 @@ def main() -> int:
         return 2
 
     results: list[dict[str, Any]] = []
-    for case in cases:
-        print(f"[{case.identifier}/15] Running: {case.name} ...", file=sys.stderr, flush=True)
+    total_cases = len(cases)
+    for index, case in enumerate(cases, start=1):
+        print(f"[{index}/{total_cases}] Running: {case.name} ...", file=sys.stderr, flush=True)
         messages = build_messages(builder, case)
         try:
             completion = provider.complete(messages=messages, max_tokens=args.max_tokens, temperature=0.0)

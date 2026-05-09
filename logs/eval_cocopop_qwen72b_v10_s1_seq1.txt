@@ -1,0 +1,172 @@
+Running 1 scenario(s) | model=ollama/qwen2.5:72b | variant=open_llm
+
+  Scenario 1: Flood-associated diarrhoea — extraction-heavy
+  Query: 'Acute watery diarrhoea in children under 5 following riverine flooding in rural displacement camps in Bangladesh'
+    [condition] turns=0 completed_ctx=0 ...
+      -> PASS: []
+    [context] turns=0 completed_ctx=1 ...
+      -> ERROR: APIConnectionError: litellm.APIConnectionError: OllamaException - Server disconnected without sending a response.
+    [population] turns=1 completed_ctx=2 ...
+      -> ERROR: APIConnectionError: litellm.APIConnectionError: OllamaException - [Errno 61] Connection refused
+    [synthesis] running split synthesis ...
+Split call 'statement' failed (provider error): litellm.APIConnectionError: OllamaException - Cannot connect to host localhost:11434 ssl:default [Multiple exceptions: [Errno 61] Connect call failed ('::1', 11434, 0, 0), [Errno 61] Connect call failed ('127.0.0.1', 11434)]
+Split call 'semantic' failed (provider error): litellm.APIConnectionError: OllamaException - Cannot connect to host localhost:11434 ssl:default [Multiple exceptions: [Errno 61] Connect call failed ('::1', 11434, 0, 0), [Errno 61] Connect call failed ('127.0.0.1', 11434)]
+Split call 'terminology' failed (provider error): litellm.APIConnectionError: OllamaException - Cannot connect to host localhost:11434 ssl:default [Multiple exceptions: [Errno 61] Connect call failed ('::1', 11434, 0, 0), [Errno 61] Connect call failed ('127.0.0.1', 11434)]
+Split call 'filter_resolution' failed (provider error): litellm.APIConnectionError: OllamaException - Cannot connect to host localhost:11434 ssl:default [Multiple exceptions: [Errno 61] Connect call failed ('::1', 11434, 0, 0), [Errno 61] Connect call failed ('127.0.0.1', 11434)]
+Split call 'keyword_support' failed (provider error): litellm.APIConnectionError: OllamaException - Cannot connect to host localhost:11434 ssl:default [Multiple exceptions: [Errno 61] Connect call failed ('::1', 11434, 0, 0), [Errno 61] Connect call failed ('127.0.0.1', 11434)]
+      -> PASS: []
+
+[1;31mGive Feedback / Get Help: https://github.com/BerriAI/litellm/issues/new[0m
+LiteLLM.Info: If you need to debug this error, use `litellm._turn_on_debug()'.
+
+
+[1;31mGive Feedback / Get Help: https://github.com/BerriAI/litellm/issues/new[0m
+LiteLLM.Info: If you need to debug this error, use `litellm._turn_on_debug()'.
+
+
+[1;31mGive Feedback / Get Help: https://github.com/BerriAI/litellm/issues/new[0m
+LiteLLM.Info: If you need to debug this error, use `litellm._turn_on_debug()'.
+
+
+[1;31mGive Feedback / Get Help: https://github.com/BerriAI/litellm/issues/new[0m
+LiteLLM.Info: If you need to debug this error, use `litellm._turn_on_debug()'.
+
+
+[1;31mGive Feedback / Get Help: https://github.com/BerriAI/litellm/issues/new[0m
+LiteLLM.Info: If you need to debug this error, use `litellm._turn_on_debug()'.
+
+
+[1;31mGive Feedback / Get Help: https://github.com/BerriAI/litellm/issues/new[0m
+LiteLLM.Info: If you need to debug this error, use `litellm._turn_on_debug()'.
+
+
+[1;31mGive Feedback / Get Help: https://github.com/BerriAI/litellm/issues/new[0m
+LiteLLM.Info: If you need to debug this error, use `litellm._turn_on_debug()'.
+
+{
+  "prompt_variant": "open_llm",
+  "model": "ollama/qwen2.5:72b",
+  "scenarios_total": 1,
+  "scenarios_passed": 0,
+  "scenarios_failed": 1,
+  "synthesis_passed": 1,
+  "synthesis_total": 1,
+  "dimension_totals": {
+    "condition": {
+      "passed": 1,
+      "failed": 0
+    },
+    "context": {
+      "passed": 0,
+      "failed": 1
+    },
+    "population": {
+      "passed": 0,
+      "failed": 1
+    }
+  },
+  "results": [
+    {
+      "id": "1",
+      "name": "Flood-associated diarrhoea \u2014 extraction-heavy",
+      "query": "Acute watery diarrhoea in children under 5 following riverine flooding in rural displacement camps in Bangladesh",
+      "passed": false,
+      "dimensions": [
+        {
+          "dimension": "condition",
+          "passed": true,
+          "failures": [],
+          "expected": {
+            "complete": true,
+            "current": "",
+            "key_terms": [
+              "diarrhoea",
+              "flood"
+            ]
+          },
+          "actual": {
+            "complete": true,
+            "current": "Acute watery diarrhoea in children under 5 following riverine flooding in rural displacement camps in Bangladesh",
+            "question": ""
+          },
+          "raw": null
+        },
+        {
+          "dimension": "context",
+          "passed": false,
+          "failures": [
+            "execution error: APIConnectionError: litellm.APIConnectionError: OllamaException - Server disconnected without sending a response."
+          ],
+          "expected": {
+            "complete": true,
+            "current": "",
+            "key_terms": [
+              "Bangladesh",
+              "displacement"
+            ]
+          },
+          "actual": null,
+          "raw": null
+        },
+        {
+          "dimension": "population",
+          "passed": false,
+          "failures": [
+            "execution error: APIConnectionError: litellm.APIConnectionError: OllamaException - [Errno 61] Connection refused"
+          ],
+          "expected": {
+            "complete": true,
+            "current": "",
+            "key_terms": [
+              "children",
+              "under 5"
+            ]
+          },
+          "actual": null,
+          "raw": null
+        }
+      ],
+      "synthesis": {
+        "passed": true,
+        "failures": [],
+        "actual": {
+          "integrated_statement": "Acute watery diarrhoea in children under 5 following riverine flooding in rural displacement camps in Bangladesh",
+          "dimensions_specifications": {
+            "condition": "Acute watery diarrhoea in children under 5 following riverine flooding in rural displacement camps in Bangladesh",
+            "context": null,
+            "population": null
+          },
+          "search_optimized": {
+            "semantic": "Acute watery diarrhoea in children under 5 following riverine flooding in rural displacement camps in Bangladesh",
+            "keyword": {
+              "structured": "",
+              "phrases": [],
+              "terms": {
+                "required": [],
+                "optional": [],
+                "excluded": []
+              }
+            },
+            "grey_literature": null
+          },
+          "search_filters": {
+            "publication_years": "",
+            "venues": [],
+            "authors": [],
+            "publication_types": [],
+            "fields_of_study": []
+          },
+          "terminology": {
+            "primary_terms": null,
+            "synonyms": {},
+            "domain_specific": null,
+            "colloquial": []
+          },
+          "metadata": null,
+          "processing_log": null
+        },
+        "raw": null
+      }
+    }
+  ]
+}

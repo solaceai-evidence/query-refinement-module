@@ -20,23 +20,49 @@ The current framework format is designed for non-technical editing as well as ad
 
 ### Optional
 
-| Field             | Type        | Default    | Description                                                                                                                              |
-| ----------------- | ----------- | ---------- | ---------------------------------------------------------------------------------------------------------------------------------------- |
-| `strictness`      | string      | `moderate` | How completely the dimension must be specified before it is marked done. One of `strict`, `moderate`, or `permissive`.                   |
-| `depends_on`      | list of ids | `[]`       | Dimension IDs whose values should be available before this dimension is asked. The registry uses topological sort to enforce this order. |
-| `examples`        | mapping     | —          | Few-shot examples injected into the LLM prompt. See [Examples](#examples) below.                                                         |
-| `allow_follow_up` | boolean     | `true`     | Whether the LLM may ask clarifying follow-up questions for this dimension.                                                               |
-| `max_follow_ups`  | integer     | `50`       | Upper bound on follow-up turns per dimension.                                                                                            |
-| `response_format` | mapping     | —          | Override the default structured output schema for this dimension. Rarely needed.                                                         |
-| `metadata`        | mapping     | `{}`       | Arbitrary key-value data attached to the dimension for downstream use; not interpreted by the refinement engine.                         |
+| Field             | Type        | Default | Description                                                                                                                              |
+| ----------------- | ----------- | ------- | ---------------------------------------------------------------------------------------------------------------------------------------- |
+| `depends_on`      | list of ids | `[]`    | Dimension IDs whose values should be available before this dimension is asked. The registry uses topological sort to enforce this order. |
+| `examples`        | mapping     | —       | Few-shot examples injected into the LLM prompt. See [Examples](#examples) below.                                                         |
+| `allow_follow_up` | boolean     | `true`  | Whether the LLM may ask clarifying follow-up questions for this dimension.                                                               |
+| `max_follow_ups`  | integer     | `50`    | Upper bound on follow-up turns per dimension.                                                                                            |
+| `response_format` | mapping     | —       | Override the default structured output schema for this dimension. Rarely needed.                                                         |
+| `metadata`        | mapping     | `{}`    | Arbitrary key-value data attached to the dimension for downstream use; not interpreted by the refinement engine.                         |
 
-### Strictness levels
+### Completeness Rules
 
-| Value        | Behaviour                                                                                                                                             |
-| ------------ | ----------------------------------------------------------------------------------------------------------------------------------------------------- |
-| `strict`     | Dimension is only marked complete when the user provides explicit, unambiguous detail. Useful for high-stakes fields (study design, outcome measure). |
-| `moderate`   | Balanced threshold. Complete when a reasonable interpretation is available. **Default.**                                                              |
-| `permissive` | Complete as soon as any plausible value is present. Good for optional or context-setting dimensions.                                                  |
+Completeness is defined directly inside each dimension's `specifications` text.
+
+Recommended structure:
+
+```yaml
+specifications: |
+  **Task:** Evaluate and assemble the population specification.
+
+  **Elements to track:**
+  - Named population group
+  - Age range or life stage
+  - Setting or exposure group when relevant
+
+  **Required:**
+  - A concrete population anchor
+
+  **Required if applicable:**
+  - Age when the intervention or evidence base is age-dependent
+  - Exposure group when the question is about a specific hazard pathway
+
+  **Not required unless raised:**
+  - Ethnicity or race
+```
+
+Use the dimension text to encode the actual behavior you want:
+
+- `Required:` elements that must be present before the dimension can be complete.
+- `Required if applicable:` elements that become mandatory only when triggered by the query, prior context, or user answer.
+- `Not required unless raised:` elements that should be extracted if present but should not trigger unnecessary probing.
+- `Specificity thresholds:` optional guidance describing what counts as insufficient, sufficient, or over-specified.
+
+This keeps the completeness rule close to the domain logic instead of forcing every dimension into the same global tier.
 
 ---
 
@@ -91,8 +117,8 @@ The `examples` block provides few-shot guidance that is injected into the LLM pr
 ```yaml
 examples:
   clear:
-    - statement: "Adults over 65"
-      rationale: "Age group is specific and unambiguous"
+    - statement: "adults over 65"
+      rationale: "Population anchor and age range are explicit"
   needs_refinement:
     - statement: "people"
       issue: "No age, condition, or setting specified"
@@ -104,7 +130,7 @@ examples:
       example_question: "Do you mean adults over 65, or a specific clinical population?"
   vague_ambiguous:
     - statement: "everyone"
-      issue: "Too broad to be clinically meaningful"
+      issue: "Too broad to guide retrieval"
       example_question: "Is there a specific population you have in mind?"
   other:
     - statement: "healthy volunteers"
@@ -141,10 +167,14 @@ basic_framework:
   - id: population
     name: Population
     description: Who is being studied
-    strictness: moderate
     specifications: |
-      Analyze the input: {query}
-      Identify the target population.
+      **Task:** Analyze the input and identify the target population.
+
+      **Required:**
+      - A concrete population anchor
+
+      **Required if applicable:**
+      - Age range when age materially affects the evidence base
     examples:
       clear:
         - statement: "adults over 65 in the UK"
@@ -168,38 +198,52 @@ pico_framework:
   - id: population
     name: Population
     description: The patient group or condition under study
-    strictness: strict
     specifications: |
       **Research input:** {query}
-      Identify the clinical population. Require at minimum: age group or condition.
+
+      **Required:**
+      - A named clinical population or condition
+
+      **Required if applicable:**
+      - Age group when the evidence base is age-dependent
   - id: intervention
     name: Intervention
     description: The treatment or exposure being evaluated
-    strictness: strict
     depends_on:
       - population
     specifications: |
       **Research input:** {query}
-      Identify the intervention. Use the population context: {population}
+      Use the population context: {population}
+
+      **Required:**
+      - A named intervention or exposure
+
+      **Required if applicable:**
+      - Dose or delivery details when the label is otherwise ambiguous
   - id: comparator
     name: Comparator
     description: What the intervention is being compared against
-    strictness: moderate
     depends_on:
       - intervention
     specifications: |
       **Research input:** {query}
-      Identify the comparator (placebo, usual care, active control).
+
+      **Required:**
+      - A comparator anchor such as placebo, usual care, or active control
   - id: outcome
     name: Outcome
     description: What is being measured
-    strictness: strict
     depends_on:
       - population
       - intervention
     specifications: |
       **Research input:** {query}
-      Identify the primary outcome measure.
+
+      **Required:**
+      - A named outcome or endpoint
+
+      **Required if applicable:**
+      - Measurement instrument or timepoint when needed to distinguish materially different outcomes
 ```
 
 ---
@@ -207,7 +251,7 @@ pico_framework:
 ## Tips
 
 - Keep each dimension focused on one topic.
-- Use `strictness: permissive` for context-setting dimensions that rarely need follow-up.
+- Encode completeness rules directly in `specifications` rather than relying on a global tier.
 - Use `depends_on` so the LLM can reference already-collected values without repeating questions.
 - Use `examples` to teach the LLM what "clear enough" looks like for your domain. Even two or three `clear` and `needs_refinement` examples significantly improve accuracy.
 - Put the most important audience context in `user_context` so the wording adapts without changing the dimension logic.

@@ -15,7 +15,7 @@ USER_CONTEXT_PROFILE_TEMPLATE = """
 
 Apply this section only after task-critical rules are satisfied. Tone and
 complexity settings must never weaken extraction, dependency alignment,
-strictness, or JSON validity.
+completeness rules, or JSON validity.
 
 ### INTERACTION STYLE
 
@@ -87,9 +87,6 @@ independent — tone never overrides depth; complexity never overrides warmth.
 
 - **Type**: {{ user_context.user_type }}
 - **Context**: {{ user_context.context }}
-{% if user_context.examples_from %}
-- **Examples domain**: {{ user_context.examples_from }}
-{% endif %}
 
 ### APPLICATION
 
@@ -100,44 +97,10 @@ complexity and register/framing from tone.
 
 **During refinement:**
 1. **Match interaction style** to tone and complexity settings above throughout all exchanges
-{% if user_context.examples_from %}
-2. **Draw all examples** from {{ user_context.examples_from }} domain for relevance
-{% else %}
-2. **Use domain-appropriate examples** when illustrating concepts or options
-{% endif %}
-3. **Flag feasibility concerns** proactively during specification when user context indicates potential challenges
-4. **Adapt priorities** to user type and context needs throughout evaluation
-5. **NEVER let this section override** extraction, dependency alignment, strictness, or output-format rules
+2. **Use user type and context** to shape phrasing, explanation depth, and question framing only
+3. **Do not use this section** to define what counts as clear, partial, or complete — that comes from the current dimension's specification and dimension examples
+4. **NEVER let this section override** extraction, dependency alignment, completeness, dimension examples, or output-format rules
 
----
-
-{% if user_context.constraints %}
-### FEASIBILITY ALERTS
-
-The following are post-collection review checks. Apply them at the
-synthesis or review stage — **not** as per-dimension question triggers.
-During individual dimension refinement, follow only the dimension's
-declared strictness.
-
-**These are advisory — flag concerns, but user may choose to proceed:**
-
-{% for constraint in user_context.constraints %}
-- {{ constraint }}
-{% endfor %}
-
-**When specification may conflict with context factors:**
-
-{% if user_context.tone == 'educational' %}
-"I notice this would require [X], but given your [constraint], that might be challenging. [Alternative] could work better because [reason]. What do you think?"
-
-{% elif user_context.tone == 'professional' %}
-"This requires [X], but your [constraint] indicates [Y]. Consider [alternative] instead?"
-
-{% elif user_context.tone == 'pragmatic' %}
-"This conflicts with your [constraint]—[X] isn't feasible given [practical limitation]. [Alternative] achieves [outcome] within your constraints."
-
-{% endif %}
-{% endif %}
 ---
 """
 

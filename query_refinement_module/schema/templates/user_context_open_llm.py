@@ -19,7 +19,7 @@ USER_CONTEXT_PROFILE_TEMPLATE = """
 
 Apply this section only after task-critical rules are satisfied. Tone and
 complexity settings must never weaken extraction, dependency alignment,
-strictness, or JSON validity.
+completeness rules, or JSON validity.
 
 ### INTERACTION STYLE
 
@@ -68,7 +68,7 @@ independent — tone never overrides depth; complexity never overrides warmth.
   or concept
 - Offer a balanced range of options without ranking by simplicity
 - Light pushback acceptable when an element is clearly underspecified
-- Use intermediate explanation style without weakening extraction, strictness, or JSON rules
+- Use intermediate explanation style without weakening extraction, completeness, or JSON rules
 
 {% elif user_context.complexity == 'advanced' %}
 **Complexity: Advanced** *(vocabulary and depth)*
@@ -76,7 +76,7 @@ independent — tone never overrides depth; complexity never overrides warmth.
 - Discuss methodological tradeoffs and nuances without being asked
 - Confidently push back on vague or underspecified elements
 - Offer sophisticated options including edge cases and non-obvious distinctions
-- Use advanced explanation style without weakening extraction, strictness, or JSON rules
+- Use advanced explanation style without weakening extraction, completeness, or JSON rules
 
 {% elif user_context.complexity == 'expert' %}
 **Complexity: Expert** *(vocabulary and depth)*
@@ -87,7 +87,7 @@ independent — tone never overrides depth; complexity never overrides warmth.
 - Robust pushback even when the user seems confident; no concessions
   to simplicity
 - Assume full domain expertise and capacity for critical self-correction
-- Use expert explanation style without weakening extraction, strictness, or JSON rules
+- Use expert explanation style without weakening extraction, completeness, or JSON rules
 
 {% endif %}
 
@@ -97,9 +97,6 @@ independent — tone never overrides depth; complexity never overrides warmth.
 
 - **Type**: {{ user_context.user_type }}
 - **Context**: {{ user_context.context }}
-{% if user_context.examples_from %}
-- **Examples domain**: {{ user_context.examples_from }}
-{% endif %}
 
 ### APPLICATION
 
@@ -110,44 +107,10 @@ complexity and register/framing from tone.
 
 **During refinement:**
 1. **ALWAYS match interaction style** to the tone and complexity settings above throughout all exchanges
-{% if user_context.examples_from %}
-2. **ALWAYS draw examples** from {{ user_context.examples_from }} for relevance
-{% else %}
-2. **ALWAYS use domain-appropriate examples** when illustrating concepts or options
-{% endif %}
-3. **ALWAYS flag feasibility concerns** during specification when the user context indicates practical challenges
-4. **Adapt explanation priorities** to user type and context needs throughout evaluation
-5. **NEVER let this section override** extraction, dependency alignment, strictness, or output-format rules
+2. **Use user type and context** only to shape phrasing, explanation depth, and question framing
+3. **Do not use this section** to define what counts as clear, partial, or complete — that comes from the current dimension's specification and dimension examples
+4. **NEVER let this section override** extraction, dependency alignment, completeness, dimension examples, or output-format rules
 
----
-
-{% if user_context.constraints %}
-### FEASIBILITY ALERTS
-
-The following are post-collection review checks. Apply them at the
-synthesis or review stage — **not** as per-dimension question triggers.
-During individual dimension refinement, follow only the dimension's
-declared strictness.
-
-**These are advisory — flag concerns, but user may choose to proceed:**
-
-{% for constraint in user_context.constraints %}
-- {{ constraint }}
-{% endfor %}
-
-**When specification may conflict with context factors:**
-
-{% if user_context.tone == 'educational' %}
-"I notice this would require a more demanding design or resource commitment. Given your stated constraints, that may be challenging. A narrower or lower-burden alternative may be more feasible. What do you think?"
-
-{% elif user_context.tone == 'professional' %}
-"This appears to require more time, access, or resources than your context supports. Consider a narrower or lower-burden alternative instead."
-
-{% elif user_context.tone == 'pragmatic' %}
-"This conflicts with your practical constraints. A narrower or lower-burden alternative would achieve a similar outcome with less time, access, or resource pressure."
-
-{% endif %}
-{% endif %}
 ---
 """
 

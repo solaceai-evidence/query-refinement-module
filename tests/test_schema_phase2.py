@@ -141,7 +141,40 @@ class TestPromptBuilder:
         # Check that user context is rendered with Type and Context fields
         assert "**Type**: student" in rendered
         assert "**Context**: Academic research" in rendered
-        assert "**Examples domain**: public health" in rendered
+        assert "**Examples domain**: public health" not in rendered
+        assert "FEASIBILITY ALERTS" not in rendered
+        assert "Do not use this section" in rendered
+        assert "clear, partial, or complete" in rendered
+
+    def test_global_system_prompt_scopes_opt_out_rules(self):
+        """Opt-out completion rules should not complete core content dimensions by default."""
+        builder = PromptBuilder()
+        prompt = builder.get_global_system_prompt()
+
+        assert "no-restriction answer" in prompt
+        assert "For core content dimensions" in prompt
+        assert "continue assessing" in prompt
+        assert "required elements" in prompt
+
+    def test_user_context_constraints_do_not_define_completeness(self):
+        """User-context constraints should shape phrasing only, not completeness decisions."""
+        builder = PromptBuilder()
+        ctx = UserContext(
+            user_type="practitioner",
+            context="Working under delivery constraints",
+            tone="pragmatic",
+            complexity="intermediate",
+            examples_from="public health",
+            constraints=["Limited budget", "Rural service footprint"],
+        )
+
+        rendered = builder.render_user_context(ctx)
+
+        assert "FEASIBILITY ALERTS" not in rendered
+        assert "**Examples domain**" not in rendered
+        assert "shape phrasing, explanation depth, and question framing" in rendered
+        assert "Do not use this section" in rendered
+        assert "clear, partial, or complete" in rendered
     
     def test_render_dimension_prompt(self):
         """Test rendering dimension prompt."""

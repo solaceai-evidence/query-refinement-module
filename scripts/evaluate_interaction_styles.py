@@ -44,9 +44,10 @@ from query_refinement_module.schema.prompt_builder import PromptBuilder
 from query_refinement_module.settings import LLMSettings
 
 # ---------------------------------------------------------------------------
-# Test fixture: partial population info at STRICT — forces the model to
-# acknowledge what it has, explain gaps, and frame a follow-up question.
-# That full response is where register (tone) and depth (complexity) manifest.
+# Test fixture: partial population info with required elements still missing —
+# forces the model to acknowledge what it has, explain gaps, and frame a
+# follow-up question. That full response is where register (tone) and depth
+# (complexity) manifest.
 # ---------------------------------------------------------------------------
 
 QUERY = (
@@ -62,7 +63,6 @@ DIMENSION = RefinementDimension(
         "The group of individuals defined by demographic characteristics, "
         "geographic context, and relevant inclusion criteria."
     ),
-    strictness="STRICT",
     depends_on=[],
     specifications=(
         "**Task:** Evaluate and assemble population specification.\n\n"
@@ -72,7 +72,7 @@ DIMENSION = RefinementDimension(
         "- Ethnicity/race\n"
         "- Geographic setting or context\n"
         "- Relevant subgroup characteristics\n\n"
-        "**Required (STRICT):**\n"
+        "**Required:**\n"
         "- Age range: must be explicitly confirmed\n"
         "- Sex/gender: must be specified (inclusive or restricted)\n"
         "- Setting: clinical, community, or other — must be named\n\n"
@@ -132,7 +132,6 @@ def run_combo(
         id=DIMENSION.id,
         name=DIMENSION.name,
         description=DIMENSION.description,
-        strictness=DIMENSION.strictness,
         depends_on=DIMENSION.depends_on,
         specifications=DIMENSION.specifications,
         user_context=ctx,

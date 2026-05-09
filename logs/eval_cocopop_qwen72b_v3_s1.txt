@@ -1,0 +1,7 @@
+Running 1 scenario(s) | model=ollama/qwen2.5:72b | variant=open_llm
+
+  Scenario 1: Flood-associated diarrhoea — extraction-heavy
+  Query: 'Acute watery diarrhoea in children under 5 following riverine flooding in rural displacement camps in Bangladesh'
+    [condition] turns=0 completed_ctx=0 ...
+      -> FAIL: ['complete expected True got False']
+    [context] turns=0 completed_ctx=1 ...

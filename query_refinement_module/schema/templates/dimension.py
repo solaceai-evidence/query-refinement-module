@@ -19,9 +19,6 @@ DIMENSION_REFINEMENT_TEMPLATE = """
 
 **Dimension:** {{ name }} 
 **Description:** {{ description }}
-{% if strictness %}
-**Strictness Level:** {{ strictness }}
-{% endif %}
 
 ---
 
@@ -32,7 +29,7 @@ Before reading the user query or asking any question:
 1. **Scan the completed dimensions listed in the PRIOR CONTEXT system message above.**
 2. Look for any value in those dimensions that matches or contains the current dimension ({{ name }}).
 3. If a matching value exists, extract it immediately into `current`. Do NOT ask a question.
-4. If the extracted value fully satisfies this dimension at its strictness level, set `complete=true` and `question=""`.
+4. If the extracted value fully satisfies this dimension's specification, set `complete=true` and `question=""`.
 
 **Cross-dimension extraction example:**
 - Completed dimension: **Population** = "adults aged 18-65 with type 2 diabetes in urban clinics"
@@ -47,7 +44,6 @@ Only proceed to the query and conversation history after this check is complete.
 ### Specification
 
 {{ specifications }}
-
 
 {% if examples_section %}
 ### Examples

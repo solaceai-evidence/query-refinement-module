@@ -1,28 +1,41 @@
 #!/usr/bin/env python3
-"""End-to-end evaluation for the pico_advanced framework with open-weight models.
+"""End-to-end evaluation for the cocopop framework with open-weight models.
 
 Tests the complete refinement + synthesis pipeline:
-  1. Dimension refinement — all 6 pico_advanced dims in dependency order,
-     each receiving the real completed_context from prior dims.
-  2. Synthesis — all completed dims passed to build_synthesis_messages(),
+  1. Dimension refinement — all 3 cocopop dims in dependency order
+     (condition → context → population), each receiving the real
+     completed_context from prior dims.
+  2. Synthesis — all completed dims passed through _run_split_synthesis(),
      response validated for structural correctness and key-term coverage.
 
 Run:
-    QUERY_REFINEMENT_LLM_COMPLETION_KWARGS='{"num_ctx": 8192}' \\
-        .venv/bin/python scripts/evaluate_pico_advanced.py --model ollama/qwen2.5:72b
-
-    # Use a specific env file (e.g. Claude):
-    .venv/bin/python scripts/evaluate_pico_advanced.py \\
-        --env-file .env.anthropic-claude-sonnet-4-6
+    .venv/bin/python scripts/evaluate_cocopop.py \\
+        --env-file .env.ollama-qwen2.5-72b
 
     # Run a single scenario:
-    .venv/bin/python scripts/evaluate_pico_advanced.py \\
-        --model ollama/qwen2.5:72b --scenario 1
+    .venv/bin/python scripts/evaluate_cocopop.py \\
+        --env-file .env.ollama-qwen2.5-72b --scenario 1
+
+    # Include raw LLM responses in output:
+    .venv/bin/python scripts/evaluate_cocopop.py \\
+        --env-file .env.ollama-qwen2.5-72b --verbose
+
+Performance note (Ollama + 72B on Apple Silicon):
+    Refinement calls use a small context window (--num-ctx, default 2048) to
+    maximise GPU layer allocation on Metal. Do NOT pass num_ctx=8192 for this
+    script — it forces most model layers off GPU onto CPU (~98% CPU), making
+    each call take minutes instead of seconds.
+
+    For fastest inference, also set these Ollama env vars before starting
+    'ollama serve' (or via launchctl):
+        OLLAMA_FLASH_ATTENTION=1     # reduces KV cache memory ~75%
+        OLLAMA_KEEP_ALIVE=-1         # keep model loaded between eval calls
 """
 
 from __future__ import annotations
 
 import argparse
+import asyncio
 import json
 import os
 import re
@@ -42,8 +55,6 @@ _env_path = Path(_early_args.env_file) if _early_args.env_file else ROOT / ".env
 load_dotenv(_env_path, override=False)
 os.environ.setdefault("QUERY_REFINEMENT_PROMPT_VARIANT", "open_llm")
 
-import asyncio
-
 from query_refinement_module.core import QueryRefinementManager
 from query_refinement_module.providers import LiteLLMProvider
 from query_refinement_module.schema.models import RefinementDimension
@@ -56,19 +67,13 @@ from query_refinement_module.schema.registry import (
 from query_refinement_module.session_models import AspectRefinementState, RefinementSession
 from query_refinement_module.settings import LLMSettings
 
+
 # ---------------------------------------------------------------------------
 # Framework loading
 # ---------------------------------------------------------------------------
 
-DEFAULT_FRAMEWORK_NAME = "pico_advanced"
-EXPECTED_DIMENSION_IDS = {
-    "population",
-    "clinical_condition",
-    "intervention",
-    "comparator",
-    "outcome",
-    "study_type",
-}
+DEFAULT_FRAMEWORK_NAME = "cocopop"
+EXPECTED_DIMENSION_IDS = {"condition", "context", "population"}
 
 
 def _load_framework_dimensions(
@@ -92,7 +97,7 @@ def _load_framework_dimensions(
 
 
 # ---------------------------------------------------------------------------
-# Scenario definition
+# Scenario dataclasses
 # ---------------------------------------------------------------------------
 
 @dataclass
@@ -100,7 +105,7 @@ class DimExpectation:
     """Expected refinement result for one dimension."""
     complete: bool
     current: str  # exact match (case-insensitive) when key_terms is empty
-    key_terms: list[str] = field(default_factory=list)  # if non-empty, all terms must appear in actual.current
+    key_terms: list[str] = field(default_factory=list)  # all terms must appear in actual.current
     check_complete: bool = True  # set False when completeness is borderline/defensible
 
 
@@ -108,7 +113,7 @@ class DimExpectation:
 class SynthesisCheck:
     """Minimal structural checks on synthesis output."""
     required_dim_ids: list[str]
-    required_terms_in_integrated: list[str]   # all must appear (case-insensitive)
+    required_terms_in_integrated: list[str]  # all must appear (case-insensitive)
     required_fields: list[str] = field(default_factory=lambda: [
         "integrated_statement",
         "dimensions_specifications",
@@ -123,176 +128,215 @@ class Scenario:
     identifier: str
     name: str
     query: str
-    # Per-dimension conversation history (keyed by dimension id)
+    # Per-dimension conversation history keyed by dimension id
     dim_history: dict[str, list[dict[str, str]]] = field(default_factory=dict)
     # Expected refinement outcome per dimension
     expected: dict[str, DimExpectation] = field(default_factory=dict)
     synthesis_check: SynthesisCheck | None = None
 
 
+# ---------------------------------------------------------------------------
+# Scenarios
+# ---------------------------------------------------------------------------
+
 def build_scenarios() -> list[Scenario]:
     return [
         # ------------------------------------------------------------------
-        # Scenario 1: Clean extraction — most dims extractable from query
-        # One multi-turn for outcome because measurement detail remains required
+        # Scenario 1: Clean extraction — condition and context extractable
+        # from query; population needs one clarification turn.
         # ------------------------------------------------------------------
         Scenario(
             identifier="1",
-            name="Metformin RCT — extraction-heavy",
+            name="Flood-associated diarrhoea — extraction-heavy",
             query=(
-                "Effect of metformin versus placebo on glycaemic control in adults aged 40-65 "
-                "with type 2 diabetes in primary care settings — randomised controlled trials only"
+                "Acute watery diarrhoea in children under 5 following riverine flooding "
+                "in rural displacement camps in Bangladesh"
             ),
             dim_history={
-                # Outcome needs a measurement turn even though the concept is in the query
-                "outcome": [
+                # Population: age is in the query; one turn to confirm scope
+                "population": [
                     {
-                        "question": "How will you measure glycaemic control, and over what timeframe?",
-                        "response": "HbA1c reduction at 6 months",
+                        "question": (
+                            "The query specifies children under 5. "
+                            "Are you focusing on all children under 5 regardless of sex, "
+                            "or a specific subgroup such as acutely malnourished children?"
+                        ),
+                        "response": "all children under 5, both sexes",
                     }
                 ],
             },
             expected={
-                # Population: model may or may not include "primary care settings" —
-                # key demographics must be present; setting inclusion is acceptable but not required.
+                "condition": DimExpectation(
+                    complete=True,
+                    current="",
+                    key_terms=["diarrhoea", "flood"],
+                ),
+                "context": DimExpectation(
+                    complete=True,
+                    current="",
+                    key_terms=["Bangladesh", "displacement"],
+                ),
                 "population": DimExpectation(
                     complete=True,
-                    check_complete=False,  # model may ask for setting clarification (defensible)
                     current="",
-                    key_terms=["adults", "40-65", "type 2 diabetes"],
-                ),
-                "clinical_condition": DimExpectation(
-                    complete=True,
-                    current="type 2 diabetes",
-                ),
-                # Intervention: must contain "metformin" but NOT the comparator.
-                "intervention": DimExpectation(
-                    complete=True,
-                    check_complete=False,  # model may still ask for dosing
-                    current="",
-                    key_terms=["metformin"],
-                ),
-                "comparator": DimExpectation(
-                    complete=True,
-                    current="placebo",
-                ),
-                # Outcome: model operationalises to HbA1c; that is correct.
-                "outcome": DimExpectation(
-                    complete=True,
-                    current="",
-                    key_terms=["HbA1c", "6 months"],
-                ),
-                "study_type": DimExpectation(
-                    complete=True,
-                    current="randomised controlled trials",
+                    key_terms=["children", "under 5"],
                 ),
             },
             synthesis_check=SynthesisCheck(
-                required_dim_ids=["population", "clinical_condition", "intervention",
-                                  "comparator", "outcome", "study_type"],
-                required_terms_in_integrated=["metformin", "placebo", "diabetes", "HbA1c"],
+                required_dim_ids=["condition", "context", "population"],
+                required_terms_in_integrated=["diarrhoea", "flood", "Bangladesh", "children"],
             ),
         ),
         # ------------------------------------------------------------------
-        # Scenario 2: Multi-turn completions — most dims need conversation
+        # Scenario 2: Multi-turn completions — all dims need conversation.
+        # Tests climate-linkage probing and context disambiguation.
         # ------------------------------------------------------------------
         Scenario(
             identifier="2",
-            name="CBT vs waitlist — multi-turn",
-            query="Can therapy help anxiety in young adults?",
+            name="Heat illness in agricultural workers — multi-turn",
+            query="health problems in farm workers during summer",
             dim_history={
+                "condition": [
+                    {
+                        "question": (
+                            "Which specific health condition are you focusing on? "
+                            "And is this driven by a climate-related hazard such as extreme heat?"
+                        ),
+                        "response": "heat stroke and heat exhaustion during extreme heat events",
+                    },
+                    {
+                        "question": (
+                            "Is there a specific severity threshold or case definition "
+                            "you want to apply — for example, core temperature ≥40°C "
+                            "or altered consciousness for heat stroke?"
+                        ),
+                        "response": "yes, core temperature ≥40°C or altered consciousness",
+                    },
+                ],
+                "context": [
+                    {
+                        "question": "Which country or region are you focusing on?",
+                        "response": "South Asia, primarily India and Pakistan",
+                    },
+                    {
+                        "question": (
+                            "Are you focusing on a specific setting — "
+                            "for example, rural agricultural fields, "
+                            "occupational health clinics, or district hospitals?"
+                        ),
+                        "response": "rural agricultural fields with limited access to primary care",
+                    },
+                ],
                 "population": [
                     {
-                        "question": "Which population are you focusing on?",
-                        "response": "adults aged 18-35",
-                    }
-                ],
-                "clinical_condition": [
-                    {
-                        "question": "Which anxiety disorder?",
-                        "response": "generalised anxiety disorder (GAD)",
-                    }
-                ],
-                "intervention": [
-                    {
-                        "question": "Which specific therapy?",
-                        "response": "cognitive behavioural therapy (CBT)",
-                    }
-                ],
-                "comparator": [
-                    {
-                        "question": "What will CBT be compared against?",
-                        "response": "waitlist control",
-                    }
-                ],
-                "outcome": [
-                    {
-                        "question": "What outcome will you measure?",
-                        "response": "anxiety symptom severity",
-                    },
-                    {
-                        "question": "How will you measure anxiety symptom severity?",
-                        "response": "GAD-7 score at 12 weeks",
-                    },
-                ],
-                "study_type": [
-                    {
-                        "question": "What study design?",
-                        "response": "randomised controlled trials",
+                        "question": (
+                            "Are you focusing on all outdoor agricultural workers, "
+                            "or a specific subgroup such as a particular age range, "
+                            "sex, or migrant status?"
+                        ),
+                        "response": "adult male migrant workers aged 18 to 50",
                     }
                 ],
             },
             expected={
+                "condition": DimExpectation(
+                    complete=True,
+                    current="",
+                    key_terms=["heat stroke", "heat exhaustion", "≥40°C"],
+                ),
+                "context": DimExpectation(
+                    complete=True,
+                    current="",
+                    key_terms=["South Asia", "rural"],
+                ),
                 "population": DimExpectation(
                     complete=True,
-                    check_complete=False,  # model may still ask for sex/ethnicity
+                    check_complete=False,  # model may probe further for ethnicity (defensible)
                     current="",
-                    key_terms=["adults", "18-35"],
-                ),
-                "clinical_condition": DimExpectation(
-                    complete=True,
-                    current="",
-                    # model sometimes appends population context — key terms are sufficient
-                    key_terms=["generalised anxiety disorder", "GAD"],
-                ),
-                "intervention": DimExpectation(
-                    complete=True,
-                    check_complete=False,  # model may still ask for session count
-                    current="",
-                    key_terms=["cognitive behavioural therapy", "CBT"],
-                ),
-                "comparator": DimExpectation(complete=True, current="waitlist control"),
-                "outcome": DimExpectation(
-                    complete=True,
-                    current="",
-                    key_terms=["GAD-7", "12 weeks"],
-                ),
-                "study_type": DimExpectation(
-                    complete=True, current="randomised controlled trials"
+                    key_terms=["adult", "migrant", "18"],
                 ),
             },
             synthesis_check=SynthesisCheck(
-                required_dim_ids=["population", "clinical_condition", "intervention",
-                                  "comparator", "outcome", "study_type"],
-                required_terms_in_integrated=["CBT", "anxiety", "GAD-7", "waitlist"],
+                required_dim_ids=["condition", "context", "population"],
+                required_terms_in_integrated=["heat stroke", "South Asia", "agricultural workers"],
+            ),
+        ),
+        # ------------------------------------------------------------------
+        # Scenario 3: Vague query — tests climate-linkage probing,
+        # specificity thresholds, and context standardization.
+        # ------------------------------------------------------------------
+        Scenario(
+            identifier="3",
+            name="Drought malnutrition — vague-to-specific",
+            query="malnutrition in poor countries during a drought",
+            dim_history={
+                "condition": [
+                    {
+                        "question": (
+                            "Are you focusing on acute wasting, stunting, or a specific "
+                            "micronutrient deficiency? What diagnostic threshold or case "
+                            "definition applies?"
+                        ),
+                        "response": "acute wasting using the WHO MUAC threshold of under 12.5 cm",
+                    }
+                ],
+                "context": [
+                    {
+                        "question": (
+                            "Which country or sub-region are you focusing on? "
+                            "And is the setting a displacement camp, rural community, "
+                            "or health facility?"
+                        ),
+                        "response": "rural communities in the Sahel, specifically Niger and Mali",
+                    }
+                ],
+                "population": [
+                    {
+                        "question": (
+                            "Are you focusing on all age groups, or a specific group "
+                            "such as children under 5 or pregnant and lactating women?"
+                        ),
+                        "response": "children under 5 years",
+                    }
+                ],
+            },
+            expected={
+                "condition": DimExpectation(
+                    complete=True,
+                    current="",
+                    key_terms=["wasting", "MUAC", "drought"],
+                ),
+                "context": DimExpectation(
+                    complete=True,
+                    current="",
+                    # "poor countries" should be standardized; Sahel geography must appear
+                    key_terms=["Sahel", "Niger"],
+                ),
+                "population": DimExpectation(
+                    complete=True,
+                    current="",
+                    key_terms=["children", "under 5"],
+                ),
+            },
+            synthesis_check=SynthesisCheck(
+                required_dim_ids=["condition", "context", "population"],
+                required_terms_in_integrated=["wasting", "drought", "Sahel", "children"],
             ),
         ),
     ]
 
 
 # ---------------------------------------------------------------------------
-# Helpers
+# JSON extraction helpers
 # ---------------------------------------------------------------------------
 
 def _fix_unescaped_quotes(s: str) -> str:
     """Escape unescaped double quotes inside JSON string values.
 
-    Qwen sometimes emits boolean search strings like:
-      "structured": "(("metformin" OR "placebo") AND ...)"
-    where the inner quotes are not escaped, breaking the parser.
-    This state machine detects whether a closing `"` is really the end of
-    the current string value (next non-whitespace is : , } ]) or an inner
-    quote (otherwise), and escapes the inner ones.
+    Qwen sometimes emits boolean search strings containing unescaped inner
+    quotes that break the parser. This state machine detects whether a
+    closing quote is the end of a string value or an inner unescaped quote
+    and escapes the latter.
     """
     result: list[str] = []
     in_string = False
@@ -300,7 +344,6 @@ def _fix_unescaped_quotes(s: str) -> str:
     while i < len(s):
         c = s[i]
         if c == "\\" and in_string:
-            # Already-escaped sequence — pass both chars through unchanged
             result.append(c)
             i += 1
             if i < len(s):
@@ -312,7 +355,6 @@ def _fix_unescaped_quotes(s: str) -> str:
                 in_string = True
                 result.append(c)
             else:
-                # Decide: end-of-string or inner unescaped quote?
                 j = i + 1
                 while j < len(s) and s[j] in " \t\n\r":
                     j += 1
@@ -337,13 +379,16 @@ def extract_json(text: str) -> dict[str, Any]:
     end = candidate.rfind("}")
     if start == -1 or end == -1 or end < start:
         raise ValueError(f"No JSON object found: {text!r}")
-    blob = candidate[start : end + 1]
+    blob = candidate[start:end + 1]
     try:
         return json.loads(blob)
     except json.JSONDecodeError:
-        # Try escaping unescaped inner quotes and retry
         return json.loads(_fix_unescaped_quotes(blob))
 
+
+# ---------------------------------------------------------------------------
+# Comparison helpers
+# ---------------------------------------------------------------------------
 
 def _compare_refinement(
     actual: dict[str, Any], expected: DimExpectation
@@ -351,7 +396,9 @@ def _compare_refinement(
     failures: list[str] = []
     required_keys = {"complete", "current", "question"}
     if set(actual.keys()) != required_keys:
-        failures.append(f"json-shape expected {sorted(required_keys)} got {sorted(actual.keys())}")
+        failures.append(
+            f"json-shape expected {sorted(required_keys)} got {sorted(actual.keys())}"
+        )
     if expected.check_complete and actual.get("complete") != expected.complete:
         failures.append(
             f"complete expected {expected.complete!r} got {actual.get('complete')!r}"
@@ -360,7 +407,9 @@ def _compare_refinement(
     if expected.key_terms:
         for term in expected.key_terms:
             if term.lower() not in actual_current:
-                failures.append(f"current missing required term {term!r} (got {actual.get('current')!r})")
+                failures.append(
+                    f"current missing required term {term!r} (got {actual.get('current')!r})"
+                )
     else:
         expected_current = expected.current.strip().lower()
         if actual_current != expected_current:
@@ -376,7 +425,7 @@ def _compare_synthesis(
     failures: list[str] = []
     for f in check.required_fields:
         parts = f.split(".")
-        obj = actual
+        obj: Any = actual
         for p in parts:
             if not isinstance(obj, dict) or p not in obj:
                 failures.append(f"missing field {f!r}")
@@ -416,6 +465,7 @@ def run_scenario(
     max_tokens_refinement: int,
     max_tokens_synthesis: int,
     verbose: bool,
+    num_ctx: int = 2048,
 ) -> dict[str, Any]:
     """Run one full E2E scenario. Returns a result dict."""
     dim_results: list[dict[str, Any]] = []
@@ -444,7 +494,8 @@ def run_scenario(
         )
 
         print(
-            f"    [{dim_id}] turns={len(conv_history)} completed_ctx={len(completed_context)} ...",
+            f"    [{dim_id}] turns={len(conv_history)} "
+            f"completed_ctx={len(completed_context)} ...",
             file=sys.stderr,
             flush=True,
         )
@@ -454,23 +505,25 @@ def run_scenario(
                 messages=messages,
                 max_tokens=max_tokens_refinement,
                 temperature=0.0,
+                num_ctx=num_ctx,
             )
             parsed = extract_json(completion.context)
 
             if exp is not None:
                 passed, failures = _compare_refinement(parsed, exp)
             else:
-                # No expectation — just check shape
                 passed = set(parsed.keys()) == {"complete", "current", "question"}
                 failures = [] if passed else [f"unexpected shape: {list(parsed.keys())}"]
 
             status = "PASS" if passed else "FAIL"
-            print(f"      -> {status}: {failures if not passed else []}", file=sys.stderr)
+            print(
+                f"      -> {status}: {failures if not passed else []}",
+                file=sys.stderr,
+            )
 
             if not passed:
                 all_refinement_passed = False
 
-            # Record in completed_context for downstream dims using actual output
             completed_context.append(
                 {
                     "id": dim_id,
@@ -489,6 +542,7 @@ def run_scenario(
                     "expected": {
                         "complete": exp.complete if exp else None,
                         "current": exp.current if exp else None,
+                        "key_terms": exp.key_terms if exp else [],
                     },
                     "actual": parsed,
                     "raw": completion.context if verbose else None,
@@ -499,7 +553,6 @@ def run_scenario(
             msg = f"{type(exc).__name__}: {exc}"
             print(f"      -> ERROR: {msg}", file=sys.stderr)
             all_refinement_passed = False
-            # Use empty value so downstream dims still receive the context key
             completed_context.append(
                 {
                     "id": dim_id,
@@ -517,6 +570,7 @@ def run_scenario(
                     "expected": {
                         "complete": exp.complete if exp else None,
                         "current": exp.current if exp else None,
+                        "key_terms": exp.key_terms if exp else [],
                     },
                     "actual": None,
                     "raw": None,
@@ -526,15 +580,16 @@ def run_scenario(
     # -----------------------------------------------------------------------
     # Synthesis
     # -----------------------------------------------------------------------
-    synthesis_result: dict[str, Any] = {"passed": False, "failures": [], "actual": None, "raw": None}
-    synthesis_raw: str | None = None
+    synthesis_result: dict[str, Any] = {
+        "passed": False,
+        "failures": [],
+        "actual": None,
+        "raw": None,
+    }
 
     print(f"    [synthesis] running split synthesis ...", file=sys.stderr, flush=True)
 
     try:
-        # Build a RefinementSession from completed_context so we exercise the
-        # same _run_split_synthesis path that production uses — NOT the legacy
-        # monolithic build_synthesis_messages path.
         dim_objects = framework
         dim_by_id = {d.id: d for d in dim_objects}
 
@@ -567,21 +622,24 @@ def run_scenario(
                 temperature=0.0,
             )
         )
-        parsed = synthesis_response.model_dump()
+        parsed_synthesis = synthesis_response.model_dump()
 
         if scenario.synthesis_check:
-            passed, failures = _compare_synthesis(parsed, scenario.synthesis_check)
+            passed, failures = _compare_synthesis(parsed_synthesis, scenario.synthesis_check)
         else:
             passed = True
             failures = []
 
         status = "PASS" if passed else "FAIL"
-        print(f"      -> {status}: {failures if not passed else []}", file=sys.stderr)
+        print(
+            f"      -> {status}: {failures if not passed else []}",
+            file=sys.stderr,
+        )
 
         synthesis_result = {
             "passed": passed,
             "failures": failures,
-            "actual": parsed,
+            "actual": parsed_synthesis,
             "raw": None,
         }
 
@@ -612,7 +670,7 @@ def run_scenario(
 
 def main() -> int:
     parser = argparse.ArgumentParser(
-        description="E2E evaluation for the pico_advanced framework."
+        description="E2E evaluation for the cocopop framework."
     )
     parser.add_argument("--env-file", default=None, metavar="PATH")
     parser.add_argument(
@@ -646,6 +704,16 @@ def main() -> int:
         help="max_tokens for the synthesis call (default 4096).",
     )
     parser.add_argument(
+        "--num-ctx",
+        type=int,
+        default=2048,
+        help=(
+            "Ollama context window for refinement calls (default 2048). "
+            "Smaller values keep more 72B layers on Metal GPU and prevent "
+            "CPU offloading. Do not set above 4096 for refinement-only runs."
+        ),
+    )
+    parser.add_argument(
         "--verbose",
         action="store_true",
         help="Include raw LLM response text in output JSON.",
@@ -661,7 +729,11 @@ def main() -> int:
     try:
         framework = _load_framework_dimensions(args.framework_name, args.yaml_path)
     except (FrameworkLoadError, KeyError) as exc:
-        print(f"Failed to load framework '{args.framework_name}': {exc}", file=sys.stderr)
+        print(
+            f"Failed to load framework '{args.framework_name}': {exc}. "
+            "Use --yaml-path to point at a YAML file that contains this framework if it is not registered.",
+            file=sys.stderr,
+        )
         return 2
 
     all_scenarios = build_scenarios()
@@ -690,6 +762,7 @@ def main() -> int:
             max_tokens_refinement=args.max_tokens_refinement,
             max_tokens_synthesis=args.max_tokens_synthesis,
             verbose=args.verbose,
+            num_ctx=args.num_ctx,
         )
         scenario_results.append(result)
 
@@ -697,7 +770,6 @@ def main() -> int:
     passed = sum(1 for r in scenario_results if r["passed"])
     failed = total - passed
 
-    # Per-dimension totals across all scenarios
     dim_totals: dict[str, dict[str, int]] = {}
     for sr in scenario_results:
         for dr in sr["dimensions"]:
