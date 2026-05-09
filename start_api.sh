@@ -9,9 +9,9 @@ if [ ! -f ".env" ]; then
     echo "Warning: .env file not found"
     echo "   Pick the template that matches your LLM provider:"
     echo "     cp .env.anthropic-claude-sonnet-4-6 .env   # Anthropic Claude Sonnet 4.6 (cloud)"
-    echo "     cp .env.ollama-llama3.1-8b .env           # Ollama — Llama 3.1 8B (local)"
+    echo "     cp .env.ollama-qwen2.5-72b .env          # Ollama — Qwen 2.5 72B (local)"
     echo "     cp .env.vllm .env                         # vLLM (self-hosted; use ./start_vllm.sh)"
-    echo "   Then set QUERY_REFINEMENT_LLM_API_KEY (cloud) or verify API_BASE (local)"
+    echo "   Then set QUERY_REFINEMENT_LLM_API_KEY (cloud) or verify API_BASE for vLLM / non-default local hosts"
     echo ""
     exit 1
 fi

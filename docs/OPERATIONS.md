@@ -4,15 +4,15 @@ This guide covers routine tasks and checks.
 
 ## Switching LLM backends
 
-Four env templates cover the supported backends:
+Five env templates cover the supported backends:
 
-| Template                           | Provider                             | API key required | Constrained decoding |
-| ---------------------------------- | ------------------------------------ | ---------------- | -------------------- |
-| `.env.anthropic-claude-sonnet-4-6` | Anthropic Claude Sonnet 4.6 (dev)    | yes              | off                  |
-| `.env.prod`                        | Anthropic Claude (cloud, production) | yes              | off                  |
-| `.env.ollama-qwen2.5-32b`          | Ollama — Qwen 2.5 32B (local)        | no               | off                  |
-| `.env.ollama-llama3.1-8b`          | Ollama — Llama 3.1 8B (local)        | no               | off                  |
-| `.env.vllm`                        | vLLM — Llama 3.1 8B                  | no               | **on**               |
+| Template                           | Provider                                 | API key required | Constrained decoding |
+| ---------------------------------- | ---------------------------------------- | ---------------- | -------------------- |
+| `.env.anthropic-claude-sonnet-4-6` | Anthropic Claude Sonnet 4.6 (dev)        | yes              | off                  |
+| `.env.prod`                        | Anthropic Claude Sonnet 4.6 (production) | yes              | off                  |
+| `.env.prod.ollama-qwen2.5-72b`     | Ollama — Qwen 2.5 72B (production)       | no               | off                  |
+| `.env.ollama-qwen2.5-72b`          | Ollama — Qwen 2.5 72B (local)            | no               | off                  |
+| `.env.vllm`                        | vLLM — Llama 3.1 8B                      | no               | **on**               |
 
 To switch, copy the relevant template to `.env` and restart the API:
 
@@ -21,8 +21,8 @@ To switch, copy the relevant template to `.env` and restart the API:
 cp .env.anthropic-claude-sonnet-4-6 .env
 ./start_api.sh
 
-# Ollama — Llama 3.1 8B (local)
-cp .env.ollama-llama3.1-8b .env
+# Ollama — Qwen 2.5 72B (local)
+cp .env.ollama-qwen2.5-72b .env
 ./start_api.sh
 
 # vLLM — self-hosted (Llama 3.1 8B)
@@ -32,6 +32,10 @@ cp .env.vllm .env
 
 # Anthropic cloud (production)
 cp .env.prod .env
+./start_production.sh
+
+# Ollama — Qwen 2.5 72B (production)
+cp .env.prod.ollama-qwen2.5-72b .env
 ./start_production.sh
 ```
 
@@ -70,7 +74,7 @@ curl -X POST http://localhost:11434/v1/chat/completions \
   -d '{"model": "qwen2.5:32b", "messages": [{"role": "user", "content": "ping"}]}'
 ```
 
-> **Note:** `QUERY_REFINEMENT_LLM_COMPLETION_KWARGS={"num_ctx": 16384}` overrides Ollama's
+> **Note:** The app now defaults Ollama to `QUERY_REFINEMENT_LLM_COMPLETION_KWARGS={"num_ctx": 16384}` to override Ollama's
 > default 2 048-token context window, which is too small for this application.
 > Synthesis runs 5 sequential and parallel LLM calls per request; each call shares
 > the same context budget. Increase to `32768` if you observe truncated responses;

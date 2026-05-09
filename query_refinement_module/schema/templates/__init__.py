@@ -13,10 +13,21 @@ from __future__ import annotations
 import os
 
 _PROMPT_VARIANT_ENV = "QUERY_REFINEMENT_PROMPT_VARIANT"
+_LLM_MODEL_ENV = "QUERY_REFINEMENT_LLM_MODEL"
+_OPEN_MODEL_MARKERS = ("ollama/", "qwen", "llama", "mistral", "gemma", "deepseek")
+
+
+def _infer_open_llm_from_model() -> bool:
+    model = os.getenv(_LLM_MODEL_ENV, "").strip().lower()
+    return any(marker in model for marker in _OPEN_MODEL_MARKERS)
 
 
 def _use_open_llm_templates() -> bool:
-    variant = os.getenv(_PROMPT_VARIANT_ENV, "default").strip().lower()
+    raw_variant = os.getenv(_PROMPT_VARIANT_ENV)
+    if raw_variant is None or raw_variant.strip() == "":
+        return _infer_open_llm_from_model()
+
+    variant = raw_variant.strip().lower()
     return variant in {"open_llm", "open-llm", "open", "qwen", "ollama"}
 
 

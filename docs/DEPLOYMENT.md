@@ -7,16 +7,18 @@ This guide is written for someone who needs to put the application on a server a
 For a normal production deployment, you will need:
 
 - Docker Engine and the Docker Compose plugin on the server
-- A copy of the production environment file (`.env.prod`)
+- A copy of the production environment file (`.env.prod` for Claude or `.env.prod.ollama-qwen2.5-72b` for Qwen)
 - Values for the database, AI provider, and website addresses
 - A writable location for logs
 
 ## Quick Production Setup
 
-1. Copy the production environment file:
+1. Copy the production environment file that matches your LLM backend:
 
 ```bash
 cp .env.prod .env
+# or
+cp .env.prod.ollama-qwen2.5-72b .env
 ```
 
 2. Edit `.env` and set these required values:
@@ -43,10 +45,10 @@ docker compose -f docker-compose.yml -f docker-compose.prod.yml up -d --build
 Before starting, verify the following:
 
 - Docker Engine and Docker Compose plugin are installed on the server
-- The correct template has been copied to `.env` (`.env.anthropic-claude-sonnet-4-6`, `.env.prod`, `.env.ollama-llama3.1-8b`, or `.env.vllm`)
+- The correct template has been copied to `.env` (`.env.anthropic-claude-sonnet-4-6`, `.env.prod`, `.env.prod.ollama-qwen2.5-72b`, `.env.ollama-qwen2.5-72b`, or `.env.vllm`)
 - `SECRET_KEY` is set, is at least 32 characters long, and is not one of the known placeholder values (the API will refuse to start in production mode if this check fails)
 - `QUERY_REFINEMENT_LLM_API_KEY` is set **if using a cloud provider** (Anthropic, OpenAI); leave blank for Ollama or vLLM
-- `QUERY_REFINEMENT_LLM_API_BASE` is set **if using a local provider** (Ollama or vLLM)
+- `QUERY_REFINEMENT_LLM_API_BASE` is set **if needed** for vLLM or for an Ollama server that is not using the default `http://localhost:11434`
 - `POSTGRES_USER`, `POSTGRES_PASSWORD`, and `POSTGRES_DB` are set
 - `ALLOWED_ORIGINS` includes every browser address that should be allowed to use the app
 - `ALLOW_REGISTRATION=false` unless self-signup is needed
@@ -77,16 +79,16 @@ Routing model:
 
 ## LLM Provider Configuration
 
-The API service connects to an LLM provider via LiteLLM.  Four pre-filled
+The API service connects to an LLM provider via LiteLLM.  Five pre-filled
 environment templates are provided:
 
-| Template                           | Provider                             | API key required | `CONSTRAINED_DECODING` |
-| ---------------------------------- | ------------------------------------ | ---------------- | ---------------------- |
-| `.env.anthropic-claude-sonnet-4-6` | Anthropic Claude Sonnet 4.6 (dev)    | yes              | `false`                |
-| `.env.prod`                        | Anthropic Claude (cloud, production) | yes              | `false`                |
-| `.env.ollama-qwen2.5-32b`          | Ollama — Qwen 2.5 32B (local)        | no               | `false`                |
-| `.env.ollama-llama3.1-8b`          | Ollama — Llama 3.1 8B (local)        | no               | `false`                |
-| `.env.vllm`                        | vLLM — Llama 3.1 8B (self-hosted)    | no               | `true`                 |
+| Template                           | Provider                                 | API key required | `CONSTRAINED_DECODING` |
+| ---------------------------------- | ---------------------------------------- | ---------------- | ---------------------- |
+| `.env.anthropic-claude-sonnet-4-6` | Anthropic Claude Sonnet 4.6 (dev)        | yes              | `false`                |
+| `.env.prod`                        | Anthropic Claude Sonnet 4.6 (production) | yes              | `false`                |
+| `.env.prod.ollama-qwen2.5-72b`     | Ollama — Qwen 2.5 72B (production)       | no               | `false`                |
+| `.env.ollama-qwen2.5-72b`          | Ollama — Qwen 2.5 72B (local)            | no               | `false`                |
+| `.env.vllm`                        | vLLM — Llama 3.1 8B (self-hosted)        | no               | `true`                 |
 
 ### Switching to Ollama
 
@@ -95,11 +97,8 @@ environment templates are provided:
 2. Pull the model you want to use:
 
 ```bash
-# Recommended for synthesis quality (~19 GB unified memory, Apple M-series)
-ollama pull qwen2.5:32b
-
-# Lighter alternative (~6 GB)
-ollama pull llama3.1:8b
+# Recommended local setup
+ollama pull qwen2.5:72b
 
 # Verify: ollama list
 ```
@@ -107,21 +106,17 @@ ollama pull llama3.1:8b
 3. Copy the template and configure:
 
 ```bash
-# For Qwen 2.5 32B (recommended):
-cp .env.ollama-qwen2.5-32b .env
-
-# For Llama 3.1 8B (lighter):
-# cp .env.ollama-llama3.1-8b .env
+cp .env.ollama-qwen2.5-72b .env
 ```
 
 Key Ollama-specific settings:
 
-| Variable                                 | Value                    | Notes                                          |
-| ---------------------------------------- | ------------------------ | ---------------------------------------------- |
-| `QUERY_REFINEMENT_LLM_API_BASE`          | `http://localhost:11434` | Default Ollama port                            |
-| `QUERY_REFINEMENT_LLM_API_KEY`           | *(leave blank)*          | Not required for local Ollama                  |
-| `QUERY_REFINEMENT_LLM_COMPLETION_KWARGS` | `{"num_ctx": 16384}`     | Overrides Ollama's 2 048-token context default |
-| `QUERY_REFINEMENT_ENABLE_PROMPT_CACHING` | `false`                  | Anthropic-specific; must be off for Ollama     |
+| Variable                                 | Value           | Notes                                           |
+| ---------------------------------------- | --------------- | ----------------------------------------------- |
+| `QUERY_REFINEMENT_LLM_API_BASE`          | auto            | Defaults internally to `http://localhost:11434` |
+| `QUERY_REFINEMENT_LLM_API_KEY`           | *(leave blank)* | Not required for local Ollama                   |
+| `QUERY_REFINEMENT_LLM_COMPLETION_KWARGS` | auto            | Defaults internally to `{"num_ctx": 16384}`     |
+| `QUERY_REFINEMENT_ENABLE_PROMPT_CACHING` | auto            | Defaults internally to `false` for Ollama       |
 
 ### Switching to vLLM (requires GPU and the `vllm` package):
 
@@ -171,10 +166,12 @@ stages without any post-hoc JSON repair.
 
 ## Environment Configuration
 
-1. Copy production template if you have not already done so:
+1. Copy the production template if you have not already done so:
 
 ```bash
 cp .env.prod .env
+# or
+cp .env.prod.ollama-qwen2.5-72b .env
 ```
 
 2. Set required values in `.env`:
@@ -185,7 +182,7 @@ cp .env.prod .env
 - `POSTGRES_DB`
 - `ALLOWED_ORIGINS`
 - `QUERY_REFINEMENT_LLM_API_KEY` — required for cloud providers (Anthropic, OpenAI); leave blank for Ollama or vLLM
-- `QUERY_REFINEMENT_LLM_API_BASE` — required for local providers (Ollama, vLLM); omit for cloud
+- `QUERY_REFINEMENT_LLM_API_BASE` — required for vLLM and optional for Ollama when not using the default `http://localhost:11434`; omit for cloud
 
 Notes:
 

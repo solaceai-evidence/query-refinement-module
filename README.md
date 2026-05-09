@@ -37,9 +37,9 @@ A web-based tool that helps people turn a rough research idea into a clearer que
 poetry install --with dev
 # Pick the template for your LLM provider:
 #   cp .env.anthropic-claude-sonnet-4-6 .env   # Anthropic Claude (cloud)
-#   cp .env.ollama-llama3.1-8b .env            # Ollama — Llama 3.1 8B (local)
+#   cp .env.ollama-qwen2.5-72b .env            # Ollama — Qwen 2.5 72B (local)
 #   cp .env.vllm .env                          # vLLM (self-hosted; use ./start_vllm.sh)
-# Then set QUERY_REFINEMENT_LLM_API_KEY (cloud) or verify API_BASE (local)
+# Then set QUERY_REFINEMENT_LLM_API_KEY (cloud) or verify API_BASE for vLLM / non-default local hosts
 poetry run alembic upgrade head
 poetry run uvicorn query_refinement_module.api.main:app --reload
 ```
@@ -67,10 +67,12 @@ Frontend available at: http://localhost:5173
 The simplest deployment path is Docker. This is the recommended option if you are putting the app on a server for other people to use.
 
 1. Install Docker and the Docker Compose plugin on the target server.
-2. Copy the production environment file and fill in the values:
+2. Copy the production environment file that matches your LLM backend and fill in the values:
 
 ```bash
-cp .env.prod .env
+cp .env.prod .env                    # Anthropic Claude Sonnet 4.6
+# or
+cp .env.prod.ollama-qwen2.5-72b .env # Ollama / Qwen 2.5 72B
 ```
 
 3. In `.env`, set the values that make the app safe and usable in your environment:
@@ -96,7 +98,7 @@ docker compose -f docker-compose.yml -f docker-compose.prod.yml up -d
 
 5. Open the site in your browser and check the app, API docs, and sign-in flow.
 
-If you are deploying against a local AI server instead of a hosted provider, use `.env.ollama-llama3.1-8b` or `.env.vllm` as the starting point instead of `.env.prod`. For local Anthropic Claude development, use `.env.anthropic-claude-sonnet-4-6`.
+If you are deploying to production against Ollama / Qwen 2.5 72B, use `.env.prod.ollama-qwen2.5-72b` instead of `.env.prod`. For local development against Ollama or vLLM, use `.env.ollama-qwen2.5-72b` or `.env.vllm`. For local Anthropic Claude development, use `.env.anthropic-claude-sonnet-4-6`.
 
 See [docs/DEPLOYMENT.md](docs/DEPLOYMENT.md) for the full deployment guide.
 
@@ -129,13 +131,18 @@ Key environment variables — pick the template for your provider and copy it to
 | ------------------------------------------- | ------------------------------------------------------------------------------------------------- |
 | `QUERY_REFINEMENT_LLM_API_KEY`              | API key for cloud providers (Anthropic, OpenAI); leave blank for Ollama or vLLM                   |
 | `QUERY_REFINEMENT_LLM_MODEL`                | Model identifier (default: `anthropic/claude-sonnet-4-6`)                                         |
-| `QUERY_REFINEMENT_LLM_API_BASE`             | Base URL for the LLM API; omit for Anthropic/OpenAI, set for vLLM/Ollama                          |
+| `QUERY_REFINEMENT_LLM_API_BASE`             | Optional base URL override; Ollama defaults to `http://localhost:11434`, set explicitly for vLLM  |
 | `QUERY_REFINEMENT_LLM_CONSTRAINED_DECODING` | `true` to enable vLLM guided JSON decoding — **vLLM only**; leave `false` for all other providers |
 | `SECRET_KEY`                                | Secret key for session tokens — change this in production                                         |
 | `DATABASE_URL`                              | Database connection string (default: SQLite for local development)                                |
 | `ALLOW_REGISTRATION`                        | Set to `false` to disable self-registration                                                       |
 | `ENFORCE_WORKFLOW_LIMIT`                    | `true` = one workflow per user; `false` = unlimited                                               |
 | `INTEGRATION_API_KEY`                       | Optional: for server-to-server API access without a user login                                    |
+
+For the built-in templates, most provider-specific knobs are now internal defaults:
+- Anthropic defaults prompt caching on and keeps the production prompt variant.
+- Ollama defaults the API base to `http://localhost:11434`, the prompt variant to `open_llm`, and the context window to `num_ctx=16384`.
+- vLLM still needs an explicit API base and should keep constrained decoding enabled.
 
 For external systems calling the API without a user login, also set:
 - `INTEGRATION_API_KEY` — shared key sent via the `X-API-Key` header
@@ -145,15 +152,15 @@ After changing these values, restart the API process or container.
 
 ### LLM provider backends
 
-Four pre-filled environment templates are provided:
+Five pre-filled environment templates are provided:
 
-| File                               | Provider                       | Constrained decoding |
-| ---------------------------------- | ------------------------------ | -------------------- |
-| `.env.anthropic-claude-sonnet-4-6` | Anthropic Claude Sonnet 4.6    | off                  |
-| `.env.prod`                        | Anthropic Claude (production)  | off                  |
-| `.env.ollama-qwen2.5-32b`          | Ollama — Qwen 2.5 32B (local)  | off                  |
-| `.env.ollama-llama3.1-8b`          | Ollama — Llama 3.1 8B (local)  | off                  |
-| `.env.vllm`                        | vLLM — Llama 3.1 8B            | **on**               |
+| File                               | Provider                                 | Constrained decoding |
+| ---------------------------------- | ---------------------------------------- | -------------------- |
+| `.env.anthropic-claude-sonnet-4-6` | Anthropic Claude Sonnet 4.6              | off                  |
+| `.env.prod`                        | Anthropic Claude Sonnet 4.6 (production) | off                  |
+| `.env.prod.ollama-qwen2.5-72b`     | Ollama — Qwen 2.5 72B (production)       | off                  |
+| `.env.ollama-qwen2.5-72b`          | Ollama — Qwen 2.5 72B (local)            | off                  |
+| `.env.vllm`                        | vLLM — Llama 3.1 8B                      | **on**               |
 
 To switch to vLLM:
 
@@ -182,26 +189,20 @@ backends and copy the matching environment file to `.env`.
 
 Use this if you already have Ollama installed and want a simple local setup.
 
-**Recommended for synthesis quality** — Qwen 2.5 32B (~19 GB unified memory, Apple M-series):
+**Recommended for synthesis quality** — Qwen 2.5 72B (large-memory local setup):
 
 ```bash
-ollama pull qwen2.5:32b
-cp .env.ollama-qwen2.5-32b .env
+ollama pull qwen2.5:72b
+cp .env.ollama-qwen2.5-72b .env
 ```
 
-**Lighter alternative** — Llama 3.1 8B (~6 GB):
-
-```bash
-ollama pull llama3.1:8b
-cp .env.ollama-llama3.1-8b .env
-```
-
-Set the API base to Ollama's default endpoint if it is not already set:
+The template already assumes Ollama's default endpoint and a `num_ctx=16384` context window. Only add overrides if your Ollama server is remote or memory-constrained:
 
 ```dotenv
 QUERY_REFINEMENT_LLM_API_BASE=http://localhost:11434
 QUERY_REFINEMENT_LLM_API_KEY=
 QUERY_REFINEMENT_LLM_CONSTRAINED_DECODING=false
+QUERY_REFINEMENT_LLM_COMPLETION_KWARGS={"num_ctx": 8192}
 ```
 
 #### Option 2: vLLM

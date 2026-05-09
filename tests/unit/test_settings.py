@@ -98,6 +98,42 @@ def test_from_env_defaults_when_missing(monkeypatch):
     assert settings.temperature == 0.0
     assert settings.max_tokens is None
     assert settings.completion_kwargs == {}
+    assert settings.api_base is None
+    assert settings.enable_prompt_caching is False
+
+
+def test_from_env_infers_ollama_defaults(monkeypatch):
+    _clear_env(monkeypatch)
+    monkeypatch.delenv("QUERY_REFINEMENT_ENABLE_PROMPT_CACHING", raising=False)
+    monkeypatch.setenv("QUERY_REFINEMENT_LLM_MODEL", "ollama/qwen2.5:72b")
+
+    settings = LLMSettings.from_env()
+
+    assert settings.api_base == "http://localhost:11434"
+    assert settings.completion_kwargs == {"num_ctx": 16384}
+    assert settings.enable_prompt_caching is False
+
+
+def test_from_env_explicit_ollama_overrides_win(monkeypatch):
+    _clear_env(monkeypatch)
+    monkeypatch.setenv("QUERY_REFINEMENT_LLM_MODEL", "ollama/qwen2.5:72b")
+    monkeypatch.setenv("QUERY_REFINEMENT_LLM_API_BASE", "http://ollama.internal:11434")
+    monkeypatch.setenv("QUERY_REFINEMENT_LLM_COMPLETION_KWARGS", '{"num_ctx": 8192}')
+
+    settings = LLMSettings.from_env()
+
+    assert settings.api_base == "http://ollama.internal:11434"
+    assert settings.completion_kwargs == {"num_ctx": 8192}
+
+
+def test_from_env_infers_anthropic_prompt_caching(monkeypatch):
+    _clear_env(monkeypatch)
+    monkeypatch.delenv("QUERY_REFINEMENT_ENABLE_PROMPT_CACHING", raising=False)
+    monkeypatch.setenv("QUERY_REFINEMENT_LLM_MODEL", "anthropic/claude-sonnet-4-6")
+
+    settings = LLMSettings.from_env()
+
+    assert settings.enable_prompt_caching is True
 
 
 def test_provider_kwargs_returns_copy(monkeypatch):

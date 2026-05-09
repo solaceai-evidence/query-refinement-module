@@ -55,6 +55,7 @@ required_files=(
     "gunicorn_conf.py"
     "nginx/nginx.conf"
     ".env.prod"
+    ".env.prod.ollama-qwen2.5-72b"
 )
 
 for file in "${required_files[@]}"; do
@@ -70,13 +71,21 @@ echo ""
 echo "Checking environment configuration..."
 if [ -f ".env" ]; then
     check_pass "Found .env file"
+
+    llm_api_base_required=false
+    if grep -q '^QUERY_REFINEMENT_LLM_API_BASE=' .env && ! grep -q '^QUERY_REFINEMENT_LLM_API_BASE=$' .env; then
+        llm_api_base_required=true
+    fi
     
     # Check critical environment variables
     critical_vars=(
         "SECRET_KEY"
         "POSTGRES_PASSWORD"
-        "QUERY_REFINEMENT_LLM_API_KEY"
     )
+
+    if [ "$llm_api_base_required" = false ]; then
+        critical_vars+=("QUERY_REFINEMENT_LLM_API_KEY")
+    fi
     
     missing_vars=()
     for var in "${critical_vars[@]}"; do
@@ -93,7 +102,7 @@ if [ -f ".env" ]; then
     fi
     
 else
-    check_warn ".env file not found - copy from .env.prod and configure"
+    check_warn ".env file not found - copy from .env.prod or .env.prod.ollama-qwen2.5-72b and configure"
 fi
 
 # 5. Validate Docker Compose configuration
@@ -276,7 +285,7 @@ else
     echo ""
     echo "Required actions:"
     if [ ! -f ".env" ]; then
-        echo "  - Copy .env.prod to .env and configure variables"
+        echo "  - Copy .env.prod or .env.prod.ollama-qwen2.5-72b to .env and configure variables"
     fi
     if [ ${#missing_vars[@]} -gt 0 ]; then
         echo "  - Configure missing variables: ${missing_vars[*]}"

@@ -24,6 +24,9 @@ _ENV_RATE_LIMIT_TPM = "QUERY_REFINEMENT_LLM_RATE_LIMIT_TPM"
 _ENV_MAX_CONCURRENT = "QUERY_REFINEMENT_LLM_MAX_CONCURRENT"
 _ENV_ADAPTIVE_RATE_LIMIT = "QUERY_REFINEMENT_LLM_ADAPTIVE_RATE_LIMIT"
 
+_DEFAULT_OLLAMA_API_BASE = "http://localhost:11434"
+_DEFAULT_OLLAMA_NUM_CTX = 16384
+
 
 def _parse_float(value: Optional[str], default: float) -> float:
     if value is None or value.strip() == "":
@@ -77,6 +80,34 @@ def _parse_bool(value: Optional[str], default: bool) -> bool:
         return default  # For unrecognized values, use default
 
 
+def _normalize_model(model: str) -> str:
+    return model.strip().lower()
+
+
+def _is_anthropic_model(model: str) -> bool:
+    return _normalize_model(model).startswith("anthropic/")
+
+
+def _is_ollama_model(model: str) -> bool:
+    return _normalize_model(model).startswith("ollama/")
+
+
+def _default_api_base(model: str) -> Optional[str]:
+    if _is_ollama_model(model):
+        return _DEFAULT_OLLAMA_API_BASE
+    return None
+
+
+def _default_completion_kwargs(model: str) -> Dict[str, Any]:
+    if _is_ollama_model(model):
+        return {"num_ctx": _DEFAULT_OLLAMA_NUM_CTX}
+    return {}
+
+
+def _default_prompt_caching(model: str) -> bool:
+    return _is_anthropic_model(model)
+
+
 @dataclass
 class LLMSettings:
     """Centralised configuration for the default LLM provider/analyzer stack."""
@@ -115,11 +146,16 @@ class LLMSettings:
                     f"Environment variable {_ENV_MODEL} must be set to the default model id."
                 )
         api_key = _parse_optional_string(os.getenv(_ENV_API_KEY))
-        api_base = _parse_optional_string(os.getenv(_ENV_API_BASE))
+        api_base = _parse_optional_string(os.getenv(_ENV_API_BASE)) or _default_api_base(model)
         temperature = _parse_float(os.getenv(_ENV_TEMPERATURE), default=0.0)
         max_tokens = _parse_int(os.getenv(_ENV_MAX_TOKENS))
         completion_kwargs = _parse_completion_kwargs(os.getenv(_ENV_COMPLETION_KWARGS))
-        enable_prompt_caching = _parse_bool(os.getenv(_ENV_ENABLE_PROMPT_CACHING), default=True)
+        if not completion_kwargs:
+            completion_kwargs = _default_completion_kwargs(model)
+        enable_prompt_caching = _parse_bool(
+            os.getenv(_ENV_ENABLE_PROMPT_CACHING),
+            default=_default_prompt_caching(model),
+        )
         enable_circuit_breaker = _parse_bool(os.getenv(_ENV_ENABLE_CIRCUIT_BREAKER), default=True)
         constrained_decoding = _parse_bool(os.getenv(_ENV_CONSTRAINED_DECODING), default=False)
         circuit_breaker_failure_threshold = _parse_int(os.getenv(_ENV_CIRCUIT_BREAKER_FAILURE_THRESHOLD, "5")) or 5
