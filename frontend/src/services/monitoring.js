@@ -1,6 +1,33 @@
 import apiClient from './api';
 import { logger } from '../utils/logger';
 
+function normalizeProviderHealth(providers = {}) {
+    return Object.fromEntries(
+        Object.entries(providers).map(([name, provider]) => {
+            const state = provider?.state?.toLowerCase?.();
+            return [
+                name,
+                {
+                    ...provider,
+                    is_healthy: provider?.is_healthy ?? (state !== 'open' && state !== 'half_open')
+                }
+            ];
+        })
+    );
+}
+
+function normalizeLLMHealthResponse(data = {}) {
+    const providers = normalizeProviderHealth(
+        data.providers ?? data.circuit_breakers?.providers ?? {}
+    );
+
+    return {
+        ...data,
+        overall_health: data.overall_health ?? data.status ?? 'unknown',
+        providers
+    };
+}
+
 /**
  * Service for monitoring LLM health and circuit breaker status
  */
@@ -29,7 +56,7 @@ export const monitoringService = {
     async getLLMHealth() {
         try {
             const response = await apiClient.get('/monitoring/llm-health');
-            return response.data;
+            return normalizeLLMHealthResponse(response.data);
         } catch (err) {
             logger.error('Failed to fetch LLM health', {
                 error: err.message,

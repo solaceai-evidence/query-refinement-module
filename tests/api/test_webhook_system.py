@@ -53,14 +53,16 @@ class WebhookReceiver(BaseHTTPRequestHandler):
 
 @pytest.fixture
 def webhook_server():
-    """Start a local webhook receiver server on port 8888."""
-    server = HTTPServer(('localhost', 8888), WebhookReceiver)
+    """Start a local webhook receiver server on an ephemeral port."""
+    server = HTTPServer(('127.0.0.1', 0), WebhookReceiver)
     thread = Thread(target=server.serve_forever, daemon=True)
     thread.start()
+    host, port = server.server_address
     
-    yield 'http://127.0.0.1:8888/webhook'
+    yield f'http://{host}:{port}/webhook'
     
     server.shutdown()
+    server.server_close()
 
 
 @pytest.fixture

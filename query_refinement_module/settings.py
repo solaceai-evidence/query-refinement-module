@@ -132,9 +132,19 @@ class LLMSettings:
         if max_tokens is None:
             max_tokens = model_defaults.default_max_tokens
         explicit_completion_kwargs = _parse_completion_kwargs(os.getenv(_ENV_COMPLETION_KWARGS))
-        completion_kwargs = copy.deepcopy(explicit_completion_kwargs)
-        if not completion_kwargs:
-            completion_kwargs = copy.deepcopy(model_defaults.default_completion_kwargs)
+        completion_kwargs = copy.deepcopy(model_defaults.default_completion_kwargs)
+        completion_kwargs.update(copy.deepcopy(explicit_completion_kwargs))
+        if (
+            model_defaults.default_timeout_seconds is not None
+            and "timeout" not in explicit_completion_kwargs
+            and "timeout" not in completion_kwargs
+        ):
+            completion_kwargs["timeout"] = model_defaults.default_timeout_seconds
+        elif (
+            model_defaults.default_timeout_seconds is not None
+            and "timeout" not in explicit_completion_kwargs
+        ):
+            completion_kwargs.setdefault("timeout", model_defaults.default_timeout_seconds)
         context_window = _parse_int(os.getenv(_ENV_CONTEXT_WINDOW))
         if context_window is not None:
             if model_defaults.context_window_kwarg is None:

@@ -92,11 +92,12 @@ curl -X POST http://localhost:11434/v1/chat/completions \
   -d '{"model": "qwen2.5:32b", "messages": [{"role": "user", "content": "ping"}]}'
 ```
 
-> **Note:** The app now defaults Ollama to `QUERY_REFINEMENT_LLM_COMPLETION_KWARGS={"num_ctx": 16384}` to override Ollama's
-> default 2 048-token context window, which is too small for this application.
-> Synthesis runs 5 sequential and parallel LLM calls per request; each call shares
-> the same context budget. Increase to `32768` if you observe truncated responses;
-> decrease to `8192` only when memory is severely constrained.
+> **Note:** The app now defaults Ollama to `QUERY_REFINEMENT_LLM_COMPLETION_KWARGS={"num_ctx": 16384, "timeout": 1800.0}`.
+> `num_ctx=16384` overrides Ollama's default 2,048-token context window, which is too small for this application.
+> `timeout=1800.0` gives local 70B-class runs enough time to finish long structured-output calls before LiteLLM's
+> default 600-second request cap is hit. Increase `num_ctx` to `32768` if you observe truncated responses; decrease to
+> `8192` only when memory is severely constrained. If you need a different request cap, override `timeout` explicitly
+> in `QUERY_REFINEMENT_LLM_COMPLETION_KWARGS`.
 
 OpenAI and Anthropic do not expose an equivalent client-side context-window knob in this app. For those providers, use `QUERY_REFINEMENT_LLM_MAX_TOKENS` to control output length only.
 
@@ -160,6 +161,8 @@ Local:
 INTEGRATION_API_KEY=<shared-key> ./start_api.sh
 ```
 
+`query_refinement_module.api.auth` reads integration auth settings at process start. If you change `INTEGRATION_API_KEY` or `INTEGRATION_SERVICE_USERNAME`, restart the API process.
+
 ## Logs
 
 ```bash
@@ -184,6 +187,8 @@ Expected:
 
 - valid key => `200`
 - wrong key => `401`
+
+If `POST /api/v1/refinement/start` still returns `403` with a valid `X-API-Key`, assign the target framework to `INTEGRATION_SERVICE_USERNAME` first. Integration auth does not bypass framework-access controls.
 
 End-to-end integration smoke (minimal):
 

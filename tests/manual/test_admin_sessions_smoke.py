@@ -8,7 +8,10 @@ import requests
 import json
 import pytest
 
+from query_refinement_module.api.config import get_settings
+
 BASE_URL = "http://localhost:8001/api/v1"
+AUTH_COOKIE_NAME = get_settings().auth_cookie_name
 
 
 def _api_available() -> bool:
@@ -56,7 +59,8 @@ def test_admin_sessions_smoke():
         }
     )
     assert response.status_code == 200, f"Failed to login: {response.text}"
-    token = response.json()["access_token"]
+    token = response.cookies.get(AUTH_COOKIE_NAME)
+    assert token is not None, "Login succeeded but auth cookie was not set"
     headers = {"Authorization": f"Bearer {token}"}
     print(f"✓ Logged in (token: {token[:20]}...)")
     

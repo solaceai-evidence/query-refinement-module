@@ -2,7 +2,10 @@
 Tests for feedback and query history API endpoints.
 """
 import requests
+from query_refinement_module.api.config import get_settings
 from .test_refinement_endpoints import BASE_URL, register_and_login, check_api_health
+
+AUTH_COOKIE_NAME = get_settings().auth_cookie_name
 
 
 def test_submit_feedback_with_rating_and_comments():
@@ -317,7 +320,8 @@ def test_cannot_access_other_users_queries():
         data={"username": test_user_2["username"], "password": test_user_2["password"]}
     )
     assert login_response.status_code == 200, f"Login failed: {login_response.text}"
-    token2 = login_response.json()["access_token"]
+    token2 = login_response.cookies.get(AUTH_COOKIE_NAME)
+    assert token2 is not None
     headers2 = {"Authorization": f"Bearer {token2}"}
     
     # Try to access user 1's query with user 2's token

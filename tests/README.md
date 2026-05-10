@@ -85,6 +85,8 @@ poetry run pytest tests/ && cd tests/api && ./run_api_tests.sh
 - Test authentication, authorization, CRUD operations
 - Use clean database for each run (via `run_api_tests.sh`)
 - Naming: `test_api_<feature>.py`
+- Browser-style login uses an httpOnly auth cookie; non-browser API tests may extract that JWT and resend it as `Authorization: Bearer <token>`.
+- Live refinement API tests need framework access assigned for the test user or integration service account before `/api/v1/refinement/start` will pass.
 
 ## Writing New Tests
 
@@ -152,6 +154,8 @@ poetry run uvicorn query_refinement_module.api.main:app --host 0.0.0.0 --port 80
 sleep 5
 poetry run python tests/api/test_api_endpoints.py
 ```
+
+If CI or local live API tests exercise `/api/v1/refinement/start`, seed framework access before running them.
 
 ## Test Database
 

@@ -2,11 +2,13 @@ import pytest
 from fastapi.testclient import TestClient
 from sqlalchemy.orm import Session
 from query_refinement_module.api.config import get_settings
+from query_refinement_module.api import auth as api_auth
 
 from query_refinement_module.api.main import app
 from query_refinement_module.db.crud import (
     create_user,
     assign_user_framework_access,
+    get_user_by_username,
 )
 from query_refinement_module.schema.registry import list_frameworks
 
@@ -215,3 +217,51 @@ class TestFrameworkAccessRefinementEndpoints:
             assert payload["can_start_new_workflow"] is True
         finally:
             get_settings.cache_clear()
+
+    def test_integration_api_key_creates_service_user_and_filters_frameworks(
+        self,
+        db,
+        framework_name,
+        monkeypatch,
+    ):
+        monkeypatch.setattr(api_auth.settings, "integration_api_key", "integration-test-key")
+
+        client = TestClient(app)
+        headers = {"X-API-Key": "integration-test-key"}
+
+        response_before = client.get("/api/v1/refinement/frameworks", headers=headers)
+        assert response_before.status_code == 200
+        assert framework_name not in response_before.json()["frameworks"]
+
+        integration_user = get_user_by_username(db, api_auth.settings.integration_service_username)
+        assert integration_user is not None
+
+        assign_user_framework_access(db, integration_user.id, framework_name)
+
+        response_after = client.get("/api/v1/refinement/frameworks", headers=headers)
+        assert response_after.status_code == 200
+        assert framework_name in response_after.json()["frameworks"]
+
+    def test_integration_api_key_cannot_start_unassigned_framework(
+        self,
+        db,
+        framework_name,
+        monkeypatch,
+    ):
+        monkeypatch.setattr(api_auth.settings, "integration_api_key", "integration-test-key")
+
+        client = TestClient(app)
+        headers = {"X-API-Key": "integration-test-key"}
+
+        response = client.post(
+            "/api/v1/refinement/start",
+            json={
+                "original_query": "effects of aspirin on stroke prevention",
+                "framework_name": framework_name,
+                "source": "api_integration",
+            },
+            headers=headers,
+        )
+
+        assert response.status_code == 403
+        assert "not authorized to use framework" in response.json()["detail"]

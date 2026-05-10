@@ -33,6 +33,7 @@ import time
 from typing import Any, Dict, List
 
 from locust import HttpUser, TaskSet, between, task
+from query_refinement_module.api.config import get_settings
 
 # ============================================================================
 # Configuration
@@ -44,6 +45,7 @@ TEST_PASSWORD = os.getenv("LOAD_TEST_PASSWORD", "TestPass123!")
 
 # Authentication token cache
 _auth_token_cache = {}
+AUTH_COOKIE_NAME = get_settings().auth_cookie_name
 
 # Sample queries for testing (realistic medical research queries)
 SAMPLE_QUERIES = [
@@ -92,7 +94,10 @@ def get_auth_token(client) -> str:
             catch_response=False
         )
         if response.status_code == 200:
-            _auth_token_cache[user_id] = response.json()["access_token"]
+            token = response.cookies.get(AUTH_COOKIE_NAME)
+            if not token:
+                raise Exception("Login succeeded but auth cookie was not set")
+            _auth_token_cache[user_id] = token
         else:
             raise Exception(f"Failed to authenticate: {response.status_code}")
     

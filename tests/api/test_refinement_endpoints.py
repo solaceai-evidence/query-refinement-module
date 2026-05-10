@@ -5,8 +5,11 @@ import requests
 import time
 import pytest
 
+from query_refinement_module.api.config import get_settings
+
 # Test configuration
 BASE_URL = "http://localhost:8001/api/v1"
+AUTH_COOKIE_NAME = get_settings().auth_cookie_name
 
 
 def check_api_health() -> bool:
@@ -23,7 +26,7 @@ if not check_api_health():
 
 
 def register_and_login() -> str:
-    """Register a unique test user and return access token."""
+    """Register a unique test user and return the JWT from the auth cookie."""
     # Always use a unique user to avoid workflow limit conflicts
     timestamp = int(time.time() * 1000)  # Use milliseconds for more uniqueness
     username = f"test_user_{timestamp}"
@@ -57,8 +60,12 @@ def register_and_login() -> str:
     
     if login_response.status_code != 200:
         raise Exception(f"Login failed: {login_response.text}")
-    
-    return login_response.json()["access_token"]
+
+    token = login_response.cookies.get(AUTH_COOKIE_NAME)
+    if not token:
+        raise Exception("Login succeeded but auth cookie was not set")
+
+    return token
 
 
 def test_health_check():

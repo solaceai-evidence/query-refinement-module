@@ -13,6 +13,7 @@ from .interfaces import RateLimitConfig
 
 DEFAULT_OLLAMA_API_BASE = "http://localhost:11434"
 DEFAULT_OLLAMA_NUM_CTX = 16384
+DEFAULT_OLLAMA_TIMEOUT = 1800.0
 DEFAULT_PROPRIETARY_MAX_TOKENS = 4096
 
 
@@ -23,6 +24,7 @@ class LLMModelDefaults:
     default_api_base: Optional[str] = None
     default_completion_kwargs: Dict[str, Any] = field(default_factory=dict)
     default_max_tokens: Optional[int] = None
+    default_timeout_seconds: Optional[float] = None
     rate_limit: Optional[RateLimitConfig] = None
     context_window_kwarg: Optional[str] = None
 
@@ -119,6 +121,7 @@ def get_model_defaults(model: str, api_base: Optional[str] = None) -> LLMModelDe
             default_api_base=DEFAULT_OLLAMA_API_BASE,
             default_completion_kwargs={"num_ctx": DEFAULT_OLLAMA_NUM_CTX},
             default_max_tokens=DEFAULT_PROPRIETARY_MAX_TOKENS,
+            default_timeout_seconds=DEFAULT_OLLAMA_TIMEOUT,
             rate_limit=RateLimitConfig.unlimited(),
             context_window_kwarg="num_ctx",
         )
@@ -129,6 +132,7 @@ def get_model_defaults(model: str, api_base: Optional[str] = None) -> LLMModelDe
 __all__ = [
     "DEFAULT_OLLAMA_API_BASE",
     "DEFAULT_OLLAMA_NUM_CTX",
+    "DEFAULT_OLLAMA_TIMEOUT",
     "DEFAULT_PROPRIETARY_MAX_TOKENS",
     "LLMModelDefaults",
     "get_model_defaults",

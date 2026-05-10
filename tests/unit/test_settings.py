@@ -111,7 +111,7 @@ def test_from_env_infers_ollama_defaults(monkeypatch):
     settings = LLMSettings.from_env()
 
     assert settings.api_base == "http://localhost:11434"
-    assert settings.completion_kwargs == {"num_ctx": 16384}
+    assert settings.completion_kwargs == {"num_ctx": 16384, "timeout": 1800.0}
     assert settings.enable_prompt_caching is False
 
 
@@ -124,7 +124,7 @@ def test_from_env_explicit_ollama_overrides_win(monkeypatch):
     settings = LLMSettings.from_env()
 
     assert settings.api_base == "http://ollama.internal:11434"
-    assert settings.completion_kwargs == {"num_ctx": 8192}
+    assert settings.completion_kwargs == {"num_ctx": 8192, "timeout": 1800.0}
 
 
 def test_from_env_infers_anthropic_prompt_caching(monkeypatch):
@@ -156,7 +156,7 @@ def test_context_window_override_applies_to_ollama(monkeypatch):
 
     settings = LLMSettings.from_env()
 
-    assert settings.completion_kwargs == {"num_ctx": 32768}
+    assert settings.completion_kwargs == {"num_ctx": 32768, "timeout": 1800.0}
 
 
 def test_context_window_override_respects_explicit_completion_kwargs(monkeypatch):
@@ -167,7 +167,20 @@ def test_context_window_override_respects_explicit_completion_kwargs(monkeypatch
 
     settings = LLMSettings.from_env()
 
-    assert settings.completion_kwargs == {"num_ctx": 8192}
+    assert settings.completion_kwargs == {"num_ctx": 8192, "timeout": 1800.0}
+
+
+def test_explicit_completion_timeout_overrides_ollama_default(monkeypatch):
+    _clear_env(monkeypatch)
+    monkeypatch.setenv("QUERY_REFINEMENT_LLM_MODEL", "ollama/qwen2.5:72b")
+    monkeypatch.setenv(
+        "QUERY_REFINEMENT_LLM_COMPLETION_KWARGS",
+        '{"num_ctx": 8192, "timeout": 900.0}',
+    )
+
+    settings = LLMSettings.from_env()
+
+    assert settings.completion_kwargs == {"num_ctx": 8192, "timeout": 900.0}
 
 
 def test_context_window_override_rejected_for_openai(monkeypatch):

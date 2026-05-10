@@ -9,7 +9,10 @@ import sys
 import time
 import pytest
 
+from query_refinement_module.api.config import get_settings
+
 BASE_URL = "http://localhost:8001/api/v1"
+AUTH_COOKIE_NAME = get_settings().auth_cookie_name
 
 
 def _api_available() -> bool:
@@ -38,7 +41,7 @@ def print_response(response, show_body=True):
             print(f"Body (text): {response.text[:500]}")
 
 def register_and_login():
-    """Register and login to get auth token"""
+    """Register and login to get the JWT from the auth cookie."""
     print_section("1. Authentication")
     
     # Register
@@ -70,8 +73,12 @@ def register_and_login():
     if response.status_code != 200:
         print("❌ Login failed")
         sys.exit(1)
-    
-    token = response.json()["access_token"]
+
+    token = response.cookies.get(AUTH_COOKIE_NAME)
+    if not token:
+        print("❌ Login succeeded but auth cookie was not set")
+        sys.exit(1)
+
     print(f"✓ Got token: {token[:20]}...")
     return token
 

@@ -606,9 +606,24 @@ class InMemorySessionManager:
         self._sessions: Dict[int, Dict[str, Any]] = {}
         self._timestamps: Dict[int, float] = {}
         self.session_ttl = session_ttl_seconds
+        self._session_locks: Dict[int, asyncio.Lock] = {}
+        self._session_locks_meta = threading.Lock()
         logger.warning(
             "InMemorySessionManager initialized. Sessions will NOT persist across server restarts."
         )
+
+    def _get_session_lock(self, query_id: int) -> asyncio.Lock:
+        """Return a per-query asyncio lock for in-process mutual exclusion."""
+        with self._session_locks_meta:
+            if query_id not in self._session_locks:
+                self._session_locks[query_id] = asyncio.Lock()
+            return self._session_locks[query_id]
+
+    @contextlib.asynccontextmanager
+    async def session_lock(self, query_id: int):
+        """Match the Redis-backed SessionManager lock API for local in-memory mode."""
+        async with self._get_session_lock(query_id):
+            yield
     
     def _cleanup_expired(self):
         """Remove expired sessions."""

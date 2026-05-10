@@ -12,7 +12,10 @@ import requests
 import time
 import pytest
 
+from query_refinement_module.api.config import get_settings
+
 BASE_URL = "http://localhost:8001/api/v1"
+AUTH_COOKIE_NAME = get_settings().auth_cookie_name
 
 # Test user credentials
 ADMIN_USER = {
@@ -52,13 +55,13 @@ def create_user(user_data):
 
 
 def login_user(username, password):
-    """Login and get token."""
+    """Login and get the JWT from the auth cookie."""
     response = requests.post(
         f"{BASE_URL}/auth/login",
         data={"username": username, "password": password}
     )
     if response.status_code == 200:
-        return response.json()["access_token"]
+        return response.cookies.get(AUTH_COOKIE_NAME)
     return None
 
 

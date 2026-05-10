@@ -10,7 +10,7 @@ All endpoints are versioned under `/api/v1` unless noted.
 - `GET /api/v1/auth/me/status`
 - `POST /api/v1/auth/logout`
 
-JWT access tokens use the `Authorization: Bearer <token>` header.
+Browser logins set an httpOnly auth cookie by default. For non-browser clients, the same JWT can be sent as `Authorization: Bearer <token>` after extracting it from that cookie.
 
 For server-to-server integrations, refinement workflow endpoints also support `X-API-Key: <integration-api-key>` when `INTEGRATION_API_KEY` is configured on the API service.
 
@@ -28,6 +28,8 @@ For server-to-server integrations, refinement workflow endpoints also support `X
 - `POST /api/v1/refinement/sessions/abandon`
 
 Refinement workflow endpoints require either `Authorization: Bearer <token>` or `X-API-Key: <integration-api-key>`.
+
+`X-API-Key` authentication resolves to the configured integration service user. That user must already have framework access assigned, or `/api/v1/refinement/start` will return `403` with `You are not authorized to use framework ...`.
 
 `/api/v1/refinement/start` is **POST-only** (no GET variant is implemented).
 

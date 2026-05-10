@@ -27,6 +27,7 @@ from query_refinement_module.db.crud import (
     create_query_session,
     create_query,
     get_query,
+    save_query_refinement_response,
     update_refined_query,
     create_refinement_step,
     get_query_refinement_steps,
@@ -2021,14 +2022,38 @@ async def _run_synthesis(
         },
     )
 
-    # Persist to DB — combine refined_query update and workflow-limit flag in a
-    # single commit so both succeed or both fail atomically.
-    db_query.refined_query = integrated_statement
+    # Persist the full synthesis payload so the stored query record matches the
+    # API result shown to the user.
     settings = get_settings()
     if settings.enforce_workflow_limit and not current_user.is_superuser:
         current_user.has_completed_workflow = True
-    db.commit()
-    db.refresh(db_query)
+    save_query_refinement_response(
+        db,
+        query_id,
+        {
+            "integrated_statement": integrated_statement,
+            "dimensions_specifications": (
+                structured_output.get("dimensions_specifications")
+                if structured_output
+                else synthesis_result.get("dimensions_specifications")
+            ),
+            "search_optimized": (
+                structured_output.get("search_optimized")
+                if structured_output
+                else synthesis_result.get("search_optimized")
+            ),
+            "search_filters": (
+                structured_output.get("search_filters")
+                if structured_output
+                else synthesis_result.get("search_filters")
+            ),
+            "terminology": (
+                structured_output.get("terminology")
+                if structured_output
+                else synthesis_result.get("terminology")
+            ),
+        },
+    )
     logger.info(
         "Database updated with refined query",
         extra={

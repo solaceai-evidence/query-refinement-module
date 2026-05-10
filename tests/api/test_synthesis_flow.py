@@ -17,7 +17,10 @@ import sys
 import time
 from typing import Dict, Optional
 
+from query_refinement_module.api.config import get_settings
+
 BASE_URL = "http://localhost:8001/api/v1"
+AUTH_COOKIE_NAME = get_settings().auth_cookie_name
 
 class Colors:
     """ANSI color codes for terminal output"""
@@ -57,7 +60,7 @@ def print_response(response: requests.Response, show_body: bool = True):
             print(f"Body (text): {response.text[:300]}...")
 
 def register_and_login() -> str:
-    """Register a test user and return auth token"""
+    """Register a test user and return the JWT from the auth cookie."""
     print_section("1. Authentication")
     
     username = f"synthesis_test_{int(time.time())}"
@@ -85,8 +88,12 @@ def register_and_login() -> str:
         print_error("Login failed")
         print_response(response)
         sys.exit(1)
-    
-    token = response.json()["access_token"]
+
+    token = response.cookies.get(AUTH_COOKIE_NAME)
+    if not token:
+        print_error("Login succeeded but auth cookie was not set")
+        sys.exit(1)
+
     print_success(f"Authenticated as {username}")
     return token
 

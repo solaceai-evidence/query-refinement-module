@@ -52,6 +52,12 @@ vulture = "^2.14"
 [tool.poetry.scripts]
 query-refine = "query_refinement_module.cli:main"
 
+[tool.pytest.ini_options]
+filterwarnings = [
+    "ignore:'crypt' is deprecated and slated for removal in Python 3\\.13:DeprecationWarning",
+    "ignore:enable_cleanup_closed ignored because .* is fixed in Python version .*:DeprecationWarning",
+]
+
 [build-system]
 requires = ["poetry-core>=2.0.0,<3.0.0"]
 build-backend = "poetry.core.masonry.api"

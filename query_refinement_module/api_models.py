@@ -13,8 +13,15 @@ class NextPrompt:
     aspect_id: str
     aspect_name: str
     question: str
+    description: Optional[str] = None
     reasoning: Optional[str] = None
     dependency_context: Dict[str, str] = field(default_factory=dict)
+
+    @property
+    def name(self) -> str:
+        """Backward-compatible alias for the live API prompt shape."""
+
+        return self.aspect_name
 
 
 @dataclass

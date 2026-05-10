@@ -45,7 +45,7 @@ poetry run alembic upgrade head
 poetry run uvicorn query_refinement_module.api.main:app --reload
 ```
 
-Or use the startup script, which checks the environment and runs migrations automatically:
+Or use the startup script, which checks the environment and launches the API with the configured Poetry environment:
 
 ```bash
 ./start_api.sh
@@ -146,7 +146,7 @@ Key environment variables — pick the template for your provider and copy it to
 For the built-in templates, most provider-specific knobs are now internal defaults:
 - Anthropic defaults prompt caching on and keeps the production prompt variant.
 - OpenAI defaults prompt caching off and uses the standard cloud path with no local API base.
-- Ollama defaults the API base to `http://localhost:11434`, the prompt variant to `open_llm`, and the context window to `num_ctx=16384`.
+- Ollama defaults the API base to `http://localhost:11434`, the prompt variant to `open_llm`, the context window to `num_ctx=16384`, and the local request timeout to `timeout=1800.0` for long structured-output runs.
 - OpenAI-compatible self-hosted endpoints such as vLLM still need an explicit API base and should keep constrained decoding enabled when using vLLM.
 - Rate-limit values in the templates are prefilled starting points, not required blanks to complete. Only change them if your provider tier or deployment load differs.
 
@@ -164,6 +164,10 @@ The template-facing throughput variables use the `LLM_*` names:
 For external systems calling the API without a user login, also set:
 - `INTEGRATION_API_KEY` — shared key sent via the `X-API-Key` header
 - `INTEGRATION_SERVICE_USERNAME` — optional identity label (defaults to `api_integration_service`)
+
+Browser logins use an httpOnly auth cookie by default. Non-browser clients and automated tests can still send the same JWT as `Authorization: Bearer <token>` after extracting it from that cookie.
+
+The integration service user is a normal account, not a superuser. It must be granted framework access explicitly before `/api/v1/refinement/start` will succeed.
 
 After changing these values, restart the API process or container.
 
@@ -215,13 +219,13 @@ ollama pull qwen2.5:72b
 cp .env.ollama-qwen2.5-72b .env
 ```
 
-The template already assumes Ollama's default endpoint and a `num_ctx=16384` context window. Only add overrides if your Ollama server is remote or memory-constrained:
+The template already assumes Ollama's default endpoint, `num_ctx=16384`, and a `timeout=1800.0` request cap for long local calls. Only add overrides if your Ollama server is remote, memory-constrained, or needs a different timeout:
 
 ```dotenv
 QUERY_REFINEMENT_LLM_API_BASE=http://localhost:11434
 QUERY_REFINEMENT_LLM_API_KEY=
 QUERY_REFINEMENT_LLM_CONSTRAINED_DECODING=false
-QUERY_REFINEMENT_LLM_COMPLETION_KWARGS={"num_ctx": 8192}
+QUERY_REFINEMENT_LLM_COMPLETION_KWARGS={"num_ctx": 8192, "timeout": 2400.0}
 ```
 
 #### Option 2: vLLM

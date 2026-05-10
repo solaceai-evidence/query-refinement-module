@@ -9,8 +9,11 @@ import time
 import pytest
 from typing import Dict
 
+from query_refinement_module.api.config import get_settings
+
 BASE_URL = "http://localhost:8001/api/v1"
 DB_PATH = "query_refinement.db"
+AUTH_COOKIE_NAME = get_settings().auth_cookie_name
 
 # Store test data
 test_data = {
@@ -109,8 +112,8 @@ def test_2_login():
     result = print_response("2. Login", response)
     
     if response.status_code == 200:
-        data = response.json()
-        test_data["access_token"] = data.get("access_token")
+        test_data["access_token"] = response.cookies.get(AUTH_COOKIE_NAME)
+        assert test_data["access_token"] is not None
         print(f"\n Access Token: {test_data['access_token'][:50]}...")
     return result
 

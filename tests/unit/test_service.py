@@ -385,6 +385,8 @@ def test_build_next_prompt_prefers_suggested_question():
 
     prompt = service.QueryRefinementService._build_next_prompt(Session())
     assert prompt.question == "Ask"
+    assert prompt.name == "Aspect"
+    assert prompt.description == "desc"
     assert prompt.dependency_context == {"dep": "V"}
     assert prompt.reasoning == "why"
 
@@ -430,6 +432,8 @@ def test_build_next_prompt_uses_prompt_and_description():
     session = Session()
     prompt = service.QueryRefinementService._build_next_prompt(session)
     assert prompt.question == "Prompt for query"
+    assert prompt.description == "desc"
 
     prompt = service.QueryRefinementService._build_next_prompt(session)
     assert prompt.question == "desc"
+    assert prompt.description == "desc"

@@ -13,7 +13,10 @@ import json
 import sys
 import time
 
+from query_refinement_module.api.config import get_settings
+
 BASE_URL = "http://localhost:8001/api/v1"
+AUTH_COOKIE_NAME = get_settings().auth_cookie_name
 
 def print_test(name):
     print(f"\n{'='*60}")
@@ -66,7 +69,10 @@ def main():
         print("\n❌ Cannot proceed without authentication")
         sys.exit(1)
 
-    auth_token = login_response.json()['access_token']
+    auth_token = login_response.cookies.get(AUTH_COOKIE_NAME)
+    if not auth_token:
+        print("   Error: Login succeeded but auth cookie was not set")
+        sys.exit(1)
     headers = {'Authorization': f'Bearer {auth_token}'}
 
     # Test 4: Create webhook

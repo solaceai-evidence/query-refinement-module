@@ -15,8 +15,17 @@ import time
 import pytest
 from typing import Dict, Any, Optional
 
+from query_refinement_module.api.config import get_settings
+from query_refinement_module.db.crud import (
+    assign_user_framework_access,
+    get_user_by_username_or_email,
+)
+from query_refinement_module.db.database import SessionLocal
+
 # Test configuration
 BASE_URL = "http://localhost:8001/api/v1"
+AUTH_COOKIE_NAME = get_settings().auth_cookie_name
+TOKEN_TO_IDENTIFIER: Dict[str, str] = {}
 TEST_USER = {
     "username": "commandtest",
     "email": "command_test@example.com",
@@ -42,7 +51,7 @@ def setup_module(module):
 
 
 def register_and_login() -> str:
-    """Register a test user and return access token."""
+    """Register a test user and return the JWT from the auth cookie."""
     import time
     
     # Always use a unique user to avoid conflicts
@@ -83,12 +92,36 @@ def register_and_login() -> str:
         print(f"Login failed: {login_response.status_code}")
         print(f"Response: {login_response.text}")
         raise Exception(f"Login failed: {login_response.text}")
-    
-    return login_response.json()["access_token"]
+
+    token = login_response.cookies.get(AUTH_COOKIE_NAME)
+    if not token:
+        raise Exception("Login succeeded but auth cookie was not set")
+
+    TOKEN_TO_IDENTIFIER[token] = username
+
+    return token
+
+
+def ensure_framework_access(identifier: str, framework_name: str) -> None:
+    """Grant framework access directly in the local DB for live API tests."""
+    db = SessionLocal()
+    try:
+        user = get_user_by_username_or_email(db, identifier)
+        if user is None:
+            raise Exception(f"Could not find user '{identifier}' to assign framework access")
+        assign_user_framework_access(db, user.id, framework_name)
+    finally:
+        db.close()
 
 
 def create_test_session(token: str, framework: str = "pico_advanced") -> Dict[str, Any]:
     """Create a test refinement session and return session data."""
+    identifier = TOKEN_TO_IDENTIFIER.get(token)
+    if not identifier:
+        raise Exception("Missing login identifier for token; register_and_login() must be used first")
+
+    ensure_framework_access(identifier, framework)
+
     headers = {"Authorization": f"Bearer {token}"}
     response = requests.post(
         f"{BASE_URL}/refinement/start",
