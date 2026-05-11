@@ -36,7 +36,7 @@ if [[ "$MODEL" == *"70B"* ]] && { [ "$HOST_OS" = "Darwin" ] || [ "$CUDA_AVAILABL
         echo "No NVIDIA CUDA device was detected, so the 70B model cannot be served safely."
     fi
     echo "Use the default Llama 3.1 8B model for local testing: ./start_vllm.sh"
-    echo "Or run the 70B model on a Linux multi-GPU machine and point QUERY_REFINEMENT_LLM_API_BASE there."
+    echo "Or run the 70B model on a Linux multi-GPU machine and point LLM_API_BASE there."
     exit 1
 fi
 

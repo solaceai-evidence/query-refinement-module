@@ -7,7 +7,7 @@ This script uses:
 - LiteLLMProvider configured from .env
 
 It does not wire the open-LLM templates into production automatically. Instead,
-it forces QUERY_REFINEMENT_PROMPT_VARIANT=open_llm for this process so the
+it forces PROMPT_VARIANT=open_llm for this process so the
 prompt pair can be evaluated in isolation.
 """
 
@@ -33,7 +33,7 @@ _early_parser.add_argument("--env-file", default=None)
 _early_args, _ = _early_parser.parse_known_args()
 _env_path = Path(_early_args.env_file) if _early_args.env_file else ROOT / ".env"
 load_dotenv(_env_path, override=False)
-os.environ.setdefault("QUERY_REFINEMENT_PROMPT_VARIANT", "open_llm")
+os.environ.setdefault("PROMPT_VARIANT", "open_llm")
 
 from query_refinement_module.providers import LiteLLMProvider
 from query_refinement_module.schema.models import CompletedDimension, RefinementDimension, UserContext
@@ -576,7 +576,7 @@ def main() -> int:
             )
 
     summary = {
-        "prompt_variant": os.getenv("QUERY_REFINEMENT_PROMPT_VARIANT"),
+        "prompt_variant": os.getenv("PROMPT_VARIANT"),
         "model": settings.model,
         "total": len(results),
         "passed": sum(1 for result in results if result["passed"]),

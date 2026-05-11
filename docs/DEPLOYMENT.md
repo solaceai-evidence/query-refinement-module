@@ -26,7 +26,7 @@ cp .env.prod.ollama-qwen2.5-72b .env
 2. Edit `.env` and set these required values:
 
 - `SECRET_KEY` - protects login sessions. Must be at least 32 characters. Generate with: `python -c "import secrets; print(secrets.token_urlsafe(32))"`
-- `QUERY_REFINEMENT_LLM_API_KEY` - required for cloud providers (Anthropic, OpenAI); leave blank for Ollama or vLLM
+- `LLM_API_KEY` - required for cloud providers (Anthropic, OpenAI); leave blank for Ollama or vLLM
 - `POSTGRES_USER`, `POSTGRES_PASSWORD`, `POSTGRES_DB` - database login details
 - `ALLOWED_ORIGINS` - the browser addresses allowed to use the app
 
@@ -173,13 +173,13 @@ Key vLLM-specific settings:
 | `LLM_CONSTRAINED_DECODING`  | `true`                  | Sends `guided_json` schema in every structured call |
 | `LLM_ENABLE_PROMPT_CACHING` | `false`                 | Anthropic-specific feature; disable for vLLM        |
 
-> **Warning:** `QUERY_REFINEMENT_LLM_CONSTRAINED_DECODING=true` must only be
+> **Warning:** `LLM_CONSTRAINED_DECODING=true` must only be
 > set when the API base points at a vLLM server. Setting it for Anthropic,
 > OpenAI, or Ollama will break structured output.
 
 ### Constrained decoding behaviour
 
-When `CONSTRAINED_DECODING=true`, the provider injects the full Pydantic JSON
+When `LLM_CONSTRAINED_DECODING=true`, the provider injects the full Pydantic JSON
 Schema as `extra_body={"guided_json": <schema>}` in every structured LLM
 call.  vLLM enforces the schema at the token level, guaranteeing
 structurally valid output from both the dimension evaluation and synthesis

@@ -74,7 +74,7 @@ if [ -f ".env" ]; then
     check_pass "Found .env file"
 
     llm_api_base_required=false
-    if grep -q '^QUERY_REFINEMENT_LLM_API_BASE=' .env && ! grep -q '^QUERY_REFINEMENT_LLM_API_BASE=$' .env; then
+    if grep -q '^LLM_API_BASE=' .env && ! grep -q '^LLM_API_BASE=$' .env; then
         llm_api_base_required=true
     fi
     
@@ -84,8 +84,8 @@ if [ -f ".env" ]; then
         "POSTGRES_PASSWORD"
     )
 
-    if [ "$llm_api_base_required" = false ]; then
-        critical_vars+=("QUERY_REFINEMENT_LLM_API_KEY")
+    if [ "$llm_api_base_required" = false ] && ! grep -q '^LLM_API_KEY=' .env; then
+        critical_vars+=("LLM_API_KEY")
     fi
     
     missing_vars=()

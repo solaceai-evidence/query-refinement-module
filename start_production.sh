@@ -67,8 +67,12 @@ required_vars=(
 
 # API key is only required for cloud providers (Anthropic, OpenAI).
 # Self-hosted backends (Ollama, vLLM) set an empty or placeholder value.
-if [ -z "${QUERY_REFINEMENT_LLM_API_BASE:-}" ]; then
-    required_vars+=("QUERY_REFINEMENT_LLM_API_KEY")
+EFFECTIVE_LLM_API_BASE="${LLM_API_BASE:-}"
+EFFECTIVE_LLM_API_KEY="${LLM_API_KEY:-}"
+if [ -z "${EFFECTIVE_LLM_API_BASE}" ]; then
+    if [ -z "${EFFECTIVE_LLM_API_KEY}" ]; then
+        required_vars+=("LLM_API_KEY")
+    fi
 fi
 
 missing_vars=()
@@ -120,7 +124,8 @@ fi
 echo ""
 
 # 3. Check Redis connectivity (if configured)
-if [ "${SESSION_STORAGE_BACKEND}" == "redis" ] || [ "${RATE_LIMITER_BACKEND}" == "redis" ]; then
+EFFECTIVE_RATE_LIMITER_BACKEND="${API_RATE_LIMITER_BACKEND:-memory}"
+if [ "${SESSION_STORAGE_BACKEND}" == "redis" ] || [ "${EFFECTIVE_RATE_LIMITER_BACKEND}" == "redis" ]; then
     print_info "Checking Redis connectivity..."
     
     if poetry run python -c "import redis; r = redis.from_url('${REDIS_URL}', socket_connect_timeout=5); r.ping(); print('OK')" > /dev/null 2>&1; then
@@ -128,7 +133,7 @@ if [ "${SESSION_STORAGE_BACKEND}" == "redis" ] || [ "${RATE_LIMITER_BACKEND}" ==
     else
         print_error "Failed to connect to Redis"
         print_error "Please check REDIS_URL and ensure Redis is running"
-        print_error "Or set SESSION_STORAGE_BACKEND=memory and RATE_LIMITER_BACKEND=memory"
+        print_error "Or set SESSION_STORAGE_BACKEND=memory and API_RATE_LIMITER_BACKEND=memory"
         exit 1
     fi
     echo ""

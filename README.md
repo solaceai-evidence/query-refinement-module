@@ -40,7 +40,7 @@ poetry install --with dev
 #   cp .env.openai-gpt-4o .env                  # OpenAI GPT-4o (cloud)
 #   cp .env.ollama-qwen2.5-72b .env            # Ollama — Qwen 2.5 72B (local)
 #   cp .env.vllm .env                          # vLLM (self-hosted; use ./start_vllm.sh)
-# Then set QUERY_REFINEMENT_LLM_API_KEY (cloud) or verify API_BASE for vLLM / non-default local hosts
+# Then set LLM_API_KEY (cloud) or verify LLM_API_BASE for vLLM / non-default local hosts
 poetry run alembic upgrade head
 poetry run uvicorn query_refinement_module.api.main:app --reload
 ```
@@ -81,7 +81,7 @@ cp .env.prod.ollama-qwen2.5-72b .env # Ollama / Qwen 2.5 72B
 3. In `.env`, set the values that make the app safe and usable in your environment:
 
 - `SECRET_KEY`
-- `QUERY_REFINEMENT_LLM_API_KEY` — required for cloud providers (Anthropic, OpenAI); leave blank for Ollama or vLLM
+- `LLM_API_KEY` — required for cloud providers (Anthropic, OpenAI); leave blank for Ollama or vLLM
 - `POSTGRES_USER`
 - `POSTGRES_PASSWORD`
 - `POSTGRES_DB`
@@ -324,11 +324,11 @@ Well within the 16 K window configured for Ollama (`num_ctx=16384`) and vLLM (`-
 Every dimension evaluation and synthesis call returns a Pydantic-validated JSON object. Two strategies are used depending on provider:
 
 - **Anthropic / Ollama**: JSON is produced by instruction in the prompt. Occasional malformed responses are possible, particularly from smaller or under-prompted models.
-- **vLLM** (`QUERY_REFINEMENT_LLM_CONSTRAINED_DECODING=true`): guided JSON decoding enforces the full Pydantic schema at the token level — structurally invalid output is impossible. This is the most reliable option for a production research study.
+- **vLLM** (`LLM_CONSTRAINED_DECODING=true`): guided JSON decoding enforces the full Pydantic schema at the token level — structurally invalid output is impossible. This is the most reliable option for a production research study.
 
 ### Prompt caching
 
-`QUERY_REFINEMENT_ENABLE_PROMPT_CACHING=true` (Anthropic only) tells Anthropic's servers to cache the static system messages (messages 1–2 above) across calls. This reduces cost and latency for repeated calls within a session. It has no effect on what the model sees — the same tokens are always sent regardless of caching status. This setting must be `false` for Ollama and vLLM, which do not support the Anthropic cache-control header.
+`LLM_ENABLE_PROMPT_CACHING=true` (Anthropic only) tells Anthropic's servers to cache the static system messages (messages 1–2 above) across calls. This reduces cost and latency for repeated calls within a session. It has no effect on what the model sees — the same tokens are always sent regardless of caching status. This setting must be `false` for Ollama and vLLM, which do not support the Anthropic cache-control header.
 
 ## User management
 

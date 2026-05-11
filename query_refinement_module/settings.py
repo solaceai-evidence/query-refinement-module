@@ -84,112 +84,81 @@ class LLMSettings(BaseSettings):
 
     model: str = Field(
         default="",
-        validation_alias=AliasChoices("LLM_MODEL", "QUERY_REFINEMENT_LLM_MODEL"),
+        validation_alias="LLM_MODEL",
     )
     api_key: Optional[str] = Field(
         default=None,
-        validation_alias=AliasChoices("LLM_API_KEY", "QUERY_REFINEMENT_LLM_API_KEY"),
+        validation_alias="LLM_API_KEY",
     )
     api_base: Optional[str] = Field(
         default=None,
-        validation_alias=AliasChoices("LLM_API_BASE", "QUERY_REFINEMENT_LLM_API_BASE"),
+        validation_alias="LLM_API_BASE",
     )
     temperature: float = Field(
         default=0.0,
-        validation_alias=AliasChoices("LLM_TEMPERATURE", "QUERY_REFINEMENT_LLM_TEMPERATURE"),
+        validation_alias="LLM_TEMPERATURE",
     )
     max_tokens: Optional[int] = Field(
         default=None,
-        validation_alias=AliasChoices("LLM_MAX_OUTPUT_TOKENS", "QUERY_REFINEMENT_LLM_MAX_TOKENS"),
+        validation_alias="LLM_MAX_OUTPUT_TOKENS",
     )
     context_window: Optional[int] = Field(
         default=None,
         exclude=True,
-        validation_alias=AliasChoices("LLM_CONTEXT_WINDOW", "QUERY_REFINEMENT_LLM_CONTEXT_WINDOW"),
+        validation_alias="LLM_CONTEXT_WINDOW",
     )
     completion_kwargs: Dict[str, Any] = Field(
         default_factory=dict,
-        validation_alias=AliasChoices("LLM_COMPLETION_KWARGS", "QUERY_REFINEMENT_LLM_COMPLETION_KWARGS"),
+        validation_alias="LLM_COMPLETION_KWARGS",
     )
     enable_prompt_caching: bool = Field(
         default=True,
-        validation_alias=AliasChoices("LLM_ENABLE_PROMPT_CACHING", "QUERY_REFINEMENT_ENABLE_PROMPT_CACHING"),
+        validation_alias="LLM_ENABLE_PROMPT_CACHING",
     )
     enable_circuit_breaker: bool = Field(
         default=True,
-        validation_alias=AliasChoices("LLM_ENABLE_CIRCUIT_BREAKER", "QUERY_REFINEMENT_ENABLE_CIRCUIT_BREAKER"),
+        validation_alias="LLM_ENABLE_CIRCUIT_BREAKER",
     )
     constrained_decoding: bool = Field(
         default=False,
-        validation_alias=AliasChoices("LLM_CONSTRAINED_DECODING", "QUERY_REFINEMENT_LLM_CONSTRAINED_DECODING"),
+        validation_alias="LLM_CONSTRAINED_DECODING",
     )
     circuit_breaker_failure_threshold: int = Field(
         default=5,
-        validation_alias=AliasChoices(
-            "LLM_CIRCUIT_BREAKER_FAILURE_THRESHOLD",
-            "QUERY_REFINEMENT_CIRCUIT_BREAKER_FAILURE_THRESHOLD",
-        ),
+        validation_alias="LLM_CIRCUIT_BREAKER_FAILURE_THRESHOLD",
     )
     circuit_breaker_recovery_timeout: float = Field(
         default=60.0,
-        validation_alias=AliasChoices(
-            "LLM_CIRCUIT_BREAKER_RECOVERY_TIMEOUT",
-            "QUERY_REFINEMENT_CIRCUIT_BREAKER_RECOVERY_TIMEOUT",
-        ),
+        validation_alias="LLM_CIRCUIT_BREAKER_RECOVERY_TIMEOUT",
     )
     terminal_reinforcement_threshold: int = 3
     rate_limit_rpm: int = Field(
         default=0,
-        validation_alias=AliasChoices(
-            "LLM_PROVIDER_RATE_LIMIT_RPM",
-            "QUERY_REFINEMENT_LLM_RATE_LIMIT_RPM",
-            "LLM_RATE_LIMIT_RPM",
-        ),
+        validation_alias="LLM_PROVIDER_RATE_LIMIT_RPM",
     )
     rate_limit_tpm: Optional[int] = Field(
         default=None,
-        validation_alias=AliasChoices(
-            "LLM_PROVIDER_RATE_LIMIT_TPM",
-            "QUERY_REFINEMENT_LLM_RATE_LIMIT_TPM",
-            "LLM_RATE_LIMIT_TPM",
-        ),
+        validation_alias="LLM_PROVIDER_RATE_LIMIT_TPM",
     )
     max_concurrent_requests: int = Field(
         default=20,
-        validation_alias=AliasChoices(
-            "LLM_PROVIDER_MAX_CONCURRENT",
-            "QUERY_REFINEMENT_LLM_MAX_CONCURRENT",
-            "LLM_MAX_CONCURRENT",
-        ),
+        validation_alias="LLM_PROVIDER_MAX_CONCURRENT",
     )
     adaptive_rate_limit: bool = Field(
         default=False,
-        validation_alias=AliasChoices(
-            "LLM_PROVIDER_ADAPTIVE_RATE_LIMIT",
-            "QUERY_REFINEMENT_LLM_ADAPTIVE_RATE_LIMIT",
-            "LLM_ADAPTIVE_RATE_LIMITING",
-        ),
+        validation_alias="LLM_PROVIDER_ADAPTIVE_RATE_LIMIT",
     )
     adaptive_decrease_factor: float = Field(
         default=0.8,
-        validation_alias=AliasChoices(
-            "LLM_PROVIDER_ADAPTIVE_DECREASE_FACTOR",
-            "LLM_ADAPTIVE_DECREASE_FACTOR",
-        ),
+        validation_alias="LLM_PROVIDER_ADAPTIVE_DECREASE_FACTOR",
     )
     adaptive_increase_factor: float = Field(
         default=1.05,
-        validation_alias=AliasChoices(
-            "LLM_PROVIDER_ADAPTIVE_INCREASE_FACTOR",
-            "LLM_ADAPTIVE_INCREASE_FACTOR",
-        ),
+        validation_alias="LLM_PROVIDER_ADAPTIVE_INCREASE_FACTOR",
     )
     adaptive_increase_interval: int = Field(
         default=60,
-        validation_alias=AliasChoices(
-            "LLM_PROVIDER_ADAPTIVE_INCREASE_INTERVAL",
-            "LLM_ADAPTIVE_INCREASE_INTERVAL",
-        ),
+        validation_alias="LLM_PROVIDER_ADAPTIVE_INCREASE_INTERVAL",
     )
 
     model_config = SettingsConfigDict(
@@ -257,7 +226,7 @@ class LLMSettings(BaseSettings):
         if self.context_window is not None:
             if model_defaults.context_window_kwarg is None:
                 raise ValueError(
-                    "QUERY_REFINEMENT_LLM_CONTEXT_WINDOW / LLM_CONTEXT_WINDOW is not supported for model "
+                    "LLM_CONTEXT_WINDOW is not supported for model "
                     f"'{self.model}'. Use LLM_COMPLETION_KWARGS only for backends "
                     "that expose a client-side context size control."
                 )
@@ -307,8 +276,7 @@ class LLMSettings(BaseSettings):
         settings = cls()
         if require_model and not settings.model:
             raise RuntimeError(
-                "Environment variable LLM_MODEL (or QUERY_REFINEMENT_LLM_MODEL) "
-                "must be set to the default model id."
+                "Environment variable LLM_MODEL must be set to the default model id."
             )
         return settings
 

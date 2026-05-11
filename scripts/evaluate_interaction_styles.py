@@ -8,7 +8,7 @@ and prints the model's question side-by-side, so you can verify that:
   - Each combination produces visibly distinct output
 
 Run:
-    QUERY_REFINEMENT_LLM_COMPLETION_KWARGS='{"num_ctx": 8192}' \\
+    LLM_COMPLETION_KWARGS='{"num_ctx": 8192}' \\
         .venv/bin/python scripts/evaluate_interaction_styles.py --model ollama/qwen2.5:72b
 
     .venv/bin/python scripts/evaluate_interaction_styles.py \\
@@ -34,7 +34,7 @@ _early_args, _ = _early_parser.parse_known_args()
 _env_path = Path(_early_args.env_file) if _early_args.env_file else ROOT / ".env"
 load_dotenv(_env_path, override=False)
 # Styles test uses production templates (no open_llm variant)
-os.environ.pop("QUERY_REFINEMENT_PROMPT_VARIANT", None)
+os.environ.pop("PROMPT_VARIANT", None)
 
 sys.path.insert(0, str(ROOT))
 

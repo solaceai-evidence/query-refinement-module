@@ -12,8 +12,8 @@ from __future__ import annotations
 
 import os
 
-_PROMPT_VARIANT_ENV = "QUERY_REFINEMENT_PROMPT_VARIANT"
-_LLM_MODEL_ENV = "QUERY_REFINEMENT_LLM_MODEL"
+_PROMPT_VARIANT_ENV = "PROMPT_VARIANT"
+_LLM_MODEL_ENV = "LLM_MODEL"
 _OPEN_MODEL_MARKERS = ("ollama/", "qwen", "llama", "mistral", "gemma", "deepseek")
 
 

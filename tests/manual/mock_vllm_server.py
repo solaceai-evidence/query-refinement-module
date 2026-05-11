@@ -19,7 +19,7 @@ Then configure the API service to use it::
 
     cp .env.vllm .env
     # Override the model to the mock identifier
-    echo "QUERY_REFINEMENT_LLM_MODEL=mock-model" >> .env
+    echo "LLM_MODEL=mock-model" >> .env
     # Start the API (local dev or docker)
     poetry run uvicorn query_refinement_module.api.main:app --reload --port 8001
 

@@ -65,7 +65,7 @@ docker compose -f docker-compose.yml -f docker-compose.prod.yml up -d --build ap
 
 ### Verifying constrained decoding is active
 
-When `QUERY_REFINEMENT_LLM_CONSTRAINED_DECODING=true` the API logs will show
+When `LLM_CONSTRAINED_DECODING=true` the API logs will show
 `guided_json` schema injection for every structured call.  Confirm at runtime:
 
 ```bash
@@ -92,14 +92,14 @@ curl -X POST http://localhost:11434/v1/chat/completions \
   -d '{"model": "qwen2.5:32b", "messages": [{"role": "user", "content": "ping"}]}'
 ```
 
-> **Note:** The app now defaults Ollama to `QUERY_REFINEMENT_LLM_COMPLETION_KWARGS={"num_ctx": 16384, "timeout": 1800.0}`.
+> **Note:** The app now defaults Ollama to `LLM_COMPLETION_KWARGS={"num_ctx": 16384, "timeout": 1800.0}`.
 > `num_ctx=16384` overrides Ollama's default 2,048-token context window, which is too small for this application.
 > `timeout=1800.0` gives local 70B-class runs enough time to finish long structured-output calls before LiteLLM's
 > default 600-second request cap is hit. Increase `num_ctx` to `32768` if you observe truncated responses; decrease to
 > `8192` only when memory is severely constrained. If you need a different request cap, override `timeout` explicitly
-> in `QUERY_REFINEMENT_LLM_COMPLETION_KWARGS`.
+> in `LLM_COMPLETION_KWARGS`.
 
-OpenAI and Anthropic do not expose an equivalent client-side context-window knob in this app. For those providers, use `QUERY_REFINEMENT_LLM_MAX_TOKENS` to control output length only.
+OpenAI and Anthropic do not expose an equivalent client-side context-window knob in this app. For those providers, use `LLM_MAX_OUTPUT_TOKENS` to control output length only.
 
 ### vLLM server diagnostics
 

@@ -136,14 +136,14 @@ class Settings(BaseSettings):
     # Only the HTTP request-per-minute limits are enforced at this layer.
     api_rate_limit_rpm: int = Field(
         default=50,
-        validation_alias=AliasChoices("API_RATE_LIMIT_RPM", "LLM_RATE_LIMIT_RPM"),
+        validation_alias="API_RATE_LIMIT_RPM",
         description="Global API requests per minute limit",
     )
     
     # Per-user limits (fairness in multi-tenant deployments)
     api_rate_limit_per_user_rpm: int = Field(
         default=10,
-        validation_alias=AliasChoices("API_RATE_LIMIT_PER_USER_RPM", "LLM_RATE_LIMIT_PER_USER_RPM"),
+        validation_alias="API_RATE_LIMIT_PER_USER_RPM",
         description="Per-user API requests per minute limit",
     )
     
@@ -167,30 +167,14 @@ class Settings(BaseSettings):
     # Rate limiter backend
     api_rate_limiter_backend: str = Field(
         default="memory",
-        validation_alias=AliasChoices("API_RATE_LIMITER_BACKEND", "RATE_LIMITER_BACKEND"),
+        validation_alias="API_RATE_LIMITER_BACKEND",
         description="API rate limiter backend: 'memory' or 'redis'",
     )
     api_redis_rate_limit_prefix: str = Field(
         default="qr:ratelimit",
-        validation_alias=AliasChoices("API_REDIS_RATE_LIMIT_PREFIX", "REDIS_RATE_LIMIT_PREFIX"),
+        validation_alias="API_REDIS_RATE_LIMIT_PREFIX",
         description="Redis key prefix for API rate limit data",
     )
-
-    @property
-    def llm_rate_limit_rpm(self) -> int:
-        return self.api_rate_limit_rpm
-
-    @property
-    def llm_rate_limit_per_user_rpm(self) -> int:
-        return self.api_rate_limit_per_user_rpm
-
-    @property
-    def rate_limiter_backend(self) -> str:
-        return self.api_rate_limiter_backend
-
-    @property
-    def redis_rate_limit_prefix(self) -> str:
-        return self.api_redis_rate_limit_prefix
     
     # Configuration using pydantic-settings v2 style
     model_config = SettingsConfigDict(

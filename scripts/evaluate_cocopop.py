@@ -53,7 +53,7 @@ _early_parser.add_argument("--env-file", default=None)
 _early_args, _ = _early_parser.parse_known_args()
 _env_path = Path(_early_args.env_file) if _early_args.env_file else ROOT / ".env"
 load_dotenv(_env_path, override=False)
-os.environ.setdefault("QUERY_REFINEMENT_PROMPT_VARIANT", "open_llm")
+os.environ.setdefault("PROMPT_VARIANT", "open_llm")
 
 from query_refinement_module.core import QueryRefinementManager
 from query_refinement_module.providers import LiteLLMProvider
@@ -747,7 +747,7 @@ def main() -> int:
 
     print(
         f"Running {len(all_scenarios)} scenario(s) | framework={args.framework_name} | model={settings.model} | "
-        f"variant={os.getenv('QUERY_REFINEMENT_PROMPT_VARIANT')}",
+        f"variant={os.getenv('PROMPT_VARIANT')}",
         file=sys.stderr,
         flush=True,
     )
@@ -784,7 +784,7 @@ def main() -> int:
     synthesis_total = sum(1 for r in scenario_results if r["synthesis"]["passed"])
 
     summary = {
-        "prompt_variant": os.getenv("QUERY_REFINEMENT_PROMPT_VARIANT"),
+        "prompt_variant": os.getenv("PROMPT_VARIANT"),
         "framework": args.framework_name,
         "model": settings.model,
         "scenarios_total": total,
