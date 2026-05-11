@@ -7,6 +7,7 @@ import asyncio
 import logging
 import re
 import time
+import weakref
 from typing import Any, Dict, List, Optional, Type, Union
 
 from query_refinement_module.tracing import get_request_id, get_trace_id
@@ -70,9 +71,12 @@ class LiteLLMProvider(LLMProviderInterface):
             else:
                 resolved_max_concurrent = 20
 
-        # Semaphore to limit concurrent LLM calls (prevent overwhelming server)
+        # Concurrency guards must be resolved per event loop because this provider
+        # is reused from sync code paths that call asyncio.run() repeatedly.
         self._max_concurrent = resolved_max_concurrent
-        self._semaphore = asyncio.Semaphore(resolved_max_concurrent)
+        self._semaphores: "weakref.WeakKeyDictionary[asyncio.AbstractEventLoop, asyncio.Semaphore]" = (
+            weakref.WeakKeyDictionary()
+        )
         
         # Token-bucket rate limiter for proprietary LLM APIs (Anthropic, OpenAI, etc.)
         # If no explicit config is provided, use provider defaults only when RPM > 0.
@@ -184,8 +188,17 @@ class LiteLLMProvider(LLMProviderInterface):
         if self._rate_limiter is not None:
             await self._rate_limiter.acquire()
         # Apply semaphore to limit concurrent calls
-        async with self._semaphore:
+        async with self._get_loop_semaphore():
             return await self._complete_async_internal(*args, **kwargs)
+
+    def _get_loop_semaphore(self) -> asyncio.Semaphore:
+        """Return a concurrency semaphore bound to the current event loop."""
+        loop = asyncio.get_running_loop()
+        semaphore = self._semaphores.get(loop)
+        if semaphore is None:
+            semaphore = asyncio.Semaphore(self._max_concurrent)
+            self._semaphores[loop] = semaphore
+        return semaphore
     
     async def _complete_async_internal(
         self,

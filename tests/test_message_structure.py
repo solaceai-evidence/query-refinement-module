@@ -8,9 +8,12 @@ Verifies:
 """
 
 import pytest
+import importlib
 from query_refinement_module.session_models import AspectRefinementState
 from query_refinement_module.schema.models import RefinementDimension, UserContext
 from query_refinement_module.schema import registry
+import query_refinement_module.schema.templates as templates_module
+import query_refinement_module.schema.prompt_builder as prompt_builder_module
 
 
 def test_message_structure_with_user_context():
@@ -232,6 +235,87 @@ def test_cache_markers_only_on_first_two_system_messages():
     for msg in messages[2:]:
         if msg["role"] == "system":
             assert msg.get("_cache") is not True, "Dimension/dependency messages should not be cached"
+
+
+def _reload_prompt_modules(monkeypatch, *, prompt_variant=None, llm_model=None):
+    if prompt_variant is None:
+        monkeypatch.delenv("PROMPT_VARIANT", raising=False)
+    else:
+        monkeypatch.setenv("PROMPT_VARIANT", prompt_variant)
+
+    if llm_model is None:
+        monkeypatch.delenv("LLM_MODEL", raising=False)
+    else:
+        monkeypatch.setenv("LLM_MODEL", llm_model)
+
+    importlib.reload(templates_module)
+    return importlib.reload(prompt_builder_module)
+
+
+def _build_dimension_with_user_context():
+    return RefinementDimension(
+        id="population",
+        name="Population",
+        description="Target population",
+        specifications="Extract the population first, then ask only for what is missing.",
+        user_context=UserContext(
+            user_type="researcher",
+            context="Clarifying a search specification",
+            tone="pragmatic",
+            complexity="advanced",
+            examples_from="general",
+            constraints=[],
+            pitfalls=[],
+        ),
+    )
+
+
+def test_open_llm_terminal_reinforcement_uses_compact_style_cue(monkeypatch):
+    prompt_builder = _reload_prompt_modules(
+        monkeypatch,
+        prompt_variant="open_llm",
+        llm_model="ollama/qwen2.5:72b",
+    )
+    builder = prompt_builder.PromptBuilder()
+    dimension = _build_dimension_with_user_context()
+
+    messages = builder.build_refinement_messages(
+        dimension=dimension,
+        query="population effects of heat exposure",
+        conversation_history=[
+            {"question": "Q1?", "response": "A1"},
+            {"question": "Q2?", "response": "A2"},
+            {"question": "Q3?", "response": "A3"},
+        ],
+        terminal_reinforcement_threshold=3,
+    )
+
+    assert "Style cue" in messages[-1]["content"]
+    assert "## USER CONTEXT" not in messages[-1]["content"]
+
+
+def test_private_terminal_reinforcement_keeps_full_user_context(monkeypatch):
+    prompt_builder = _reload_prompt_modules(
+        monkeypatch,
+        prompt_variant=None,
+        llm_model="anthropic/claude-sonnet-4-6",
+    )
+    builder = prompt_builder.PromptBuilder()
+    dimension = _build_dimension_with_user_context()
+
+    messages = builder.build_refinement_messages(
+        dimension=dimension,
+        query="population effects of heat exposure",
+        conversation_history=[
+            {"question": "Q1?", "response": "A1"},
+            {"question": "Q2?", "response": "A2"},
+            {"question": "Q3?", "response": "A3"},
+        ],
+        terminal_reinforcement_threshold=3,
+    )
+
+    assert "## USER CONTEXT" in messages[-1]["content"]
+    assert "Style cue" not in messages[-1]["content"]
 
 
 if __name__ == "__main__":

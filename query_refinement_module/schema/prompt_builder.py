@@ -21,6 +21,7 @@ from .templates import (
     DIMENSION_REFINEMENT_TEMPLATE,
     USER_CONTEXT_PROFILE_TEMPLATE,
     DIMENSIONS_CLARIFIED_AND_DEPENDENCIES_TEMPLATE,
+    using_open_llm_prompt_templates,
 )
 
 
@@ -96,6 +97,26 @@ class PromptBuilder:
         self._synthesis_template = self._env.from_string(SYNTHESIS_TEMPLATE)
         self._user_context_template = self._env.from_string(USER_CONTEXT_PROFILE_TEMPLATE)
         self._dependencies_template = self._env.from_string(DIMENSIONS_CLARIFIED_AND_DEPENDENCIES_TEMPLATE)
+
+    def render_style_cue(self, user_context: UserContext) -> str:
+        """Render a compact late-position style reminder for the current user context."""
+        tone_hints = {
+            "educational": "warm, encouraging register; briefly say why each missing detail matters",
+            "professional": "direct, formal register; no small talk or reassurance",
+            "pragmatic": "lead with the practical consequence; keep the wording brief and action-oriented",
+        }
+        complexity_hints = {
+            "intermediate": "standard domain terminology; no need to define basics",
+            "advanced": "precise technical vocabulary; push back on vague or underspecified terms",
+            "expert": "peer-level methodological language; full domain fluency assumed",
+        }
+        tone_hint = tone_hints.get(user_context.tone, user_context.tone)
+        complexity_hint = complexity_hints.get(user_context.complexity, user_context.complexity)
+        return (
+            "**Style cue — apply when formulating your response:**\n"
+            f"Tone: {tone_hint}\n"
+            f"Complexity: {complexity_hint}"
+        )
 
     # =========================================================================
     # Global System Prompt
@@ -449,26 +470,9 @@ class PromptBuilder:
         # in the message list but is dominated by the dimension spec + user query when
         # the model generates its response. This compact cue restores it at recency.
         if dimension.user_context:
-            _ctx = dimension.user_context
-            _tone_hints = {
-                "educational": "warm, encouraging register — explain why each question matters",
-                "professional": "direct, formal register — no small talk or warmth phrases",
-                "pragmatic": "lead with the consequence of not knowing — brief and action-oriented",
-            }
-            _complexity_hints = {
-                "intermediate": "standard clinical/domain terminology, no need to define basics",
-                "advanced": "precise technical vocabulary, push back on vague or underspecified terms",
-                "expert": "methodological vocabulary, full domain fluency assumed, debate detail if needed",
-            }
-            _tone_hint = _tone_hints.get(_ctx.tone, _ctx.tone)
-            _complexity_hint = _complexity_hints.get(_ctx.complexity, _ctx.complexity)
             messages.append({
                 'role': 'system',
-                'content': (
-                    f"**Style cue — apply when formulating your response:**\n"
-                    f"Tone: {_tone_hint}\n"
-                    f"Complexity: {_complexity_hint}"
-                )
+                'content': self.render_style_cue(dimension.user_context)
             })
 
         # 6c. Completed-context reminder: re-append after conversation history so the model
@@ -499,7 +503,10 @@ class PromptBuilder:
             # Build reinforcement from cached components
             reinforcement_parts = [GLOBAL_SYSTEM_PROMPT]
             if dimension.user_context:
-                reinforcement_parts.append(self.render_user_context(dimension.user_context))
+                if using_open_llm_prompt_templates():
+                    reinforcement_parts.append(self.render_style_cue(dimension.user_context))
+                else:
+                    reinforcement_parts.append(self.render_user_context(dimension.user_context))
             reinforcement_parts.append(
                 self.render_dimension_prompt(
                     dimension=dimension,

@@ -31,6 +31,11 @@ def _use_open_llm_templates() -> bool:
     return variant in {"open_llm", "open-llm", "open", "qwen", "ollama"}
 
 
+def using_open_llm_prompt_templates() -> bool:
+    """Return whether the current prompt variant resolves to the open-LLM branch."""
+    return _use_open_llm_templates()
+
+
 if _use_open_llm_templates():
     from .global_system_open_llm import GLOBAL_SYSTEM_PROMPT
     from .user_context_open_llm import (
@@ -53,4 +58,5 @@ __all__ = [
     "DIMENSION_REFINEMENT_TEMPLATE",
     "USER_CONTEXT_PROFILE_TEMPLATE",
     "DIMENSIONS_CLARIFIED_AND_DEPENDENCIES_TEMPLATE",
+    "using_open_llm_prompt_templates",
 ]

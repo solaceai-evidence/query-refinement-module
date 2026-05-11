@@ -142,6 +142,45 @@ class Scenario:
 def build_scenarios() -> list[Scenario]:
     return [
         # ------------------------------------------------------------------
+        # Scenario 0: Full silent extraction — all 3 dimensions are present
+        # in the original query and should complete without follow-up turns.
+        # ------------------------------------------------------------------
+        Scenario(
+            identifier="0",
+            name="Silent extraction across condition, context, and population",
+            query=(
+                "Acute watery diarrhoea driven by flood-contaminated water in rural "
+                "displacement camps in Bangladesh during the acute phase within 2 weeks "
+                "of flood onset among children under 5 years"
+            ),
+            expected={
+                "condition": DimExpectation(
+                    complete=True,
+                    current="",
+                    key_terms=["acute watery diarrhoea", "flood", "2 weeks"],
+                ),
+                "context": DimExpectation(
+                    complete=True,
+                    current="",
+                    key_terms=["Bangladesh", "rural", "displacement camps"],
+                ),
+                "population": DimExpectation(
+                    complete=True,
+                    current="",
+                    key_terms=["children", "under 5"],
+                ),
+            },
+            synthesis_check=SynthesisCheck(
+                required_dim_ids=["condition", "context", "population"],
+                required_terms_in_integrated=[
+                    "diarrhoea",
+                    "flood",
+                    "Bangladesh",
+                    "children under 5",
+                ],
+            ),
+        ),
+        # ------------------------------------------------------------------
         # Scenario 1: Clean extraction — condition and context extractable
         # from query; population needs one clarification turn.
         # ------------------------------------------------------------------

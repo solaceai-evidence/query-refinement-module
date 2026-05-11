@@ -15,6 +15,7 @@ def test_explicit_prompt_variant_still_wins(monkeypatch):
 
     templates = _reload_templates_module()
 
+    assert templates.using_open_llm_prompt_templates() is True
     assert templates.GLOBAL_SYSTEM_PROMPT == global_system_open_llm.GLOBAL_SYSTEM_PROMPT
 
 
@@ -24,6 +25,7 @@ def test_ollama_model_infers_open_llm_templates(monkeypatch):
 
     templates = _reload_templates_module()
 
+    assert templates.using_open_llm_prompt_templates() is True
     assert templates.GLOBAL_SYSTEM_PROMPT == global_system_open_llm.GLOBAL_SYSTEM_PROMPT
 
 
@@ -33,6 +35,7 @@ def test_canonical_prompt_variant_still_wins(monkeypatch):
 
     templates = _reload_templates_module()
 
+    assert templates.using_open_llm_prompt_templates() is True
     assert templates.GLOBAL_SYSTEM_PROMPT == global_system_open_llm.GLOBAL_SYSTEM_PROMPT
 
 
@@ -42,4 +45,5 @@ def test_anthropic_model_uses_default_templates_without_override(monkeypatch):
 
     templates = _reload_templates_module()
 
+    assert templates.using_open_llm_prompt_templates() is False
     assert templates.GLOBAL_SYSTEM_PROMPT == global_system.GLOBAL_SYSTEM_PROMPT

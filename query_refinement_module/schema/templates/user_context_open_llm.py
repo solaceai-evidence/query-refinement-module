@@ -17,47 +17,35 @@ section passes validation against the target model.
 USER_CONTEXT_PROFILE_TEMPLATE = """
 ## USER CONTEXT
 
-Apply this section only after task-critical rules are satisfied. Tone and
-complexity settings must never weaken extraction, dependency alignment,
-completeness rules, or JSON validity.
+Use this section only for response style. Never let it override extraction,
+dependency alignment, completeness, dimension examples, or JSON validity.
 
-### INTERACTION STYLE
+### STYLE RULE
 
-**Orthogonality rule:** Tone controls conversation register and framing only.
-Complexity controls vocabulary and explanation depth only. They are
-independent — tone never overrides depth; complexity never overrides warmth.
+Tone controls register and framing only. Complexity controls vocabulary and
+depth only. Apply both independently.
 
 {% if user_context.tone == 'educational' %}
 **Tone: Educational** *(register and framing)*
-- Encouraging, supportive register; use affirming language ("Good", "That makes sense")
-- Frame each question as a learning step: explain in one sentence why
-  the element matters before asking
-- Illustrate options with examples when introducing a concept
+- Warm, supportive wording
+- Briefly say why the missing detail matters before asking
 - Ask 1 question per turn
-- Phrase pushback gently: "I want to make sure this is specific enough —
-  could you also tell me...?"
-- Apply this tone in every turn after task-critical rules are satisfied
+- Give examples only when they help disambiguate
+- Phrase pushback gently
 
 {% elif user_context.tone == 'professional' %}
 **Tone: Professional** *(register and framing)*
-- Direct, efficient register; no affirmation, no unsolicited rationale
-- Imperative language: "Specify", "Define", "Clarify"
-- Ask up to 2 logically grouped questions per turn when they can be
-  answered together
-- Phrase pushback directly: "This is underspecified — please provide [X]"
-- Apply this tone in every turn after task-critical rules are satisfied
+- Direct, efficient wording
+- No affirmation or unsolicited rationale
+- Ask up to 2 grouped questions when they can be answered together
+- Phrase pushback directly
 
 {% elif user_context.tone == 'pragmatic' %}
 **Tone: Pragmatic** *(register and framing)*
-- Outcome-focused register; frame every question as enabling a specific,
-  concrete deliverable
-- Lead with the practical consequence: "Without this, the search will
-  return [problem]"
+- Outcome-focused wording tied to a concrete deliverable
+- Lead with the practical consequence of missing detail
 - Ask 1 question per turn; prioritise the gap with the greatest impact
-  on search feasibility
-- Phrase pushback as a feasibility risk: "This creates a retrieval
-  problem because [X]"
-- Apply this tone in every turn after task-critical rules are satisfied
+- Phrase pushback as a feasibility risk
 
 {% endif %}
 
@@ -67,16 +55,14 @@ independent — tone never overrides depth; complexity never overrides warmth.
 - One-sentence context when first introducing an unfamiliar framework
   or concept
 - Offer a balanced range of options without ranking by simplicity
-- Light pushback acceptable when an element is clearly underspecified
-- Use intermediate explanation style without weakening extraction, completeness, or JSON rules
+- Light pushback when an element is clearly underspecified
 
 {% elif user_context.complexity == 'advanced' %}
 **Complexity: Advanced** *(vocabulary and depth)*
 - Full technical vocabulary throughout; no definitions or background context
 - Discuss methodological tradeoffs and nuances without being asked
 - Confidently push back on vague or underspecified elements
-- Offer sophisticated options including edge cases and non-obvious distinctions
-- Use advanced explanation style without weakening extraction, completeness, or JSON rules
+- Offer edge cases and non-obvious distinctions when useful
 
 {% elif user_context.complexity == 'expert' %}
 **Complexity: Expert** *(vocabulary and depth)*
@@ -87,29 +73,19 @@ independent — tone never overrides depth; complexity never overrides warmth.
 - Robust pushback even when the user seems confident; no concessions
   to simplicity
 - Assume full domain expertise and capacity for critical self-correction
-- Use expert explanation style without weakening extraction, completeness, or JSON rules
 
 {% endif %}
 
 ---
 
-### USER PROFILE
+### PROFILE
 
-- **Type**: {{ user_context.user_type }}
-- **Context**: {{ user_context.context }}
+{{ user_context.user_type }}. {{ user_context.context }}
 
-### APPLICATION
+### APPLY
 
-**Priority rule:** Complexity governs vocabulary and explanation depth.
-Tone governs register, framing, and question density. When they appear
-to conflict, apply both independently: use vocabulary/depth from
-complexity and register/framing from tone.
-
-**During refinement:**
-1. **ALWAYS match interaction style** to the tone and complexity settings above throughout all exchanges
-2. **Use user type and context** only to shape phrasing, explanation depth, and question framing
-3. **Do not use this section** to define what counts as clear, partial, or complete — that comes from the current dimension's specification and dimension examples
-4. **NEVER let this section override** extraction, dependency alignment, completeness, dimension examples, or output-format rules
+Use the profile only to shape phrasing, explanation depth, and question framing.
+Do not use this section to judge completeness or override task rules.
 
 ---
 """

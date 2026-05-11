@@ -472,6 +472,17 @@ def build_messages(builder: PromptBuilder, case: Case) -> list[dict[str, str]]:
     )
 
 
+def summarize_messages(messages: list[dict[str, Any]]) -> dict[str, int]:
+    """Return a cheap size summary for before/after prompt compaction checks."""
+    content_lengths = [len(str(message.get("content", ""))) for message in messages]
+    return {
+        "message_count": len(messages),
+        "system_message_count": sum(1 for message in messages if message.get("role") == "system"),
+        "total_chars": sum(content_lengths),
+        "max_message_chars": max(content_lengths, default=0),
+    }
+
+
 def extract_json(text: str) -> dict[str, Any]:
     candidate = text.strip()
     if candidate.startswith("```"):
@@ -535,6 +546,12 @@ def main() -> int:
     for index, case in enumerate(cases, start=1):
         print(f"[{index}/{total_cases}] Running: {case.name} ...", file=sys.stderr, flush=True)
         messages = build_messages(builder, case)
+        prompt_metrics = summarize_messages(messages)
+        print(
+            f"  -> prompt_size: {prompt_metrics['total_chars']} chars across {prompt_metrics['message_count']} messages",
+            file=sys.stderr,
+            flush=True,
+        )
         try:
             completion = provider.complete(messages=messages, max_tokens=args.max_tokens, temperature=0.0)
             parsed = extract_json(completion.context)
@@ -553,6 +570,7 @@ def main() -> int:
                         "current": case.expected_current,
                         "question": case.expected_question,
                     },
+                    "prompt_metrics": prompt_metrics,
                     "actual": parsed,
                     "raw": completion.context,
                 }
@@ -570,17 +588,27 @@ def main() -> int:
                         "current": case.expected_current,
                         "question": case.expected_question,
                     },
+                    "prompt_metrics": prompt_metrics,
                     "actual": None,
                     "raw": None,
                 }
             )
 
+    total_prompt_chars = sum(result["prompt_metrics"]["total_chars"] for result in results)
     summary = {
         "prompt_variant": os.getenv("PROMPT_VARIANT"),
         "model": settings.model,
         "total": len(results),
         "passed": sum(1 for result in results if result["passed"]),
         "failed": sum(1 for result in results if not result["passed"]),
+        "prompt_metrics": {
+            "total_chars": total_prompt_chars,
+            "average_chars_per_case": int(total_prompt_chars / len(results)) if results else 0,
+            "max_chars_single_case": max(
+                (result["prompt_metrics"]["total_chars"] for result in results),
+                default=0,
+            ),
+        },
         "results": results,
     }
 
