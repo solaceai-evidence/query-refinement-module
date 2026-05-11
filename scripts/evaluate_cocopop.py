@@ -107,6 +107,46 @@ class DimExpectation:
     current: str  # exact match (case-insensitive) when key_terms is empty
     key_terms: list[str] = field(default_factory=list)  # all terms must appear in actual.current
     check_complete: bool = True  # set False when completeness is borderline/defensible
+    forbidden_question_labels: list[str] = field(default_factory=list)
+
+
+QUESTION_TRIGGER_RULES: dict[str, list[tuple[str, tuple[str, ...]]]] = {
+    "condition": [
+        ("condition_specificity", ("which condition specifically", "which specific health condition")),
+        ("climate_linkage", ("what climate", "environmental hazard", "primary driver")),
+        ("case_definition", ("case definition", "diagnostic threshold", "laboratory-confirmed", "who clinical")),
+        ("temporal_qualifier", ("acute phase", "time frame", "which phase", "post-flood onset", "after flood onset")),
+        ("symptom_cluster", ("symptom cluster", "fever and respiratory distress")),
+        ("causal_pathway", ("causal pathway", "defined by its cause")),
+    ],
+    "context": [
+        ("geographic_setting", ("which country", "which region", "specific country or sub-region", "scope remain limited")),
+        ("health_system_capacity", ("health system level", "community health workers", "union-level health centres", "upazila", "district hospitals", "field hospital")),
+        ("temporal_context", ("which phase", "acute emergency", "early recovery", "chronic/ongoing", "recovery phase")),
+        ("urban_rural_classification", ("rural, peri-urban, or coastal", "urban or rural", "peri-urban")),
+    ],
+    "population": [
+        ("population_scope", ("which population group", "all populations", "specific group")),
+        ("age", ("which age group", "older adults", "under 5", "18-65 years", "all adults")),
+        ("ethnicity_race", ("indigenous", "ethnic", "racial", "caste")),
+    ],
+}
+
+
+def _infer_question_triggers(dim_id: str, question: str) -> dict[str, Any]:
+    question_lower = (question or "").strip().lower()
+    labels: list[str] = []
+    matches: list[str] = []
+    if not question_lower:
+        return {"labels": labels, "matches": matches}
+
+    for label, fragments in QUESTION_TRIGGER_RULES.get(dim_id, []):
+        matched = [fragment for fragment in fragments if fragment in question_lower]
+        if matched:
+            labels.append(label)
+            matches.extend(matched)
+
+    return {"labels": labels, "matches": matches}
 
 
 @dataclass
@@ -163,6 +203,7 @@ def build_scenarios() -> list[Scenario]:
                     complete=True,
                     current="",
                     key_terms=["Bangladesh", "rural", "displacement camps"],
+                    forbidden_question_labels=["health_system_capacity"],
                 ),
                 "population": DimExpectation(
                     complete=True,
@@ -209,11 +250,13 @@ def build_scenarios() -> list[Scenario]:
                     complete=True,
                     current="",
                     key_terms=["diarrhoea", "flood"],
+                    forbidden_question_labels=["case_definition", "temporal_qualifier"],
                 ),
                 "context": DimExpectation(
                     complete=True,
                     current="",
                     key_terms=["Bangladesh", "displacement"],
+                    forbidden_question_labels=["health_system_capacity"],
                 ),
                 "population": DimExpectation(
                     complete=True,
@@ -430,7 +473,7 @@ def extract_json(text: str) -> dict[str, Any]:
 # ---------------------------------------------------------------------------
 
 def _compare_refinement(
-    actual: dict[str, Any], expected: DimExpectation
+    actual: dict[str, Any], expected: DimExpectation, *, dim_id: str
 ) -> tuple[bool, list[str]]:
     failures: list[str] = []
     required_keys = {"complete", "current", "question"}
@@ -454,6 +497,16 @@ def _compare_refinement(
         if actual_current != expected_current:
             failures.append(
                 f"current expected {expected.current!r} got {actual.get('current')!r}"
+            )
+
+    question_diagnostics = _infer_question_triggers(dim_id, actual.get("question", ""))
+    if expected.forbidden_question_labels:
+        unexpected_labels = sorted(
+            set(question_diagnostics["labels"]).intersection(expected.forbidden_question_labels)
+        )
+        if unexpected_labels:
+            failures.append(
+                f"question triggered forbidden labels {unexpected_labels!r} (question={actual.get('question')!r})"
             )
     return (not failures), failures
 
@@ -549,16 +602,23 @@ def run_scenario(
             parsed = extract_json(completion.context)
 
             if exp is not None:
-                passed, failures = _compare_refinement(parsed, exp)
+                passed, failures = _compare_refinement(parsed, exp, dim_id=dim_id)
             else:
                 passed = set(parsed.keys()) == {"complete", "current", "question"}
                 failures = [] if passed else [f"unexpected shape: {list(parsed.keys())}"]
+
+            question_diagnostics = _infer_question_triggers(dim_id, parsed.get("question", ""))
 
             status = "PASS" if passed else "FAIL"
             print(
                 f"      -> {status}: {failures if not passed else []}",
                 file=sys.stderr,
             )
+            if question_diagnostics["labels"]:
+                print(
+                    f"         inferred_question_triggers={question_diagnostics['labels']}",
+                    file=sys.stderr,
+                )
 
             if not passed:
                 all_refinement_passed = False
@@ -582,8 +642,10 @@ def run_scenario(
                         "complete": exp.complete if exp else None,
                         "current": exp.current if exp else None,
                         "key_terms": exp.key_terms if exp else [],
+                        "forbidden_question_labels": exp.forbidden_question_labels if exp else [],
                     },
                     "actual": parsed,
+                    "question_diagnostics": question_diagnostics,
                     "raw": completion.context if verbose else None,
                 }
             )
@@ -610,8 +672,10 @@ def run_scenario(
                         "complete": exp.complete if exp else None,
                         "current": exp.current if exp else None,
                         "key_terms": exp.key_terms if exp else [],
+                        "forbidden_question_labels": exp.forbidden_question_labels if exp else [],
                     },
                     "actual": None,
+                    "question_diagnostics": {"labels": [], "matches": []},
                     "raw": None,
                 }
             )

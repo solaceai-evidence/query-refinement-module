@@ -103,20 +103,27 @@ class PromptBuilder:
         tone_hints = {
             "educational": "warm, encouraging register; briefly say why each missing detail matters",
             "professional": "direct, formal register; no small talk or reassurance",
-            "pragmatic": "lead with the practical consequence; keep the wording brief and action-oriented",
+            "pragmatic": "lead with the practical consequence only when a question is required; keep the wording brief and action-oriented",
         }
         complexity_hints = {
             "intermediate": "standard domain terminology; no need to define basics",
-            "advanced": "precise technical vocabulary; push back on vague or underspecified terms",
-            "expert": "peer-level methodological language; full domain fluency assumed",
+            "advanced": "precise technical vocabulary; ask only when the dimension specification explicitly requires missing detail",
+            "expert": "peer-level methodological language; challenge only when the dimension specification explicitly requires clarification",
         }
         tone_hint = tone_hints.get(user_context.tone, user_context.tone)
         complexity_hint = complexity_hints.get(user_context.complexity, user_context.complexity)
-        return (
+        cue = (
             "**Style cue — apply when formulating your response:**\n"
             f"Tone: {tone_hint}\n"
             f"Complexity: {complexity_hint}"
         )
+        if using_open_llm_prompt_templates():
+            cue += (
+                "\nQuestion gating: examples are illustrative only; ask a follow-up only when the "
+                "current dimension's explicit trigger is present. If the case is already retrieval-usable "
+                "or closer to a clear example than a partial example, prefer complete=true."
+            )
+        return cue
 
     # =========================================================================
     # Global System Prompt
@@ -493,7 +500,12 @@ class PromptBuilder:
                 'content': reminder_content + (
                     "\n\n**Reminder:** Extract from the completed dimensions above "
                     "before generating any question. If the value for the current "
-                    "dimension is present, set complete=true and question=\"\"."
+                    "dimension is present, set complete=true and question=\"\". "
+                    "If the dimension specification says an absent detail should be "
+                    "omitted silently unless a trigger is met, do not ask unless that "
+                    "trigger is explicit in the available context. Extract only the "
+                    "fragment relevant to the current dimension; do not copy an entire "
+                    "prior dimension value when only part of it applies."
                 )
             })
         

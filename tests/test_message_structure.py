@@ -294,6 +294,37 @@ def test_open_llm_terminal_reinforcement_uses_compact_style_cue(monkeypatch):
     assert "## USER CONTEXT" not in messages[-1]["content"]
 
 
+def test_open_llm_completed_context_reminder_preserves_question_gating(monkeypatch):
+    prompt_builder = _reload_prompt_modules(
+        monkeypatch,
+        prompt_variant="open_llm",
+        llm_model="ollama/qwen2.5:72b",
+    )
+    builder = prompt_builder.PromptBuilder()
+    dimension = _build_dimension_with_user_context()
+    dimension.depends_on = ["condition"]
+
+    messages = builder.build_refinement_messages(
+        dimension=dimension,
+        query="population effects of heat exposure",
+        conversation_history=[],
+        completed_context=[
+            {
+                "id": "condition",
+                "name": "Condition",
+                "description": "Target condition",
+                "value": "heat stroke",
+                "was_skipped": False,
+            }
+        ],
+        terminal_reinforcement_threshold=3,
+    )
+
+    assert "omit" in messages[-1]["content"].lower()
+    assert "trigger" in messages[-1]["content"].lower()
+    assert "fragment relevant to the current dimension" in messages[-1]["content"].lower()
+
+
 def test_private_terminal_reinforcement_keeps_full_user_context(monkeypatch):
     prompt_builder = _reload_prompt_modules(
         monkeypatch,

@@ -50,6 +50,7 @@ locust = "^2.43.0"  # Updated for load testing improvements
 vulture = "^2.14"
 
 [tool.poetry.scripts]
+query_refine = "query_refinement_module.cli:main"
 query-refine = "query_refinement_module.cli:main"
 
 [tool.pytest.ini_options]
