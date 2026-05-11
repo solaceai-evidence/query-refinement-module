@@ -5,6 +5,13 @@ from query_refinement_module.settings import LLMSettings
 
 def _clear_env(monkeypatch):
     for key in {
+        "LLM_MODEL",
+        "LLM_API_KEY",
+        "LLM_API_BASE",
+        "LLM_TEMPERATURE",
+        "LLM_MAX_OUTPUT_TOKENS",
+        "LLM_CONTEXT_WINDOW",
+        "LLM_COMPLETION_KWARGS",
         "QUERY_REFINEMENT_LLM_MODEL",
         "QUERY_REFINEMENT_LLM_API_KEY",
         "QUERY_REFINEMENT_LLM_API_BASE",
@@ -18,13 +25,13 @@ def _clear_env(monkeypatch):
 
 def test_from_env_parses_values(monkeypatch):
     _clear_env(monkeypatch)
-    monkeypatch.setenv("QUERY_REFINEMENT_LLM_MODEL", "openai/gpt-4o-mini")
-    monkeypatch.setenv("QUERY_REFINEMENT_LLM_API_KEY", "sk-test")
-    monkeypatch.setenv("QUERY_REFINEMENT_LLM_API_BASE", "https://example.com")
-    monkeypatch.setenv("QUERY_REFINEMENT_LLM_TEMPERATURE", "0.3")
-    monkeypatch.setenv("QUERY_REFINEMENT_LLM_MAX_TOKENS", "256")
+    monkeypatch.setenv("LLM_MODEL", "openai/gpt-4o-mini")
+    monkeypatch.setenv("LLM_API_KEY", "sk-test")
+    monkeypatch.setenv("LLM_API_BASE", "https://example.com")
+    monkeypatch.setenv("LLM_TEMPERATURE", "0.3")
+    monkeypatch.setenv("LLM_MAX_OUTPUT_TOKENS", "256")
     monkeypatch.setenv(
-        "QUERY_REFINEMENT_LLM_COMPLETION_KWARGS",
+        "LLM_COMPLETION_KWARGS",
         '{"top_p": 0.8, "response_format": {"type": "json_object"}}',
     )
 
@@ -251,6 +258,13 @@ def test_constrained_decoding_env_var(monkeypatch):
 
 def _clear_rate_limit_env(monkeypatch):
     for key in {
+        "LLM_PROVIDER_RATE_LIMIT_RPM",
+        "LLM_PROVIDER_RATE_LIMIT_TPM",
+        "LLM_PROVIDER_MAX_CONCURRENT",
+        "LLM_PROVIDER_ADAPTIVE_RATE_LIMIT",
+        "LLM_PROVIDER_ADAPTIVE_DECREASE_FACTOR",
+        "LLM_PROVIDER_ADAPTIVE_INCREASE_FACTOR",
+        "LLM_PROVIDER_ADAPTIVE_INCREASE_INTERVAL",
         "LLM_RATE_LIMIT_RPM",
         "LLM_RATE_LIMIT_TPM",
         "LLM_MAX_CONCURRENT",
@@ -301,14 +315,17 @@ def test_self_hosted_openai_compatible_defaults(monkeypatch):
     assert settings.max_concurrent_requests == 20
 
 
-def test_rate_limit_env_vars_parsed_from_template_names(monkeypatch):
+def test_rate_limit_env_vars_parsed_from_canonical_provider_names(monkeypatch):
     _clear_env(monkeypatch)
     _clear_rate_limit_env(monkeypatch)
     monkeypatch.setenv("QUERY_REFINEMENT_LLM_MODEL", "anthropic/claude-sonnet-4-5")
-    monkeypatch.setenv("LLM_RATE_LIMIT_RPM", "50")
-    monkeypatch.setenv("LLM_RATE_LIMIT_TPM", "40000")
-    monkeypatch.setenv("LLM_MAX_CONCURRENT", "5")
-    monkeypatch.setenv("LLM_ADAPTIVE_RATE_LIMITING", "true")
+    monkeypatch.setenv("LLM_PROVIDER_RATE_LIMIT_RPM", "50")
+    monkeypatch.setenv("LLM_PROVIDER_RATE_LIMIT_TPM", "40000")
+    monkeypatch.setenv("LLM_PROVIDER_MAX_CONCURRENT", "5")
+    monkeypatch.setenv("LLM_PROVIDER_ADAPTIVE_RATE_LIMIT", "true")
+    monkeypatch.setenv("LLM_PROVIDER_ADAPTIVE_DECREASE_FACTOR", "0.7")
+    monkeypatch.setenv("LLM_PROVIDER_ADAPTIVE_INCREASE_FACTOR", "1.1")
+    monkeypatch.setenv("LLM_PROVIDER_ADAPTIVE_INCREASE_INTERVAL", "30")
 
     settings = LLMSettings.from_env()
 
@@ -316,6 +333,9 @@ def test_rate_limit_env_vars_parsed_from_template_names(monkeypatch):
     assert settings.rate_limit_tpm == 40000
     assert settings.max_concurrent_requests == 5
     assert settings.adaptive_rate_limit is True
+    assert settings.adaptive_decrease_factor == pytest.approx(0.7)
+    assert settings.adaptive_increase_factor == pytest.approx(1.1)
+    assert settings.adaptive_increase_interval == 30
 
 
 def test_legacy_rate_limit_env_vars_still_parsed(monkeypatch):
@@ -352,6 +372,26 @@ def test_as_provider_kwargs_includes_rate_limit_config(monkeypatch):
     assert isinstance(rate_cfg, RateLimitConfig)
     assert rate_cfg.requests_per_minute == 50
     assert rate_cfg.tokens_per_minute == 40000
+
+
+def test_as_provider_kwargs_propagates_adaptive_tuning(monkeypatch):
+    _clear_env(monkeypatch)
+    _clear_rate_limit_env(monkeypatch)
+    monkeypatch.setenv("QUERY_REFINEMENT_LLM_MODEL", "anthropic/claude-sonnet-4-5")
+    monkeypatch.setenv("LLM_PROVIDER_RATE_LIMIT_RPM", "50")
+    monkeypatch.setenv("LLM_PROVIDER_ADAPTIVE_RATE_LIMIT", "true")
+    monkeypatch.setenv("LLM_PROVIDER_ADAPTIVE_DECREASE_FACTOR", "0.75")
+    monkeypatch.setenv("LLM_PROVIDER_ADAPTIVE_INCREASE_FACTOR", "1.2")
+    monkeypatch.setenv("LLM_PROVIDER_ADAPTIVE_INCREASE_INTERVAL", "45")
+
+    settings = LLMSettings.from_env()
+    kwargs = settings.as_provider_kwargs()
+
+    rate_cfg = kwargs["rate_limit_config"]
+    assert rate_cfg.adaptive_backoff is True
+    assert rate_cfg.adaptive_decrease_factor == pytest.approx(0.75)
+    assert rate_cfg.adaptive_increase_factor == pytest.approx(1.2)
+    assert rate_cfg.adaptive_increase_interval == 45
 
 
 def test_as_provider_kwargs_no_rate_limit_config_when_rpm_zero(monkeypatch):

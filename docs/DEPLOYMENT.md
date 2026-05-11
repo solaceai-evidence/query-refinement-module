@@ -49,8 +49,8 @@ Before starting, verify the following:
 - Docker Engine and Docker Compose plugin are installed on the server
 - The correct template has been copied to `.env` (`.env.anthropic-claude-sonnet-4-6`, `.env.openai-gpt-4o`, `.env.prod`, `.env.prod.openai-gpt-4o`, `.env.prod.ollama-qwen2.5-72b`, `.env.ollama-qwen2.5-72b`, or `.env.vllm`)
 - `SECRET_KEY` is set, is at least 32 characters long, and is not one of the known placeholder values (the API will refuse to start in production mode if this check fails)
-- `QUERY_REFINEMENT_LLM_API_KEY` is set **if using a cloud provider** (Anthropic, OpenAI); leave blank for Ollama or vLLM
-- `QUERY_REFINEMENT_LLM_API_BASE` is set **if needed** for vLLM or for an Ollama server that is not using the default `http://localhost:11434`
+- `LLM_API_KEY` is set **if using a cloud provider** (Anthropic, OpenAI); leave blank for Ollama or vLLM
+- `LLM_API_BASE` is set **if needed** for vLLM or for an Ollama server that is not using the default `http://localhost:11434`
 - `POSTGRES_USER`, `POSTGRES_PASSWORD`, and `POSTGRES_DB` are set
 - `ALLOWED_ORIGINS` includes every browser address that should be allowed to use the app
 - `ALLOW_REGISTRATION=false` unless self-signup is needed
@@ -106,12 +106,12 @@ cp .env.openai-gpt-4o .env
 
 Key OpenAI-specific settings:
 
-| Variable                              | Value           | Notes                                                                                |
-| ------------------------------------- | --------------- | ------------------------------------------------------------------------------------ |
-| `QUERY_REFINEMENT_LLM_API_KEY`        | required        | Required for OpenAI cloud access                                                     |
-| `QUERY_REFINEMENT_LLM_API_BASE`       | *(leave blank)* | Leave blank for OpenAI cloud; set only for an OpenAI-compatible self-hosted endpoint |
-| `QUERY_REFINEMENT_LLM_MAX_TOKENS`     | `4096`          | Default output cap; does not change the model context window                         |
-| `QUERY_REFINEMENT_LLM_CONTEXT_WINDOW` | unsupported     | Do not set for OpenAI; the provider manages context window                           |
+| Variable                | Value           | Notes                                                                                |
+| ----------------------- | --------------- | ------------------------------------------------------------------------------------ |
+| `LLM_API_KEY`           | required        | Required for OpenAI cloud access                                                     |
+| `LLM_API_BASE`          | *(leave blank)* | Leave blank for OpenAI cloud; set only for an OpenAI-compatible self-hosted endpoint |
+| `LLM_MAX_OUTPUT_TOKENS` | `4096`          | Default per-call output ceiling; does not change the model context window            |
+| `LLM_CONTEXT_WINDOW`    | unsupported     | Do not set for OpenAI; the provider manages context window                           |
 
 ### Switching to Ollama
 
@@ -134,12 +134,12 @@ cp .env.ollama-qwen2.5-72b .env
 
 Key Ollama-specific settings:
 
-| Variable                                 | Value           | Notes                                           |
-| ---------------------------------------- | --------------- | ----------------------------------------------- |
-| `QUERY_REFINEMENT_LLM_API_BASE`          | auto            | Defaults internally to `http://localhost:11434` |
-| `QUERY_REFINEMENT_LLM_API_KEY`           | *(leave blank)* | Not required for local Ollama                   |
-| `QUERY_REFINEMENT_LLM_COMPLETION_KWARGS` | auto            | Defaults internally to `{"num_ctx": 16384}`     |
-| `QUERY_REFINEMENT_ENABLE_PROMPT_CACHING` | auto            | Defaults internally to `false` for Ollama       |
+| Variable                    | Value           | Notes                                           |
+| --------------------------- | --------------- | ----------------------------------------------- |
+| `LLM_API_BASE`              | auto            | Defaults internally to `http://localhost:11434` |
+| `LLM_API_KEY`               | *(leave blank)* | Not required for local Ollama                   |
+| `LLM_COMPLETION_KWARGS`     | auto            | Defaults internally to `{"num_ctx": 16384}`     |
+| `LLM_ENABLE_PROMPT_CACHING` | auto            | Defaults internally to `false` for Ollama       |
 
 ### Switching to vLLM (requires GPU and the `vllm` package):
 
@@ -160,18 +160,18 @@ On macOS, vLLM runs CPU-only; keep local testing on the 8B model.
 
 ```bash
 cp .env.vllm .env
-# Set QUERY_REFINEMENT_LLM_API_BASE to match your vLLM server address
-# Set QUERY_REFINEMENT_LLM_MODEL to match the loaded model
+# Set LLM_API_BASE to match your vLLM server address
+# Set LLM_MODEL to match the loaded model
 ```
 
 Key vLLM-specific settings:
 
-| Variable                                    | Required value          | Notes                                               |
-| ------------------------------------------- | ----------------------- | --------------------------------------------------- |
-| `QUERY_REFINEMENT_LLM_API_BASE`             | `http://<host>:8000/v1` | Must point at the vLLM server                       |
-| `QUERY_REFINEMENT_LLM_API_KEY`              | `EMPTY`                 | Conventional placeholder for local servers          |
-| `QUERY_REFINEMENT_LLM_CONSTRAINED_DECODING` | `true`                  | Sends `guided_json` schema in every structured call |
-| `QUERY_REFINEMENT_ENABLE_PROMPT_CACHING`    | `false`                 | Anthropic-specific feature; disable for vLLM        |
+| Variable                    | Required value          | Notes                                               |
+| --------------------------- | ----------------------- | --------------------------------------------------- |
+| `LLM_API_BASE`              | `http://<host>:8000/v1` | Must point at the vLLM server                       |
+| `LLM_API_KEY`               | `EMPTY`                 | Conventional placeholder for local servers          |
+| `LLM_CONSTRAINED_DECODING`  | `true`                  | Sends `guided_json` schema in every structured call |
+| `LLM_ENABLE_PROMPT_CACHING` | `false`                 | Anthropic-specific feature; disable for vLLM        |
 
 > **Warning:** `QUERY_REFINEMENT_LLM_CONSTRAINED_DECODING=true` must only be
 > set when the API base points at a vLLM server. Setting it for Anthropic,
@@ -206,20 +206,20 @@ cp .env.prod.ollama-qwen2.5-72b .env
 - `POSTGRES_PASSWORD`
 - `POSTGRES_DB`
 - `ALLOWED_ORIGINS`
-- `QUERY_REFINEMENT_LLM_API_KEY` — required for cloud providers (Anthropic, OpenAI); leave blank for Ollama or vLLM
-- `QUERY_REFINEMENT_LLM_API_BASE` — required for vLLM and optional for Ollama when not using the default `http://localhost:11434`; omit for cloud
+- `LLM_API_KEY` — required for cloud providers (Anthropic, OpenAI); leave blank for Ollama or vLLM
+- `LLM_API_BASE` — required for vLLM and optional for Ollama when not using the default `http://localhost:11434`; omit for cloud
 
 Context-window note:
 
-- `QUERY_REFINEMENT_LLM_CONTEXT_WINDOW` only applies to backends that expose a client-side context-size parameter. Today that means Ollama. It does not change the provider-managed context window for Anthropic or OpenAI.
+- `LLM_CONTEXT_WINDOW` only applies to backends that expose a client-side context-size parameter. Today that means Ollama. It does not change the provider-managed context window for Anthropic or OpenAI.
 
 Notes:
 
 - Canonical compose derives API database connectivity from `POSTGRES_*`.
 - Do not set a separate `DATABASE_URL` in canonical compose unless you intentionally override derived settings.
-- `LLM_RATE_LIMIT_RPM` is the shared request budget knob used for API ingress throttling and provider-side throttling.
-- `LLM_MAX_CONCURRENT` applies to outbound LLM concurrency only.
-- `LLM_RATE_LIMIT_PER_USER_RPM` and `LLM_MAX_CONCURRENT_PER_USER` apply to API fairness controls only.
+- `API_RATE_LIMIT_RPM` and `API_RATE_LIMIT_PER_USER_RPM` apply to HTTP ingress throttling only.
+- `LLM_PROVIDER_RATE_LIMIT_RPM`, `LLM_PROVIDER_RATE_LIMIT_TPM`, and `LLM_PROVIDER_MAX_CONCURRENT` apply to outbound provider throttling only.
+- Legacy shared names are still accepted for compatibility, but new deployments should use the explicit API/provider names.
 
 If external systems call refinement APIs without user JWT login, also set:
 
@@ -247,10 +247,10 @@ Recommended values by operating mode:
 5. Optional throughput tuning:
 
 - Leave the template rate-limit values alone unless your provider tier or expected load differs.
-- `LLM_RATE_LIMIT_RPM`
-- `LLM_RATE_LIMIT_PER_USER_RPM`
-- `LLM_MAX_CONCURRENT`
-- `LLM_MAX_CONCURRENT_PER_USER`
+- `API_RATE_LIMIT_RPM`
+- `API_RATE_LIMIT_PER_USER_RPM`
+- `LLM_PROVIDER_RATE_LIMIT_RPM`
+- `LLM_PROVIDER_MAX_CONCURRENT`
 - `WORKERS`
 
 Ownership model:

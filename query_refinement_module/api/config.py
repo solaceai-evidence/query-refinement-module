@@ -5,7 +5,7 @@ from functools import lru_cache
 from typing import List, Optional
 
 import json
-from pydantic import Field, model_validator
+from pydantic import AliasChoices, Field, model_validator
 from pydantic_settings import BaseSettings, SettingsConfigDict
 
 
@@ -134,10 +134,18 @@ class Settings(BaseSettings):
     # API ingress rate limiting.
     # LLM provider/runtime configuration lives in query_refinement_module.settings.
     # Only the HTTP request-per-minute limits are enforced at this layer.
-    llm_rate_limit_rpm: int = Field(default=50, description="Global requests per minute limit")
+    api_rate_limit_rpm: int = Field(
+        default=50,
+        validation_alias=AliasChoices("API_RATE_LIMIT_RPM", "LLM_RATE_LIMIT_RPM"),
+        description="Global API requests per minute limit",
+    )
     
     # Per-user limits (fairness in multi-tenant deployments)
-    llm_rate_limit_per_user_rpm: int = Field(default=10, description="Per-user requests per minute limit")
+    api_rate_limit_per_user_rpm: int = Field(
+        default=10,
+        validation_alias=AliasChoices("API_RATE_LIMIT_PER_USER_RPM", "LLM_RATE_LIMIT_PER_USER_RPM"),
+        description="Per-user API requests per minute limit",
+    )
     
     # Redis Configuration (shared across features)
     redis_url: str = Field(default="redis://localhost:6379/0", description="Redis URL for caching and rate limiting")
@@ -157,8 +165,32 @@ class Settings(BaseSettings):
     )
     
     # Rate limiter backend
-    rate_limiter_backend: str = Field(default="memory", description="Rate limiter backend: 'memory' or 'redis'")
-    redis_rate_limit_prefix: str = Field(default="qr:ratelimit", description="Redis key prefix for rate limit data")
+    api_rate_limiter_backend: str = Field(
+        default="memory",
+        validation_alias=AliasChoices("API_RATE_LIMITER_BACKEND", "RATE_LIMITER_BACKEND"),
+        description="API rate limiter backend: 'memory' or 'redis'",
+    )
+    api_redis_rate_limit_prefix: str = Field(
+        default="qr:ratelimit",
+        validation_alias=AliasChoices("API_REDIS_RATE_LIMIT_PREFIX", "REDIS_RATE_LIMIT_PREFIX"),
+        description="Redis key prefix for API rate limit data",
+    )
+
+    @property
+    def llm_rate_limit_rpm(self) -> int:
+        return self.api_rate_limit_rpm
+
+    @property
+    def llm_rate_limit_per_user_rpm(self) -> int:
+        return self.api_rate_limit_per_user_rpm
+
+    @property
+    def rate_limiter_backend(self) -> str:
+        return self.api_rate_limiter_backend
+
+    @property
+    def redis_rate_limit_prefix(self) -> str:
+        return self.api_redis_rate_limit_prefix
     
     # Configuration using pydantic-settings v2 style
     model_config = SettingsConfigDict(

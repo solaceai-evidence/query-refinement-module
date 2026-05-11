@@ -23,7 +23,7 @@ def test_build_manager_constructs_components(monkeypatch):
     """Test build_manager creates provider and manager with correct settings."""
     created = {}
 
-    monkeypatch.setattr(cli.LLMSettings, "from_env", classmethod(lambda cls: StubSettings()))
+    monkeypatch.setattr(cli.LLMSettings, "from_env", classmethod(lambda cls, **_: StubSettings()))
 
     class FakeProvider:
         def __init__(self, **kwargs):
@@ -40,7 +40,7 @@ def test_build_manager_constructs_components(monkeypatch):
 
 
 def test_build_manager_without_tracing(monkeypatch):
-    monkeypatch.setattr(cli.LLMSettings, "from_env", classmethod(lambda cls: StubSettings()))
+    monkeypatch.setattr(cli.LLMSettings, "from_env", classmethod(lambda cls, **_: StubSettings()))
     monkeypatch.setattr(cli, "LiteLLMProvider", lambda **_: "provider")
 
     manager = cli.build_manager(enable_tracing=False)
@@ -49,7 +49,7 @@ def test_build_manager_without_tracing(monkeypatch):
 
 
 def test_build_manager_with_trace_dir(monkeypatch, tmp_path):
-    monkeypatch.setattr(cli.LLMSettings, "from_env", classmethod(lambda cls: StubSettings()))
+    monkeypatch.setattr(cli.LLMSettings, "from_env", classmethod(lambda cls, **_: StubSettings()))
 
     class DummyProvider:
         pass

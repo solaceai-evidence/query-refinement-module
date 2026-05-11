@@ -35,7 +35,7 @@ def build_manager(
         tracer = ConsoleTracing()
     else:
         tracer = None
-    settings = LLMSettings.from_env()
+    settings = LLMSettings.from_env(load_env_file=True)
 
     provider = LiteLLMProvider(**settings.as_provider_kwargs())
     # Analyzer is deprecated - don't create one by default
@@ -44,6 +44,8 @@ def build_manager(
     return QueryRefinementManager(
         llm_provider=provider,
         tracing_provider=tracer,
+        default_temperature=getattr(settings, "temperature", 0.0),
+        default_max_tokens=getattr(settings, "max_tokens", 4096) or 4096,
         terminal_reinforcement_threshold=settings.terminal_reinforcement_threshold,
     )
 

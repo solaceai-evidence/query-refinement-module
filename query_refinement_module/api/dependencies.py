@@ -29,7 +29,7 @@ def get_refinement_manager() -> QueryRefinementManager:
     - Uses initialize_sequential for analysis (analyzer deprecated)
     """
     # Get LLM settings from environment
-    llm_settings = LLMSettings.from_env(require_model=False)
+    llm_settings = LLMSettings.from_env(require_model=False, load_env_file=True)
     
     # Initialize LLM provider
     llm_provider = LiteLLMProvider(**llm_settings.as_provider_kwargs())
@@ -37,6 +37,8 @@ def get_refinement_manager() -> QueryRefinementManager:
     # Create manager (analyzer removed in v2.0 - uses initialize_sequential)
     manager = QueryRefinementManager(
         llm_provider=llm_provider,
+        default_temperature=getattr(llm_settings, "temperature", 0.0),
+        default_max_tokens=getattr(llm_settings, "max_tokens", 4096) or 4096,
         terminal_reinforcement_threshold=llm_settings.terminal_reinforcement_threshold
     )
     
@@ -53,7 +55,7 @@ def get_llm_provider() -> LiteLLMProvider:
     - Provider health checks
     - Direct LLM API access where needed
     """
-    llm_settings = LLMSettings.from_env(require_model=False)
+    llm_settings = LLMSettings.from_env(require_model=False, load_env_file=True)
     return LiteLLMProvider(**llm_settings.as_provider_kwargs())
 
 

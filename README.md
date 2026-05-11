@@ -130,18 +130,19 @@ poetry run query-refine --framework pico_advanced
 
 Key environment variables — pick the template for your provider and copy it to `.env`:
 
-| Variable                                    | Description                                                                                            |
-| ------------------------------------------- | ------------------------------------------------------------------------------------------------------ |
-| `QUERY_REFINEMENT_LLM_API_KEY`              | API key for cloud providers (Anthropic, OpenAI); leave blank for Ollama or vLLM                        |
-| `QUERY_REFINEMENT_LLM_MODEL`                | Model identifier (default: `anthropic/claude-sonnet-4-6`)                                              |
-| `QUERY_REFINEMENT_LLM_API_BASE`             | Optional base URL override; Ollama defaults to `http://localhost:11434`, set explicitly for vLLM       |
-| `QUERY_REFINEMENT_LLM_CONTEXT_WINDOW`       | Optional client-side context window override for local backends that expose one; currently Ollama only |
-| `QUERY_REFINEMENT_LLM_CONSTRAINED_DECODING` | `true` to enable vLLM guided JSON decoding — **vLLM only**; leave `false` for all other providers      |
-| `SECRET_KEY`                                | Secret key for session tokens — change this in production                                              |
-| `DATABASE_URL`                              | Database connection string (default: SQLite for local development)                                     |
-| `ALLOW_REGISTRATION`                        | Set to `false` to disable self-registration                                                            |
-| `ENFORCE_WORKFLOW_LIMIT`                    | `true` = one workflow per user; `false` = unlimited                                                    |
-| `INTEGRATION_API_KEY`                       | Optional: for server-to-server API access without a user login                                         |
+| Variable                   | Description                                                                                            |
+| -------------------------- | ------------------------------------------------------------------------------------------------------ |
+| `LLM_API_KEY`              | API key for cloud providers (Anthropic, OpenAI); leave blank for Ollama or vLLM                        |
+| `LLM_MODEL`                | Model identifier (default: `anthropic/claude-sonnet-4-6`)                                              |
+| `LLM_API_BASE`             | Optional base URL override; Ollama defaults to `http://localhost:11434`, set explicitly for vLLM       |
+| `LLM_MAX_OUTPUT_TOKENS`    | Output-token ceiling for LLM calls; does not change provider-managed context windows                   |
+| `LLM_CONTEXT_WINDOW`       | Optional client-side context window override for local backends that expose one; currently Ollama only |
+| `LLM_CONSTRAINED_DECODING` | `true` to enable vLLM guided JSON decoding — **vLLM only**; leave `false` for all other providers      |
+| `SECRET_KEY`               | Secret key for session tokens — change this in production                                              |
+| `DATABASE_URL`             | Database connection string (default: SQLite for local development)                                     |
+| `ALLOW_REGISTRATION`       | Set to `false` to disable self-registration                                                            |
+| `ENFORCE_WORKFLOW_LIMIT`   | `true` = one workflow per user; `false` = unlimited                                                    |
+| `INTEGRATION_API_KEY`      | Optional: for server-to-server API access without a user login                                         |
 
 For the built-in templates, most provider-specific knobs are now internal defaults:
 - Anthropic defaults prompt caching on and keeps the production prompt variant.
@@ -154,12 +155,12 @@ Configuration ownership is intentionally split:
 - `query_refinement_module/api/config.py` owns API/web settings such as auth, CORS, sessions, Redis, and HTTP ingress throttling.
 - `query_refinement_module/settings.py` owns outbound LLM runtime settings such as model, API base, prompt caching, context window, constrained decoding, and provider-side throttling.
 
-The template-facing throughput variables use the `LLM_*` names:
-- `LLM_RATE_LIMIT_RPM` is the shared request budget knob used for API ingress throttling and provider-side throttling.
-- `LLM_MAX_CONCURRENT` applies to outbound LLM concurrency only.
-- `LLM_RATE_LIMIT_PER_USER_RPM` and `LLM_MAX_CONCURRENT_PER_USER` apply to API fairness controls only.
+The canonical throughput variables are now separated by layer:
+- `API_RATE_LIMIT_RPM` and `API_RATE_LIMIT_PER_USER_RPM` apply to HTTP ingress throttling only.
+- `LLM_PROVIDER_RATE_LIMIT_RPM`, `LLM_PROVIDER_RATE_LIMIT_TPM`, and `LLM_PROVIDER_MAX_CONCURRENT` apply to outbound provider throttling only.
+- Legacy shared names are still accepted for compatibility, but new configs should use the explicit API and provider names.
 
-`QUERY_REFINEMENT_LLM_CONTEXT_WINDOW` is only for backends that support a client-side context-size parameter. Today that means Ollama via `num_ctx`. It does not change the provider-managed context window for Anthropic or OpenAI.
+`LLM_CONTEXT_WINDOW` is only for backends that support a client-side context-size parameter. Today that means Ollama via `num_ctx`. It does not change the provider-managed context window for Anthropic or OpenAI.
 
 For external systems calling the API without a user login, also set:
 - `INTEGRATION_API_KEY` — shared key sent via the `X-API-Key` header
@@ -193,14 +194,14 @@ cp .env.vllm .env
 ./start_vllm.sh
 # Explicit model example:
 # ./start_vllm.sh meta-llama/Llama-3.1-8B-Instruct
-# Edit QUERY_REFINEMENT_LLM_API_BASE to point at your vLLM server
-# Edit QUERY_REFINEMENT_LLM_MODEL to match the model loaded on the server
+# Edit LLM_API_BASE to point at your vLLM server
+# Edit LLM_MODEL to match the model loaded on the server
 ```
 
-When `QUERY_REFINEMENT_LLM_CONSTRAINED_DECODING=true` the provider sends
+When `LLM_CONSTRAINED_DECODING=true` the provider sends
 `guided_json` (the full Pydantic JSON Schema) in every structured LLM call,
 enforcing schema-conformant output at the token level.  This option must only
-be set when `QUERY_REFINEMENT_LLM_API_BASE` points at a vLLM server — it
+be set when `LLM_API_BASE` points at a vLLM server — it
 will break structured output for Anthropic, OpenAI, and Ollama.
 
 ### Agent setup
@@ -222,10 +223,10 @@ cp .env.ollama-qwen2.5-72b .env
 The template already assumes Ollama's default endpoint, `num_ctx=16384`, and a `timeout=1800.0` request cap for long local calls. Only add overrides if your Ollama server is remote, memory-constrained, or needs a different timeout:
 
 ```dotenv
-QUERY_REFINEMENT_LLM_API_BASE=http://localhost:11434
-QUERY_REFINEMENT_LLM_API_KEY=
-QUERY_REFINEMENT_LLM_CONSTRAINED_DECODING=false
-QUERY_REFINEMENT_LLM_COMPLETION_KWARGS={"num_ctx": 8192, "timeout": 2400.0}
+LLM_API_BASE=http://localhost:11434
+LLM_API_KEY=
+LLM_CONSTRAINED_DECODING=false
+LLM_COMPLETION_KWARGS={"num_ctx": 8192, "timeout": 2400.0}
 ```
 
 #### Option 2: vLLM
@@ -269,11 +270,11 @@ cp .env.vllm .env
 Then point the app at the vLLM server:
 
 ```dotenv
-QUERY_REFINEMENT_LLM_MODEL=openai/meta-llama/Llama-3.1-8B-Instruct
-QUERY_REFINEMENT_LLM_API_BASE=http://localhost:8000/v1
-QUERY_REFINEMENT_LLM_API_KEY=EMPTY
+LLM_MODEL=openai/meta-llama/Llama-3.1-8B-Instruct
+LLM_API_BASE=http://localhost:8000/v1
+LLM_API_KEY=EMPTY
 HF_TOKEN=your-hf-token
-QUERY_REFINEMENT_LLM_CONSTRAINED_DECODING=true
+LLM_CONSTRAINED_DECODING=true
 ```
 
 Verify the server before starting the app:

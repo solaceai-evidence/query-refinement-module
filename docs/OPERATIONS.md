@@ -22,7 +22,7 @@ Config ownership is split on purpose:
 - `query_refinement_module/api/config.py` owns API/web settings and HTTP ingress throttling.
 - `query_refinement_module/settings.py` owns outbound LLM runtime settings and provider-side throttling.
 
-`LLM_RATE_LIMIT_RPM` is shared between those layers. `LLM_MAX_CONCURRENT` is outbound-only. `LLM_RATE_LIMIT_PER_USER_RPM` and `LLM_MAX_CONCURRENT_PER_USER` are API fairness controls only.
+`API_RATE_LIMIT_RPM` and `API_RATE_LIMIT_PER_USER_RPM` apply to HTTP ingress throttling. `LLM_PROVIDER_RATE_LIMIT_RPM`, `LLM_PROVIDER_RATE_LIMIT_TPM`, and `LLM_PROVIDER_MAX_CONCURRENT` apply to outbound provider throttling.
 
 To switch, copy the relevant template to `.env` and restart the API:
 

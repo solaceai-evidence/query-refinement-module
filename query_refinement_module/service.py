@@ -39,13 +39,15 @@ def build_manager_from_env(
     Use initialize_sequential() for on-demand refinement.
     """
 
-    resolved_settings = settings or LLMSettings.from_env()
+    resolved_settings = settings or LLMSettings.from_env(load_env_file=True)
     provider = LiteLLMProvider(**resolved_settings.as_provider_kwargs())
     # Analyzer is deprecated - don't create one by default
 
     return QueryRefinementManager(
         llm_provider=provider,
         tracing_provider=tracing_provider,
+        default_temperature=getattr(resolved_settings, "temperature", 0.0),
+        default_max_tokens=getattr(resolved_settings, "max_tokens", 4096) or 4096,
         terminal_reinforcement_threshold=resolved_settings.terminal_reinforcement_threshold,
     )
 

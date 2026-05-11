@@ -120,11 +120,11 @@ app.add_middleware(
 # Configure rate limiting from settings
 app.add_middleware(
     RateLimitMiddleware,
-    requests_per_minute=settings.llm_rate_limit_rpm,
-    per_user_requests_per_minute=settings.llm_rate_limit_per_user_rpm,
-    backend=settings.rate_limiter_backend,
+    requests_per_minute=settings.api_rate_limit_rpm,
+    per_user_requests_per_minute=settings.api_rate_limit_per_user_rpm,
+    backend=settings.api_rate_limiter_backend,
     redis_url=settings.redis_url,
-    redis_key_prefix=settings.redis_rate_limit_prefix,
+    redis_key_prefix=settings.api_redis_rate_limit_prefix,
     use_user_identifier=True,
     secret_key=settings.secret_key,
     algorithm=settings.algorithm,

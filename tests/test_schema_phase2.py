@@ -230,7 +230,7 @@ class TestPromptBuilder:
         assert "Research Query Refinement" in prompt  # Global
         assert "**Type**: student" in prompt  # User context  
         assert "Test Dimension" in prompt  # Dimension
-    
+
     def test_get_synthesis_system_prompt(self):
         """Test getting synthesis system prompt."""
         builder = PromptBuilder()

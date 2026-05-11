@@ -42,7 +42,7 @@ def test_build_manager_from_env_uses_settings(monkeypatch):
         def as_analyzer_kwargs(self):
             return {"temperature": 0.2}
 
-    monkeypatch.setattr(service.LLMSettings, "from_env", classmethod(lambda cls: StubSettings()))
+    monkeypatch.setattr(service.LLMSettings, "from_env", classmethod(lambda cls, **_: StubSettings()))
 
     created: Dict[str, Any] = {}
 

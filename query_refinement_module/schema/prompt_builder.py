@@ -96,7 +96,7 @@ class PromptBuilder:
         self._synthesis_template = self._env.from_string(SYNTHESIS_TEMPLATE)
         self._user_context_template = self._env.from_string(USER_CONTEXT_PROFILE_TEMPLATE)
         self._dependencies_template = self._env.from_string(DIMENSIONS_CLARIFIED_AND_DEPENDENCIES_TEMPLATE)
-    
+
     # =========================================================================
     # Global System Prompt
     # =========================================================================
@@ -506,7 +506,7 @@ class PromptBuilder:
                     include_examples=True,
                 )
             )
-            
+
             messages.append({
                 'role': 'system',
                 'content': '\n\n'.join(reinforcement_parts)

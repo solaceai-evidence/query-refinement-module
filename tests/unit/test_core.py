@@ -459,6 +459,40 @@ def build_manager(responses: Iterable[Any]) -> QueryRefinementManager:
     return QueryRefinementManager(llm_provider=llm, tracing_provider=tracing)
 
 
+@pytest.mark.asyncio
+async def test_synthesize_refined_query_uses_manager_runtime_defaults():
+    manager = QueryRefinementManager(
+        llm_provider=StubLLMProvider(make_split_responses(integrated_statement="stmt")),
+        tracing_provider=StubTracingProvider(),
+        default_temperature=0.45,
+        default_max_tokens=300,
+    )
+    session = RefinementSession(original_query="q")
+
+    await manager.synthesize_refined_query(session)
+
+    assert len(manager.llm_provider.calls) == 5
+    assert all(call["temperature"] == pytest.approx(0.45) for call in manager.llm_provider.calls)
+    assert sorted(call["max_tokens"] for call in manager.llm_provider.calls) == [256, 256, 300, 300, 300]
+
+
+@pytest.mark.asyncio
+async def test_synthesize_refined_query_explicit_runtime_overrides_manager_defaults():
+    manager = QueryRefinementManager(
+        llm_provider=StubLLMProvider(make_split_responses(integrated_statement="stmt")),
+        tracing_provider=StubTracingProvider(),
+        default_temperature=0.45,
+        default_max_tokens=300,
+    )
+    session = RefinementSession(original_query="q")
+
+    await manager.synthesize_refined_query(session, temperature=0.1, max_tokens=200)
+
+    assert len(manager.llm_provider.calls) == 5
+    assert all(call["temperature"] == pytest.approx(0.1) for call in manager.llm_provider.calls)
+    assert sorted(call["max_tokens"] for call in manager.llm_provider.calls) == [200, 200, 200, 200, 200]
+
+
 def test_skipped_aspects_excluded_from_dependency_context():
     """Test that skipped aspects provide NO context to dependents."""
     aspect_a = make_aspect(aspect_id="a", name="Population")

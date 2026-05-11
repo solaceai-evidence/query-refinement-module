@@ -1991,8 +1991,7 @@ solaceai:
             pollution, and in what geographic setting?"
 cocopop:
   - user_context:
-      user_type: "policy maker, humanitarian practitioner, health professional, or
-        researcher working on climate-health emergencies"
+      user_type: "policy maker, humanitarian practitioner, health professional, or researcher working on climate-health emergencies"
       context: "Real-time evidence synthesis for climate-change health emergencies.
         User is formulating a decision-relevant question to support policy,
         humanitarian, or health-system responses in urgent, context-specific
@@ -2002,27 +2001,6 @@ cocopop:
       tone: "pragmatic"
       complexity: "advanced"
       examples_from: "climate-health policy and humanitarian response"
-      constraints:
-        - "Steer the user toward a question that supports a concrete policy,
-          humanitarian, clinical, preparedness, or recovery decision rather than
-          an abstract academic framing."
-        - "Require a clear climate-health linkage when the query does not
-          connect the health issue to a climate-sensitive hazard, environmental
-          stressor, or climate-related system impact."
-        - "Prefer formulations that can guide retrieval across scientific
-          studies, humanitarian reports, policy documents, guidelines, and local
-          case studies rather than biomedical literature alone."
-        - "Preserve context needed for local applicability and transferability,
-          including geography, population vulnerability, setting, and
-          implementation constraints."
-        - "Require operationalization of key concepts to the level needed for
-          inclusion, exclusion, and synthesis decisions to be explained and
-          justified."
-        - "Probe for equity-relevant groups, settings, or access barriers when
-          they may shape differential impacts or intervention feasibility."
-        - "Flag combinations that are too broad, incomparable, or weakly
-          specified to support coherent synthesis, critical appraisal, or
-          communication of uncertainty and caveats."
   - id: condition
     name: Condition
     description: The health condition, disease, symptom, problem, or social issue
@@ -2078,34 +2056,15 @@ cocopop:
             definition applies? Is this condition driven by a climate-related
             stressor such as drought or crop failure?"
       partial:
-        - statement: Waterborne disease after flooding
-          has: Condition category (waterborne disease), climate linkage (flood).
-          missing: Specific pathogen or named condition (e.g., cholera, typhoid,
-            leptospirosis), case definition or diagnostic criteria, temporal
-            phase.
-          example_question: "Which waterborne condition are you focusing on? (e.g.,
-            cholera using the WHO case definition, typhoid fever, leptospirosis)
-            Is this during the acute flood phase or in the weeks following flood
-            recession?"
         - statement: Mental health impacts of displacement
           has: Condition domain (mental health), context (displacement).
           missing: Specific disorder (e.g., PTSD, major depression, acute stress
-            reaction), diagnostic framework (DSM-5, ICD-11), climate-driver of
-            displacement.
-          example_question: "Which mental health condition are you focusing on — PTSD,
+            reaction) or confirmation of all domain, climate-driver of displacement.
+          example_question: "Are you focusing on all mental health disorders. If not, which mental health condition are you focusing on — PTSD,
             depression, anxiety, or acute stress reactions? What diagnostic
             criteria apply? Is displacement climate-driven (e.g., flood,
             drought, sea-level rise) or conflict-related?"
       vague_ambiguous:
-        - statement: Climate-related illness
-          issue: Covers an unbounded range of conditions across all climate hazards; not a
-            recognised clinical entity and provides no synthesis anchor.
-          missing: Named condition, climate hazard, and case definition or diagnostic
-            criteria.
-          example_question: "Which specific health condition are you studying? (e.g., heat
-            stroke, acute respiratory illness from wildfire smoke, cholera
-            following flooding) Which climate hazard is driving or worsening
-            it?"
         - statement: Health problems in affected communities
           issue: Neither the condition nor the hazard is defined; provides no diagnostic
             reference point for evidence retrieval.

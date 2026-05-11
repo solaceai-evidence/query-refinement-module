@@ -91,7 +91,7 @@ class LiteLLMProvider(LLMProviderInterface):
         else:
             logger.debug(
                 "LLM rate limiter disabled (unlimited). "
-                "Set LLM_RATE_LIMIT_RPM to enable or override provider throttling."
+                "Set LLM_PROVIDER_RATE_LIMIT_RPM to enable or override provider throttling."
             )
 
         # Circuit breaker for protecting against provider outages

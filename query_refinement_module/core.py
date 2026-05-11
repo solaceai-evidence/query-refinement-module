@@ -466,19 +466,25 @@ class QueryRefinementManager:
         self,
         llm_provider: LLMProviderInterface,
         tracing_provider: Optional[TracingProviderInterface] = None,
+        default_temperature: float = 0.2,
+        default_max_tokens: int = 4096,
         terminal_reinforcement_threshold: Optional[int] = None,
     ) -> None:
         self.llm_provider: LLMProviderInterface = llm_provider
         self.tracing_provider: TracingProviderInterface = tracing_provider or NoOpTracingProvider()
         self.trace_emitter: TraceEventEmitter = TraceEventEmitter(self.tracing_provider)
+        self.default_temperature: float = default_temperature
+        self.default_max_tokens: int = default_max_tokens
         # Terminal reinforcement threshold: defaults to 3 (data-driven optimal value)
         # Can be overridden by passing explicit value to constructor
         self.terminal_reinforcement_threshold: int = terminal_reinforcement_threshold if terminal_reinforcement_threshold is not None else 3
         
         logger.info(
-            "QueryRefinementManager initialized with LLM provider: %s, Tracing Provider: %s, Terminal Reinforcement Threshold: %d",
+            "QueryRefinementManager initialized with LLM provider: %s, Tracing Provider: %s, default_temperature=%s, default_max_tokens=%s, Terminal Reinforcement Threshold: %d",
             llm_provider.__class__.__name__,
             self.tracing_provider.__class__.__name__,
+            self.default_temperature,
+            self.default_max_tokens,
             self.terminal_reinforcement_threshold,
         )
 
@@ -1751,6 +1757,7 @@ class QueryRefinementManager:
         additional_guidance: Optional[str] = None,
         model: Optional[str] = None,
         temperature: float = 0.2,
+        max_tokens_ceiling: Optional[int] = None,
     ):
         """Execute the 5-call split synthesis graph and return
         ``(QueryRefinementResponse, aggregated_metadata)``.
@@ -1774,6 +1781,11 @@ class QueryRefinementManager:
 
         agg: Dict[str, Any] = {"prompt_tokens": 0, "completion_tokens": 0, "total_tokens": 0}
 
+        def _cap_tokens(budget: int) -> int:
+            if max_tokens_ceiling is None:
+                return budget
+            return min(budget, max_tokens_ceiling)
+
         def _accumulate(meta: Optional[Dict[str, Any]]) -> None:
             if not meta:
                 return
@@ -1795,7 +1807,7 @@ class QueryRefinementManager:
             "statement",
             model=model,
             temperature=temperature,
-            max_tokens=512,
+            max_tokens=_cap_tokens(512),
         )
         _accumulate(stmt_meta)
         integrated_statement: str = (
@@ -1814,7 +1826,7 @@ class QueryRefinementManager:
             "semantic",
             model=model,
             temperature=temperature,
-            max_tokens=256,
+            max_tokens=_cap_tokens(256),
         )
         terminology_coro = self._run_split_call(
             pb.get_terminology_system_prompt(),
@@ -1823,7 +1835,7 @@ class QueryRefinementManager:
             "terminology",
             model=model,
             temperature=temperature,
-            max_tokens=1024,
+            max_tokens=_cap_tokens(1024),
         )
         filter_coro = self._run_split_call(
             pb.get_filter_resolution_system_prompt(),
@@ -1836,7 +1848,7 @@ class QueryRefinementManager:
             "filter_resolution",
             model=model,
             temperature=temperature,
-            max_tokens=256,
+            max_tokens=_cap_tokens(256),
         )
 
         (sem_result, sem_meta), (term_result, term_meta), (filt_result, filt_meta) = (
@@ -1858,7 +1870,7 @@ class QueryRefinementManager:
             "keyword_support",
             model=model,
             temperature=temperature,
-            max_tokens=512,
+            max_tokens=_cap_tokens(512),
         )
         _accumulate(kw_meta)
 
@@ -1920,8 +1932,8 @@ class QueryRefinementManager:
         session: RefinementSession,
         *,
         model: Optional[str] = None,
-        temperature: float = 0.2,
-        max_tokens: int = 4096,
+        temperature: Optional[float] = None,
+        max_tokens: Optional[int] = None,
         additional_guidance: Optional[str] = None,
     ) -> Dict[str, Any]:
         """Generate a refined query by combining the original query with clarifications.
@@ -1929,8 +1941,10 @@ class QueryRefinementManager:
         Args:
             session: Active refinement session containing user-provided clarifications.
             model: Optional model override for the synthesis call.
-            temperature: Sampling temperature for the completion (default 0.2).
-            max_tokens: Maximum tokens for the synthesis response (default 2048, increased from 512 to prevent truncation).
+            temperature: Sampling temperature for the completion. Defaults to the
+                manager-configured runtime value.
+            max_tokens: Ceiling for any synthesis subcall. Defaults to the
+                manager-configured runtime value.
             additional_guidance: Optional extra instruction appended to the prompt.
 
         Returns:
@@ -1943,6 +1957,8 @@ class QueryRefinementManager:
         start_time = time.time()
         request_id = get_request_id() or "-"
         trace_id = get_trace_id() or "-"
+        resolved_temperature = self.default_temperature if temperature is None else temperature
+        resolved_max_tokens = self.default_max_tokens if max_tokens is None else max_tokens
         
         logger.info(
             "Starting query synthesis",
@@ -1950,8 +1966,8 @@ class QueryRefinementManager:
                 "request_id": request_id,
                 "trace_id": trace_id,
                 "model": model,
-                "temperature": temperature,
-                "max_tokens": max_tokens,
+                "temperature": resolved_temperature,
+                "max_tokens": resolved_max_tokens,
                 "has_additional_guidance": additional_guidance is not None,
             },
         )
@@ -1994,6 +2010,8 @@ class QueryRefinementManager:
                 "baseline_count": len(baseline_summaries),
                 "model": model or "(default)",
                 "model_override": model,
+                "temperature": resolved_temperature,
+                "max_tokens": resolved_max_tokens,
             },
         )
 
@@ -2005,7 +2023,8 @@ class QueryRefinementManager:
                 deterministic_filters=deterministic_filters,
                 additional_guidance=additional_guidance,
                 model=model,
-                temperature=temperature,
+                temperature=resolved_temperature,
+                max_tokens_ceiling=resolved_max_tokens,
             )
         except Exception as exc:
             logger.exception("Split synthesis failed: %s", exc)
