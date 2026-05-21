@@ -11,9 +11,14 @@ class StubSettings:
         self._provider_kwargs = provider_kwargs or {"default_model": "demo"}
         self._analyzer_kwargs = analyzer_kwargs or {"temperature": 0.1}
         self.terminal_reinforcement_threshold = 3  # Default value
+        self.model = "demo"
+        self.api_base = None
+        self.completion_kwargs = {}
 
     def as_provider_kwargs(self):
-        return self._provider_kwargs
+        provider_kwargs = dict(self._provider_kwargs)
+        provider_kwargs["default_completion_kwargs"] = dict(self.completion_kwargs)
+        return provider_kwargs
 
     def as_analyzer_kwargs(self):
         return self._analyzer_kwargs
@@ -34,7 +39,10 @@ def test_build_manager_constructs_components(monkeypatch):
 
     manager = cli.build_manager(enable_tracing=True)
 
-    assert created["provider_kwargs"] == {"default_model": "demo"}
+    assert created["provider_kwargs"] == {
+        "default_model": "demo",
+        "default_completion_kwargs": {},
+    }
     assert isinstance(manager.llm_provider, FakeProvider)
     assert manager.tracing_provider == "tracer"
 
@@ -46,6 +54,25 @@ def test_build_manager_without_tracing(monkeypatch):
     manager = cli.build_manager(enable_tracing=False)
 
     assert manager.tracing_provider.__class__ is NoOpTracingProvider
+
+
+def test_build_manager_applies_context_window_override(monkeypatch):
+    created = {}
+    settings = StubSettings(provider_kwargs={"default_model": "demo", "default_completion_kwargs": {}})
+    settings.model = "ollama/qwen2.5:72b"
+
+    monkeypatch.setattr(cli.LLMSettings, "from_env", classmethod(lambda cls, **_: settings))
+
+    class FakeProvider:
+        def __init__(self, **kwargs):
+            created["provider_kwargs"] = kwargs
+
+    monkeypatch.setattr(cli, "LiteLLMProvider", FakeProvider)
+
+    cli.build_manager(enable_tracing=False, context_window=2048)
+
+    assert settings.completion_kwargs["num_ctx"] == 2048
+    assert created["provider_kwargs"]["default_completion_kwargs"]["num_ctx"] == 2048
 
 
 def test_build_manager_with_trace_dir(monkeypatch, tmp_path):
@@ -256,8 +283,15 @@ def test_parse_args_defaults():
     args = cli.parse_args([])
     assert args.framework is None
     assert args.query is None
+    assert args.context_window is None
     assert args.list_frameworks is False
     assert args.trace is False
+
+
+def test_parse_args_accepts_num_ctx_alias():
+    args = cli.parse_args(["--num-ctx", "2048"])
+
+    assert args.context_window == 2048
     assert args.trace_dir is None
     assert args.log_dir is None
 

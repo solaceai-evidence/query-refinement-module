@@ -5,8 +5,9 @@ import pytest
 from fastapi.testclient import TestClient
 from sqlalchemy.orm import Session
 
-from query_refinement_module.api.main import app
+import query_refinement_module.schema.registry as registry
 from query_refinement_module.api.dependencies import get_refinement_manager, get_session_manager
+from query_refinement_module.api.main import app
 from query_refinement_module.db.crud import (
     create_followup,
     create_query,
@@ -18,7 +19,10 @@ from query_refinement_module.db.crud import (
     update_refinement_step_generated_question,
 )
 from query_refinement_module.db.session import get_db
-from query_refinement_module.schema.registry import get_framework
+from query_refinement_module.schema.models import RefinementAspect
+
+
+FRAMEWORK_NAME = "test_reconstruction"
 
 
 @pytest.fixture
@@ -29,6 +33,23 @@ def db(test_db_session):
     app.dependency_overrides[get_db] = override_get_db
     yield test_db_session
     app.dependency_overrides.clear()
+
+
+@pytest.fixture
+def registered_framework():
+    framework = [
+        RefinementAspect(
+            id="population",
+            name="Population",
+            description="Target population characteristics",
+        )
+    ]
+    original_frameworks = registry._FRAMEWORKS.copy()
+    registry._FRAMEWORKS[FRAMEWORK_NAME] = framework
+    try:
+        yield framework
+    finally:
+        registry._FRAMEWORKS = original_frameworks
 
 
 class _CacheMissSessionManager:
@@ -118,16 +139,16 @@ def auth_user_and_token(db: Session):
     return user, client
 
 
-def test_submit_answer_reconstructs_unfinished_step_after_cache_miss(db: Session, auth_user_and_token):
+def test_submit_answer_reconstructs_unfinished_step_after_cache_miss(db: Session, auth_user_and_token, registered_framework):
     user, client = auth_user_and_token
-    framework = get_framework("pico_advanced")
+    framework = registered_framework
     stub_manager = _StubManager()
     stub_session_manager = _CacheMissSessionManager()
 
     app.dependency_overrides[get_refinement_manager] = lambda: stub_manager
     app.dependency_overrides[get_session_manager] = lambda: stub_session_manager
 
-    db_session = create_query_session(db, user_id=user.id, framework_name="pico_advanced")
+    db_session = create_query_session(db, user_id=user.id, framework_name=FRAMEWORK_NAME)
     db_query = create_query(db, session_id=db_session.id, original_query="COPD therapy question")
 
     population_step = create_refinement_step(

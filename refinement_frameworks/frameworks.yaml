@@ -119,8 +119,10 @@ cocopop_v1:
         specificity thresholds).
       - Health system capacity: ask if absent and the intervention under consideration depends
         on specific infrastructure or personnel (e.g., cold chain for vaccines, laboratory
-        diagnostics, surgical capacity, trained specialist availability). Ask if present but
-        too vague (see specificity thresholds).
+        diagnostics, surgical capacity, trained specialist availability). Do not ask for
+        burden, exposure, incidence, or risk questions when no intervention, delivery
+        platform, implementation setting, or feasibility constraint is explicitly under
+        consideration. Ask if present but too vague (see specificity thresholds).
       - Temporal context: ask if absent and the phase of the emergency determines which
         evidence or intervention types are eligible (e.g., acute search-and-rescue vs.
         recovery-phase rehabilitation; active outbreak response vs. post-outbreak surveillance).
@@ -141,7 +143,9 @@ cocopop_v1:
         anchor. Ask: "Are you focusing on a specific country or sub-region, or is the broader
         geographic scope intentional for this question?"
       - APPROPRIATE: country-level or sub-national region with at least one additional anchor
-        (hazard, income group, or setting type).
+        (hazard, income group, or setting type). Do not ask for district, province, or camp-level
+        specificity when a country-level setting already includes a meaningful hazard or setting
+        anchor and that level is adequate for retrieval.
       - TOO SPECIFIC: single district, municipality, or locality with no broader anchor. Ask:
         "Should the scope remain limited to [location], or should it be broadened to
         [country/region] to ensure sufficient evidence is available?"
@@ -170,6 +174,8 @@ cocopop_v1:
       clear:
         - statement: "Peri-urban informal settlements in coastal Mozambique, post-cyclone acute phase within 4 weeks of landfall, primary health care facilities with damaged infrastructure and no functional cold chain"
           rationale: geographic setting (coastal Mozambique), urban/rural (peri-urban), socioeconomic context (informal settlements), health system capacity (primary care, damaged, no cold chain), temporal context (post-cyclone acute, within 4 weeks) all specified
+        - statement: "Rural displacement camps in Bangladesh following riverine flooding"
+          rationale: country-level geography (Bangladesh) plus hazard (riverine flooding) and setting type (rural displacement camps) is sufficiently specific for retrieval; district-level detail is not required.
       needs_refinement:
         - statement: "Sub-Saharan Africa"
           issue: TOO BROAD — continent-level sub-region with no hazard, income, or country anchor. Encompasses dozens of countries with distinct health systems, climate hazards, and evidence bases.
@@ -180,13 +186,13 @@ cocopop_v1:
             is indexed at camp, district, or country level, not individual village.
           example_question: "Should the scope be broadened to Cox's Bazar district or the Rohingya refugee camp setting more broadly, to ensure sufficient evidence is available?"
       partial:
-        - statement: "Flood-affected districts in Bangladesh"
+        - statement: "Flood-affected districts in Bangladesh considering vaccine delivery through primary care facilities"
           has: geographic setting (Bangladesh, flood-affected districts)
           missing:
             urban/rural absent — intervention delivery in Bangladesh differs
             significantly between haor wetland areas, coastal char lands, and
-            peri-urban settlements; health system level absent and relevant
-          example_question: "Are these rural, peri-urban, or coastal communities? What health system level is relevant — community health workers, union-level health centres, or upazila health complexes?"
+            peri-urban settlements; health system level absent and relevant because vaccine delivery depends on platform capacity
+          example_question: "Are these rural, peri-urban, or coastal communities? What delivery platform is relevant — community outreach, primary care clinics, or upazila health complexes?"
       vague_ambiguous:
         - statement: "Field settings in the Global South"
           issue:

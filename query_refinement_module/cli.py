@@ -11,6 +11,7 @@ import sys
 from typing import Optional
 
 from .core import QueryRefinementManager, is_user_command, parse_user_command
+from .llm_model_defaults import get_model_defaults
 from .logging_utils import configure_file_logging
 from .providers import ConsoleTracing, FileTracingProvider, LiteLLMProvider
 from .schema import registry
@@ -23,6 +24,7 @@ def build_manager(
     enable_tracing: bool,
     trace_dir: Optional[str] = None,
     log_dir: Optional[str] = None,
+    context_window: Optional[int] = None,
 ) -> QueryRefinementManager:
     logs_directory = log_dir or trace_dir
     if logs_directory:
@@ -36,6 +38,7 @@ def build_manager(
     else:
         tracer = None
     settings = LLMSettings.from_env(load_env_file=True)
+    _apply_context_window_override(settings, context_window)
 
     provider = LiteLLMProvider(**settings.as_provider_kwargs())
     # Analyzer is deprecated - don't create one by default
@@ -48,6 +51,25 @@ def build_manager(
         default_max_tokens=getattr(settings, "max_tokens", 4096) or 4096,
         terminal_reinforcement_threshold=settings.terminal_reinforcement_threshold,
     )
+
+
+def _apply_context_window_override(
+    settings: LLMSettings,
+    context_window: Optional[int],
+) -> None:
+    if context_window is None:
+        return
+    if context_window <= 0:
+        raise ValueError("--context-window must be a positive integer")
+
+    model_defaults = get_model_defaults(settings.model, api_base=settings.api_base)
+    context_window_kwarg = model_defaults.context_window_kwarg
+    if context_window_kwarg is None:
+        raise ValueError(
+            f"--context-window is not supported for model '{settings.model}'."
+        )
+
+    settings.completion_kwargs[context_window_kwarg] = context_window
 
 
 def _format_dependency_context(session, aspect_id: str) -> Optional[str]:
@@ -425,6 +447,14 @@ def parse_args(argv: Optional[list[str]] = None) -> argparse.Namespace:
     parser = argparse.ArgumentParser(description="Interactive CLI for query refinement testing.")
     parser.add_argument("--framework", "-f", help="Name of the refinement framework to load", required=False)
     parser.add_argument("--query", "-q", help="Original query to refine", required=False)
+    parser.add_argument(
+        "--context-window",
+        "--num-ctx",
+        dest="context_window",
+        type=int,
+        help="Override the model context window for this CLI run only",
+        required=False,
+    )
     parser.add_argument("--list-frameworks", action="store_true", help="List available frameworks and exit")
     parser.add_argument("--trace", action="store_true", help="Enable verbose console tracing")
     parser.add_argument("--trace-dir", help="Write tracing operations and events to this directory")
@@ -482,12 +512,16 @@ def main(argv: Optional[list[str]] = None) -> None:
 
     trace_enabled = bool(args.trace or args.trace_dir)
 
+    build_manager_kwargs = {
+        "enable_tracing": trace_enabled,
+        "trace_dir": args.trace_dir,
+        "log_dir": args.log_dir,
+    }
+    if getattr(args, "context_window", None) is not None:
+        build_manager_kwargs["context_window"] = args.context_window
+
     try:
-        manager = build_manager(
-            enable_tracing=trace_enabled,
-            trace_dir=args.trace_dir,
-            log_dir=args.log_dir,
-        )
+        manager = build_manager(**build_manager_kwargs)
     except RuntimeError as exc:
         print(f"Failed to initialise LLM provider: {exc}")
         return

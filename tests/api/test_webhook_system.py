@@ -23,6 +23,9 @@ from query_refinement_module.db import crud_webhooks
 from query_refinement_module.services.webhook_service import WebhookService
 
 
+FRAMEWORK_NAME = 'cocopop_v1'
+
+
 # Test webhook receiver
 webhook_payloads = queue.Queue()
 
@@ -472,7 +475,7 @@ class TestWebhookIntegration:
         assign_user_framework_access(
             db,
             user_id=me_response.json()['id'],
-            framework_name='pico_advanced',
+            framework_name=FRAMEWORK_NAME,
         )
         db.commit()
         
@@ -482,7 +485,7 @@ class TestWebhookIntegration:
             headers={'Authorization': f'Bearer {test_user}'},
             json={
                 'original_query': 'test query for webhook',
-                'framework_name': 'pico_advanced'
+                'framework_name': FRAMEWORK_NAME
             }
         )
         
