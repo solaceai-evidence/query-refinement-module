@@ -98,6 +98,31 @@ def test_handle_command_skip_marks_step_complete():
     assert step.normalized_value_as_str is None
 
 
+# ── Alias normalisation (relevant to ISSUE-11) ────────────────────────────────
+
+def test_parse_user_command_previous_alias_normalises_to_prev_value():
+    """'/previous' is an alias for PREVIOUS; .command.value must be 'prev', not 'previous'."""
+    result = parse_user_command("/previous")
+    assert result.is_valid is True
+    assert result.command is UserCommand.PREVIOUS
+    assert result.command.value == "prev"
+
+
+def test_parse_user_command_end_alias_normalises_to_submit_value():
+    """'/end' is an alias for SUBMIT; .command.value must be 'submit', not 'end'."""
+    result = parse_user_command("/end")
+    assert result.is_valid is True
+    assert result.command is UserCommand.SUBMIT
+    assert result.command.value == "submit"
+
+
+def test_parse_user_command_back_canonical_value():
+    result = parse_user_command("/back")
+    assert result.is_valid is True
+    assert result.command is UserCommand.BACK
+    assert result.command.value == "back"
+
+
 def test_handle_command_done_without_response_fails():
     """Test that /done without a response marks as complete (v2.0 behavior)."""
     session = _make_session()

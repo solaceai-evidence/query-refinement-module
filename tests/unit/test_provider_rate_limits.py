@@ -360,7 +360,7 @@ def test_provider_semaphore_respects_max_concurrent():
     """max_concurrent_requests parameter wires through to the asyncio.Semaphore."""
     provider = LiteLLMProvider(default_model="ollama/qwen2.5:72b", max_concurrent_requests=5)
 
-    assert provider._semaphore._value == 5
+    assert provider._max_concurrent == 5
 
 
 @pytest.mark.asyncio

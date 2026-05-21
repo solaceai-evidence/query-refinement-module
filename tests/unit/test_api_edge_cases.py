@@ -138,7 +138,7 @@ def test_forward_to_qa_valid_https_url():
 
 
 def test_forward_to_qa_valid_http_url():
-    req = ForwardToQARequest(qa_system_url="http://localhost:9000/qa")
+    req = ForwardToQARequest(qa_system_url="http://external-qa.example.com/qa")
     assert req is not None
 
 

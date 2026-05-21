@@ -158,3 +158,30 @@ class TestUserContextParsing:
         for aspect in frameworks["test_framework"]:
             assert aspect.user_context is not None
             assert aspect.user_context.user_type == "Test User"
+
+
+# ── Thread-safety (ISSUE-14) ───────────────────────────────────────────────────
+
+import threading
+
+
+def test_reload_from_env_is_thread_safe(temp_framework_file, monkeypatch):
+    """Concurrent reload_from_env calls must not corrupt _FRAMEWORKS."""
+    monkeypatch.setenv("REFINEMENT_FRAMEWORK_PATH", temp_framework_file)
+    errors = []
+
+    def worker():
+        try:
+            reload_from_env()
+            frameworks = list_frameworks()
+            assert "test_framework" in frameworks
+        except Exception as exc:
+            errors.append(exc)
+
+    threads = [threading.Thread(target=worker) for _ in range(8)]
+    for t in threads:
+        t.start()
+    for t in threads:
+        t.join()
+
+    assert errors == [], f"Thread errors: {errors}"
