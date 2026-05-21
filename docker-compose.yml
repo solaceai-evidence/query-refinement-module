@@ -80,7 +80,7 @@ services:
       API_RATE_LIMITER_BACKEND: redis
       
       # Security
-      SECRET_KEY: ${SECRET_KEY:-please-change-this-secret-key-in-production}
+      SECRET_KEY: ${SECRET_KEY:?SECRET_KEY must be set in environment or .env file}
       ACCESS_TOKEN_EXPIRE_MINUTES: ${ACCESS_TOKEN_EXPIRE_MINUTES:-480}
       INTEGRATION_API_KEY: ${INTEGRATION_API_KEY:-}
       INTEGRATION_SERVICE_USERNAME: ${INTEGRATION_SERVICE_USERNAME:-api_integration_service}

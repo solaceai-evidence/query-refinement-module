@@ -4,7 +4,8 @@ Authentication utilities for JWT token handling and password hashing.
 from datetime import datetime, timedelta, timezone
 from typing import Optional
 import secrets
-from jose import JWTError, jwt
+import jwt
+from jwt.exceptions import PyJWTError as JWTError
 from passlib.context import CryptContext
 from fastapi import Depends, HTTPException, Request, status, Security
 from fastapi.security import OAuth2PasswordBearer, HTTPBearer, HTTPAuthorizationCredentials, APIKeyHeader
@@ -44,7 +45,8 @@ def create_access_token(data: dict, expires_delta: Optional[timedelta] = None) -
         expire = datetime.now(timezone.utc) + timedelta(minutes=settings.access_token_expire_minutes)
     to_encode.update({"exp": expire})
     encoded_jwt = jwt.encode(to_encode, settings.secret_key, algorithm=settings.algorithm)
-    return encoded_jwt
+    # PyJWT encodes as str; older versions returned bytes — ensure str
+    return encoded_jwt if isinstance(encoded_jwt, str) else encoded_jwt.decode()
 
 
 def decode_access_token(token: str) -> Optional[dict]:

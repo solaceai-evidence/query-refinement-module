@@ -326,6 +326,32 @@ Examples:
 
 
 class QueryRefinementManager:
+    def __init__(
+        self,
+        llm_provider: LLMProviderInterface,
+        tracing_provider: Optional[TracingProviderInterface] = None,
+        default_temperature: float = 0.2,
+        default_max_tokens: int = 4096,
+        terminal_reinforcement_threshold: Optional[int] = None,
+    ) -> None:
+        self.llm_provider: LLMProviderInterface = llm_provider
+        self.tracing_provider: TracingProviderInterface = tracing_provider or NoOpTracingProvider()
+        self.trace_emitter: TraceEventEmitter = TraceEventEmitter(self.tracing_provider)
+        self.default_temperature: float = default_temperature
+        self.default_max_tokens: int = default_max_tokens
+        # Terminal reinforcement threshold: defaults to 3 (data-driven optimal value)
+        # Can be overridden by passing explicit value to constructor
+        self.terminal_reinforcement_threshold: int = terminal_reinforcement_threshold if terminal_reinforcement_threshold is not None else 3
+        
+        logger.info(
+            "QueryRefinementManager initialized with LLM provider: %s, Tracing Provider: %s, default_temperature=%s, default_max_tokens=%s, Terminal Reinforcement Threshold: %d",
+            llm_provider.__class__.__name__,
+            self.tracing_provider.__class__.__name__,
+            self.default_temperature,
+            self.default_max_tokens,
+            self.terminal_reinforcement_threshold,
+        )
+
     async def run_followup_until_clear(
         self,
         session: RefinementSession,
@@ -459,34 +485,6 @@ class QueryRefinementManager:
             else:
                 raise ValueError("No refinement aspect available for follow-up loop")
         return step
-
-     
-
-    def __init__(
-        self,
-        llm_provider: LLMProviderInterface,
-        tracing_provider: Optional[TracingProviderInterface] = None,
-        default_temperature: float = 0.2,
-        default_max_tokens: int = 4096,
-        terminal_reinforcement_threshold: Optional[int] = None,
-    ) -> None:
-        self.llm_provider: LLMProviderInterface = llm_provider
-        self.tracing_provider: TracingProviderInterface = tracing_provider or NoOpTracingProvider()
-        self.trace_emitter: TraceEventEmitter = TraceEventEmitter(self.tracing_provider)
-        self.default_temperature: float = default_temperature
-        self.default_max_tokens: int = default_max_tokens
-        # Terminal reinforcement threshold: defaults to 3 (data-driven optimal value)
-        # Can be overridden by passing explicit value to constructor
-        self.terminal_reinforcement_threshold: int = terminal_reinforcement_threshold if terminal_reinforcement_threshold is not None else 3
-        
-        logger.info(
-            "QueryRefinementManager initialized with LLM provider: %s, Tracing Provider: %s, default_temperature=%s, default_max_tokens=%s, Terminal Reinforcement Threshold: %d",
-            llm_provider.__class__.__name__,
-            self.tracing_provider.__class__.__name__,
-            self.default_temperature,
-            self.default_max_tokens,
-            self.terminal_reinforcement_threshold,
-        )
 
     async def get_analysis_prompts(
         self,

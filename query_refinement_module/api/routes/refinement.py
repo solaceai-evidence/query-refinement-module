@@ -38,6 +38,7 @@ from query_refinement_module.db.crud import (
     get_user_framework_names,
     user_has_framework_access,
     update_refinement_step_generated_question,
+    update_refinement_step_final_value,
 )
 from query_refinement_module.api.auth import get_current_user_or_integration
 from query_refinement_module.api.config import get_settings
@@ -233,6 +234,38 @@ class ForwardToQARequest(BaseModel):
         description="Also include the original query alongside the refined query"
     )
 
+    @field_validator("qa_system_url")
+    @classmethod
+    def _no_private_url(cls, v: AnyHttpUrl) -> AnyHttpUrl:
+        """Block RFC-1918, loopback, and link-local targets to prevent SSRF."""
+        import ipaddress
+        host = v.host or ""
+        if host.lower() in {"localhost", "0.0.0.0"}:
+            raise ValueError("Internal/loopback hostnames are not permitted as qa_system_url")
+        try:
+            addr = ipaddress.ip_address(host)
+            if addr.is_private or addr.is_loopback or addr.is_link_local or addr.is_reserved:
+                raise ValueError("Private or internal IP addresses are not permitted as qa_system_url")
+        except ValueError as exc:
+            if "not permitted" in str(exc):
+                raise
+        return v
+
+    @field_validator("qa_system_auth")
+    @classmethod
+    def _safe_auth_headers(cls, v: Optional[Dict[str, str]]) -> Optional[Dict[str, str]]:
+        """Reject hop-by-hop and host-spoofing headers that could alter request semantics."""
+        if not v:
+            return v
+        _FORBIDDEN = frozenset({
+            "host", "content-length", "transfer-encoding",
+            "connection", "te", "trailer", "upgrade",
+        })
+        for key in v:
+            if key.lower() in _FORBIDDEN:
+                raise ValueError(f"Header '{key}' is not permitted in qa_system_auth")
+        return v
+
 
 class ForwardToQAResponse(BaseModel):
     """Response from forwarding to external QA system."""
@@ -382,7 +415,7 @@ def _restore_session_from_db_state(session, db_steps: List[Any]) -> None:
             session_step.normalized_value = None
 
 
-async def _build_next_prompt(manager, session) -> Optional[Dict[str, Any]]:
+async def _build_next_prompt(manager, session, db=None, db_steps=None) -> Optional[Dict[str, Any]]:
     """
     Build the next prompt from the next unrefined aspect in dependency order.
     
@@ -391,7 +424,7 @@ async def _build_next_prompt(manager, session) -> Optional[Dict[str, Any]]:
     
     Uses get_next_unrefined_aspect() for sequential on-demand refinement.
     """
-    max_attempts = 10  # Prevent infinite loop
+    max_attempts = len(session.steps)  # Prevent infinite loop
     attempts = 0
     
     while attempts < max_attempts:
@@ -416,7 +449,6 @@ async def _build_next_prompt(manager, session) -> Optional[Dict[str, Any]]:
         
         # No question exists - analyze with LLM to determine if dimension is already clear
         try:
-            import time
             llm_start = time.time()
             logger.info(f"  -> Generating question via LLM analysis for aspect '{step.refinement_aspect.name}'")
             logger.info(f"  -> Aspect ID: {step.refinement_aspect.id}, mode: initial")
@@ -442,6 +474,17 @@ async def _build_next_prompt(manager, session) -> Optional[Dict[str, Any]]:
             if status['complete']:
                 # Dimension is already clear - auto-completed, loop to next
                 logger.info(f"  -> Dimension '{step.refinement_aspect.name}' auto-completed with value: {str(status.get('current', ''))[:100]}")
+                # Persist auto-completion to DB so it survives Redis TTL expiry
+                if db and db_steps and step.normalized_value_as_str is not None:
+                    _db_step_row = _find_db_step_for_aspect(db_steps, step.refinement_aspect)
+                    if _db_step_row:
+                        try:
+                            update_refinement_step_final_value(
+                                db, _db_step_row.id, step.normalized_value_as_str,
+                                is_complete=True, was_skipped=False, user_ended_early=False
+                            )
+                        except Exception as _exc:
+                            logger.warning(f"  -> Could not persist auto-completion for '{step.refinement_aspect.name}': {_exc}")
                 continue
             else:
                 # Dimension needs clarification - return the question
@@ -570,7 +613,7 @@ async def _build_command_response(
     # If command failed or needs force confirmation, preserve current prompt
     if not success or force_confirmation_needed:
         logger.info(f"[_build_command_response] Command failed or needs confirmation, preserving current prompt")
-        response.next_prompt = _get_active_prompt(session) or await _build_next_prompt(manager, session)
+        response.next_prompt = _get_active_prompt(session) or await _build_next_prompt(manager, session, db=db, db_steps=db_steps)
         _persist_generated_question(db, db_steps or [], response.next_prompt)
         if force_confirmation_needed:
             response.force_required = True
@@ -578,14 +621,14 @@ async def _build_command_response(
         return response
     
     # Command-specific response fields
-    if command_type in ["status"]:
+    if command_type == UserCommand.STATUS.value:
         logger.info(f"[_build_command_response] STATUS command - adding step summary")
         response.step_summary = payload.get("summary")
         # Read-only command: never trigger an LLM call, use cached prompt only
         response.next_prompt = _get_active_prompt(session)
         response.synthesis_ready = _is_session_ready_for_synthesis(session)
     
-    elif command_type in ["steps"]:
+    elif command_type == UserCommand.STEPS.value:
         logger.info(f"[_build_command_response] STEPS command - building step list")
         # Serialize steps to JSON-compatible format
         steps = payload.get("steps", [])
@@ -613,33 +656,33 @@ async def _build_command_response(
         # Read-only command: never trigger an LLM call, use cached prompt only
         response.next_prompt = _get_active_prompt(session)
     
-    elif command_type in ["help"]:
+    elif command_type == UserCommand.HELP.value:
         logger.info(f"[_build_command_response] HELP command - showing help text")
         # Read-only command: never trigger an LLM call, use cached prompt only
         response.next_prompt = _get_active_prompt(session)
     
-    elif command_type in ["submit", "end"]:
+    elif command_type == UserCommand.SUBMIT.value:
         logger.info(f"[_build_command_response] SUBMIT/END command - marking synthesis ready")
         response.synthesis_ready = True
         response.next_prompt = None
     
-    elif command_type in ["clear"]:
+    elif command_type == UserCommand.CLEAR.value:
         logger.info(f"[_build_command_response] CLEAR command - regenerating question for current aspect")
         # Clear command - regenerate question for current aspect
-        response.next_prompt = await _build_next_prompt(manager, session)
+        response.next_prompt = await _build_next_prompt(manager, session, db=db, db_steps=db_steps)
         _persist_generated_question(db, db_steps or [], response.next_prompt)
         logger.info(f"[_build_command_response] Next prompt: {'exists' if response.next_prompt else 'None'}")
         if response.next_prompt:
             logger.info(f"[_build_command_response]   -> Aspect: {response.next_prompt.get('name')}")
     
-    elif command_type in ["back", "prev", "previous", "restart"]:
+    elif command_type in {UserCommand.BACK.value, UserCommand.PREVIOUS.value, UserCommand.RESTART.value}:
         logger.info(f"[_build_command_response] NAVIGATION command ({command_type}) - building next prompt")
         # Navigation commands - show new active step
         response.invalidated_aspects = payload.get("invalidated", [])
         
         # For back/restart, explicitly generate question for reopened step
         # Don't allow LLM to auto-complete it again
-        if command_type in ["back", "restart"]:
+        if command_type in {UserCommand.BACK.value, UserCommand.RESTART.value}:
             reopened_step = session.get_active_step()
             if reopened_step and not reopened_step.follow_up_question:
                 # Force generate a question (don't auto-complete)
@@ -709,16 +752,16 @@ async def _build_command_response(
                     # Fallback question - neutral wording since we cleared previous values
                     reopened_step.follow_up_question = f"Let's review {aspect.name} for your research query. What would you like to specify for this dimension?"
         
-        response.next_prompt = await _build_next_prompt(manager, session)
+        response.next_prompt = await _build_next_prompt(manager, session, db=db, db_steps=db_steps)
         _persist_generated_question(db, db_steps or [], response.next_prompt)
         logger.info(f"[_build_command_response] Next prompt: {'exists' if response.next_prompt else 'None'}")
         if response.next_prompt:
             logger.info(f"[_build_command_response]   -> Aspect: {response.next_prompt.get('name')}")
     
-    elif command_type in ["skip", "done"]:
+    elif command_type in {UserCommand.SKIP.value, UserCommand.DONE.value}:
         logger.info(f"[_build_command_response] CONTROL command ({command_type}) - advancing to next step")
         # Control commands - advance to next step with LLM analysis and auto-completion
-        response.next_prompt = await _build_next_prompt(manager, session)
+        response.next_prompt = await _build_next_prompt(manager, session, db=db, db_steps=db_steps)
         _persist_generated_question(db, db_steps or [], response.next_prompt)
         logger.info(f"[_build_command_response] Next prompt: {'exists' if response.next_prompt else 'None'}")
         if response.next_prompt:
@@ -785,7 +828,6 @@ async def start_refinement(
     
     Aspects are refined sequentially in dependency order, one at a time.
     """
-    import time
     from query_refinement_module.tracing import generate_request_id, set_request_id, get_request_id
     
     # Generate and set request ID for tracing
@@ -981,83 +1023,6 @@ async def start_refinement(
         total_turns=len(session.steps)
     )
     
-    # Generate question on-demand, looping until we find an aspect that needs refinement
-    # This auto-cascade continues through aspects that are immediately complete
-    max_attempts = len(session.steps)  # Prevent infinite loop
-    attempts = 0
-    current_step = session.get_next_unrefined_aspect()
-    
-    while current_step and attempts < max_attempts:
-        attempts += 1
-        try:
-            # Increment LLM call counter before generating question
-            await tracker.increment_llm_calls(str(db_query.id))
-            
-            # Generate question with retry logic
-            result = await _generate_question_with_retry(
-                manager=manager,
-                session=session,
-                aspect_id=current_step.refinement_aspect.id,
-                mode='initial'
-            )
-            
-            # Process the result
-            analysis_status = manager.process_analysis_result(
-                session=session,
-                aspect_id=current_step.refinement_aspect.id,
-                result=result
-            )
-            
-            # If not complete, we have a question to ask - break
-            if not analysis_status['complete']:
-                logger.info(f"Aspect '{current_step.refinement_aspect.name}' needs refinement - stopping auto-cascade")
-                break
-            
-            # Aspect is complete - log and save to database
-            logger.info(f"Aspect '{current_step.refinement_aspect.name}' marked complete immediately - auto-advancing")
-            
-            # Save final value to database
-            if current_step.normalized_value:
-                from query_refinement_module.db.crud import update_refinement_step_final_value
-                db_steps = get_query_refinement_steps(db, db_query.id)
-                db_step = _find_db_step_for_aspect(db_steps, current_step.refinement_aspect)
-                if db_step:
-                    update_refinement_step_final_value(
-                        db,
-                        step_id=db_step.id,
-                        final_value=current_step.normalized_value_as_str,
-                        is_complete=True,
-                        was_skipped=False,
-                        user_ended_early=False
-                    )
-                
-            # If complete, move to next aspect and continue loop
-            current_step = session.get_next_unrefined_aspect()
-            
-        except Exception as e:
-            logger.error(f"Error generating question for aspect {current_step.refinement_aspect.name}: {e}", exc_info=True)
-            # Surface provider-side failures explicitly instead of masking with generic fallback
-            error_str = str(e).lower()
-            if "credit balance" in error_str or "insufficient" in error_str:
-                raise HTTPException(
-                    status_code=status.HTTP_402_PAYMENT_REQUIRED,
-                    detail="LLM service credits exhausted. Please configure valid API credentials."
-                )
-            if "api key" in error_str or "authentication" in error_str:
-                raise HTTPException(
-                    status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
-                    detail="LLM service authentication error. Please check API configuration."
-                )
-            if "rate limit" in error_str:
-                raise HTTPException(
-                    status_code=status.HTTP_429_TOO_MANY_REQUESTS,
-                    detail="LLM service rate limit exceeded. Please try again later."
-                )
-
-            # Preserve fallback only for non-provider/transient parsing errors
-            current_step.follow_up_question = f"Please provide details about {current_step.refinement_aspect.name}."
-            break
-    
     # Get summary (will show all aspects as not yet analyzed)
     summary = {
         "total_aspects": len(session.steps),
@@ -1066,8 +1031,8 @@ async def start_refinement(
         "is_complete": session.is_complete(),
     }
     
-    next_prompt = await _build_next_prompt(manager, session)
     db_steps = get_query_refinement_steps(db, db_query.id)
+    next_prompt = await _build_next_prompt(manager, session, db=db, db_steps=db_steps)
     _persist_generated_question(db, db_steps, next_prompt)
     
     # Check if all aspects are complete (ready for synthesis)
@@ -1163,7 +1128,6 @@ async def submit_answer(
     - Control commands (/skip, /done): Mark current step complete and advance
     - Synthesis command (/submit, /end): Flag session ready for synthesis
     """
-    import time
     from query_refinement_module.tracing import generate_request_id, set_request_id, get_request_id
     
     # Generate and set request ID for tracing
@@ -1302,7 +1266,7 @@ async def _submit_answer_locked(
         
         # Check if force confirmation is needed for navigation commands
         force_confirmation_needed = False
-        if not request.force and command_type in ["back", "prev", "previous", "restart"]:
+        if not request.force and command_type in {UserCommand.BACK.value, UserCommand.PREVIOUS.value, UserCommand.RESTART.value}:
             invalidated = command_payload.get("invalidated", [])
             if invalidated and command_payload.get("success", False):
                 # Navigation would invalidate dependent aspects - require confirmation
@@ -1364,11 +1328,11 @@ async def _submit_answer_locked(
         # Save session state for state-mutating commands BEFORE audit logging so
         # the audit record only exists once the state change is durable.
         if command_payload.get("success", False) and not force_confirmation_needed:
-            if command_type in ["back", "prev", "previous", "restart", "skip", "done", "submit", "end"]:
+            if command_type in {UserCommand.BACK.value, UserCommand.PREVIOUS.value, UserCommand.RESTART.value, UserCommand.SKIP.value, UserCommand.DONE.value, UserCommand.SUBMIT.value}:
                 logger.info(f"[Query {query_id}] Saving session state after command: {command_type}")
                 
                 # Cascade delete DB records when session is truncated (referential integrity)
-                if command_type in ["back", "prev", "previous", "restart"]:
+                if command_type in {UserCommand.BACK.value, UserCommand.PREVIOUS.value, UserCommand.RESTART.value}:
                     cleared_aspects = command_payload.get("cleared_aspects", [])
                     if cleared_aspects:
                         deleted_count = delete_refinement_steps_by_aspects(
@@ -1380,7 +1344,7 @@ async def _submit_answer_locked(
                         )
                     
                     # For /back command, also reset the DB record for the reopened aspect
-                    if command_type in ["back", "prev", "previous"]:
+                    if command_type in {UserCommand.BACK.value, UserCommand.PREVIOUS.value}:
                         reopened_step = session.get_active_step()
                         if reopened_step:
                             db_steps = get_query_refinement_steps(db, query_id)
@@ -1406,7 +1370,7 @@ async def _submit_answer_locked(
                             )
                 
                 # Save dimension final values to DB when skip or done commands are used
-                if command_type in ["skip", "done"]:
+                if command_type in {UserCommand.SKIP.value, UserCommand.DONE.value}:
                     from query_refinement_module.db.crud import (
                         mark_refinement_step_skipped,
                         mark_refinement_step_user_ended_early
@@ -1464,9 +1428,8 @@ async def _submit_answer_locked(
             db_steps=get_query_refinement_steps(db, query_id),
         )
 
-        # Persist active question context if a prompt is present in command response
-        if command_response.next_prompt and command_response.next_prompt.get("question"):
-            session_manager.save_session(query_id, session)
+        # Always save so any auto-completions from _build_next_prompt are not lost
+        session_manager.save_session(query_id, session)
 
         return command_response
     
@@ -1565,7 +1528,6 @@ async def _submit_answer_locked(
     
     # If dimension is complete, save final value to database for evaluation
     if is_complete and active_step.normalized_value:
-        from query_refinement_module.db.crud import update_refinement_step_final_value
         update_refinement_step_final_value(
             db,
             step_id=db_step.id,
@@ -1608,76 +1570,8 @@ async def _submit_answer_locked(
             "description": active_step.refinement_aspect.description or "",
         }
     else:
-        # Current aspect complete - auto-cascade through any subsequent immediately-complete aspects
-        max_cascade_attempts = len(session.steps)  # Prevent infinite loop
-        cascade_attempts = 0
-        next_step = session.get_next_unrefined_aspect()
-        
-        while next_step and cascade_attempts < max_cascade_attempts:
-            cascade_attempts += 1
-            try:
-                # Generate initial question for next aspect with retry
-                question_result = await _generate_question_with_retry(
-                    manager=manager,
-                    session=session,
-                    aspect_id=next_step.refinement_aspect.id,
-                    mode='initial'
-                )
-                
-                # Process the result to update the step
-                analysis_status = manager.process_analysis_result(
-                    session=session,
-                    aspect_id=next_step.refinement_aspect.id,
-                    result=question_result
-                )
-                
-                # If not complete, we have a question - stop cascading
-                if not analysis_status['complete']:
-                    logger.info(f"Aspect '{next_step.refinement_aspect.name}' needs refinement - stopping auto-cascade")
-                    break
-                
-                # Aspect is complete - log and save to database
-                logger.info(f"Aspect '{next_step.refinement_aspect.name}' marked complete immediately - auto-advancing")
-                
-                # Save final value to database
-                if next_step.normalized_value:
-                    from query_refinement_module.db.crud import update_refinement_step_final_value
-                    db_steps = get_query_refinement_steps(db, query_id)
-                    db_step = _find_db_step_for_aspect(db_steps, next_step.refinement_aspect)
-                    if not db_step:
-                        logger.warning(
-                            "Missing refinement_step row during auto-cascade; recreating",
-                            extra={
-                                "query_id": query_id,
-                                "aspect": next_step.refinement_aspect.name,
-                            },
-                        )
-                        db_step = create_refinement_step(
-                            db,
-                            query_id=query_id,
-                            aspect_name=next_step.refinement_aspect.name,
-                            aspect_id=next_step.refinement_aspect.id,
-                        )
-
-                    update_refinement_step_final_value(
-                        db,
-                        step_id=db_step.id,
-                        final_value=next_step.normalized_value_as_str,
-                        is_complete=True,
-                        was_skipped=False,
-                        user_ended_early=False
-                    )
-                
-                # Move to next aspect and continue cascading
-                next_step = session.get_next_unrefined_aspect()
-                
-            except Exception as e:
-                logger.error(f"Error generating next question: {e}", exc_info=True)
-                # Stop cascading on error; do not rollback prior cascade writes.
-                break
-        
-        # Build prompt after cascade completes
-        next_prompt = await _build_next_prompt(manager, session)
+        # _build_next_prompt handles auto-cascade for immediately-complete aspects
+        next_prompt = await _build_next_prompt(manager, session, db=db, db_steps=db_steps)
         _persist_generated_question(db, db_steps, next_prompt)
     
     # Save updated session back to Redis
@@ -1736,7 +1630,6 @@ async def get_refinement_status(
     """
     Get the current status of a refinement workflow.
     """
-    import time
     from query_refinement_module.tracing import generate_request_id, set_request_id, get_request_id
     
     # Generate and set request ID for tracing
@@ -1810,9 +1703,9 @@ async def get_refinement_status(
         next_prompt = None
         ready_for_synthesis = True
     else:
-        next_prompt = _get_active_prompt(session) or await _build_next_prompt(manager, session)
-        ready_for_synthesis = next_prompt is None and session.is_complete()
         db_steps_status = get_query_refinement_steps(db, query_id)
+        next_prompt = _get_active_prompt(session) or await _build_next_prompt(manager, session, db=db, db_steps=db_steps_status)
+        ready_for_synthesis = next_prompt is None and session.is_complete()
         _persist_generated_question(db, db_steps_status, next_prompt)
 
     # Persist in case next prompt was generated during this status request
@@ -2130,7 +2023,6 @@ async def synthesize_refined_query(
     This combines the original query with all refinement clarifications
     into a well-formed refined query.
     """
-    import time
     from query_refinement_module.tracing import generate_request_id, set_request_id
 
     request_id_val = generate_request_id()
@@ -2685,7 +2577,6 @@ async def abandon_session(
     
     Note: AuditLog and FrontendLog entries are preserved for research.
     """
-    import time
     from query_refinement_module.tracing import generate_request_id, set_request_id
     
     # Generate and set request ID for tracing

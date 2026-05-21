@@ -9,6 +9,7 @@ This module handles:
 """
 
 import os
+import threading
 from pathlib import Path
 from typing import List, Dict, Any, Optional
 import logging
@@ -42,6 +43,7 @@ class FrameworkLoadError(RuntimeError):
 # Module-level cache for loaded frameworks
 _FRAMEWORKS: Dict[str, List[RefinementAspect]] = {}
 _LAST_LOAD_ERROR: Optional[str] = None
+_FRAMEWORKS_LOCK = threading.RLock()
 
 
 def _load_frameworks(*, raise_on_error: bool = False) -> Dict[str, List[RefinementAspect]]:
@@ -198,7 +200,9 @@ def reload_from_env(*, raise_on_error: bool = False) -> Dict[str, List[Refinemen
         Dict mapping framework names to lists of RefinementAspect objects
     """
     global _FRAMEWORKS
-    _FRAMEWORKS = _load_frameworks(raise_on_error=raise_on_error)
+    new = _load_frameworks(raise_on_error=raise_on_error)
+    with _FRAMEWORKS_LOCK:
+        _FRAMEWORKS = new
     return _FRAMEWORKS
 
 
@@ -211,7 +215,8 @@ def list_frameworks() -> List[str]:
     """
     if not _FRAMEWORKS:
         reload_from_env()
-    return list(_FRAMEWORKS.keys())
+    with _FRAMEWORKS_LOCK:
+        return list(_FRAMEWORKS.keys())
 
 
 def get_framework(name: str) -> List[RefinementAspect]:
@@ -227,14 +232,13 @@ def get_framework(name: str) -> List[RefinementAspect]:
     Raises:
         KeyError: If framework not found
     """
-    if not _FRAMEWORKS:
-        reload_from_env()
-    
-    if name not in _FRAMEWORKS:
-        available = ", ".join(_FRAMEWORKS.keys()) if _FRAMEWORKS else "none"
-        raise KeyError(f"Framework '{name}' not found. Available: {available}")
-    
-    return _FRAMEWORKS[name]
+    with _FRAMEWORKS_LOCK:
+        if not _FRAMEWORKS:
+            reload_from_env()
+        if name not in _FRAMEWORKS:
+            available = ", ".join(_FRAMEWORKS.keys()) if _FRAMEWORKS else "none"
+            raise KeyError(f"Framework '{name}' not found. Available: {available}")
+        return _FRAMEWORKS[name]
 
 
 def describe_framework(name: str) -> Dict[str, Any]:

@@ -45,18 +45,14 @@ def get_refinement_manager() -> QueryRefinementManager:
     return manager
 
 
-@lru_cache()
 def get_llm_provider() -> LiteLLMProvider:
     """
-    Get or create a singleton LiteLLMProvider instance.
-    
-    This dependency provides direct access to the LLM provider for:
-    - Circuit breaker metrics
-    - Provider health checks
-    - Direct LLM API access where needed
+    Returns the shared LiteLLMProvider from the singleton refinement manager.
+
+    Using the manager's provider ensures circuit-breaker and rate-limiter state
+    is shared across all routes rather than split across two instances.
     """
-    llm_settings = LLMSettings.from_env(require_model=False, load_env_file=True)
-    return LiteLLMProvider(**llm_settings.as_provider_kwargs())
+    return get_refinement_manager().llm_provider
 
 
 @lru_cache()

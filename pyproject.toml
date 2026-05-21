@@ -27,7 +27,7 @@ python-dotenv = "^1.2.1"
 fastapi = "^0.128.0"  # Updated for async performance improvements
 uvicorn = {extras = ["standard"], version = "^0.40.0"}  # Updated for ASGI server performance
 sqlalchemy = "^2.0.46"  # Updated for ORM performance and bug fixes
-python-jose = {extras = ["cryptography"], version = "^3.5.0"}
+PyJWT = {extras = ["crypto"], version = "^2.9"}
 passlib = {extras = ["bcrypt"], version = "^1.7.4"}
 python-multipart = "^0.0.22"  # Updated for multipart parsing improvements
 pydantic-settings = "^2.12.0"

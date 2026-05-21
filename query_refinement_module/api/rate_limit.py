@@ -12,7 +12,9 @@ except ImportError:  # pragma: no cover - optional dependency
     redis = None
     REDIS_AVAILABLE = False
 try:
-    from jose import JWTError, jwt
+    import jwt as _jwt_module
+    from jwt.exceptions import PyJWTError as JWTError
+    jwt = _jwt_module
     JOSE_AVAILABLE = True
 except ImportError:  # pragma: no cover - optional dependency
     JWTError = Exception  # type: ignore

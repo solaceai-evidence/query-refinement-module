@@ -173,12 +173,16 @@ class RedisSessionStorage(SessionStorageInterface):
 class ConcurrentSessionStorage(SessionStorageInterface):
     """
     Wrapper that adds per-session async locking to any SessionStorageInterface.
-    
+
     Ensures that concurrent async operations on the same session are serialized,
     preventing race conditions during parallel query refinement.
-    
+
     Thread-safe: Uses asyncio.Lock per session_id for async coordination.
     Automatically cleans up locks for deleted sessions.
+
+    Note: The web API uses ``SessionManager`` (Redis-backed) for session storage.
+    This class is intended for CLI/batch scripts and direct programmatic use
+    that require async-safe session access on top of an arbitrary backend.
     """
 
     def __init__(self, backend: SessionStorageInterface) -> None:
