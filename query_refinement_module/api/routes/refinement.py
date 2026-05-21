@@ -196,6 +196,10 @@ class GetRefinementStatusResponse(BaseModel):
     conversation_history: List[Dict[str, Any]] = Field(default_factory=list, description="Full conversation history for UI restoration")
 
 
+class ResumeRefinementResponse(GetRefinementStatusResponse):
+    """Current refinement state after an explicit resume operation."""
+
+
 class SynthesizeQueryRequest(BaseModel):
     """Request to synthesize the refined query."""
     query_id: int = Field(..., gt=0, description="ID of the query to synthesize")
@@ -441,6 +445,7 @@ async def _build_next_prompt(manager, session, db=None, db_steps=None) -> Option
             result = {
                 "aspect_id": step.refinement_aspect.id,
                 "name": step.refinement_aspect.name,
+                "aspect_name": step.refinement_aspect.name,
                 "question": step.follow_up_question,
                 "description": step.refinement_aspect.description or "",
             }
@@ -491,6 +496,7 @@ async def _build_next_prompt(manager, session, db=None, db_steps=None) -> Option
                 result = {
                     "aspect_id": step.refinement_aspect.id,
                     "name": step.refinement_aspect.name,
+                    "aspect_name": step.refinement_aspect.name,
                     "question": status['next_question'],
                     "description": step.refinement_aspect.description or "",
                 }
@@ -506,6 +512,7 @@ async def _build_next_prompt(manager, session, db=None, db_steps=None) -> Option
             result = {
                 "aspect_id": step.refinement_aspect.id,
                 "name": step.refinement_aspect.name,
+                "aspect_name": step.refinement_aspect.name,
                 "question": fallback_question,
                 "description": step.refinement_aspect.description or "",
             }
@@ -555,6 +562,7 @@ def _get_active_prompt(session) -> Optional[Dict[str, Any]]:
         return {
             "aspect_id": active_step.refinement_aspect.id,
             "name": active_step.refinement_aspect.name,
+            "aspect_name": active_step.refinement_aspect.name,
             "question": active_step.follow_up_question,
             "description": active_step.refinement_aspect.description or "",
         }
@@ -567,6 +575,62 @@ def _is_session_ready_for_synthesis(session) -> bool:
     if not session:
         return False
     return bool(session.synthesis_requested or session.is_complete())
+
+
+def _build_status_payload(query_id: int, db_query, session, summary: Dict[str, Any]) -> Dict[str, Any]:
+    """Serialize the current workflow state for status-like responses."""
+    active_step = session.get_active_step()
+    aspects = [
+        {
+            "aspect_id": step.refinement_aspect.id,
+            "name": step.refinement_aspect.name,
+            "is_complete": step.is_complete,
+            "needs_review": step.needs_review,
+            "was_skipped": step.was_skipped,
+            "status": (
+                "completed" if step.is_complete and not step.needs_review else
+                "needs review" if step.needs_review else
+                "active" if step == active_step else
+                "not started"
+            )
+        }
+        for step in session.steps
+    ]
+
+    conversation_history = [{
+        "type": "query",
+        "content": db_query.original_query,
+    }]
+    for step in session.steps:
+        for qa in step.conversation_history:
+            conversation_history.append({
+                "type": "question",
+                "content": qa.get('question', ''),
+                "aspectId": step.refinement_aspect.id,
+                "aspectName": step.refinement_aspect.name,
+            })
+            if qa.get('response'):
+                conversation_history.append({
+                    "type": "answer",
+                    "content": qa['response'],
+                    "aspectId": step.refinement_aspect.id,
+                })
+
+    next_prompt = None if session.synthesis_requested else _get_active_prompt(session)
+    ready_for_synthesis = _is_session_ready_for_synthesis(session)
+
+    return {
+        "query_id": query_id,
+        "original_query": db_query.original_query,
+        "refined_query": db_query.refined_query,
+        "is_complete": session.is_complete(),
+        "current_aspect": active_step.refinement_aspect.name if active_step else None,
+        "aspects_summary": summary,
+        "next_prompt": next_prompt,
+        "ready_for_synthesis": ready_for_synthesis,
+        "aspects": aspects,
+        "conversation_history": conversation_history,
+    }
 
 
 async def _build_command_response(
@@ -1081,7 +1145,7 @@ async def start_refinement(
     # Trigger webhook: refinement.started
     try:
         from query_refinement_module.services.webhook_service import (
-            trigger_webhook_event,
+            dispatch_webhook_event_async,
             build_refinement_started_payload
         )
         payload = build_refinement_started_payload(
@@ -1089,7 +1153,7 @@ async def start_refinement(
             user_id=current_user.id,
             framework=request.framework_name
         )
-        trigger_webhook_event(db, "refinement.started", payload, user_id=current_user.id)
+        dispatch_webhook_event_async("refinement.started", payload, user_id=current_user.id)
     except Exception as e:
         logger.error(f"Failed to trigger refinement.started webhook: {e}", exc_info=True)
     
@@ -1544,7 +1608,7 @@ async def _submit_answer_locked(
         # Trigger webhook: refinement.step_completed
         try:
             from query_refinement_module.services.webhook_service import (
-                trigger_webhook_event,
+                dispatch_webhook_event_async,
                 build_refinement_step_completed_payload
             )
             payload = build_refinement_step_completed_payload(
@@ -1553,7 +1617,7 @@ async def _submit_answer_locked(
                 aspect=active_step.refinement_aspect.name,
                 answer=active_step.normalized_value_as_str
             )
-            trigger_webhook_event(db, "refinement.step_completed", payload, user_id=current_user.id)
+            dispatch_webhook_event_async("refinement.step_completed", payload, user_id=current_user.id)
         except Exception as e:
             logger.error(f"Failed to trigger refinement.step_completed webhook: {e}", exc_info=True)
             # Webhook failure is non-critical; do not rollback already-committed DB writes.
@@ -1566,6 +1630,7 @@ async def _submit_answer_locked(
         next_prompt = {
             "aspect_id": active_step.refinement_aspect.id,
             "name": active_step.refinement_aspect.name,
+            "aspect_name": active_step.refinement_aspect.name,
             "question": active_step.follow_up_question or fallback_question,
             "description": active_step.refinement_aspect.description or "",
         }
@@ -1584,14 +1649,14 @@ async def _submit_answer_locked(
     if ready_for_synthesis:
         try:
             from query_refinement_module.services.webhook_service import (
-                trigger_webhook_event,
+                dispatch_webhook_event_async,
                 build_refinement_complete_payload
             )
             payload = build_refinement_complete_payload(
                 query_id=query_id,
                 total_steps=len(session.steps)
             )
-            trigger_webhook_event(db, "refinement.complete", payload, user_id=current_user.id)
+            dispatch_webhook_event_async("refinement.complete", payload, user_id=current_user.id)
         except Exception as e:
             logger.error(f"Failed to trigger refinement.complete webhook: {e}", exc_info=True)
             # Webhook failure is non-critical; do not rollback already-committed DB writes.
@@ -1690,67 +1755,9 @@ async def get_refinement_status(
         # Restore persisted DB state (follow-ups + final values + completion flags)
         db_steps = get_query_refinement_steps(db, query_id)
         _restore_session_from_db_state(session, db_steps)
-        
-        # Re-cache the reconstructed session
-        session_manager.save_session(query_id, session)
     
     summary = manager.get_initialization_summary(session)
-    active_step = session.get_active_step()
-    
-    # Build next prompt and check if ready for synthesis
-    if session.synthesis_requested:
-        # Keep /status semantics aligned with /submit command behavior
-        next_prompt = None
-        ready_for_synthesis = True
-    else:
-        db_steps_status = get_query_refinement_steps(db, query_id)
-        next_prompt = _get_active_prompt(session) or await _build_next_prompt(manager, session, db=db, db_steps=db_steps_status)
-        ready_for_synthesis = next_prompt is None and session.is_complete()
-        _persist_generated_question(db, db_steps_status, next_prompt)
-
-    # Persist in case next prompt was generated during this status request
-    session_manager.save_session(query_id, session)
-    
-    # Build aspects list for frontend
-    aspects = [
-        {
-            "aspect_id": step.refinement_aspect.id,
-            "name": step.refinement_aspect.name,
-            "is_complete": step.is_complete,
-            "needs_review": step.needs_review,
-            "was_skipped": step.was_skipped,
-            "status": (
-                "completed" if step.is_complete and not step.needs_review else
-                "needs review" if step.needs_review else
-                "active" if step == active_step else
-                "not started"
-            )
-        }
-        for step in session.steps
-    ]
-    
-    # Build conversation history for frontend restoration
-    conversation_history = []
-    # Add initial query
-    conversation_history.append({
-        "type": "query",
-        "content": db_query.original_query
-    })
-    # Add all Q&A exchanges from all steps
-    for step in session.steps:
-        for qa in step.conversation_history:
-            conversation_history.append({
-                "type": "question",
-                "content": qa.get('question', ''),
-                "aspectId": step.refinement_aspect.id,
-                "aspectName": step.refinement_aspect.name
-            })
-            if qa.get('response'):
-                conversation_history.append({
-                    "type": "answer",
-                    "content": qa['response'],
-                    "aspectId": step.refinement_aspect.id
-                })
+    payload = _build_status_payload(query_id, db_query, session, summary)
     
     duration_ms = (time.time() - start_time) * 1000
     logger.info(
@@ -1760,24 +1767,84 @@ async def get_refinement_status(
             "user_id": current_user.id,
             "query_id": query_id,
             "is_complete": session.is_complete(),
-            "current_aspect": active_step.refinement_aspect.name if active_step else None,
-            "ready_for_synthesis": ready_for_synthesis,
+            "current_aspect": payload["current_aspect"],
+            "ready_for_synthesis": payload["ready_for_synthesis"],
             "duration_ms": round(duration_ms, 2),
         },
     )
-    
-    return GetRefinementStatusResponse(
-        query_id=query_id,
-        original_query=db_query.original_query,
-        refined_query=db_query.refined_query,
-        is_complete=session.is_complete(),
-        current_aspect=active_step.refinement_aspect.name if active_step else None,
-        aspects_summary=summary,
-        next_prompt=next_prompt,
-        ready_for_synthesis=ready_for_synthesis,
-        aspects=aspects,
-        conversation_history=conversation_history
+
+    return GetRefinementStatusResponse(**payload)
+
+
+@router.post("/queries/{query_id}/resume", response_model=ResumeRefinementResponse)
+async def resume_refinement(
+    query_id: int,
+    manager: QueryRefinementManager = Depends(get_refinement_manager),
+    current_user = Depends(get_current_user_or_integration),
+    db: Session = Depends(get_db),
+    session_manager: SessionManager = Depends(get_session_manager),
+):
+    """Resume a refinement workflow and explicitly generate the next prompt when needed."""
+    request_id = generate_request_id()
+    set_request_id(request_id)
+    start_time = time.time()
+
+    db_query = get_query(db, query_id)
+    if not db_query:
+        raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Query not found")
+
+    if db_query.session.user_id != current_user.id:
+        raise HTTPException(status_code=status.HTTP_403_FORBIDDEN, detail="Access denied")
+
+    framework_name = db_query.session.framework_name
+    if not framework_name:
+        raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail="Framework name not found for session")
+
+    framework = get_framework(framework_name)
+
+    try:
+        async with session_manager.session_lock(query_id):
+            session = session_manager.load_session(query_id, framework)
+
+            if not session:
+                logger.warning("Session not found in Redis for query_id=%d, reconstructing from database", query_id)
+                session = await asyncio.to_thread(
+                    manager.initialize_sequential,
+                    db_query.original_query,
+                    framework,
+                )
+                db_steps = get_query_refinement_steps(db, query_id)
+                _restore_session_from_db_state(session, db_steps)
+            else:
+                db_steps = get_query_refinement_steps(db, query_id)
+
+            if not session.synthesis_requested and _get_active_prompt(session) is None:
+                next_prompt = await _build_next_prompt(manager, session, db=db, db_steps=db_steps)
+                _persist_generated_question(db, db_steps, next_prompt)
+
+            session_manager.save_session(query_id, session)
+    except RuntimeError as exc:
+        logger.warning("Could not acquire session lock for query %d during resume: %s", query_id, exc)
+        raise HTTPException(
+            status_code=status.HTTP_503_SERVICE_UNAVAILABLE,
+            detail="Session is temporarily locked by another request. Please retry in a moment.",
+        )
+
+    summary = manager.get_initialization_summary(session)
+    payload = _build_status_payload(query_id, db_query, session, summary)
+    duration_ms = (time.time() - start_time) * 1000
+    logger.info(
+        "API: Refinement session resumed",
+        extra={
+            "request_id": request_id,
+            "user_id": current_user.id,
+            "query_id": query_id,
+            "current_aspect": payload["current_aspect"],
+            "ready_for_synthesis": payload["ready_for_synthesis"],
+            "duration_ms": round(duration_ms, 2),
+        },
     )
+    return ResumeRefinementResponse(**payload)
 
 
 # ==========================================
@@ -1813,11 +1880,10 @@ async def _run_synthesis(
     # Webhook: synthesis.started
     try:
         from query_refinement_module.services.webhook_service import (
-            trigger_webhook_event,
+            dispatch_webhook_event_async,
             build_synthesis_started_payload,
         )
-        trigger_webhook_event(
-            db,
+        dispatch_webhook_event_async(
             "synthesis.started",
             build_synthesis_started_payload(
                 query_id=query_id,
@@ -1965,11 +2031,10 @@ async def _run_synthesis(
     # Webhook: synthesis.complete
     try:
         from query_refinement_module.services.webhook_service import (
-            trigger_webhook_event,
+            dispatch_webhook_event_async,
             build_synthesis_complete_payload,
         )
-        trigger_webhook_event(
-            db,
+        dispatch_webhook_event_async(
             "synthesis.complete",
             build_synthesis_complete_payload(
                 query_id=query_id,
@@ -2050,34 +2115,43 @@ async def synthesize_refined_query(
         raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail="Framework name not found for session")
 
     framework = get_framework(framework_name)
-    session = session_manager.load_session(request.query_id, framework)
 
-    if not session:
-        logger.warning("Session not found in Redis for query_id=%d, reconstructing from database", request.query_id)
-        session = await asyncio.to_thread(
-            manager.initialize_sequential,
-            db_query.original_query,
-            framework,
-        )
-        db_steps = get_query_refinement_steps(db, request.query_id)
-        _restore_session_from_db_state(session, db_steps)
+    try:
+        async with session_manager.session_lock(request.query_id):
+            session = session_manager.load_session(request.query_id, framework)
 
-    if not _is_session_ready_for_synthesis(session):
+            if not session:
+                logger.warning("Session not found in Redis for query_id=%d, reconstructing from database", request.query_id)
+                session = await asyncio.to_thread(
+                    manager.initialize_sequential,
+                    db_query.original_query,
+                    framework,
+                )
+                db_steps = get_query_refinement_steps(db, request.query_id)
+                _restore_session_from_db_state(session, db_steps)
+
+            if not _is_session_ready_for_synthesis(session):
+                raise HTTPException(
+                    status_code=status.HTTP_409_CONFLICT,
+                    detail="Query is not ready for synthesis. Complete all dimensions or use /submit first.",
+                )
+
+            response = await _run_synthesis(
+                manager=manager,
+                session=session,
+                db=db,
+                db_query=db_query,
+                current_user=current_user,
+                session_manager=session_manager,
+                query_id=request.query_id,
+                request_id=request_id_val,
+            )
+    except RuntimeError as exc:
+        logger.warning("Could not acquire session lock for query %d during synthesis: %s", request.query_id, exc)
         raise HTTPException(
-            status_code=status.HTTP_409_CONFLICT,
-            detail="Query is not ready for synthesis. Complete all dimensions or use /submit first.",
+            status_code=status.HTTP_503_SERVICE_UNAVAILABLE,
+            detail="Session is temporarily locked by another request. Please retry in a moment.",
         )
-
-    response = await _run_synthesis(
-        manager=manager,
-        session=session,
-        db=db,
-        db_query=db_query,
-        current_user=current_user,
-        session_manager=session_manager,
-        query_id=request.query_id,
-        request_id=request_id_val,
-    )
 
     duration_ms = (time.time() - start_time) * 1000
     logger.info(
@@ -2253,7 +2327,7 @@ async def forward_to_qa_system(
             
             # Trigger webhook: query.forwarded (if webhook system supports it)
             try:
-                from query_refinement_module.services.webhook_service import trigger_webhook_event
+                from query_refinement_module.services.webhook_service import dispatch_webhook_event_async
                 webhook_payload = {
                     "query_id": query_id,
                     "refined_query": db_query.refined_query,
@@ -2263,7 +2337,7 @@ async def forward_to_qa_system(
                 }
                 # Note: This event type might not exist yet in WebhookEventType
                 # It will be silently skipped if no webhooks are subscribed
-                trigger_webhook_event(db, "query.forwarded", webhook_payload, user_id=current_user.id)
+                dispatch_webhook_event_async("query.forwarded", webhook_payload, user_id=current_user.id)
             except Exception as e:
                 request_logger.warning(f"Failed to trigger webhook for QA forwarding: {e}")
             

@@ -119,6 +119,64 @@ class _StubManager:
             "next_question": result.question,
         }
 
+    def get_initialization_summary(self, session):
+        aspects = []
+        completed = 0
+        for step in session.steps:
+            if step.is_complete:
+                completed += 1
+            aspects.append(
+                {
+                    "aspect_id": step.refinement_aspect.id,
+                    "name": step.refinement_aspect.name,
+                    "is_complete": step.is_complete,
+                    "status": "completed" if step.is_complete else "active",
+                }
+            )
+        return {
+            "total_aspects": len(session.steps),
+            "completed_aspects": completed,
+            "aspects": aspects,
+        }
+
+
+class _GuardedStatusManager(_StubManager):
+    async def get_analysis_prompts(self, *, session, aspect_id, mode):
+        raise AssertionError("status should not trigger prompt generation")
+
+
+class _LockTrackingSessionManager(_CacheMissSessionManager):
+    def __init__(self, session=None):
+        super().__init__()
+        self.locked_query_ids = []
+        self.session = session
+        self.deleted_sessions = []
+
+    @contextlib.asynccontextmanager
+    async def session_lock(self, query_id: int):
+        self.locked_query_ids.append(query_id)
+        yield
+
+    def load_session(self, query_id: int, framework, request_id=None):
+        self.load_calls += 1
+        return self.session
+
+    def delete_session(self, query_id: int):
+        self.deleted_sessions.append(query_id)
+        return True
+
+
+class _SynthesisManager:
+    async def synthesize_refined_query(self, session):
+        return {
+            "integrated_statement": "Adults with COPD receiving pulmonary rehabilitation.",
+            "dimensions_specifications": {"population": "Adults with COPD"},
+            "search_optimized": {"semantic": "pulmonary rehabilitation COPD adults"},
+            "search_filters": {"publication_types": ["Systematic review"]},
+            "terminology": {"synonyms": {"COPD": ["chronic obstructive pulmonary disease"]}},
+            "used_llm": True,
+        }
+
 
 @pytest.fixture
 def auth_user_and_token(db: Session):
@@ -203,3 +261,121 @@ def test_submit_answer_reconstructs_unfinished_step_after_cache_miss(db: Session
             "history_len": 2,
         }
     ]
+
+
+def test_status_is_read_only_on_cache_miss(db: Session, auth_user_and_token, registered_framework):
+    user, client = auth_user_and_token
+    stub_manager = _GuardedStatusManager()
+    stub_session_manager = _CacheMissSessionManager()
+
+    app.dependency_overrides[get_refinement_manager] = lambda: stub_manager
+    app.dependency_overrides[get_session_manager] = lambda: stub_session_manager
+
+    try:
+        db_session = create_query_session(db, user_id=user.id, framework_name=FRAMEWORK_NAME)
+        db_query = create_query(db, session_id=db_session.id, original_query="COPD therapy question")
+
+        create_refinement_step(
+            db,
+            query_id=db_query.id,
+            aspect_name="Population",
+            aspect_id="population",
+        )
+
+        response = client.get(f"/api/v1/refinement/queries/{db_query.id}/status")
+
+        assert response.status_code == 200
+        payload = response.json()
+        assert payload["query_id"] == db_query.id
+        assert payload["current_aspect"] == "Population"
+        assert payload["next_prompt"] is None
+        assert payload["ready_for_synthesis"] is False
+        assert stub_session_manager.load_calls == 1
+        assert stub_session_manager.saved_sessions == {}
+        assert stub_manager.followup_calls == []
+    finally:
+        app.dependency_overrides.pop(get_refinement_manager, None)
+        app.dependency_overrides.pop(get_session_manager, None)
+
+
+def test_resume_generates_prompt_after_cache_miss(db: Session, auth_user_and_token, registered_framework):
+    user, client = auth_user_and_token
+    stub_manager = _StubManager()
+    stub_session_manager = _CacheMissSessionManager()
+
+    app.dependency_overrides[get_refinement_manager] = lambda: stub_manager
+    app.dependency_overrides[get_session_manager] = lambda: stub_session_manager
+
+    try:
+        db_session = create_query_session(db, user_id=user.id, framework_name=FRAMEWORK_NAME)
+        db_query = create_query(db, session_id=db_session.id, original_query="COPD therapy question")
+
+        population_step = create_refinement_step(
+            db,
+            query_id=db_query.id,
+            aspect_name="Population",
+            aspect_id="population",
+        )
+
+        response = client.post(f"/api/v1/refinement/queries/{db_query.id}/resume")
+
+        assert response.status_code == 200
+        payload = response.json()
+        assert payload["current_aspect"] == "Population"
+        assert payload["next_prompt"]["aspect_id"] == "population"
+        assert payload["next_prompt"]["question"] == "Any specific comorbidities?"
+        assert stub_session_manager.load_calls == 1
+        assert db_query.id in stub_session_manager.saved_sessions
+
+        db_step = get_refinement_step_by_aspect(db, query_id=db_query.id, aspect_id="population")
+        assert db_step is not None
+        assert db_step.id == population_step.id
+        assert db_step.generated_question == "Any specific comorbidities?"
+    finally:
+        app.dependency_overrides.pop(get_refinement_manager, None)
+        app.dependency_overrides.pop(get_session_manager, None)
+
+
+def test_synthesize_route_acquires_session_lock(db: Session, auth_user_and_token, registered_framework, monkeypatch):
+    user, client = auth_user_and_token
+    stub_manager = _StubManager()
+    session = stub_manager.initialize_sequential("COPD therapy question", registered_framework)
+    session.synthesis_requested = True
+    session_manager = _LockTrackingSessionManager(session=session)
+
+    app.dependency_overrides[get_refinement_manager] = lambda: _SynthesisManager()
+    app.dependency_overrides[get_session_manager] = lambda: session_manager
+
+    async def _track_progress(**kwargs):
+        return None
+
+    class _Tracker:
+        async def increment_llm_calls(self, query_id: str):
+            return None
+
+    monkeypatch.setattr("query_refinement_module.api.routes.refinement.track_progress", _track_progress)
+    monkeypatch.setattr("query_refinement_module.api.routes.refinement.get_progress_tracker", lambda: _Tracker())
+    monkeypatch.setattr(
+        "query_refinement_module.api.routes.refinement.get_settings",
+        lambda: SimpleNamespace(enforce_workflow_limit=False),
+    )
+    monkeypatch.setattr(
+        "query_refinement_module.services.webhook_service.dispatch_webhook_event_async",
+        lambda *args, **kwargs: None,
+    )
+
+    try:
+        db_session = create_query_session(db, user_id=user.id, framework_name=FRAMEWORK_NAME)
+        db_query = create_query(db, session_id=db_session.id, original_query="COPD therapy question")
+
+        response = client.post(
+            "/api/v1/refinement/synthesize",
+            json={"query_id": db_query.id},
+        )
+
+        assert response.status_code == 200
+        assert session_manager.locked_query_ids == [db_query.id]
+        assert session_manager.deleted_sessions == [db_query.id]
+    finally:
+        app.dependency_overrides.pop(get_refinement_manager, None)
+        app.dependency_overrides.pop(get_session_manager, None)

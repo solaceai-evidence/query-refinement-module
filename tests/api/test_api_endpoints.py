@@ -12,6 +12,7 @@ from typing import Dict
 from query_refinement_module.api.config import get_settings
 
 BASE_URL = "http://localhost:8001/api/v1"
+API_ROOT = BASE_URL.replace("/api/v1", "")
 DB_PATH = "query_refinement.db"
 AUTH_COOKIE_NAME = get_settings().auth_cookie_name
 
@@ -33,7 +34,7 @@ def check_api_health():
     For clean test runs, use the run_api_tests.sh script which handles database reset.
     """
     try:
-        response = requests.get(f"{BASE_URL}/health", timeout=5)
+        response = requests.get(f"{API_ROOT}/health", timeout=5)
         if response.status_code == 200:
             print("✅ API is running and healthy")
             if os.path.exists(DB_PATH):
@@ -354,7 +355,7 @@ def test_17_end_session():
 
 def test_18_health_check():
     """Test health check endpoint."""
-    response = requests.get(f"{BASE_URL}/health")
+    response = requests.get(f"{API_ROOT}/health")
     return print_response("18. Health Check", response)
 
 

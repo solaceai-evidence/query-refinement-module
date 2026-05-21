@@ -457,7 +457,7 @@ def test_back_truncates_steps():
 
 
 def test_restart_command_comprehensive():
-    """Test /restart command truncates all steps and cascade deletes all DB records."""
+    """Test /restart clears progress and reinitializes the framework from the first step."""
     token = register_and_login()
     session_data = create_test_session(token)
     query_id = session_data["query_id"]
@@ -477,15 +477,13 @@ def test_restart_command_comprehensive():
     if data.get("next_prompt"):
         assert data["next_prompt"]["aspect_id"] == initial_aspect
     
-    # Verify all steps cleared in session AND DB
+    # Verify restart cleared progress while preserving the framework definition
     status_data = submit_command(token, query_id, "/status")
     summary = status_data["step_summary"]
-    assert summary["total_steps"] == 0, "Restart should truncate all steps"
+    assert summary["completed"] == 0, "Restart should clear all completed progress"
+    assert summary["total_steps"] > 0, "Restart should preserve framework steps as fresh placeholders"
     
-    # DB consistency verified: if session reconstructs from DB, counts would mismatch
-    # Consistent total_steps=0 confirms cascade delete happened
-    
-    print("✓ /restart truncates all steps and cascade deletes DB records")
+    print("✓ /restart clears progress and reinitializes the framework")
 
 
 # ============================================================================

@@ -6,16 +6,34 @@ import time
 import pytest
 
 from query_refinement_module.api.config import get_settings
+from query_refinement_module.db.crud import (
+    assign_user_framework_access,
+    get_user_by_username_or_email,
+)
+from query_refinement_module.db.database import SessionLocal
 
 # Test configuration
 BASE_URL = "http://localhost:8001/api/v1"
+API_ROOT = BASE_URL.replace("/api/v1", "")
 AUTH_COOKIE_NAME = get_settings().auth_cookie_name
+
+
+def ensure_framework_access(identifier: str, framework_name: str) -> None:
+    """Grant framework access directly in the local DB for live API tests."""
+    db = SessionLocal()
+    try:
+        user = get_user_by_username_or_email(db, identifier)
+        if user is None:
+            raise Exception(f"Could not find user '{identifier}' to assign framework access")
+        assign_user_framework_access(db, user.id, framework_name)
+    finally:
+        db.close()
 
 
 def check_api_health() -> bool:
     """Check if API server is running and database is accessible."""
     try:
-        response = requests.get(f"{BASE_URL}/health", timeout=5)
+        response = requests.get(f"{API_ROOT}/health", timeout=5)
         return response.status_code == 200
     except requests.exceptions.RequestException:
         return False
@@ -64,6 +82,9 @@ def register_and_login() -> str:
     token = login_response.cookies.get(AUTH_COOKIE_NAME)
     if not token:
         raise Exception("Login succeeded but auth cookie was not set")
+
+    ensure_framework_access(username, "pico_advanced")
+    ensure_framework_access(username, "pico_advanced_complete")
 
     return token
 
@@ -130,8 +151,6 @@ def test_start_refinement_workflow():
     
     print(f"✓ Started refinement - Query ID: {data['query_id']}, Session ID: {data['session_id']}")
     print(f"  Summary: {summary['aspects_needing_refinement']} needing refinement, {summary['aspects_clear']} clear")
-    
-    return data
 
 
 def test_get_refinement_status():
@@ -236,8 +255,15 @@ def test_synthesize_query():
     
     assert start_response.status_code == 201
     query_id = start_response.json()["query_id"]
+
+    submit_response = requests.post(
+        f"{BASE_URL}/refinement/queries/{query_id}/answer",
+        json={"answer": "/submit"},
+        headers=headers,
+    )
+    assert submit_response.status_code == 200, submit_response.text
     
-    # Synthesize (this will work even without answers - returns original query)
+    # Synthesize after explicitly marking the session ready.
     response = requests.post(
         f"{BASE_URL}/refinement/synthesize",
         json={
@@ -291,10 +317,12 @@ def test_invalid_framework():
         headers=headers
     )
     
-    # Accept either 404 (framework not found) or 500 (LLM config issue when loading framework)
-    assert response.status_code in [404, 500], f"Expected 404 or 500, got {response.status_code}"
+    # The current API authorizes framework usage before exposing framework existence.
+    assert response.status_code in [403, 404, 500], f"Expected 403, 404 or 500, got {response.status_code}"
     if response.status_code == 404:
         assert "not found" in response.json()["detail"].lower()
+    elif response.status_code == 403:
+        assert "not authorized" in response.json()["detail"].lower()
     print("✓ Invalid framework properly rejected")
 
 

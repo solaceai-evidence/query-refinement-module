@@ -15,6 +15,7 @@ import pytest
 from query_refinement_module.api.config import get_settings
 
 BASE_URL = "http://localhost:8001/api/v1"
+API_ROOT = BASE_URL.replace("/api/v1", "")
 AUTH_COOKIE_NAME = get_settings().auth_cookie_name
 
 # Test user credentials
@@ -34,7 +35,7 @@ REGULAR_USER = {
 def check_api_health():
     """Check if API is running."""
     try:
-        response = requests.get(f"{BASE_URL}/health", timeout=5)
+        response = requests.get(f"{API_ROOT}/health", timeout=5)
         return response.status_code == 200
     except:
         return False

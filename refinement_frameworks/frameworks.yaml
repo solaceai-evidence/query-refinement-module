@@ -283,3 +283,1160 @@ cocopop_v1:
           example_question:
             "Should the age range be broadened to reproductive-age women
             (15-49 years) to ensure sufficient evidence is available?"
+mph_dissertation:
+  - user_context:
+      user_type: "MPH student"
+      context:
+        "Early-stage dissertation conceptualization. MPH student is exploring
+        potential research topics for their Master of Public Health
+        capstone/dissertation project. They need help refining vague or broad
+        ideas into focused, feasible research questions with appropriate scope
+        for a 6-12 month student project with limited resources."
+      tone: "educational" # (educational, professional, pragmatic)
+      complexity: "intermediate" # (novice, intermediate, advanced, expert)
+      examples_from: "public health"
+      constraints:
+        - "Timeline: 6-12 months limits study designs (prospective cohorts,
+          RCTs, and longitudinal designs infeasible; cross-sectional,
+          retrospective, or rapid reviews preferred)"
+        - "Ethics approval: Primary data collection requires ethics committee
+          approval (2-3 months expedited, 4-6 months full review); NHS ethics
+          for patient data adds further complexity"
+        - "Sample size: Primary data collection >200 (surveys) or >100
+          (in-person) or >30 (clinical) typically exceeds capacity; secondary
+          data (UK Data Service, ONS, CPRD) or smaller qualitative samples
+          (15-25) preferred"
+        - "Scope and methods: Single focused research question; mixed methods
+          with equal weighting or novel instrument development rarely feasible
+          within timeframe"
+        - "Data access: UK datasets requiring application (CPRD, HES,
+          longitudinal cohorts) take 1-3 months approval; publicly available
+          datasets (Health Survey for England, Understanding Society) or
+          institutional data preferred"
+        - "Resources: Projects requiring substantial budget (participant
+          incentives, professional transcription, proprietary software, travel)
+          may need funding applications; low-cost or unfunded approaches
+          preferred"
+  - id: mph_research_domain
+    name: "MPH research domain"
+    description: the public health topic or health issue under investigation
+    strictness: MODERATE #(MODERATE | PERMISSIVE |  STRICT)
+    specifications: |
+      **Task:** Evaluate and assemble the public health domain specification for MPH dissertation research.
+
+      **Elements to track:**
+      - Health topic category (disease/condition, health behavior, health system, environmental health, social determinant)
+      - Specificity level (field → subdomain → specific issue)
+      - Public health relevance (disease burden, health equity, prevention potential, policy relevance)
+      - Literature availability (established field vs. emerging area)
+      - Feasibility for 6-12 month MPH project
+
+      **Required:**
+      - Specific health issue or public health topic identified
+      - Appropriate scope (not entire fields, not hyper-niche)
+      - Clear public health relevance
+
+      **Not required but helpful:**
+      - Geographic or population focus (can be refined later)
+      - Specific aspect within topic (addressed in research_focus)
+
+      **Scope calibration:**
+      - TOO BROAD: entire fields ("epidemiology", "public health", "communicable diseases")
+      - APPROPRIATE: specific issues ("childhood obesity", "vaccine hesitancy", "air pollution and asthma")
+      - TOO NARROW: multiple specificity layers ("rotavirus vaccine intussusception in UK infants")
+
+      **Context dependencies:**
+      - Epidemiology students → lean toward disease/risk factor topics
+      - Health policy students → lean toward systems/policy topics
+      - Global health/LMIC focus → accept domains where grey literature predominates
+      - Emerging topics (digital health, climate) → accept broader scope if foundational literature exists
+    examples:
+      clear:
+        - statement: childhood obesity
+          rationale:
+            Specific health condition, defined life stage, major public health
+            issue with clear boundaries and established literature
+        - statement: vaccine hesitancy
+          rationale:
+            Distinct health behavior, established public health significance,
+            clear boundaries
+      needs_refinement:
+        - statement: public health
+          issue: Entire field; no specific topic
+          example_question:
+            Public health covers many areas. Which specific health issue
+            interests you? For example, a disease, health behavior, health
+            system issue, or environmental factor?
+        - statement: rotavirus vaccine-associated intussusception in under-1s in UK
+          issue: Multiple layers of specificity; very narrow; limited literature
+          example_question:
+            This is quite specialized for an MPH dissertation. Would you
+            consider broadening to vaccine safety monitoring, rotavirus
+            vaccination effectiveness, or post-marketing surveillance?
+      partial:
+        - statement: diabetes
+          has: Disease identified
+          missing: Type of diabetes, specific aspect of diabetes
+          example_question:
+            Diabetes is a good starting point. Are you interested in Type
+            2 diabetes specifically? And which aspect - risk factors,
+            complications, management, or screening?
+        - statement: mental health
+          has: Health domain identified
+          missing: Specific mental health issue or aspect
+          example_question:
+            Mental health is broad. Which aspect - specific conditions
+            (depression, anxiety), service access, stigma, or a specific
+            population?
+      vague_ambiguous:
+        - statement: health improvement
+          issue: No specific health topic identified; just an outcome
+          example_question:
+            Health improvement is a goal, not a topic. Which specific
+            health issue do you want to address - a disease, behavior, or system
+            problem?
+        - statement: wellness
+          issue: Vague term with multiple possible meanings
+          example_question:
+            What aspect of wellness interests you - physical health,
+            mental wellbeing, workplace wellness programs?
+  - id: mph_research_focus
+    name: "MPH research focus"
+    description:
+      "what the student specifically wants to investigate, examine, or
+      understand about their topic"
+    strictness: MODERATE #(MODERATE | PERMISSIVE |  STRICT)
+    depends_on:
+      - mph_research_domain
+      - population
+    specifications: |
+      **Task:** Evaluate and assemble the investigative focus for MPH dissertation research.
+
+      **Elements to track:**
+      - Investigative direction (what specifically will be examined)
+      - Focus type (relationships, patterns, factors, effectiveness, experiences, barriers, prevalence, trends)
+      - Analytical approach (descriptive, comparative, evaluative, exploratory)
+      - Alignment with domain (still same health topic?)
+      - Measurability (can this be observed/measured?)
+
+      **Required:**
+      - Clear specification of what will be investigated
+      - Research-oriented framing (investigative, not solution-focused)
+      - Alignment with stated research domain
+
+      **Not required:**
+      - Formal framework structure (PICO/SPIDER/ECLIPSE helpful but not mandatory)
+      - Complete population/method specification (refined in later dimensions)
+
+      **Focus type guidance:**
+      - DESCRIPTIVE: prevalence, distribution, trends, characteristics
+      - COMPARATIVE: differences between groups, settings, time periods
+      - EVALUATIVE: effectiveness, impact, outcomes of interventions/policies
+      - EXPLORATORY: barriers, facilitators, experiences, perceptions, factors
+
+      **Red flags to address:**
+      - Solution-focused ("How can we eliminate X?") → reframe to investigative
+      - Purely definitional ("What is X?") → better for literature review, redirect
+      - Causation language without appropriate design → flag limitations
+      - Multiple bundled inquiries → help prioritize one focus
+    examples:
+      clear:
+        - statement:
+            examining the relationship between air pollution exposure and asthma
+            hospitalization rates in urban areas
+          rationale:
+            Clear relationship being examined, specific variables identified,
+            investigative rather than descriptive
+        - statement:
+            investigating factors that influence vaccine hesitancy among parents
+            of young children
+          rationale:
+            Specific phenomenon, clear investigative aim (factors/determinants),
+            defined population
+      needs_refinement:
+        - statement: childhood obesity
+          issue: Topic only; no investigative direction specified
+          example_question:
+            What specifically do you want to investigate about childhood
+            obesity - prevalence, risk factors, interventions, barriers, or
+            policies?
+        - statement: How can we solve the obesity crisis?
+          issue: Solution-focused and too broad; research examines, not solves
+          example_question:
+            Research investigates rather than solves. What would you like
+            to examine - effectiveness of interventions, barriers to prevention,
+            or factors contributing to obesity?
+      partial:
+        - statement: looking at what affects childhood obesity
+          has: Basic investigative direction (factors), identifies outcome (obesity)
+          missing: Which factors specifically? What type of relationships?
+          example_question:
+            What specific factors - behavioral, environmental, social, or
+            biological? And in which population?
+        - statement: the effects of air pollution
+          has: Clear exposure identified (air pollution)
+          missing: Effects on what health outcome? In whom?
+          example_question:
+            Effects on which health outcome - respiratory, cardiovascular,
+            developmental? And in which population?
+      vague_ambiguous:
+        - statement: how environment impacts people
+          issue: Environment undefined (physical? social? built?); impacts too vague
+          example_question:
+            Which type of environment - physical, social, built, or
+            occupational? And what specific impacts - health outcomes,
+            behaviors, access?
+        - statement: I think schools should do more about nutrition
+          issue: Opinion statement, not research focus
+          example_question:
+            What would you like to investigate about school nutrition -
+            program effectiveness, implementation barriers, or food environment
+            effects?
+  - id: mph_study_design
+    name: MPH study design
+    description: the research methodology and study design appropriate for the
+      research question
+    strictness: MODERATE #(MODERATE | PERMISSIVE |  STRICT)
+    depends_on:
+      - mph_research_focus
+      - outcome
+    specifications: |
+      **Task:** Evaluate and assemble study design specification for MPH dissertation research.
+
+      **Elements to track:**
+      - Design category (quantitative, qualitative, mixed methods, review)
+      - Specific design type (see categories below)
+      - Appropriateness for research focus (does design answer the question?)
+      - Feasibility for MPH timeline (6-12 months)
+      - Alignment with student skills and resources
+
+      **Required:**
+      - Study design category identified
+      - Specific design type specified
+      - Logical fit with research focus
+
+      **Not required at this stage:**
+      - Full protocol details (addressed in data source and sampling)
+      - Analysis plan specifics
+
+      **Study design categories for MPH:**
+
+      QUANTITATIVE DESIGNS:
+      - Cross-sectional study: associations at one time point (most common for MPH)
+      - Retrospective cohort: outcomes using existing historical data
+      - Case-control: comparing exposure between cases and controls
+      - Secondary data analysis: analyzing existing datasets (Health Survey for England, CPRD, Understanding Society)
+      - Program evaluation: assessing intervention outcomes
+      - Note: Prospective cohorts and RCTs rarely feasible for MPH timeline
+
+      QUALITATIVE DESIGNS:
+      - Phenomenological: exploring lived experiences
+      - Grounded theory: developing theory from data
+      - Case study: in-depth single case or multiple cases
+      - Qualitative descriptive: describing phenomenon in natural language
+      - Content analysis: analyzing text/documents systematically
+
+      MIXED METHODS:
+      - Sequential explanatory: quantitative → qualitative to explain findings
+      - Sequential exploratory: qualitative → quantitative to test/generalize
+      - Convergent: both simultaneously, integrated in interpretation
+      - Note: Mixed methods ambitious for MPH; ensure one is primary
+
+      REVIEW DESIGNS:
+      - Scoping review: mapping evidence landscape, broader inclusion
+      - Narrative review: less systematic, synthesizes themes
+      - Rapid review: accelerated systematic review methods
+
+      **Design-question alignment:**
+      - "What is the prevalence/distribution?" → Cross-sectional, secondary data
+      - "What factors are associated with X?" → Cross-sectional, case-control
+      - "What is the relationship between X and Y?" → Cohort, cross-sectional
+      - "What are people's experiences of X?" → Qualitative (phenomenology, interviews)
+      - "What barriers/facilitators exist?" → Qualitative, mixed methods
+      - "How effective is intervention X?" → Program evaluation, quasi-experimental
+      - "What does existing evidence show?" → Systematic/scoping review
+    examples:
+      clear:
+        - statement:
+            cross-sectional secondary data analysis using NHANES to examine
+            associations between food insecurity and depression
+          rationale:
+            Clear design, data source specified, appropriate for association
+            question, feasible for MPH
+        - statement:
+            qualitative phenomenological study exploring healthcare provider
+            experiences of burnout through semi-structured interviews
+          rationale:
+            Named qualitative approach, method aligned with experience question,
+            appropriate scope
+      needs_refinement:
+        - statement: I want to do research on vaccine hesitancy
+          issue: No study design specified
+          example_question:
+            What approach will you take - cross-sectional survey,
+            qualitative interviews, secondary data analysis, or literature
+            review?
+        - statement: I'll do an RCT
+          issue: RCT rarely feasible for MPH timeline and resources
+          example_question:
+            RCTs typically exceed MPH scope. What are you hoping to learn?
+            Consider quasi-experimental design or rapid or scoping reviews of
+            existing RCTs.
+      partial:
+        - statement: qualitative study on patient experiences
+          has: Paradigm (qualitative), focus (experiences)
+          missing: Specific qualitative design, data collection method
+          example_question: Which specific design - phenomenology, qualitative
+            descriptive, or case study? And what data collection - interviews or
+            focus groups?
+        - statement: I'll analyze existing data
+          has: Approach (secondary data analysis)
+          missing: Specific design type, which dataset
+          example_question:
+            What's your analytical approach - cross-sectional, trend
+            analysis, or comparative? And which dataset?
+      vague_ambiguous:
+        - statement: I'll study the topic
+          issue: No design whatsoever
+          example_question:
+            How will you study this - existing data analysis, primary data
+            collection (surveys/interviews), or literature review?
+        - statement: experimental approach
+          issue: True experiments rarely feasible for MPH
+          example_question:
+            What do you mean by experimental? Consider quasi-experimental,
+            program evaluation, or observational comparison designs.
+  - id: mph_data_source
+    name: MPH data sources and access
+    description: the data sources the student plans to use and their access to them
+    strictness: MODERATE #(MODERATE | PERMISSIVE |  STRICT)
+    depends_on:
+      - mph_research_focus
+      - mph_study_design
+    specifications: |
+      **Task:** Evaluate and assemble data source specification for MPH dissertation research.
+
+      **Elements to track:**
+      - Data type (secondary/existing data, primary data collection, literature/documents)
+      - Specific source name or description
+      - Access status (publicly available, requires application, institutional access, needs IRB)
+      - Variables/information available (does it contain what's needed for research focus?)
+      - Time period covered
+      - Geographic coverage
+
+      **Required:**
+      - At least one data source identified
+      - Confirmation of access feasibility for MPH student
+      - Alignment with research focus (source contains relevant variables)
+
+      **Required if applicable:**
+      - IRB/ethics requirements for primary data
+      - Data access application timeline for restricted datasets
+      - Cost implications if any
+
+      **Data source categories for MPH students:**
+
+      SECONDARY DATA (preferred for feasibility):
+      - UK National surveys: Health Survey for England, Understanding Society, Scottish Health Survey
+      - UK administrative data: Hospital Episode Statistics (HES), ONS vital statistics, disease registries
+      - UK restricted datasets: CPRD (Clinical Practice Research Datalink) - requires application
+      - UK Data Service: repository of UK social and health datasets
+      - International: WHO, UNICEF, DHS (Demographic Health Surveys), NHANES (US)
+      - Open data portals: NHS Digital, ONS, data.gov.uk, local authority public health data
+
+      PRIMARY DATA COLLECTION:
+      - Surveys (online, paper, telephone)
+      - Interviews (structured, semi-structured)
+      - Focus groups
+      - Document/policy analysis
+      - Note: Primary data typically requires IRB approval
+
+      LITERATURE-BASED:
+      - Rapid review (existing studies as data)
+      - Scoping review
+      - Policy document analysis
+    examples:
+      clear:
+        - statement:
+            Health Survey for England 2018-2019 data for analysis of diet and
+            obesity prevalence
+          rationale:
+            Specific named source, time period specified, publicly available,
+            appropriate for topic
+        - statement: semi-structured interviews with 15-20 healthcare providers
+          rationale:
+            Clear method, sample size appropriate for qualitative MPH work,
+            defined population
+      needs_refinement:
+        - statement: I'll collect data
+          issue: No source specified; too vague
+          example_question:
+            What type of data - existing survey data (NHANES, BRFSS), your
+            own survey or interviews, or published literature for a review?
+        - statement: hospital data
+          issue: Too vague - which hospitals? what type? how accessed?
+          example_question:
+            Which hospital data - discharge records, EHR data, or
+            published statistics? And how will you access it?
+      partial:
+        - statement: CDC data on vaccination rates
+          has: Source category (CDC), topic alignment
+          missing: Specific dataset name, time period
+          example_question:
+            Which CDC dataset - National Immunization Survey, BRFSS
+            vaccination module? What time period?
+        - statement: I'll do a survey
+          has: Method type (survey)
+          missing: Target population, sample size, IRB status
+          example_question:
+            Who will you survey, how many, and have you considered IRB
+            requirements?
+      vague_ambiguous:
+        - statement: existing data
+          issue: Could mean hundreds of different sources
+          example_question:
+            Which type of existing data - national surveys (NHANES,
+            BRFSS), administrative records, or international datasets?
+        - statement: online sources
+          issue: Too vague - could mean surveys, databases, or literature
+          example_question:
+            Do you mean online survey administration, online databases
+            (CDC WONDER), or online literature for a review?
+  - id: mph_sampling_strategy
+    name: MPH sampling strategy and sample size
+    description: the sampling approach and planned sample size for data collection
+    strictness: MODERATE #(MODERATE | PERMISSIVE |  STRICT)
+    depends_on:
+      - mph_research_focus
+      - mph_data_source
+      - mph_study_design
+    specifications: |
+      **Task:** Evaluate and assemble sampling strategy specification for MPH dissertation research.
+
+      **Elements to track:**
+      - Sampling approach (probability vs. non-probability; specific technique)
+      - Target sample size or participant range
+      - Inclusion criteria (who is eligible)
+      - Exclusion criteria (who is not eligible)
+      - Recruitment method (how participants will be identified/contacted)
+      - Justification for sample size (power calculation, saturation, feasibility)
+
+      **Required:**
+      - Sampling approach specified
+      - Sample size or range identified
+      - Basic inclusion criteria defined
+
+      **Required if applicable:**
+      - Power calculation rationale for quantitative studies
+      - Saturation justification for qualitative studies
+      - Stratification if comparing subgroups
+
+      **Sampling approaches by study type:**
+
+      QUANTITATIVE - Probability sampling (preferred):
+      - Simple random sampling
+      - Stratified random sampling (ensures subgroup representation)
+      - Cluster sampling (geographic or organizational units)
+      - Systematic sampling
+
+      QUANTITATIVE - Non-probability (when probability not feasible):
+      - Convenience sampling (acknowledge limitations)
+      - Purposive sampling with clear criteria
+      - Quota sampling (ensures demographic representation)
+
+      QUALITATIVE:
+      - Purposive sampling (criterion-based selection)
+      - Maximum variation sampling (diverse perspectives)
+      - Snowball sampling (hard-to-reach populations)
+      - Theoretical sampling (grounded theory)
+
+      SECONDARY DATA:
+      - Full dataset analysis (all eligible records)
+      - Subset selection with clear criteria
+      - Weighted analysis (complex survey designs like NHANES)
+
+      REVIEW DESIGNS (RAPID/SCOPING):
+      - Focused search strategy (rapid review: limited databases, scoping review: broader inclusion)
+      - Clear inclusion/exclusion criteria for studies
+      - Study selection flow diagram
+      - Note: Systematic reviews typically too time-intensive for MPH timeline (6-12 months)
+
+      **Sample size guidance for MPH:**
+      - Quantitative surveys: 100-500 typical, power calculation recommended
+      - Secondary data: often thousands, limited by dataset
+      - Qualitative interviews: 15-30 (until saturation)
+      - Focus groups: 3-6 groups of 6-10 participants
+      - Rapid/scoping reviews: typically 20-50 studies (rapid review more focused, scoping review broader mapping)
+    examples:
+      clear:
+        - statement: purposive sample of 20-25 nurses with at least 5 years ICU
+            experience, recruited until data saturation
+          rationale:
+            Clear approach (purposive), appropriate size for qualitative,
+            specific inclusion criteria
+        - statement:
+            all adult patients (18+) with Type 2 diabetes diagnosis in NHANES
+            2017-2020, applying survey weights
+          rationale: Clear inclusion criteria, appropriate for secondary data,
+            acknowledges complex survey design
+      needs_refinement:
+        - statement: I'll survey some people
+          issue: No sampling strategy, size, or criteria specified
+          example_question:
+            How will you select participants, how many, and who is
+            eligible (inclusion criteria)?
+        - statement: I want 1000 interviews
+          issue: Unrealistic for qualitative approach and MPH timeline
+          example_question:
+            Qualitative interviews typically reach saturation at 15-30
+            participants. Would a survey be more appropriate for a larger
+            sample?
+      partial:
+        - statement: convenience sample of university students
+          has: Sampling approach (convenience), population (students)
+          missing: Sample size, inclusion criteria
+          example_question:
+            How many students? Any specific criteria - majors, age range?
+            How will you recruit them?
+        - statement: interviews with healthcare workers
+          has: Method (interviews), population category
+          missing: Sample size, specific worker types, selection criteria
+          example_question:
+            How many interviews (typically 15-25 for MPH)? Which types of
+            healthcare workers? How will you recruit them?
+      vague_ambiguous:
+        - statement: enough participants
+          issue: No specific number or justification
+          example_question:
+            Enough depends on design - power calculation for quantitative,
+            saturation (15-30) for qualitative. What's your target?
+        - statement: representative sample
+          issue: Representative of what population? Through what method?
+          example_question:
+            Representative of which population? What sampling approach is
+            feasible - probability, purposive, or quota?
+  - id: population
+    name: Population
+    description: The group of individuals, communities, or entities to whom the
+      research applies, defined by demographic characteristics, geographic
+      context, and relevant inclusion specifications.
+    strictness: MODERATE #(MODERATE | PERMISSIVE |  STRICT)
+    depends_on:
+      - mph_research_domain
+    specifications: |
+      **Task:** Evaluate and assemble population specification.
+
+      **Elements to track:**
+      - Age (range, category, or life stage)
+      - Sex/gender
+      - Ethnicity/race
+      - Geographic setting or context
+      - Relevant subgroup characteristics: roles (e.g., healthcare workers, parents, teachers, students, caregivers), affiliations (e.g., military veterans, union members), socioeconomic markers (e.g., low-income, uninsured, educational attainment), pregnancy/reproductive status, occupational categories, insurance status
+
+      **Required:**
+      - At least confirm whether "all populations" or limited to specific demographics
+      - Age specification if topic is age-dependent
+      - Setting if research is geography/culture-dependent
+
+      **Not required unless relevant:**
+      - Ethnicity/race specification (only if health disparities focus or explicitly mentioned)
+      - All elements (partial is acceptable if user confirms scope)
+
+      **Age standardization:**
+      When assembling, standardize age terms:
+      - "kids" → "children (2-12 years)"
+      - "elderly" → "older adults (65+ years)"
+      - Non-standard range → prepend "approximately"
+
+    examples:
+      clear:
+        - statement: Community health workers in rural Appalachian counties
+          rationale: Role (CHWs), geographic setting (rural Appalachian) clearly specified
+        - statement:
+            Adolescents aged 13-18 enrolled in state secondary schools in areas
+            of high deprivation in England
+          rationale: Age (13-18), setting (state schools), socioeconomic context
+            (deprivation), geography (England) well defined
+      needs_refinement:
+        - statement: Looking at health outcomes in underserved communities
+          issue: Underserved communities is vague
+          example_question:
+            Which underserved communities? Specific geographic area,
+            demographic group, or type of underservice?
+        - statement: The effect of exercise on depression
+          issue: Zero demographics specified; too broad
+          example_question:
+            You're including all ages, genders, and settings. Is that
+            intentional, or specify a target population?
+      partial:
+        - statement: Healthcare workers in hospitals
+          has: Role (healthcare workers), setting type (hospitals)
+          missing: Specific worker types, geographic location
+          example_question: Which types of healthcare workers? Any specific geographic region?
+        - statement: Women over 40 with cardiovascular disease
+          has: Gender (women), minimum age (40), condition (CVD)
+          missing: Upper age limit, setting
+          example_question: Is there an upper age limit? Specific settings or ethnic groups?
+      vague_ambiguous:
+        - statement: People in the community
+          issue: Community is undefined - no population characteristics
+          example_question:
+            Which community and who within it? Define by geography,
+            demographics, or shared characteristics.
+        - statement: Minority populations aged 65 and older
+          issue: Minority populations is vague
+          example_question: Which specific population groups - Hispanic/Latino,
+            Black/African American, Asian, Native American?
+  - id: outcome
+    name: Outcome
+    description:
+      The measurable indicators, endpoints, or phenomena used to assess
+      results, including health metrics, behavioral indicators, or descriptive
+      findings.
+    strictness: MODERATE #(MODERATE | PERMISSIVE |  STRICT)
+    depends_on:
+      - population
+      - mph_research_focus
+    specifications: |
+      **Task:** Evaluate and assemble outcome specification.
+
+      **Elements to track:**
+      - Primary outcome(s) or main variable(s) of interest
+      - Outcome type (clinical, behavioral, attitudinal, system-level)
+      - Measurement method, instrument, or data source
+      - Timepoint(s) or assessment period (if applicable)
+
+      **Required:**
+      - At least one primary outcome or main variable of interest
+      - Measurement method for vague outcomes (satisfaction, improvement, experiences)
+
+      **Conditionally required:**
+      - Timepoint: required if timing affects interpretation
+      - Instrument: required for subjective outcomes; not needed for self-evident measures
+    examples:
+      clear:
+        - statement: Prevalence of food insecurity using USDA 6-item screener
+          rationale:
+            Specific outcome (food insecurity prevalence), validated instrument
+            (USDA screener)
+        - statement:
+            Perceived barriers to mental health service utilization among college
+            students
+          rationale:
+            Clear outcome (barriers to utilization), defined population,
+            appropriate for qualitative or survey
+      needs_refinement:
+        - statement: Looking at health disparities
+          issue: Health disparities is a topic area, not a measurable outcome
+          example_question:
+            Disparities in what specific outcome (mortality, access,
+            treatment rates)? Between which groups?
+        - statement: Research on improving health outcomes
+          issue: Outcomes is vague - could mean dozens of different measures
+          example_question: What specific outcome(s) will you measure? How will you measure them?
+      partial:
+        - statement: Vaccination attitudes in parents
+          has: Outcome domain (attitudes), population (parents)
+          missing: Specific instrument or measurement approach
+          example_question:
+            How will you measure attitudes - validated scale, survey
+            questions, or qualitative interviews?
+        - statement: Healthcare utilization patterns
+          has: Outcome category (utilization)
+          missing: Specific utilization measures, data source
+          example_question:
+            Which utilization measures (ED visits, hospitalizations)? From
+            what data source?
+      vague_ambiguous:
+        - statement: Understanding the problem
+          issue: No measurable outcome - understanding is not an outcome
+          example_question: What specifically will you measure or describe? If
+            qualitative, what phenomena will you explore?
+        - statement: Research on significant improvement
+          issue: Significant and improvement both vague
+          example_question: Improvement in what? How will you define and measure
+            meaningful change?
+pico_advanced:
+  - user_context:
+      user_type: "Systematic reviewer"
+      context: "Protocol development for systematic review or meta-analysis.
+        Researcher is formulating a research question for a comprehensive
+        evidence synthesis, requiring precise PICO/SPIDER/ECLIPSE framework
+        specification for protocol registration and publication-quality review."
+      tone: "professional" # (educational, professional, pragmatic)
+      complexity: "expert" # (novice, intermediate, advanced, expert)
+      examples_from: "public health"
+      constraints:
+        - "Specificity check: Every dimension must have concrete, measurable
+          definitions without ambiguous terms (reject 'elderly', 'standard
+          care', 'improved outcomes' unless operationalized)"
+        - "Alignment check: All dimensions must be mutually compatible
+          (intervention appropriate for population and condition, outcome
+          measurable given design constraints)"
+        - "Search-readiness check: Each element can be converted into specific
+          database search terms, MeSH headings, or screening criteria"
+        - "Completeness check: All critical PICO elements defined without
+          circular dependencies (no 'depends on what studies we find')"
+        - "Synthesis-feasibility check: The combined dimensions define a
+          coherent, comparable body of evidence rather than heterogeneous
+          narrative-only collection"
+  - id: population
+    name: Population
+    description: The group of individuals, communities, or entities to whom the
+      research applies, defined by demographic characteristics, geographic
+      context, and relevant inclusion criteria.
+    strictness: MODERATE #(MODERATE | PERMISSIVE |  STRICT)
+    specifications: |
+      **Task:** Evaluate and assemble population specification.
+
+      **Elements to track:**
+      - Age (range, category, or life stage)
+      - Sex/gender
+      - Ethnicity/race
+      - Geographic setting or context
+      - Relevant subgroup characteristics: roles (e.g., healthcare workers, parents, teachers, students, caregivers), affiliations (e.g., military veterans, union members), socioeconomic markers (e.g., low-income, uninsured, educational attainment), pregnancy/reproductive status, occupational categories, insurance status
+
+      **Required:**
+      - At least confirm whether "all populations" or limited to specific demographics
+      - Age specification if topic is age-dependent
+      - Setting if research is geography/culture-dependent
+
+      **Not required unless relevant:**
+      - Ethnicity/race specification (only if health disparities focus or explicitly mentioned)
+      - All elements (partial is acceptable if user confirms scope)
+
+      **Age standardization:**
+      When assembling, standardize age terms:
+      - "kids" → "children (2-12 years)"
+      - "elderly" → "older adults (65+ years)"
+      - Non-standard range → prepend "approximately"
+    examples:
+      clear:
+        - statement: Efficacy of metformin in adults aged 40-65 with type 2 diabetes
+          rationale:
+            Age (40-65) specified, with all-inclusive gender (adults) and
+            ethnicity and setting
+        - statement: Postmenopausal women under 65 in urban clinical settings
+          rationale:
+            clearly described age (postmenopausal under 65), gender (women),
+            setting (urban clinical)
+        - statement: Black males aged 18-45 with hypertension in community health centers
+          rationale:
+            clearly defined age (18-45), gender (males), ethnicity (Black),
+            setting (community health centers)
+      needs_refinement:
+        - statement: The effect of exercise on depression
+          issue: Zero demographics specified; too broad
+          missing: Age, gender at minimum
+          example_question:
+            "You are including all ages, genders, ethnicities, and
+            settings. Is that correct or do you want to limit to you have any
+            specific age range, sex/gender, setting, and/or ethnicity/race?"
+      partial:
+        - statement: Women over 40 with cardiovascular disease
+          has: Gender (women) and minimum age (40)
+          missing:
+            ethnicity (if CVD disparities relevant),setting (geographic/clinical
+            context)
+          example_question:
+            Is there an upper age limit? Are you focusing on specific
+            ethnic groups given CVD disparities?
+      vague_ambiguous:
+        - statement:
+            Treatment outcomes in minority populations aged 65 and older in
+            tertiary care hospitals
+          issue: "'Minority populations' is vague and could mean multiple groups"
+          missing: precise ethnicity/race or setting; maybe gender as well
+          example_question:
+            "Which specific population groups are you focusing on? (e.g.,
+            Hispanic/Latino, African American, Asian, Native American). Do you
+            have any specifications regarding gender or geographic location?"
+  - id: intervention
+    name: Intervention
+    description: The healthcare action, exposure, or strategy being evaluated,
+      specified in sufficient detail to allow replication, including modality,
+      intensity, duration, and delivery context
+    strictness: MODERATE #(MODERATE | PERMISSIVE |  STRICT)
+    depends_on:
+      - population
+      - clinical_condition
+    specifications: |
+      **Task:** Evaluate and assemble intervention specification.
+
+      **Elements to track:**
+      - Intervention type (pharmacological/procedural/behavioral/diagnostic)
+      - Specific agent or method
+      - Dosing/intensity (if applicable)
+      - Duration (if applicable)
+      - Delivery method (if applicable)
+
+      **Required:**
+      - Intervention type
+      - Specific agent/method name
+
+      **Required if applicable:**
+      - Dosing: for dose-dependent interventions
+      - Duration: if affects outcomes
+      - Delivery: if route/setting/provider affects outcomes
+    examples:
+      clear:
+        - statement:
+            Metformin vs placebo in newly diagnosed Type 2 diabetes over 6
+            months.
+          rationale:
+            Inferred intervention type (Pharmacological), Drug (metformin),
+            duration (6 months), and comparison (placebo) well specified.
+        - statement: Laparoscopic Roux-en-Y gastric bypass compared to other techniques
+          rationale:
+            Specific intervention type (surgical technique, inferred) and method
+            (laparoscopic Roux-en-Y)
+        - statement: Cognitive Behavioral Therapy delivered by licensed clinical
+            psychologists
+          rationale:
+            Inferred intervention type (nonpharmacological), method (CBT),
+            provider (licensed psychologists)
+        - statement: Atorvastatin treatment for hyperlipidemia
+          has:
+            Inferred intervention type (Pharmacological), Drug name (atorvastatin),
+            indication (hyperlipidemia)
+      partial:
+        - statement: Exercise intervention for weight loss
+          has: intervention type (exercise)
+          missing:
+            exercise modality, intensity level, frequency, session duration
+            unspecified
+          example_question:
+            What type of exercise? (aerobic, resistance, both) What
+            intensity, frequency, and exercise modality?
+        - statement: Effects of medication on blood pressure
+          has: intervention type (Pharmacological)
+          missing: Drug name (optional dose, frequency, duration, route)
+          example_question:
+            Which medication are you studying? Please specify the drug
+            name, dose, frequency, and treatment duration if applicable.
+      vague_ambiguous:
+        - statement: Intensive glycemic control in diabetes
+          issue: " Intervention type is clear (glycemic control); 'Intensive' is
+            subjective - it could be specified as a regimen or target"
+          missing: Specific regimen or glycemic targets
+          example_question:
+            "Are you interested in a specific intervention and regimen or
+            a target that defines 'intensive control'?"
+  - id: comparator
+    name: Comparator
+    description: The alternative intervention, standard of care, placebo, or
+      no-intervention condition against which the intervention is assessed,
+      providing the reference for effect estimation
+    strictness: MODERATE #(MODERATE | PERMISSIVE |  STRICT)
+    depends_on:
+      - population
+      - intervention
+    specifications: |
+      **Task:** Evaluate and assemble comparator specification.
+
+      **Elements to track:**
+      - Comparator type (placebo/standard care/active comparator/no treatment)
+      - Specific comparator details (matching intervention specificity)
+
+      **Required:**
+      - At least one comparator specified
+      - Comparator detail level matching intervention detail
+
+      **Comparator types:**
+      - Placebo: inert substance or mock procedure
+      - Standard care: specify which guideline or usual practice
+      - Active comparator: specify drug, dose, or technique
+      - No treatment: watchful waiting (justify if effective treatment exists)
+    examples:
+      clear:
+        - statement: Metformin vs placebo in prediabetic adults
+          rationale: Clear active intervention (metformin) vs inert control (placebo)
+        - statement:
+            New anticoagulant compared to warfarin (standard care) in atrial
+            fibrillation
+          rationale:
+            Novel treatment (New anticoagulant) vs established standard of care
+            (warfarin)
+        - statement:
+            High-intensity statins vs moderate-intensity statins in secondary
+            prevention
+          rationale:
+            clear comparator (High-intensity statins vs moderate-intensity
+            statins)
+      needs_refinement:
+        - statement: Effects of new drug on blood pressure
+          issue: No comparison group mentioned
+          missing: Comparator specification
+          example_question:
+            What will you compare the new drug against? (e.g., any other
+            treatmentplacebo, current standard treatment, another active drug)
+        - statement: Study of surgical intervention
+          issue: No comparison - surgery vs what?
+          missing: Control/comparison group
+          example_question:
+            What is the comparison? (e.g., surgery vs medical management,
+            surgery vs observation, one surgical technique vs another)
+      vague_ambiguous:
+        - statement: ACE inhibitors versus control in hypertension
+          issue: "'Control' could mean placebo, standard care, or no treatment"
+          example_question:
+            What does 'control' mean in your study? (placebo, standard
+            antihypertensive therapy, or no treatment)
+        - statement: Intervention vs standard therapy
+          issue: "'Standard therapy' varies by geography, guidelines, and time period"
+          example_question:
+            What specific treatment(s) constitute 'standard therapy' in
+            your context? (e.g., specific drugs, specific guidelines)
+  - id: outcome
+    name: Outcome
+    description:
+      The measurable indicators, endpoints, or phenomena used to assess
+      results, including health metrics, behavioral indicators, or descriptive
+      findings.
+    strictness: MODERATE #(MODERATE | PERMISSIVE |  STRICT)
+    depends_on:
+      - population
+      - intervention
+      - comparator
+    specifications: |
+      **Task:** Evaluate and assemble outcome specification.
+
+      **Elements to track:**
+      - Primary outcome(s) or main variable(s) of interest
+      - Outcome type (clinical, behavioral, attitudinal, system-level)
+      - Measurement method, instrument, or data source
+      - Timepoint(s) or assessment period (if applicable)
+
+      **Required:**
+      - At least one primary outcome or main variable of interest
+      - Measurement method for vague outcomes (satisfaction, improvement, experiences)
+
+      **Conditionally required:**
+      - Timepoint: required if timing affects interpretation
+      - Instrument: required for subjective outcomes; not needed for self-evident measures
+    examples:
+      clear:
+        - statement: Effect of intervention on all-cause mortality at 5 years or more
+          rationale:
+            Specific outcome (all-cause mortality), clear timepoint (5 years or
+            more). With this outcome, a shorter duration may not be associated
+            with the intervention; thus the inclusion of a longer timepoint.
+        - statement: Change in HbA1c from baseline to 6 months
+          rationale:
+            Outcome type (diabetes indicator) inferred, measurement method
+            -specific biomarker- (HbA1c) and timeframe (baseline to 6 months)
+            clearly defined
+      needs_refinement:
+        - statement: Study on treatment effectiveness
+          issue: "'Effectiveness' not defined - needs specific measurable outcome"
+          missing: Specific outcome measure, measurement method, timepoint
+          example_question:
+            How will you measure effectiveness? (e.g., specific clinical
+            outcomes, biomarkers, patient-reported measures)
+        - statement: Research on improving patient outcomes
+          issue: "'Outcomes' is vague - could mean dozens of different measures"
+          missing: Specific outcome(s), measurement tools, assessment timing
+          example_question:
+            What specific outcome(s) will you measure? When will they be
+            assessed?
+        - statement: Trial measuring quality of life improvement
+          issue: QOL mentioned but no instrument specified
+          missing: QOL instrument, measurement timepoints, MCID
+          example_question:
+            Which quality of life instrument will you use? (e.g., SF-36,
+            EQ-5D, disease-specific) When will you assess it?
+      partial:
+        - statement: Effect on blood pressure reduction
+          has: General outcome category (blood pressure)
+          missing:
+            Specific BP parameter (systolic, diastolic, mean arterial), target
+            reduction,measurement protocol, timepoint
+          example_question:
+            Which BP parameter? (systolic, diastolic, or both) What
+            measurement protocol? When will it be assessed?
+        - statement: Change in depression scores using validated scales
+          has: Outcome type (depression), mentions validation
+          missing: Specific scale, timepoints, MCID
+          example_question:
+            Which depression scale? (PHQ-9, Beck Depression Inventory,
+            HAM-D) At what timepoints? What change is clinically meaningful?
+      vague_ambiguous:
+        - statement: Study on long-term outcomes of surgery
+          issue:
+            "'Long-term' is relative (could be 1 year or 10 years), 'outcomes'
+            unspecified"
+          example_question:
+            What is the follow-up duration? What specific outcomes will
+            you measure? (e.g., survival, complications, functional status)
+        - statement: Research on significant improvement in symptoms
+          issue:
+            "'Significant' (statistical vs clinical?) and 'symptoms' (which ones?)
+            both vague"
+          example_question:
+            Which specific symptoms? How will you measure them? What
+            defines a clinically meaningful improvement?
+  - id: study_type
+    name: Study Type
+    description: The category of research methodology used to evaluate the
+      intervention-outcome relationship, classified by study type, which guides
+      eligibility, evidence synthesis, and interpretation
+    strictness: MODERATE #(MODERATE | PERMISSIVE |  STRICT)
+    depends_on:
+      - population
+      - intervention
+      - comparator
+      - outcome
+    specifications: |
+      **Task:** Evaluate and assemble study design specification.
+
+      **Elements to track:**
+      - Primary Study Types 
+      - Secondary Study Types 
+      - Other Study Types
+
+      **Required:**
+      - At least one study design specified
+
+      **Category Definitions:**
+
+      PRIMARY STUDY TYPES: 
+      Before and after study, Case control study, Case report, Case series, Clinical study, Clinical trial, Cohort study, Comparative study, Cross-sectional study, Diagnostic test accuracy study, Evaluation study, Observational study, Pilot study, Quality improvement study, Randomized controlled trial, Validation study
+
+      SECONDARY STUDY TYPES
+      Living review, Meta-analysis, Rapid review, Scoping review, Systematic review, Narrative review, Review
+
+      OTHER STUDY TYPES: 
+      Government document, Policy document, Guideline, Consensus conference
+
+      **Assembly example:**
+      - User: "RCTs" → Current: "randomized controlled trials"
+      - User: "also cohort studies" → Current: "randomized controlled trials and cohort studies"
+      - User: "but not retrospective ones" → Current: "randomized controlled trials and prospective cohort studies"
+
+      **Showing Category Lists to User:**
+
+      ALWAYS show the relevant category list(s) when asking for clarification:
+
+      - If no study type specified yet → show ALL STUDY TYPES list
+      - If asking about PRIMARY types → show PRIMARY STUDY TYPES list
+      - If asking about SECONDARY types → show SECONDARY STUDY TYPES list
+      - If asking about OTHER types → show OTHER STUDY TYPES list
+      - If asking about multiple categories → show all relevant lists
+      - If user has specified one category and you're asking about others → show only the new category list(s)
+
+
+      **Clarification Behavior:**
+
+      - If user mentions only PRIMARY types → acknowledge, then ask: "Would you also like to include secondary sources (reviews, meta-analyses) or other document types (guidelines, policies)?" + show SECONDARY and OTHER lists
+
+      - If user mentions only SECONDARY types → acknowledge, then ask: "Should we also include primary research studies?" + show PRIMARY list
+
+      - If user mentions only OTHER types → acknowledge, then ask: "Should we also include primary research or secondary sources?" + show PRIMARY and SECONDARY lists
+
+      - If user mentions MIXED types (from multiple categories) → acknowledge, optionally ask about exclusions from shown lists or remaining categories
+
+      - If nothing specified yet → start by asking about PRIMARY types + show PRIMARY list
+
+      - If user mentions unlisted study type → map to closest category if possible, or ask for clarification
+
+      **Completion:**
+      Accept once at least one study design is clearly specified from any category.
+    examples:
+      clear:
+        - statement: All RCTs on treatments for basal cell carcinomas
+          rationale: primary study types (RCT, clinical trials) clearly specified
+      needs_refinement:
+        - statement: Study comparing two diabetes medications
+          issue: Study type not specified
+          missing: Study type
+          example_question:
+            What study design? (e.g., randomized controlled trial,
+            observational cohort, systematic review)
+  - id: clinical_condition
+    name: Clinical Condition
+    description:
+      The health condition or disease under study, including its stage,
+      severity, and relevant comorbidities, which defines eligibility criteria
+      and contextualizes outcome relevance for the target population.
+    strictness: MODERATE #(MODERATE | PERMISSIVE |  STRICT)
+    depends_on:
+      - population
+    specifications: |
+      **Task:** Evaluate and assemble health condition specification.
+
+      **Elements to track:**
+      - Primary condition name
+      - Disease stage (if applicable)
+      - Severity (if applicable)
+      - Relevant comorbidities (if applicable)
+
+      **Required:**
+      - Primary condition, unambiguous
+
+      **Required if applicable:**
+      - Stage: for conditions where staging affects treatment (cancer, CKD)
+      - Severity: for conditions where severity affects treatment (depression, asthma)
+
+      **Ambiguity triggers:**
+      - "Diabetes" → ask: Type 1, Type 2, or gestational?
+      - "Heart disease" → ask: CAD, heart failure, or arrhythmia?
+      - "Cancer" → ask: which type and stage?
+    examples:
+      clear:
+        - statement: "Efficacy of SGLT2 inhibitors in Type 2 diabetes patients"
+          rationale: primary condition (Type 2 diabetes) specified unambiguously
+        - statement:
+            "Management of acute severe asthma exacerbations requiring emergency
+            department care."
+          rationale:
+            All critical elements present and appropiately specified. Primary
+            condition (asthma), disease stage (acute exacerbations), severity
+            level (severe), diagnostic criteria  and setting/context implicit
+            (requires emergency department level of care)
+        - statement: "Effects of statins in patients with moderate hyperlipidemia."
+          rationale: primary condition (hyperlipidemia), severity level (moderate)
+      needs_refinement:
+        - statement: Outcomes of cancer treatment
+          issue: Unspecified primary condition type/site
+          missing:
+            Specific cancer type (e.g., breast, lung, colorectal) and disease stage
+            (I-IV)
+          example_question:
+            "What specific type of cancer (e.g., breast, lung, colorectal)
+            and disease stage (I-IV) are you focusing on?"
+      partial:
+        - statement: Study in high-risk cardiovascular patients
+          has: primary condition (cardiovascular disease)
+          missing:
+            "'High-risk' is subjective - needs risk score, comorbidities, or other
+            specific criteria"
+          example_question:
+            "What defines 'high-risk'? (e.g., Framingham score, specific
+            risk factors, prior events, comorbidities)"
+        - statement: Outcomes in hypertensive patients with diabetes
+          has: primary condition (hypertension), comorbidity (diabetes)
+          missing:
+            "Blood pressure range and Hypertension severity not specified, Diabetes
+            type not specified"
+          example_question:
+            "Specify hypertension severity (stage 1 or 2), Blood pressure
+            range (e.g., 140-159/90-99 mmHg), and diabetes type (Type 1 or Type
+            2) to clarify treatment approach"
+      vague_ambiguous:
+        - statement: Treatment in patients with refractory disease
+          issue: "'refractory disease' to what?"
+          missing: primary condition vague/unspecified
+          example_question:
+            "Which conditions/diseases are you looking at? Is it pertinent
+            to also include what treatments the disease is refractory to?"
+        - statement: treatment for diabetic patients
+          issue: ambiguous diabetes type (Type 1 vs Type 2 vs gestational)
+          example_question: "What type of diabetes? (Type 1, Type 2, gestational)"
+        - statement: intervention in patients with heart problems
+          issue:
+            "‘Heart problems’ is vague - could mean coronary artery disease, heart
+            failure, arrhythmias, etc."
+          example_question:
+            "What specific heart condition are you referring to? (e.g.,
+            coronary artery disease, heart failure, arrhythmias) And are you
+            interested in a specific level of severity or stage?"

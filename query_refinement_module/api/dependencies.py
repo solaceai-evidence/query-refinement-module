@@ -3,6 +3,7 @@ FastAPI dependencies for the query refinement API.
 """
 from functools import lru_cache
 from typing import Optional
+from urllib.parse import urlsplit, urlunsplit
 
 from query_refinement_module.core import QueryRefinementManager
 from query_refinement_module.providers import LiteLLMProvider
@@ -17,6 +18,16 @@ try:
     registry.reload_from_env(raise_on_error=False)
 except Exception:
     pass  # Continue even if framework loading fails
+
+
+def _local_redis_fallback_url(redis_url: str) -> Optional[str]:
+    """Map the Docker Redis hostname to localhost for local development runs."""
+    parsed = urlsplit(redis_url)
+    if parsed.hostname != "redis":
+        return None
+
+    netloc = parsed.netloc.replace("redis", "localhost", 1)
+    return urlunsplit((parsed.scheme, netloc, parsed.path, parsed.query, parsed.fragment))
 
 
 @lru_cache()
@@ -76,6 +87,29 @@ def get_session_manager() -> SessionManager:
         return manager
     except Exception as e:
         import logging
+
+        fallback_redis_url = _local_redis_fallback_url(settings.redis_url)
+        if fallback_redis_url:
+            try:
+                logging.warning(
+                    "Redis unavailable at %s (%s). Retrying with local Redis URL %s.",
+                    settings.redis_url,
+                    e,
+                    fallback_redis_url,
+                )
+                return SessionManager(
+                    redis_url=fallback_redis_url,
+                    session_ttl_seconds=settings.session_ttl_seconds,
+                    key_prefix=settings.session_key_prefix,
+                    lock_timeout_seconds=settings.session_lock_timeout_seconds,
+                    lock_blocking_timeout_seconds=settings.session_lock_blocking_timeout_seconds,
+                )
+            except Exception as fallback_exc:
+                logging.warning(
+                    "Local Redis fallback unavailable (%s). Using in-memory session storage.",
+                    fallback_exc,
+                )
+
         logging.warning(
             "Redis unavailable (%s). Using in-memory session storage. "
             "Sessions will NOT persist across server restarts.",

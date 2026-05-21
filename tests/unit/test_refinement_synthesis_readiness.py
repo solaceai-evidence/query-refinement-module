@@ -128,7 +128,7 @@ async def test_run_synthesis_persists_full_response_payload(test_db_session, mon
 
     import query_refinement_module.services.webhook_service as webhook_service
 
-    monkeypatch.setattr(webhook_service, "trigger_webhook_event", lambda *args, **kwargs: None)
+    monkeypatch.setattr(webhook_service, "dispatch_webhook_event_async", lambda *args, **kwargs: None)
     monkeypatch.setattr(webhook_service, "build_synthesis_started_payload", lambda **kwargs: {})
     monkeypatch.setattr(webhook_service, "build_synthesis_complete_payload", lambda **kwargs: {})
 

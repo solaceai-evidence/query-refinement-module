@@ -27,6 +27,9 @@ from .templates import (
 
 logger = logging.getLogger(__name__)
 
+_previous_prompt_builder = globals().get("PromptBuilder")
+_PromptBuilderBase = _previous_prompt_builder if isinstance(_previous_prompt_builder, type) else object
+
 __all__ = [
     "PromptBuilder",
     "render_template",
@@ -76,7 +79,7 @@ def render_template(template_string: str, **context) -> str:
     return template.render(**context)
 
 
-class PromptBuilder:
+class PromptBuilder(_PromptBuilderBase):
     """
     Builds prompts for the query refinement system using Jinja2 templates.
     

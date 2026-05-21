@@ -145,6 +145,16 @@ export const refinementService = {
     },
 
     /**
+     * Explicitly resume a refinement session and generate the next prompt when needed
+     * @param {number} queryId - Query ID
+     * @returns {Promise<GetRefinementStatusResponse>}
+     */
+    async resumeSession(queryId) {
+        const response = await apiClient.post(`/refinement/queries/${queryId}/resume`);
+        return response.data;
+    },
+
+    /**
      * List user's queries
      * @param {number} [skip=0] - Number of records to skip
      * @param {number} [limit=50] - Maximum number of records to return

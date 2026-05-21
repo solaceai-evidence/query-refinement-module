@@ -9,11 +9,13 @@ import hashlib
 import json
 import time
 import logging
+from threading import Thread
 import requests
 from typing import Dict, Any, Optional, List
 from datetime import datetime, timezone
 from sqlalchemy.orm import Session
 
+from query_refinement_module.db.database import SessionLocal
 from query_refinement_module.db.models.webhook import Webhook, WebhookDelivery
 from query_refinement_module.db.crud_webhooks import (
     get_active_webhooks_for_event,
@@ -321,6 +323,40 @@ def trigger_webhook_event(
                 exc_info=True
             )
         raise
+
+
+def _dispatch_webhook_event_worker(
+    event_type: str,
+    event_data: Dict[str, Any],
+    user_id: Optional[int] = None,
+) -> None:
+    """Deliver workflow webhooks outside the request path using a fresh DB session."""
+    db = SessionLocal()
+    try:
+        trigger_webhook_event(db, event_type, event_data, user_id)
+    except Exception:
+        logger.error(
+            "Background webhook dispatch failed for %s",
+            event_type,
+            exc_info=True,
+        )
+    finally:
+        db.close()
+
+
+def dispatch_webhook_event_async(
+    event_type: str,
+    event_data: Dict[str, Any],
+    user_id: Optional[int] = None,
+) -> None:
+    """Fire-and-forget wrapper for non-critical workflow webhook delivery."""
+    thread = Thread(
+        target=_dispatch_webhook_event_worker,
+        args=(event_type, event_data, user_id),
+        daemon=True,
+        name=f"webhook-{event_type}",
+    )
+    thread.start()
 
 
 # ==========================================

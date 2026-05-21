@@ -126,8 +126,8 @@ const Refinement = () => {
     // Validate session exists on backend before offering restoration
     const validateAndSetSession = async (session) => {
         try {
-            // Quick check if session still exists on backend
-            await refinementService.getStatus(session.queryId);
+            // Quick check if query ownership/session still exists on backend
+            await refinementService.getQuery(session.queryId);
             // If successful, session is valid
             setSavedSessionData(session);
         } catch (err) {
@@ -1084,8 +1084,8 @@ const Refinement = () => {
             setSelectedFramework(savedSessionData.framework);
             setLogSessionId(savedSessionData.sessionId);
 
-            // Fetch current status from API
-            const status = await refinementService.getStatus(savedSessionData.queryId);
+            // Explicit resume may regenerate the next prompt when the cache was lost
+            const status = await refinementService.resumeSession(savedSessionData.queryId);
             console.log('[Refinement] Status received:', status);
 
             logger.info('Session resumed', {

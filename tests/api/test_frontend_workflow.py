@@ -12,6 +12,7 @@ import pytest
 from query_refinement_module.api.config import get_settings
 
 BASE_URL = "http://localhost:8001/api/v1"
+API_ROOT = BASE_URL.replace("/api/v1", "")
 AUTH_COOKIE_NAME = get_settings().auth_cookie_name
 
 
@@ -86,7 +87,7 @@ def main():
     """Test the complete refinement workflow"""
     # Check if server is running
     try:
-        response = requests.get(f"{BASE_URL}/health", timeout=2)
+        response = requests.get(f"{API_ROOT}/health", timeout=2)
         if response.status_code != 200:
             print("❌ API server is not healthy")
             print("Start the server with: poetry run uvicorn query_refinement_module.api.main:app --reload")
