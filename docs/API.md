@@ -20,6 +20,7 @@ For server-to-server integrations, refinement workflow endpoints also support `X
 - `POST /api/v1/refinement/start`
 - `POST /api/v1/refinement/queries/{query_id}/answer`
 - `GET /api/v1/refinement/queries/{query_id}/status`
+- `POST /api/v1/refinement/queries/{query_id}/resume`
 - `POST /api/v1/refinement/synthesize`
 - `POST /api/v1/refinement/queries/{query_id}/forward-to-qa`
 - `GET /api/v1/refinement/queries/{query_id}/command-history`
@@ -107,9 +108,11 @@ Slash commands return `CommandResponse`:
 
 `next_prompt` uses the same shape as the start response. When returned after a command, it can be used directly by the UI without extra transformation.
 
-#### `GET /api/v1/refinement/queries/{query_id}/status`
+#### `POST /api/v1/refinement/queries/{query_id}/resume`
 
-Returns `GetRefinementStatusResponse` with these fields:
+Returns `ResumeRefinementResponse` (extends `GetRefinementStatusResponse`) with the same fields as the status endpoint. Use this to explicitly regenerate the next prompt after a server restart or Redis session eviction. The endpoint does not advance the workflow — it only ensures the session is loaded and the active prompt is ready. Returns 404 if the query does not exist, 403 if access is denied, and 503 if the session lock is temporarily held by another request.
+
+#### `GET /api/v1/refinement/queries/{query_id}/status`
 
 - `query_id`: query record ID
 - `original_query`: the original user question
@@ -305,6 +308,10 @@ Command-specific fields to expect:
 - `/submit`, `/end` -> `synthesis_ready=true`, `next_prompt=null`
 - `/back`, `/restart` -> `invalidated_aspects` may be populated
 - force confirmation required -> `force_required=true`
+
+#### `POST /api/v1/refinement/queries/{query_id}/resume` (200)
+
+Returns the same JSON envelope as `GET /api/v1/refinement/queries/{query_id}/status`. The endpoint reconstructs the session from the database if it is not in Redis, regenerates the active prompt if one is missing, and returns the current workflow state. Idempotent — safe to call multiple times.
 
 #### `GET /api/v1/refinement/queries/{query_id}/status` (200)
 
@@ -566,6 +573,19 @@ Most non-validation API errors return:
 - `POST /api/v1/webhooks/{webhook_id}/test`
 - `GET /api/v1/webhooks/{webhook_id}/deliveries`
 - `GET /api/v1/webhooks/deliveries/recent`
+
+## Audit Logs
+
+Audit log endpoints require a superuser account.
+
+- `GET /api/v1/audit/logs` — paginated log list; supports filters `event_type`, `user_id`, `start_date`, `end_date`
+- `GET /api/v1/audit/logs/{audit_id}` — single log entry by ID
+- `GET /api/v1/audit/stats` — aggregated event counts and activity summary
+- `GET /api/v1/audit/event-types` — list of all known event type strings
+- `GET /api/v1/audit/trace/{request_id}` — all log entries sharing a request ID (full request trace)
+- `GET /api/v1/audit/export/csv` — download log entries as CSV
+- `GET /api/v1/audit/export/json` — download log entries as JSON
+- `DELETE /api/v1/audit/cleanup` — delete log entries older than a configurable retention period
 
 ## Monitoring
 

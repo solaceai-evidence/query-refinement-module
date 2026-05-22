@@ -382,6 +382,7 @@ docs/                      # Technical documentation
 - [docs/API.md](docs/API.md) — Full API reference for external integrations
 - [docs/FRAMEWORKS.md](docs/FRAMEWORKS.md) — How to define custom refinement frameworks
 - [docs/OPERATIONS.md](docs/OPERATIONS.md) — Migrations, backups, and rollback procedures
+- [docs/DATA_RECOVERY.md](docs/DATA_RECOVERY.md) — Database and cache export/recovery procedures for hosted deployments
 
 ## License
 
