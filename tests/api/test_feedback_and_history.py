@@ -15,7 +15,7 @@ def test_submit_feedback_with_rating_and_comments():
     
     # Create a query first
     start_response = requests.post(
-        f"{BASE_URL}/api/refinement/start",
+        f"{BASE_URL}/refinement/start",
         json={
             "original_query": "cancer screening methods",
             "framework_name": "pico_advanced"
@@ -27,7 +27,7 @@ def test_submit_feedback_with_rating_and_comments():
     
     # Submit feedback
     response = requests.post(
-        f"{BASE_URL}/api/feedback/",
+        f"{BASE_URL}/feedback/",
         json={
             "query_id": query_id,
             "rating": 5,
@@ -51,7 +51,7 @@ def test_submit_feedback_rating_only():
     
     # Create a query first
     start_response = requests.post(
-        f"{BASE_URL}/api/refinement/start",
+        f"{BASE_URL}/refinement/start",
         json={
             "original_query": "diabetes treatment options",
             "framework_name": "pico_advanced"
@@ -62,7 +62,7 @@ def test_submit_feedback_rating_only():
     
     # Submit feedback with only rating
     response = requests.post(
-        f"{BASE_URL}/api/feedback/",
+        f"{BASE_URL}/feedback/",
         json={
             "query_id": query_id,
             "rating": 4
@@ -84,7 +84,7 @@ def test_submit_feedback_comments_only():
     
     # Create a query
     start_response = requests.post(
-        f"{BASE_URL}/api/refinement/start",
+        f"{BASE_URL}/refinement/start",
         json={
             "original_query": "heart disease prevention",
             "framework_name": "pico_advanced"
@@ -95,7 +95,7 @@ def test_submit_feedback_comments_only():
     
     # Submit feedback with only comments
     response = requests.post(
-        f"{BASE_URL}/api/feedback/",
+        f"{BASE_URL}/feedback/",
         json={
             "query_id": query_id,
             "comments": "The refinement questions were very specific."
@@ -115,7 +115,7 @@ def test_submit_general_feedback():
     headers = {"Authorization": f"Bearer {token}"}
     
     response = requests.post(
-        f"{BASE_URL}/api/feedback/",
+        f"{BASE_URL}/feedback/",
         json={
             "rating": 5,
             "comments": "Great tool overall!"
@@ -137,7 +137,7 @@ def test_submit_feedback_invalid_query():
     headers = {"Authorization": f"Bearer {token}"}
     
     response = requests.post(
-        f"{BASE_URL}/api/feedback/",
+        f"{BASE_URL}/feedback/",
         json={
             "query_id": 99999,
             "rating": 3,
@@ -157,19 +157,19 @@ def test_get_my_feedback():
     
     # Submit some feedback
     requests.post(
-        f"{BASE_URL}/api/feedback/",
+        f"{BASE_URL}/feedback/",
         json={"rating": 5, "comments": "Test feedback 1"},
         headers=headers
     )
     requests.post(
-        f"{BASE_URL}/api/feedback/",
+        f"{BASE_URL}/feedback/",
         json={"rating": 4, "comments": "Test feedback 2"},
         headers=headers
     )
     
     # Get feedback
     response = requests.get(
-        f"{BASE_URL}/api/feedback/my-feedback",
+        f"{BASE_URL}/feedback/my-feedback",
         headers=headers
     )
     
@@ -187,7 +187,7 @@ def test_get_feedback_for_query():
     
     # Create a query
     start_response = requests.post(
-        f"{BASE_URL}/api/refinement/start",
+        f"{BASE_URL}/refinement/start",
         json={
             "original_query": "asthma treatment",
             "framework_name": "pico_advanced"
@@ -198,19 +198,19 @@ def test_get_feedback_for_query():
     
     # Submit multiple feedback for this query
     requests.post(
-        f"{BASE_URL}/api/feedback/",
+        f"{BASE_URL}/feedback/",
         json={"query_id": query_id, "rating": 5},
         headers=headers
     )
     requests.post(
-        f"{BASE_URL}/api/feedback/",
+        f"{BASE_URL}/feedback/",
         json={"query_id": query_id, "comments": "Follow-up feedback"},
         headers=headers
     )
     
     # Get feedback for query
     response = requests.get(
-        f"{BASE_URL}/api/feedback/query/{query_id}",
+        f"{BASE_URL}/feedback/query/{query_id}",
         headers=headers
     )
     
@@ -234,7 +234,7 @@ def test_get_user_queries():
         "antibiotic resistance patterns"
     ]):
         response = requests.post(
-            f"{BASE_URL}/api/refinement/start",
+            f"{BASE_URL}/refinement/start",
             json={
                 "original_query": query_text,
                 "framework_name": "pico_advanced"
@@ -246,7 +246,7 @@ def test_get_user_queries():
     
     # Get user's sessions (which contain queries)
     response = requests.get(
-        f"{BASE_URL}/api/queries/sessions",
+        f"{BASE_URL}/queries/sessions",
         headers=headers
     )
     
@@ -266,7 +266,7 @@ def test_get_specific_query():
     
     # Create a query
     start_response = requests.post(
-        f"{BASE_URL}/api/refinement/start",
+        f"{BASE_URL}/refinement/start",
         json={
             "original_query": "migraine prevention strategies",
             "framework_name": "pico_advanced"
@@ -277,7 +277,7 @@ def test_get_specific_query():
     
     # Get the specific query
     response = requests.get(
-        f"{BASE_URL}/api/queries/{query_id}",
+        f"{BASE_URL}/queries/{query_id}",
         headers=headers
     )
     
@@ -295,7 +295,7 @@ def test_cannot_access_other_users_queries():
     headers1 = {"Authorization": f"Bearer {token1}"}
     
     start_response = requests.post(
-        f"{BASE_URL}/api/refinement/start",
+        f"{BASE_URL}/refinement/start",
         json={
             "original_query": "user 1 query",
             "framework_name": "pico_advanced"
@@ -313,10 +313,10 @@ def test_cannot_access_other_users_queries():
         "password": "TestPass123!",
         "name": "History Test User 2"
     }
-    requests.post(f"{BASE_URL}/api/auth/register", json=test_user_2)
+    requests.post(f"{BASE_URL}/auth/register", json=test_user_2)
     
     login_response = requests.post(
-        f"{BASE_URL}/api/auth/login",
+        f"{BASE_URL}/auth/login",
         data={"username": test_user_2["username"], "password": test_user_2["password"]}
     )
     assert login_response.status_code == 200, f"Login failed: {login_response.text}"
@@ -326,7 +326,7 @@ def test_cannot_access_other_users_queries():
     
     # Try to access user 1's query with user 2's token
     response = requests.get(
-        f"{BASE_URL}/api/queries/{query_id}",
+        f"{BASE_URL}/queries/{query_id}",
         headers=headers2
     )
     

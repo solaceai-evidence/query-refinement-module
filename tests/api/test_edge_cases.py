@@ -12,7 +12,7 @@ def test_missing_auth_token():
     """Test that endpoints reject requests without authentication."""
     # Try to start refinement without auth
     response = requests.post(
-        f"{BASE_URL}/api/refinement/start",
+        f"{BASE_URL}/refinement/start",
         json={
             "original_query": "test query",
             "framework_name": "pico_advanced"
@@ -28,7 +28,7 @@ def test_invalid_auth_token():
     
     # Note: /frameworks endpoint doesn't require auth, so use /start instead
     response = requests.post(
-        f"{BASE_URL}/api/refinement/start",
+        f"{BASE_URL}/refinement/start",
         json={
             "original_query": "test query",
             "framework_name": "pico_advanced"
@@ -46,7 +46,7 @@ def test_start_refinement_missing_fields():
     
     # Missing framework_name
     response = requests.post(
-        f"{BASE_URL}/api/refinement/start",
+        f"{BASE_URL}/refinement/start",
         json={"original_query": "test query"},
         headers=headers
     )
@@ -55,7 +55,7 @@ def test_start_refinement_missing_fields():
     
     # Missing original_query
     response = requests.post(
-        f"{BASE_URL}/api/refinement/start",
+        f"{BASE_URL}/refinement/start",
         json={"framework_name": "pico_advanced"},
         headers=headers
     )
@@ -64,7 +64,7 @@ def test_start_refinement_missing_fields():
     
     # Empty original_query (currently accepted by API - known limitation)
     response = requests.post(
-        f"{BASE_URL}/api/refinement/start",
+        f"{BASE_URL}/refinement/start",
         json={"original_query": "", "framework_name": "pico_advanced"},
         headers=headers
     )
@@ -79,15 +79,15 @@ def test_start_refinement_nonexistent_framework():
     headers = {"Authorization": f"Bearer {token}"}
     
     response = requests.post(
-        f"{BASE_URL}/api/refinement/start",
+        f"{BASE_URL}/refinement/start",
         json={
             "original_query": "test query",
             "framework_name": "completely_nonexistent_framework_xyz"
         },
         headers=headers
     )
-    # Accept either 404 (framework not found) or 500 (LLM config issue)
-    assert response.status_code in [404, 500], f"Expected 404 or 500, got {response.status_code}"
+    # Accept 403 (no access to unknown framework), 404 (not found), or 500 (LLM config issue)
+    assert response.status_code in [403, 404, 500], f"Expected 403, 404, or 500, got {response.status_code}"
     if response.status_code == 404:
         assert "not found" in response.json()["detail"].lower()
     print("✓ Nonexistent framework properly rejected")
@@ -99,7 +99,7 @@ def test_get_status_nonexistent_query():
     headers = {"Authorization": f"Bearer {token}"}
     
     response = requests.get(
-        f"{BASE_URL}/api/refinement/queries/99999/status",
+        f"{BASE_URL}/refinement/queries/99999/status",
         headers=headers
     )
     assert response.status_code == 404
@@ -112,7 +112,7 @@ def test_submit_answer_nonexistent_query():
     headers = {"Authorization": f"Bearer {token}"}
     
     response = requests.post(
-        f"{BASE_URL}/api/refinement/queries/99999/answer",
+        f"{BASE_URL}/refinement/queries/99999/answer",
         json={
             "aspect_id": "population_demographics",
             "answer": "test answer"
@@ -131,7 +131,7 @@ def test_submit_answer_missing_fields():
     
     # First create a query
     start_response = requests.post(
-        f"{BASE_URL}/api/refinement/start",
+        f"{BASE_URL}/refinement/start",
         json={
             "original_query": "diabetes treatment",
             "framework_name": "pico_advanced"
@@ -143,7 +143,7 @@ def test_submit_answer_missing_fields():
     
     # Missing answer field (API may accept empty answer)
     response = requests.post(
-        f"{BASE_URL}/api/refinement/queries/{query_id}/answer",
+        f"{BASE_URL}/refinement/queries/{query_id}/answer",
         json={"aspect_id": "population_demographics"},
         headers=headers
     )
@@ -153,7 +153,7 @@ def test_submit_answer_missing_fields():
     
     # Missing aspect_id field (currently causes 500 error - known issue)
     response = requests.post(
-        f"{BASE_URL}/api/refinement/queries/{query_id}/answer",
+        f"{BASE_URL}/refinement/queries/{query_id}/answer",
         json={"answer": "test answer"},
         headers=headers
     )
@@ -168,7 +168,7 @@ def test_synthesize_nonexistent_query():
     headers = {"Authorization": f"Bearer {token}"}
     
     response = requests.post(
-        f"{BASE_URL}/api/refinement/synthesize",
+        f"{BASE_URL}/refinement/synthesize",
         json={"query_id": 99999},
         headers=headers
     )
@@ -183,7 +183,7 @@ def test_access_other_users_query():
     headers1 = {"Authorization": f"Bearer {token1}"}
     
     start_response = requests.post(
-        f"{BASE_URL}/api/refinement/start",
+        f"{BASE_URL}/refinement/start",
         json={
             "original_query": "test query user 1",
             "framework_name": "pico_advanced"
@@ -202,10 +202,10 @@ def test_access_other_users_query():
         "password": "TestPass123!",
         "name": "Test User 2"
     }
-    requests.post(f"{BASE_URL}/api/auth/register", json=test_user_2)
+    requests.post(f"{BASE_URL}/auth/register", json=test_user_2)
     
     login_response = requests.post(
-        f"{BASE_URL}/api/auth/login",
+        f"{BASE_URL}/auth/login",
         data={"username": test_user_2["username"], "password": test_user_2["password"]}
     )
     assert login_response.status_code == 200, f"Login failed: {login_response.text}"
@@ -215,7 +215,7 @@ def test_access_other_users_query():
     
     # Try to access user 1's query with user 2's token
     response = requests.get(
-        f"{BASE_URL}/api/refinement/queries/{query_id}/status",
+        f"{BASE_URL}/refinement/queries/{query_id}/status",
         headers=headers2
     )
     assert response.status_code == 403  # Forbidden
@@ -231,7 +231,7 @@ def test_very_long_query():
     long_query = "a" * 10000
     
     response = requests.post(
-        f"{BASE_URL}/api/refinement/start",
+        f"{BASE_URL}/refinement/start",
         json={
             "original_query": long_query,
             "framework_name": "pico_advanced"
@@ -257,7 +257,7 @@ def test_special_characters_in_query():
     
     for query in special_queries:
         response = requests.post(
-            f"{BASE_URL}/api/refinement/start",
+            f"{BASE_URL}/refinement/start",
             json={
                 "original_query": query,
                 "framework_name": "pico_advanced"

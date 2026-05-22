@@ -320,7 +320,7 @@ class TestCommandHistoryEndpoint:
                 timestamp2 = data["commands"][i + 1]["timestamp"]
                 assert timestamp1 <= timestamp2
     
-    def test_command_history_authorization(self, query_with_session, db: Session):
+    def test_command_history_authorization(self, query_with_session, db: Session, login_and_get_auth_token):
         """Command history requires authentication and ownership."""
         db_query, _ = query_with_session
         
