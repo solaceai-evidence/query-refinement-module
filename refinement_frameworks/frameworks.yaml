@@ -41,9 +41,7 @@ cocopop:
       - Multiple unrelated condition families are named and no primary focus is clear.
 
       **Too specific:**
-      - Ask to broaden only when the condition is defined by a micro-subtype, unusually narrow
-        diagnostic threshold, highly local case definition, or very narrow time window that is
-        likely to suppress recall.
+      - Ask to broaden only when the condition is defined by a micro-subtype, unusually narrow diagnostic threshold, highly local case definition, or very narrow time window that is likely to suppress recall.
 
       **Never ask unless already raised by the user or needed to resolve ambiguity:**
       - Climate-health linkage
@@ -113,7 +111,9 @@ cocopop:
       - No usable geographic or setting anchor is present.
       - The wording is ambiguous or too generic to search as stated
         (e.g., "field settings", "affected areas", or "the region" with no anchor).
-      - A hyperlocal reference is given without a broader anchor that would make retrieval feasible.
+      - The query is framed around a hyperlocal site or a single-event window
+        (e.g., one camp block, facility, village cluster, neighborhood, or 48-72 hours after one event)
+        in a way that is likely to suppress recall, even if a broader district, state, or region is also named.
       - The user explicitly raises implementation, feasibility, or delivery-platform constraints and
         the current wording does not identify the relevant health-system or service setting.
       - The user explicitly makes emergency phase central and the current phase wording is still vague
@@ -121,7 +121,9 @@ cocopop:
 
       **Too specific:**
       - Ask to broaden only when the scope is so local or narrow that it is likely to suppress recall,
-        such as a single village, facility, camp block, or neighborhood with no broader anchor.
+        such as a single village, facility, camp block, camp sector, village cluster, neighborhood,
+        one site, or a narrow single-event window like within 48-72 hours of one incident,
+        even when a broader administrative anchor is embedded in the phrase.
 
       **Never ask unless already raised by the user or needed to resolve ambiguity:**
       - Health-system level or capacity
@@ -164,6 +166,15 @@ cocopop:
         - statement: "One village in Cox's Bazar"
           note: Too specific for default retrieval if no broader anchor is given.
           guidance: Ask whether Cox's Bazar district, the Rohingya camp setting, or Bangladesh more broadly would be acceptable.
+        - statement: "Camp block C of Kutupalong within 72 hours of one flood event"
+          note: Hyperlocal site and single-event window are too narrow for default retrieval.
+          guidance: Ask whether Kutupalong camp, Cox's Bazar district, the Rohingya camp setting, or Bangladesh more broadly would be acceptable, and whether the time window should be broadened.
+        - statement: "Village cluster 7 of Maharashtra during the second afternoon shift of a 3-day heatwave"
+          note: A named state does not make a village-cluster framing broad enough for default retrieval.
+          guidance: Ask whether Maharashtra more broadly, rural Maharashtra, or agricultural settings in India would be acceptable.
+        - statement: "Valley sector 4 of Maule within 48 hours of a single wildfire smoke plume"
+          note: A broader region name is present, but the context is still framed at a hyperlocal single-plume window.
+          guidance: Ask whether Maule region, rural central Chile, or wildfire-affected agricultural settings would be acceptable, and whether the time window should be broadened.
   - id: population
     name: Population
     description:
