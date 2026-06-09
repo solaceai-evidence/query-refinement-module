@@ -115,6 +115,28 @@ poetry run query-refine --list-frameworks
 poetry run query-refine --framework pico_advanced
 ```
 
+## How frameworks are loaded and selected
+
+Framework definitions are loaded from the YAML file pointed to by `REFINEMENT_FRAMEWORK_PATH`. In the provided environment templates this points to `./refinement_frameworks/frameworks.yaml` for local development and `/app/refinement_frameworks/frameworks.yaml` in Docker.
+
+Each top-level key in that YAML file is a framework name. For example, the built-in file includes names such as `cocopop`, `mph_dissertation`, and `pico_advanced`.
+
+How the app picks a framework at runtime depends on the entrypoint:
+
+- Web UI: the frontend requests the list of available frameworks from the API, then the user chooses one before starting refinement. The list may be filtered by the current user's framework access.
+- API clients: must send `framework_name` in the `/api/v1/refinement/start` request body. There is no API-side default if it is omitted.
+- CLI: pass `--framework <name>`. If exactly one framework is loaded, the CLI will use it automatically; otherwise it will require `--framework`.
+
+Useful commands:
+
+```bash
+# See which framework names are currently loaded
+poetry run query-refine --list-frameworks
+
+# Point the app at a different framework file for this shell session
+export REFINEMENT_FRAMEWORK_PATH=./refinement_frameworks/frameworks.yaml
+```
+
 ### Commands during a CLI session
 
 | Command   | Purpose                          |
