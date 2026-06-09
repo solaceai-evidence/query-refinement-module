@@ -1989,10 +1989,11 @@ solaceai:
           example_question: "Are you focusing on specific climate- or weather-related
             hazards such as floods, heatwaves, drought, cyclones, or air
             pollution, and in what geographic setting?"
-cocopop:
+cocopop_v1:
   - user_context:
       user_type: "policy maker, humanitarian practitioner, health professional, or researcher working on climate-health emergencies"
-      context: "Real-time evidence synthesis for climate-change health emergencies.
+      context:
+        "Real-time evidence synthesis for climate-change health emergencies.
         User is formulating a decision-relevant question to support policy,
         humanitarian, or health-system responses in urgent, context-specific
         settings. The question must support rigorous retrieval and transparent
@@ -2003,240 +2004,273 @@ cocopop:
       examples_from: "climate-health policy and humanitarian response"
   - id: condition
     name: Condition
-    description: The health condition, disease, symptom, problem, or social issue
+    description:
+      The health condition, disease, symptom, problem, or social issue
       under study, including its case definition, diagnostic criteria, and
       climate-health linkage.
-    strictness: PERMISSIVE
     specifications: |
-      **Task:** Evaluate and assemble the condition specification.
+      **Task:** Extract and assemble the condition specification into a single descriptive string.
 
-      **Elements to track:**
-      - The named health condition, disease, symptom, problem, or social issue
-      - Case definition or diagnostic criteria (e.g., WHO case definition, ICD-11 code, clinical threshold)
-      - Climate-health linkage: the climate-sensitive hazard or environmental stressor that drives, exacerbates, or contextualizes this condition (e.g., flood-associated, heat-exacerbated, drought-driven)
-      - Temporal qualifier when the condition is phase-specific (e.g., acute phase, post-exposure, seasonal peak)
+      **Elements to silently extract, if present:**
+      - Named condition: health condition, disease, symptom, problem, or social issue
+      - Climate-health linkage: climate-sensitive hazard or environmental stressor driving or
+        exacerbating the condition
+      - Case definition or diagnostic threshold
+      - Temporal qualifier (e.g., acute phase, post-exposure, seasonal peak)
+      - Symptom cluster (e.g., "fever and respiratory distress", "acute watery diarrhoea")
+      - Causal pathway (e.g., smoke-inhalation-related respiratory illness, flood-contamination-related enteric disease)
 
-      **Required:**
-      - At least one named condition with sufficient specificity to anchor evidence retrieval
-      - Climate-health linkage: probe for this if absent
+      **When to ask (governs questions only, not extraction):**
+      - Named condition: ask if absent. Ask if present but at wrong specificity level (see
+        specificity thresholds).
+      - Climate-health linkage: ask if absent. Example prompt: "What climate or environmental
+        hazard drives or exacerbates this condition? (e.g., flood, drought, extreme heat,
+        wildfire smoke)"
+      - Case definition or diagnostic threshold: ask if absent and the named condition
+        encompasses multiple severity levels or subtypes requiring different interventions
+        (e.g., "malnutrition" spans acute wasting, stunting, and micronutrient deficiency;
+        "heat illness" spans heat exhaustion and heat stroke).
+      - Temporal qualifier: ask if absent and the phase of illness materially affects which
+        interventions apply or how outcomes are measured (e.g., acute vs. post-exposure
+        respiratory illness, seasonal vs. year-round transmission).
+      - Symptom cluster: ask if absent and the condition is defined by symptoms rather than
+        a named disease entity (e.g., "fever and respiratory distress", "acute watery diarrhoea").
+      - Causal pathway: ask if absent and the question concerns prevention, or if the condition
+        is defined by its cause (e.g., smoke-inhalation-related respiratory illness,
+        flood-contamination-related enteric disease).
 
-      **Required if applicable:**
-      - Case definition or diagnostic threshold: required when the condition encompasses multiple severity levels or when diagnostic criteria determine eligibility
-      - Temporal qualifier: required when the phase of illness affects intervention applicability or outcome measurement
-      - Symptom cluster: required when the condition is defined by symptoms rather than a named disease entity
-      - Causal pathway: required when the question concerns prevention or when the condition is defined by its cause (e.g., smoke-inhalation-related respiratory illness)
+      **Never ask about:** symptom cluster or causal pathway unless the trigger condition above
+      is clearly met. If absent and no trigger applies, omit silently.
 
-      **Specificity thresholds:**
-      - INSUFFICIENT: condition names that encompass multiple distinct disease entities with different case definitions, interventions, or evidence bases (e.g., "malnutrition", "waterborne disease", "climate-related illness")
-      - SUFFICIENT: a named condition with a recognized case definition or diagnostic reference point (e.g., "acute watery diarrhoea using WHO case definition", "heat stroke defined as core temperature ≥40°C or altered consciousness")
-      - OVER-SPECIFIED: a level of specificity that would exclude all or nearly all available evidence; flag and propose broadening
+      **Specificity thresholds (ask when present but at wrong level):**
+
+      Named condition:
+      - TOO BROAD: condition name encompasses multiple distinct entities with different case
+        definitions, interventions, or evidence bases (e.g., "malnutrition", "waterborne disease",
+        "climate-related illness", "mental health impacts"). Ask: "Are you focusing on [specific
+        form A] or [specific form B]? What diagnostic threshold or case definition applies?"
+      - APPROPRIATE: named condition with a recognised case definition or diagnostic reference
+        point (e.g., "acute watery diarrhoea using WHO case definition", "heat stroke defined
+        as core temperature ≥40°C or altered consciousness").
+      - TOO SPECIFIC: specificity would exclude all or nearly all available evidence. Ask:
+        "The condition as specified may be too narrow to retrieve sufficient evidence. Would
+        broadening to [proposed broader term] be acceptable?"
     examples:
       clear:
-        - statement: Acute watery diarrhoea in children under 5 years following riverine
-            flooding in a displacement camp
-          rationale: Named condition (acute watery diarrhoea), climate linkage (riverine
-            flooding), and setting (displacement camp) all specified.
-        - statement: Heat stroke and severe heat exhaustion (core temperature ≥40°C or
-            altered consciousness) in outdoor agricultural workers during an
-            extreme heat event in South Asia
-          rationale: Named condition with severity threshold (heat stroke, ≥40°C or
-            altered consciousness), climate linkage (extreme heat event), and
-            population and occupational context (outdoor agricultural workers,
-            South Asia) all explicit.
+        - statement: "Acute watery diarrhoea in children under 5 years, driven by flood-contaminated water sources, acute phase within 2 weeks of flood onset"
+          rationale: Named condition (acute watery diarrhoea), climate-health linkage (flood-contaminated water) and temporal qualifier (acute phase, within 2 weeks of flood onset) all specified.
+        - statement: "Post-traumatic stress disorder (PTSD, DSM-5 criteria) in adults following climate-driven displacement, chronic phase (6+ months post-displacement)"
+          rationale: named condition (PTSD, DSM-5), climate-health linkage (climate-driven displacement), temporal qualifier (chronic, 6+ months) all explicit.
       needs_refinement:
-        - statement: Malnutrition
-          issue: Encompasses acute wasting, stunting, and micronutrient deficiency — each
-            with distinct case definitions, thresholds, and interventions;
-            climate linkage absent.
-          missing: Specific form (e.g., acute wasting, stunting, micronutrient
-            deficiency), diagnostic threshold or case definition, and
-            climate-health driver (e.g., drought-driven food insecurity).
-          example_question: "Are you focusing on acute wasting, stunting, or a specific
-            micronutrient deficiency? What diagnostic threshold or case
-            definition applies? Is this condition driven by a climate-related
-            stressor such as drought or crop failure?"
+        - statement: "Climate-related illness in displaced populations"
+          issue: TOO BROAD — "climate-related illness" spans heat illness, vector-borne disease, waterborne disease, respiratory illness from wildfire smoke, and malnutrition. No single evidence base applies.
+          example_question: "Which condition specifically? (e.g., heat stroke, malaria, acute watery diarrhoea, smoke-related respiratory illness, acute wasting)"
+        - statement: "Waterborne diseases following flooding"
+          issue:
+            TOO BROAD — encompasses cholera, typhoid, hepatitis A, and leptospirosis,
+            each with distinct case definitions, diagnostic criteria, and interventions.
+          example_question:
+            "Which waterborne disease specifically? (e.g., cholera using WHO case
+            definition, typhoid fever, leptospirosis, hepatitis A)"
       partial:
-        - statement: Mental health impacts of displacement
-          has: Condition domain (mental health), context (displacement).
-          missing: Specific disorder (e.g., PTSD, major depression, acute stress
-            reaction) or confirmation of all domain, climate-driver of displacement.
-          example_question: "Are you focusing on all mental health disorders. If not, which mental health condition are you focusing on — PTSD,
-            depression, anxiety, or acute stress reactions? What diagnostic
-            criteria apply? Is displacement climate-driven (e.g., flood,
-            drought, sea-level rise) or conflict-related?"
+        - statement: "Cholera outbreaks in displacement camps following flooding"
+          has: named condition (cholera), context (displacement camps), climate-health linkage implied (flooding)
+          missing: case definition — cholera has WHO clinical and laboratory case definitions with different eligibility implications; climate-health linkage present but not explicitly named as the driver
+          example_question: "Which case definition applies — WHO clinical case definition or laboratory-confirmed? Is flooding the primary driver of transmission in this context?"
       vague_ambiguous:
-        - statement: Health problems in affected communities
-          issue: Neither the condition nor the hazard is defined; provides no diagnostic
-            reference point for evidence retrieval.
-          missing: Named condition or disease, specific hazard or stressor, and case
+        - statement: "Health impacts of displacement caused by sea-level rise"
+          issue: '"Health impacts" is undefined — could mean infectious disease, mental health injury, malnutrition, or non-communicable disease exacerbation. Climate-health linkage(sea-level rise) is present but the condition is entirely unspecified'
+          missing:
+            Named condition or disease, specific hazard or stressor, and case
             definition or measurement approach.
-          example_question: "Which health condition are you focusing on? Which climate or
-            environmental hazard has affected these communities? How is the
-            condition defined or diagnosed in this setting?"
+          example_question: "Which health condition are you focusing on? (e.g., mental health impacts of displacement, waterborne disease, malnutrition, injury)"
   - id: context
     name: Context
-    description: The geographic, environmental, and implementation setting in which
+    description:
+      The geographic, environmental, and implementation setting in which
       the condition occurs and in which any response or intervention would be
       applied.
-    strictness: PERMISSIVE
     depends_on:
       - condition
     specifications: |
-      **Task:** Evaluate and assemble the context specification.
+      **Task:** Extract and assemble the context specification into a single descriptive string.
 
-      **Elements to track:**
-      - Geographic setting: country, region, or sub-national area (e.g., Sahel, Pacific Island states, peri-urban Bangladesh)
+      **Elements to silently extract, if present:**
+      - Geographic setting: country, region, or sub-national area
       - Urban/rural/peri-urban classification
-      - Income or resource setting: World Bank income group (low, lower-middle, upper-middle, high) or explicit resource-availability descriptor (e.g., resource-limited, humanitarian field setting)
-      - Health system level and capacity: community health worker-based, primary care, district hospital, tertiary referral, fragile or disrupted system
-      - Socioeconomic and political context: conflict-affected, fragile state, post-disaster, displacement camp, food-insecure region
-      - Environmental or climate setting: drought-prone, flood-prone, high-altitude, coastal, heat-stressed urban environment
-      - Temporal context: acute emergency phase, recovery phase, chronic/ongoing, seasonal window (e.g., monsoon season, lean season)
+      - Income or resource setting: World Bank income group or explicit resource descriptor
+      - Health system level and capacity
+      - Socioeconomic and political context: conflict-affected, fragile state, post-disaster,
+        displacement camp, food-insecure
+      - Environmental or climate setting: drought-prone, flood-prone, coastal, heat-stressed urban
+      - Temporal context: acute emergency, recovery, chronic/ongoing, seasonal window
 
-      **Required:**
-      - At least one contextual dimension that anchors where the condition occurs or where evidence must be applicable.
+      **When to ask (governs questions only, not extraction):**
+      - Geographic setting: ask if absent. Ask if present but at wrong specificity level (see
+        specificity thresholds).
+      - Health system capacity: ask if absent and the intervention under consideration depends
+        on specific infrastructure or personnel (e.g., cold chain for vaccines, laboratory
+        diagnostics, surgical capacity, trained specialist availability). Do not ask for
+        burden, exposure, incidence, or risk questions when no intervention, delivery
+        platform, implementation setting, or feasibility constraint is explicitly under
+        consideration. Ask if present but too vague (see specificity thresholds).
+      - Temporal context: ask if absent and the phase of the emergency determines which
+        evidence or intervention types are eligible (e.g., acute search-and-rescue vs.
+        recovery-phase rehabilitation; active outbreak response vs. post-outbreak surveillance).
+        Ask if present but too vague (see specificity thresholds).
+      - Urban/rural classification: ask if absent and condition burden, care-seeking behaviour,
+        or intervention delivery differs materially by setting type (e.g., vector-borne disease
+        with urban vs. rural transmission patterns; community health worker reach in rural
+        vs. peri-urban areas).
 
-      **Required if applicable:**
-      - Health system capacity: required when intervention feasibility depends on available infrastructure or personnel
-      - Temporal context: required when the phase of the emergency determines eligible evidence or intervention type
-      - Urban/rural classification: required when setting-dependent variation in condition burden, care-seeking, or intervention delivery is plausible
+      **Never ask about:** income or resource setting, socioeconomic and political context,
+      environmental or climate setting. If absent, omit silently. If present, extract silently.
 
-      **Standardization rules:**
+      **Specificity thresholds (ask when present but at wrong level):**
+
+      Geographic setting:
+      - TOO BROAD: continent-level terms (e.g., "Africa", "Asia") or heterogeneous groupings
+        (e.g., "developing countries", "Global South") with no hazard, income, or sub-regional
+        anchor. Ask: "Are you focusing on a specific country or sub-region, or is the broader
+        geographic scope intentional for this question?"
+      - APPROPRIATE: country-level or sub-national region with at least one additional anchor
+        (hazard, income group, or setting type). Do not ask for district, province, or camp-level
+        specificity when a country-level setting already includes a meaningful hazard or setting
+        anchor and that level is adequate for retrieval.
+      - TOO SPECIFIC: single district, municipality, or locality with no broader anchor. Ask:
+        "Should the scope remain limited to [location], or should it be broadened to
+        [country/region] to ensure sufficient evidence is available?"
+
+      Health system capacity:
+      - TOO VAGUE: terms spanning multiple distinct system levels without further specification
+        (e.g., "limited resources", "low-resource setting", "weak health system"). Ask: "Do
+        you mean community health worker-level care, primary care without laboratory capacity,
+        district hospital, or a humanitarian field setting?"
+      - APPROPRIATE: specific level with at least one capacity constraint named (e.g., "primary
+        care clinics without diagnostic laboratory", "district hospital with no ICU capacity").
+
+      Temporal context:
+      - TOO VAGUE: phase descriptors without specification (e.g., "during the crisis", "after
+        the disaster", "in the emergency"). Ask: "Which phase — acute emergency, early recovery,
+        or chronic/ongoing?"
+      - APPROPRIATE: named phase with sufficient specificity (e.g., "acute phase within 72 hours
+        of flood onset", "recovery phase 3-6 months post-cyclone").
+
+      **Standardisation rules:**
       - "poor countries" → "low- and middle-income countries (LMICs)"
       - "rich countries" → "high-income countries"
-      - Vague regional terms (e.g., "Global South", "developing world") → resolve to named geographies, income classifications, or specific hazard contexts
+      - Vague regional terms (e.g., "Global South", "developing world") → resolve to named
+        geographies, income classifications, or specific hazard contexts before assembling
     examples:
       clear:
-        - statement: Peri-urban informal settlements in coastal Mozambique following
-            Cyclone Idai, with damaged primary care infrastructure and limited
-            referral capacity
-          rationale: Geography (coastal Mozambique), setting (peri-urban informal), hazard
-            (cyclone), health system capacity (damaged primary care, limited
-            referral), and temporal phase (post-event) all specified.
-        - statement: Rural displacement camps in northeastern Ethiopia during a multi-year
-            drought, staffed by community health workers without diagnostic
-            laboratory capacity
-          rationale: Country (Ethiopia), sub-region (northeastern), setting (rural
-            displacement camp), hazard (prolonged drought), temporal phase
-            (chronic/ongoing), and health system constraint (no laboratory
-            capacity) all explicit.
+        - statement: "Peri-urban informal settlements in coastal Mozambique, post-cyclone acute phase within 4 weeks of landfall, primary health care facilities with damaged infrastructure and no functional cold chain"
+          rationale: geographic setting (coastal Mozambique), urban/rural (peri-urban), socioeconomic context (informal settlements), health system capacity (primary care, damaged, no cold chain), temporal context (post-cyclone acute, within 4 weeks) all specified
+        - statement: "Rural displacement camps in Bangladesh following riverine flooding"
+          rationale: country-level geography (Bangladesh) plus hazard (riverine flooding) and setting type (rural displacement camps) is sufficiently specific for retrieval; district-level detail is not required.
       needs_refinement:
-        - statement: Communities affected by climate change
-          issue: No geographic anchor, hazard, setting, or health system context; provides
-            no usable basis for evidence retrieval or applicability assessment.
-          missing: Geographic region or country, specific climate hazard or stressor,
-            health system level or capacity.
-          example_question: "Which country or region are you focusing on? Which climate
-            hazard is affecting this community? (e.g., flooding, drought,
-            extreme heat, cyclone) Is the focus on a community, primary care, or
-            hospital setting?"
+        - statement: "Sub-Saharan Africa"
+          issue: TOO BROAD — continent-level sub-region with no hazard, income, or country anchor. Encompasses dozens of countries with distinct health systems, climate hazards, and evidence bases.
+          example_question: "Are you focusing on a specific country or sub-region? (e.g., Sahel region, Horn of Africa, southern Africa) Or is the broader sub-Saharan scope intentional for this question?"
+        - statement: "A village in Cox's Bazar"
+          issue:
+            TOO SPECIFIC — single locality with no broader anchor. Available evidence
+            is indexed at camp, district, or country level, not individual village.
+          example_question: "Should the scope be broadened to Cox's Bazar district or the Rohingya refugee camp setting more broadly, to ensure sufficient evidence is available?"
       partial:
-        - statement: Flood-affected districts in South Asia
-          has: Hazard (flood), broad region (South Asia).
-          missing: Country, urban/rural classification, health system level.
-          example_question: "Which country in South Asia? (e.g., Bangladesh, India,
-            Pakistan, Nepal) Are communities urban, peri-urban, or rural? What
-            health system level is relevant — community health workers, primary
-            care clinics, or district hospitals?"
-        - statement: During a drought emergency in Africa
-          has: Hazard (drought), temporal phase (acute/emergency), broad region (Africa).
-          missing: Sub-region or country, setting type, health system capacity.
-          example_question: "Which country or sub-region of Africa? Is the setting a
-            displacement camp, rural community, or health facility? What health
-            system capacity is assumed? (e.g., functional primary care,
-            humanitarian field teams)"
+        - statement: "Flood-affected districts in Bangladesh considering vaccine delivery through primary care facilities"
+          has: geographic setting (Bangladesh, flood-affected districts)
+          missing:
+            urban/rural absent — intervention delivery in Bangladesh differs
+            significantly between haor wetland areas, coastal char lands, and
+            peri-urban settlements; health system level absent and relevant because vaccine delivery depends on platform capacity
+          example_question: "Are these rural, peri-urban, or coastal communities? What delivery platform is relevant — community outreach, primary care clinics, or upazila health complexes?"
       vague_ambiguous:
-        - statement: Low-resource settings during a crisis
-          issue: "'Low-resource' and 'crisis' are both underdefined — this spans primary
-            care in LMICs to humanitarian field hospitals, and any type of
-            emergency from conflict to disease outbreak to climate disaster."
-          missing: Geographic region, specific hazard or crisis type, health system level
-            and capacity.
-          example_question: "Where specifically? (e.g., rural Sahel, peri-urban South
-            Asia, Pacific Island state) What kind of crisis? (e.g., flood
-            response, drought, disease outbreak following a cyclone)"
-        - statement: Vulnerable communities in the Global South
-          issue: "'Global South' is too heterogeneous for coherent synthesis; 'vulnerable'
-            is undefined."
-          missing: Country or sub-region, type of vulnerability (climate exposure, food
-            insecurity, lack of health access), specific hazard or stressor.
-          example_question: "Which country or region? What makes these communities
-            vulnerable in your context — climate exposure, food insecurity, or
-            limited healthcare access? What specific hazard are they facing?"
+        - statement: "Field settings in the Global South"
+          issue:
+            '"Field settings" could mean community outreach, primary care clinic,
+            or humanitarian field hospital — meaningfully different for intervention
+            feasibility. "Global South" is too heterogeneous for coherent synthesis.'
+          example_question: "Which setting level? (e.g., community health worker-based, primary care clinic, humanitarian field hospital) Which region or country specifically?"
   - id: population
     name: Population
-    description: The group of individuals or entities whose health outcomes are the
+    description:
+      The group of individuals or entities whose health outcomes are the
       focus of the question, defined by demographic characteristics,
       vulnerability, exposure, and inclusion criteria that shape evidence
       applicability.
     depends_on:
       - condition
       - context
-    strictness: PERMISSIVE
     specifications: |
-      **Task:** Evaluate and assemble the population specification.
+      **Task:** Extract and assemble the population specification from the user's input.
 
-      **Elements to track:**
-      - Age range, category, or life stage
-      - Sex/gender
-      - Ethnicity or race (when health disparities are the focus or when explicitly stated)
-      - Vulnerability or exposure characteristics relevant to the climate-health context (e.g., displaced persons, outdoor workers, pregnant women, children under 5)
-      - Relevant subgroup characteristics: occupational roles (e.g., healthcare workers, agricultural workers), socioeconomic markers (e.g., food-insecure, uninsured), pregnancy or reproductive status, or affiliation (e.g., residents of informal settlements)
+      **Elements to silently extract, if present:**
+      - Population scope: name specific group or statement that the question applies to all populations
+      - Age: range, category, or life stage (e.g., children under 5, older adults, working-age adults, pregnant women)
+      - Sex/gender (e.g., women of reproductive age, all  adults, males over 60)
+      - Ethnicity/race
+      - Subgroup characteristics: roles, affiliations, socioeconomic markers, reproductive status, occupational categories, insurance status.
 
-      **Required:**
-      - Confirmation of whether the question applies to all populations or is limited to a specific group
-      - Age specification when the health condition, intervention, or evidence base is age-dependent
+      **When to ask (governs questions only, not extraction):**
+      - Population scope: ask if absent, or if stated as "all populations" when the topic is clearly specific to a subgroup (e.g., outdoor workers, pregnant women, refugees).
+      - Age: ask if absent AND the topic is inherently age-specific (e.g., paediatric malnutrition, geriatric heat stress, adolescent mental health, neonatal mortality). Ask if present but vague (see specificity thresholds).
+      - Ethnicity/race: ask if absent AND the topic concerns differential burden or outcomes across population groups (e.g., Indigenous communities, ethnic minorities, racialised groups, caste-based disparities).
 
-      **Required if applicable:**
-      - Sex/gender: required when condition burden, intervention response, or care-seeking behaviour differs by sex
-      - Ethnicity/race: required when the question concerns health disparities or when stated by the user
-      - Vulnerability or exposure characteristic: required when the climate-health pathway operates through a specific exposure group (e.g., heat illness in outdoor workers, flood-related diarrhoea in displaced children)
+      **Never ask about:** sex/gender, subgroup characteristics.
+      If absent, omit silently. If present, extract silently.
+
+      **Specificity thresholds (ask when present but at wrong level):**
+
+      Population scope:
+      - TOO BROAD: "all populations" or equivalent with no qualifier when the topic is clearly
+        specific to a subgroup. Ask: "Is this question intended for all populations, or is it
+        limited to a specific group?"
+      - APPROPRIATE: named specific group, or explicit confirmation of unrestricted scope.
+
+      Age:
+      - TOO BROAD: terms spanning multiple distinct age groups without a range (e.g., "adults",
+        "young people", "children"). Ask: "Which age group specifically? (e.g., children 2-12
+        years, adolescents 10-19 years, working-age adults 18-65 years)"
+      - APPROPRIATE: defined range, recognised life stage, or standardised category (e.g., children 2-12 years, working-age adults 18-65 years, "all adults").
+      - TOO SPECIFIC: narrow range unlikely to match available evidence (e.g., "35-37 year olds").
+        Ask: "Should the age range be broadened to [proposed category] to ensure sufficient
+        evidence is available?"
 
       **Age standardization:**
-      - "kids" → "children (2–12 years)"
+      - "kids" → "children (2-12 years)"
       - "elderly" → "older adults (65+ years)"
-      - Non-standard range → prepend "approximately"
+      - Vague or non-standard ranges → prepend "approximately"
     examples:
       clear:
-        - statement: Children under 5 years in flood-affected displacement camps in
-            coastal Bangladesh
-          rationale: Age (under 5), setting (displacement camps), climate-health exposure
-            (flood-affected), and geography (coastal Bangladesh) all specified.
-        - statement: Pregnant women in rural sub-Saharan Africa during drought-related
-            food insecurity
-          rationale: Sex and reproductive status (pregnant women), setting (rural
-            sub-Saharan Africa), and climate-health exposure (drought-related
-            food insecurity) all explicit.
-        - statement: Outdoor agricultural workers aged 18–60 in South Asia during extreme
-            heat events
-          rationale: Age range (18–60), occupational exposure (outdoor agricultural
-            workers), geography (South Asia), and climate hazard (extreme heat)
-            all specified.
-      needs_refinement:
-        - statement: People affected by flooding
-          issue: No demographic, vulnerability, or geographic specification; applies to an
-            unbounded and heterogeneous group.
-          missing: Age range or life stage, geographic anchor, vulnerability or exposure
-            characteristic.
-          example_question: "Which population are you focusing on? For example, are you
-            interested in children under 5, pregnant women, older adults, or all
-            age groups? Is there a specific geographic or vulnerability
-            context?"
-      partial:
-        - statement: Women in disaster-affected areas
-          has: Sex (women), setting type (disaster-affected).
-          missing: Age specification, type of disaster or hazard, geographic anchor.
-          example_question: "Which age group? Are you focusing on women of reproductive
-            age, pregnant women, or all adult women? Which type of disaster and
-            in which region?"
+        - statement: "Male smallholder farmers aged 18-60 years in drought-affected semi-arid households in Kenya"
+          rationale: population scope (smallholder farmers), age (18-60 years), sex/gender (male), subgroup (drought-affected households) all specified.
+        - statement: "Older adults aged 65 years and above with pre-existing cardiovascular or respiratory conditions living alone in urban informal settlements"
+          rationale: population scope (older adults living alone), age (65+ years), subgroup(pre-existing conditions, urban informal settlements) all specified.
       vague_ambiguous:
-        - statement: Vulnerable populations in affected communities
-          issue: Both 'vulnerable' and 'affected' are undefined; provides no basis for
-            inclusion criteria or evidence applicability assessment.
-          missing: Named vulnerability characteristic (e.g., displaced, food-insecure,
-            older adults), geographic or hazard context, age or sex
-            specification.
-          example_question: "Which specific population are you focusing on? (e.g.,
-            displaced persons, food-insecure households, children under 5,
-            outdoor workers) Which climate hazard has affected these communities
-            and where?"
+        - statement: "Local populations in climate hotspots"
+          issue: '"Local populations" gives no demographic anchor; "climate hotspots" gives no population specificity. Could mean all residents, specific occupational groups, or climate-exposed subgroups. Cannot determine without asking.'
+          example_question: "Which population group are you focusing on? (e.g., all residents,outdoor workers, subsistence farmers, fishing communities)"
+      partial:
+        - statement: '"Indigenous communities" — query concerns drought-related malnutrition'
+          has: population scope (Indigenous communities), ethnicity/race (Indigenous)
+          missing: age — malnutrition in drought contexts is age-specific (acute wasting in under-5s, micronutrient deficiency in pregnant women, wasting in older adults)
+          example_question: "Which age group is this question focused on? (e.g., children under 5, pregnant and lactating women, older adults, all ages)"
+        - statement: '"Displaced families" — query concerns post-flood diarrhoeal disease'
+          has: population scope (displaced families)
+          missing:
+            age — diarrhoeal mortality risk in post-flood settings is sharply
+            age-specific; under-5 children face the highest burden
+          example_question: "Which age group is this question focused on? (e.g., children under 5, all ages, adults only)"
+      needs_refinement:
+        - statement: "Adults in cyclone-affected coastal communities"
+          issue:
+            '"Adults" spans working-age and older adults — distinct vulnerability
+            profiles and evidence bases'
+          example_question: "Which age group specifically? (e.g., working-age adults 18-65 years, older adults 65+ years, or all adults 18+ years)"
+        - statement: "Rohingya women aged 22-28 in Cox's Bazar"
+          issue:
+            Age range too narrow — unlikely to match available evidence, which
+            typically reports on reproductive-age women as a whole.
+          example_question:
+            "Should the age range be broadened to reproductive-age women
+            (15-49 years) to ensure sufficient evidence is available?"
