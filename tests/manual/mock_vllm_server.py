@@ -7,7 +7,7 @@ It inspects the ``guided_json`` field that the LiteLLM provider injects via
 two structured models used by this application:
 
 - ``DimensionEvaluationResponse``  (complete / current / question)
-- ``QueryRefinementResponse``      (synthesized_statement / dimensions_specifications / …)
+- ``QueryRefinementResponse``      (integrated_statement / dimensions_specifications / …)
 
 Usage
 -----
@@ -108,12 +108,11 @@ def _response_for_schema(schema: dict, call_index: int) -> str:
             }
         )
 
-    # QueryRefinementResponse: has synthesized_statement (by_alias) or integrated_statement
-    if "synthesized_statement" in props or "integrated_statement" in props:
-        key = "synthesized_statement" if "synthesized_statement" in props else "integrated_statement"
+    # QueryRefinementResponse: canonical synthesis output model.
+    if "integrated_statement" in props and "dimensions_specifications" in props:
         return json.dumps(
             {
-                key: (
+                "integrated_statement": (
                     "A cross-sectional study examining the association between "
                     "aspirin use and cardiovascular outcomes in adults aged 18-65 "
                     "with pre-existing cardiovascular disease in UK primary care."
@@ -124,11 +123,32 @@ def _response_for_schema(schema: dict, call_index: int) -> str:
                     "comparator": "no aspirin / placebo",
                     "outcome": "major adverse cardiovascular events (MACE) at 12 months",
                 },
-                "search_optimized": (
-                    "aspirin cardiovascular outcomes adults cardiovascular disease UK"
-                ),
-                "search_filters": {"study_design": "cross-sectional", "date_range": "2010-2024"},
-                "terminology": ["aspirin", "cardiovascular disease", "MACE", "primary prevention"],
+                "search_optimized": {
+                    "semantic": "aspirin cardiovascular outcomes adults cardiovascular disease UK",
+                    "keyword": {
+                        "structured": "(aspirin) AND (cardiovascular outcomes) AND (UK primary care)",
+                        "phrases": ["cardiovascular outcomes", "UK primary care"],
+                        "terms": {
+                            "required": ["aspirin", "cardiovascular disease"],
+                            "optional": ["MACE", "primary prevention"],
+                            "excluded": [],
+                        },
+                    },
+                },
+                "search_filters": {
+                    "publication_years": "2010-2024",
+                    "venues": [],
+                    "authors": [],
+                    "publication_types": ["cross-sectional study"],
+                    "fields_of_study": ["Medicine"],
+                },
+                "terminology": {
+                    "synonyms": {
+                        "aspirin": ["acetylsalicylic acid"],
+                        "major adverse cardiovascular events": ["MACE"],
+                    },
+                    "colloquial": [],
+                },
             }
         )
 

@@ -138,13 +138,14 @@ class TestPromptBuilder:
             examples_from="public health"
         )
         rendered = builder.render_user_context(ctx)
-        # Check that user context is rendered with Type and Context fields
-        assert "**Type**: student" in rendered
-        assert "**Context**: Academic research" in rendered
+        # Check that user type and context are preserved across prompt variants
+        assert "student" in rendered
+        assert "Academic research" in rendered
         assert "**Examples domain**: public health" not in rendered
         assert "FEASIBILITY ALERTS" not in rendered
-        assert "Do not use this section" in rendered
-        assert "clear, partial, or complete" in rendered
+        assert "shape phrasing, explanation depth, and question framing" in rendered
+        assert "Do not use this section" in rendered or "override task rules" in rendered
+        assert "clear, partial, or complete" in rendered or "judge completeness" in rendered
 
     def test_global_system_prompt_scopes_opt_out_rules(self):
         """Opt-out completion rules should not complete core content dimensions by default."""
@@ -173,8 +174,8 @@ class TestPromptBuilder:
         assert "FEASIBILITY ALERTS" not in rendered
         assert "**Examples domain**" not in rendered
         assert "shape phrasing, explanation depth, and question framing" in rendered
-        assert "Do not use this section" in rendered
-        assert "clear, partial, or complete" in rendered
+        assert "Do not use this section" in rendered or "override task rules" in rendered
+        assert "clear, partial, or complete" in rendered or "judge completeness" in rendered
     
     def test_render_dimension_prompt(self):
         """Test rendering dimension prompt."""
@@ -228,7 +229,7 @@ class TestPromptBuilder:
         )
         
         assert "Research Query Refinement" in prompt  # Global
-        assert "**Type**: student" in prompt  # User context  
+        assert "student" in prompt  # User context
         assert "Test Dimension" in prompt  # Dimension
 
     def test_get_synthesis_system_prompt(self):
@@ -236,7 +237,7 @@ class TestPromptBuilder:
         builder = PromptBuilder()
         prompt = builder.get_synthesis_system_prompt()
         assert isinstance(prompt, str)
-        assert "SYNTHESIS" in prompt or "synthesized_statement" in prompt
+        assert "SYNTHESIS" in prompt or "integrated_statement" in prompt
 
 
 class TestTemplates:

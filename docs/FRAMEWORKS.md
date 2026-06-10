@@ -11,11 +11,11 @@ The current framework format is designed for non-technical editing as well as ad
 
 ### Required
 
-| Field            | Type   | Description                                                                                             |
-| ---------------- | ------ | ------------------------------------------------------------------------------------------------------- |
-| `id`             | string | Unique identifier used by `depends_on` references and in API responses                                  |
-| `name`           | string | Human-readable display name shown to the user                                                           |
-| `description`    | string | One-line description of what this dimension clarifies                                                   |
+| Field            | Type   | Description                                                                                                  |
+| ---------------- | ------ | ------------------------------------------------------------------------------------------------------------ |
+| `id`             | string | Unique identifier used by `depends_on` references and in API responses                                       |
+| `name`           | string | Human-readable display name shown to the user                                                                |
+| `description`    | string | One-line description of what this dimension clarifies                                                        |
 | `specifications` | string | Evaluation instructions sent to the LLM. Supports only `{query}`, `{statement}`, and `{input}` placeholders. |
 
 ### Optional

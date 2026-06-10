@@ -232,8 +232,8 @@ class TestSynthesisResponseValidation:
         assert result.metadata is None
         assert result.processing_log is None
 
-    def test_legacy_aliases_still_parse_for_backward_compatibility(self):
-        """Legacy alias fields should remain accepted while canonical names are primary."""
+    def test_legacy_aliases_are_rejected_by_canonical_response_model(self):
+        """Legacy alias fields should not parse through the canonical synthesis response model."""
         response = {
             "synthesized_statement": "A refined research question",
             "refined_dimensions": {"population": "adults"},
@@ -258,7 +258,5 @@ class TestSynthesisResponseValidation:
             },
         }
 
-        result = validate_synthesis_response(response)
-
-        assert result.integrated_statement == "A refined research question"
-        assert result.dimensions_specifications == {"population": "adults"}
+        with pytest.raises(Exception):
+            validate_synthesis_response(response)
