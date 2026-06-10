@@ -454,6 +454,48 @@ Notes:
 - `search_optimized.keyword.terms.optional` contains precision-raising terms.
 - `search_optimized.keyword.terms.excluded` contains only true confounders, not close variants of the target concept.
 
+#### `POST /api/v1/refinement/queries/{query_id}/search-expand` (200)
+
+```json
+{
+	"query_id": 123,
+	"search_expansion_levels": [
+		{
+			"level": 0,
+			"label": "Exact clarified question",
+			"search_query": "In adults over 65, compare aspirin versus placebo for stroke prevention.",
+			"relaxed_dimensions": {},
+			"rationale": "Exact clarified query preserved as the review anchor."
+		},
+		{
+			"level": 1,
+			"label": "Broader older adult population",
+			"search_query": "Studies comparing aspirin and placebo for stroke prevention in older adult populations.",
+			"relaxed_dimensions": {
+				"population": "older adult populations"
+			},
+			"rationale": "Broadens the exact age threshold to improve recall while preserving the intervention, comparator, and outcome."
+		}
+	],
+	"metadata": {
+		"used_llm": true,
+		"status": "completed",
+		"generated_level_count": 1,
+		"accepted_dimension_count": 4,
+		"prompt_tokens": 500,
+		"completion_tokens": 120,
+		"total_tokens": 620
+	}
+}
+```
+
+Notes:
+
+- Call `/api/v1/refinement/synthesize` first. This endpoint reconstructs its input from the persisted synthesis fields and returns `409 Conflict` if synthesis has not completed.
+- `search_expansion_levels[0].search_query` always equals the persisted `integrated_statement` exactly.
+- Levels 1-N are optional search-only broadening variants. They do not update `integrated_statement` or redefine the review scope.
+- If expansion generation fails validation, the response still returns Level 0 with warning metadata.
+
 #### `POST /api/v1/refinement/queries/{query_id}/forward-to-qa` (200)
 
 ```json
@@ -607,6 +649,7 @@ When a query has already been synthesized, `QueryResponse` exposes the canonical
 - `search_optimized`
 - `search_filters`
 - `terminology`
+- `search_expansion_levels`
 - `metadata`
 - `processing_log`
 

@@ -456,16 +456,16 @@ Manual scenario checks:
 5. No level relaxes more than two dimensions.
 6. Invalid relaxed dimension keys fail contextual validation or trigger repair.
 7. Search expansion failure returns Level 0 only rather than failing synthesis.
-8. API responses expose `search_expansion_levels` when synthesis completes.
-9. Persistence behavior is explicit: either saved in a dedicated DB column or deliberately deferred.
+8. The independent search expansion API response exposes `search_expansion_levels` after synthesis has completed.
+9. Search expansion levels are saved in the dedicated `queries.search_expansion_levels` JSON column.
 10. Existing synthesis tests still pass without requiring prompt changes to `SYNTHESIS_TEMPLATE`.
 
 ## Open Decisions
 
 1. API: search expansion is an independent on-demand endpoint (`POST /queries/{query_id}/search-expand`), not bundled into `/synthesize`. CLI: search expansion runs only when the user confirms the interactive prompt. Web app: out of scope. No further decision needed on this point.
-2. Persistence timing: implement the DB column immediately or return expansion levels in the API first and persist later.
+2. Persistence timing: implemented immediately with a dedicated DB column and Alembic migration.
 3. Whether downstream consumers need per-level keyword support. The recommended first iteration omits it.
-4. Whether to add public progress stages for search expansion or keep it as internal tracing only.
+4. Public progress stages are not added in the first iteration; search expansion uses logging and internal trace events only.
 5. Whether to keep flat token metadata for backward compatibility while adding nested per-stage metadata.
 
 ## Suggested Verification Commands
