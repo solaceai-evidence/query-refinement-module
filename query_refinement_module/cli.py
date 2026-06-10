@@ -6,18 +6,22 @@ from dotenv import load_dotenv
 
 import argparse
 import asyncio
+import logging
 import os
 import sys
-from typing import Optional
+from typing import Any, Dict, Optional
 
 from .core import QueryRefinementManager, is_user_command, parse_user_command
 from .llm_model_defaults import get_model_defaults
 from .logging_utils import configure_file_logging
 from .providers import ConsoleTracing, FileTracingProvider, LiteLLMProvider
 from .schema import registry
+from .schema.response import QueryRefinementResponse
 from .settings import LLMSettings
 
 load_dotenv(override=False)
+
+logger = logging.getLogger(__name__)
 
 def build_manager(
     *,
@@ -102,6 +106,81 @@ def _print_summary(manager: QueryRefinementManager, session) -> None:
             print(f"  → {reason}")
         print()
     print("="*80)
+
+
+def _is_accepted_dimension_value(value: Any) -> bool:
+    if value is None:
+        return False
+    if isinstance(value, str):
+        return value.strip() not in {"", "[SKIPPED]", "null"}
+    return True
+
+
+def _accepted_dimensions_from_session(session, fallback_dimensions: Optional[Dict[str, Any]] = None) -> Dict[str, Any]:
+    accepted: Dict[str, Any] = {}
+    for step in getattr(session, "steps", []) or []:
+        aspect = getattr(step, "refinement_aspect", None)
+        aspect_id = getattr(aspect, "id", None)
+        if not aspect_id:
+            continue
+        value = getattr(step, "normalized_value", None)
+        if value is None:
+            value = getattr(step, "normalized_value_as_str", None)
+        if _is_accepted_dimension_value(value):
+            accepted[aspect_id] = value
+
+    if accepted or not fallback_dimensions:
+        return accepted
+    return {
+        key: value
+        for key, value in fallback_dimensions.items()
+        if _is_accepted_dimension_value(value)
+    }
+
+
+def _build_synthesis_response_for_expansion(
+    synthesis: Dict[str, Any],
+) -> QueryRefinementResponse:
+    missing = [
+        field_name
+        for field_name in ("integrated_statement", "dimensions_specifications", "search_optimized", "search_filters", "terminology")
+        if synthesis.get(field_name) is None or synthesis.get(field_name) == ""
+    ]
+    if missing:
+        raise ValueError("Search expansion requires synthesis fields: " + ", ".join(missing))
+
+    return QueryRefinementResponse(
+        integrated_statement=synthesis["integrated_statement"],
+        dimensions_specifications=synthesis["dimensions_specifications"],
+        search_optimized=synthesis["search_optimized"],
+        search_filters=synthesis["search_filters"],
+        terminology=synthesis["terminology"],
+        metadata=synthesis.get("metadata"),
+        processing_log=synthesis.get("processing_log"),
+    )
+
+
+def _read_optional_input(prompt: str) -> str:
+    try:
+        return input(prompt)
+    except (EOFError, StopIteration):
+        return ""
+
+
+def _print_search_expansion_levels(levels) -> None:
+    print("─"*80)
+    print("SEARCH EXPANSION LEVELS")
+    print("─"*80)
+    for level in levels:
+        print(f"Level {level.level} — {level.label}")
+        print(f"  {level.search_query}")
+        if level.relaxed_dimensions:
+            relaxed = ", ".join(
+                f"{dimension}: {value}"
+                for dimension, value in level.relaxed_dimensions.items()
+            )
+            print(f"  Relaxed: {relaxed}")
+        print(f"  Rationale: {level.rationale}\n")
 
 
 async def run_cli(manager: QueryRefinementManager, framework_name: str, query: str) -> None:
@@ -425,6 +504,41 @@ async def run_cli(manager: QueryRefinementManager, framework_name: str, query: s
                     if colloq:
                         print(f"Colloquial: {', '.join(colloq)}")
                     print()
+
+                expand_answer = (
+                    await asyncio.to_thread(
+                        _read_optional_input,
+                        "Would you like to generate search expansion levels? [y/N] ",
+                    )
+                ).strip().lower()
+                if expand_answer in {"y", "yes"}:
+                    logger.info("CLI: user requested search expansion")
+                    try:
+                        synthesis_response = _build_synthesis_response_for_expansion(synthesis)
+                        accepted_dimensions = _accepted_dimensions_from_session(
+                            session,
+                            synthesis_response.dimensions_specifications,
+                        )
+                        levels, metadata = await manager.generate_search_expansion_levels(
+                            original_query=session.original_query,
+                            synthesis_response=synthesis_response,
+                            accepted_dimensions=accepted_dimensions,
+                        )
+                    except Exception as exc:
+                        logger.warning("CLI: search expansion failed", exc_info=True)
+                        print(f"Warning: search expansion was skipped ({exc})")
+                    else:
+                        logger.info(
+                            "CLI: search expansion completed",
+                            extra={
+                                "returned_level_count": len(levels),
+                                "generated_level_count": metadata.get("generated_level_count", 0),
+                                "status": metadata.get("status"),
+                            },
+                        )
+                        _print_search_expansion_levels(levels)
+                else:
+                    logger.info("CLI: user skipped search expansion")
                     
             print("="*80)
 

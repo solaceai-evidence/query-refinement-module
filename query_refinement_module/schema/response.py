@@ -150,6 +150,35 @@ class FilterSuggestionResponse(BaseModel):
     fields_of_study: List[str] = Field(default_factory=list)
 
 
+class SearchExpansionLevel(BaseModel):
+    """One retrieval broadening level generated after synthesis."""
+    level: int
+    label: str
+    search_query: str
+    relaxed_dimensions: Dict[str, str] = Field(default_factory=dict)
+    rationale: str
+
+    @field_validator("label", "search_query", "rationale")
+    @classmethod
+    def validate_non_empty_text(cls, v: str) -> str:
+        if not v or not v.strip():
+            raise ValueError("field must be non-empty")
+        return v.strip()
+
+
+class SearchExpansionResponse(BaseModel):
+    """LLM response containing only generated Levels 1-N."""
+    levels: List[SearchExpansionLevel] = Field(default_factory=list)
+
+    @field_validator("levels")
+    @classmethod
+    def validate_llm_levels_start_at_one(cls, v: List[SearchExpansionLevel]) -> List[SearchExpansionLevel]:
+        bad = [level.level for level in v if level.level < 1]
+        if bad:
+            raise ValueError(f"LLM-generated expansion levels must be >= 1: {bad}")
+        return v
+
+
 
 
 
@@ -175,7 +204,7 @@ class QueryRefinementResponse(BaseModel):
     integrated_statement: str = Field(
         description="Integrated research specification preserving user's voice",
     )
-    dimensions_specifications: Dict[str, Optional[str]] = Field(
+    dimensions_specifications: Dict[str, Any] = Field(
         description="Normalized value for each dimension (dimension_id -> value)",
     )
     search_optimized: SearchOptimized
@@ -198,4 +227,6 @@ __all__ = [
     "TerminologyResponse",
     "KeywordSupportResponse",
     "FilterSuggestionResponse",
+    "SearchExpansionLevel",
+    "SearchExpansionResponse",
 ]

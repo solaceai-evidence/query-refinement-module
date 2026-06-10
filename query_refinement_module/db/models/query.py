@@ -59,6 +59,9 @@ class Query(Base):
     
     # Terminology mapping (primary_terms, synonyms, domain_specific, colloquial)
     terminology = Column(JSON, nullable=True)
+
+    # Optional post-synthesis search expansion levels for recall-broadening retrieval.
+    search_expansion_levels = Column(JSON, nullable=True)
     
     # Additional context (temporal, geographic, source_types, other)
     # SQLAlchemy declarative reserves the Python attribute name `metadata`.

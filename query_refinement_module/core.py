@@ -70,6 +70,9 @@ from .schema import (
     TerminologyResponse,
     KeywordSupportResponse,
     FilterSuggestionResponse,
+    SearchExpansionPromptBuilder,
+    SearchExpansionResponse,
+    SearchExpansionLevel,
 )
 from .schema.response import (
     SearchFilters,
@@ -1773,6 +1776,279 @@ class QueryRefinementManager:
             metadata={"original_error": error},
         )
         return None, agg_meta
+
+    @staticmethod
+    def _validate_search_expansion_result(
+        result: SearchExpansionResponse,
+        accepted_dimensions: Dict[str, Any],
+    ) -> Optional[str]:
+        """Validate generated Levels 1-N against accepted dimension context."""
+        if not isinstance(result.levels, list):
+            return "levels must be a list"
+        if len(result.levels) > 4:
+            return "levels must contain at most four generated levels"
+
+        accepted_ids = set(accepted_dimensions.keys())
+        seen_levels: set[int] = set()
+        previous_level = 0
+        for item in result.levels:
+            if item.level < 1:
+                return f"LLM-generated level must be >= 1: {item.level}"
+            if item.level in seen_levels:
+                return f"duplicate level number: {item.level}"
+            if item.level <= previous_level:
+                return "level numbers must be sorted ascending"
+            seen_levels.add(item.level)
+            previous_level = item.level
+
+            if not item.search_query.strip():
+                return f"level {item.level} search_query is empty"
+            if not item.label.strip():
+                return f"level {item.level} label is empty"
+            if not item.rationale.strip():
+                return f"level {item.level} rationale is empty"
+
+            relaxed_dimensions = item.relaxed_dimensions or {}
+            if len(relaxed_dimensions) > 2:
+                return f"level {item.level} relaxes more than two dimensions"
+            invalid_keys = sorted(k for k in relaxed_dimensions if k not in accepted_ids)
+            if invalid_keys:
+                return f"level {item.level} relaxed_dimensions contain invalid keys: {invalid_keys}"
+
+        return None
+
+    @staticmethod
+    def _build_search_expansion_repair_prompt(
+        user_prompt: str,
+        error: str,
+        previous_output: str = "",
+    ) -> str:
+        parts = [user_prompt]
+        if previous_output:
+            parts.append(f"## Your previous output (invalid)\n\n{previous_output[:900]}")
+        parts.append(
+            "REPAIR: The previous search expansion response was rejected. "
+            "Return one JSON object with a `levels` array containing only Levels 1-N. "
+            "Use only accepted dimension IDs in relaxed_dimensions, keep levels sorted and unique, "
+            "and relax no more than two dimensions per level. "
+            f"Validation error detail: {error}"
+        )
+        return "\n\n".join(parts)
+
+    @staticmethod
+    def _accumulate_metadata(
+        base: Optional[Dict[str, Any]],
+        extra: Optional[Dict[str, Any]],
+    ) -> Dict[str, Any]:
+        combined: Dict[str, Any] = dict(base or {})
+        if not extra:
+            return combined
+        for key in ("prompt_tokens", "completion_tokens", "total_tokens"):
+            combined[key] = combined.get(key, 0) + extra.get(key, 0)
+        return combined
+
+    async def _run_search_expansion_call(
+        self,
+        system_prompt: str,
+        user_prompt: str,
+        accepted_dimensions: Dict[str, Any],
+        *,
+        model: Optional[str] = None,
+        temperature: float = 0.2,
+        max_tokens: int = 1536,
+    ) -> tuple[Optional[SearchExpansionResponse], Dict[str, Any]]:
+        """Run search expansion with contextual validation and one repair attempt."""
+        logger.info(
+            "Search expansion call started",
+            extra={"accepted_dimension_count": len(accepted_dimensions), "max_tokens": max_tokens},
+        )
+        t0 = time.monotonic()
+        parsed, metadata = await self._execute_split_call(
+            system_prompt,
+            user_prompt,
+            SearchExpansionResponse,
+            "search_expansion",
+            model=model,
+            temperature=temperature,
+            max_tokens=max_tokens,
+        )
+
+        if parsed is None:
+            logger.warning("Search expansion call returned no parseable response")
+            return None, metadata or {}
+        if not isinstance(parsed, SearchExpansionResponse):
+            logger.warning(
+                "Search expansion call returned unexpected response type: %s",
+                type(parsed).__name__,
+            )
+            return None, metadata or {}
+
+        error = self._validate_search_expansion_result(parsed, accepted_dimensions)
+        if error is None:
+            duration_ms = round((time.monotonic() - t0) * 1000)
+            logger.info(
+                "Search expansion call completed",
+                extra={
+                    "duration_ms": duration_ms,
+                    "generated_level_count": len(parsed.levels),
+                    "prompt_tokens": (metadata or {}).get("prompt_tokens", 0),
+                    "completion_tokens": (metadata or {}).get("completion_tokens", 0),
+                    "total_tokens": (metadata or {}).get("total_tokens", 0),
+                },
+            )
+            self.trace_emitter.emit(
+                "search_expansion_complete",
+                metadata={
+                    "duration_ms": duration_ms,
+                    "generated_level_count": len(parsed.levels),
+                    "prompt_tokens": (metadata or {}).get("prompt_tokens", 0),
+                    "completion_tokens": (metadata or {}).get("completion_tokens", 0),
+                    "total_tokens": (metadata or {}).get("total_tokens", 0),
+                },
+            )
+            return parsed, metadata or {}
+
+        logger.warning("Search expansion validation failed: %s", error)
+        self.trace_emitter.emit(
+            "search_expansion_validation_failed",
+            level="warning",
+            metadata={"error": error},
+        )
+        repair_prompt = self._build_search_expansion_repair_prompt(
+            user_prompt,
+            error,
+            parsed.model_dump_json(indent=2),
+        )
+        repaired, repair_meta = await self._execute_split_call(
+            system_prompt,
+            repair_prompt,
+            SearchExpansionResponse,
+            "search_expansion_repair",
+            model=model,
+            temperature=temperature,
+            max_tokens=max_tokens,
+        )
+        combined_meta = self._accumulate_metadata(metadata, repair_meta)
+        if repaired is None:
+            logger.warning("Search expansion repair returned no parseable response")
+            return None, combined_meta
+        if not isinstance(repaired, SearchExpansionResponse):
+            logger.warning(
+                "Search expansion repair returned unexpected response type: %s",
+                type(repaired).__name__,
+            )
+            return None, combined_meta
+
+        repair_error = self._validate_search_expansion_result(repaired, accepted_dimensions)
+        if repair_error is None:
+            logger.info(
+                "Search expansion repair succeeded",
+                extra={"generated_level_count": len(repaired.levels)},
+            )
+            self.trace_emitter.emit(
+                "search_expansion_repaired",
+                metadata={"generated_level_count": len(repaired.levels)},
+            )
+            return repaired, combined_meta
+
+        logger.warning("Search expansion repair still invalid: %s", repair_error)
+        self.trace_emitter.emit(
+            "search_expansion_repair_failed",
+            level="warning",
+            metadata={"original_error": error, "repair_error": repair_error},
+        )
+        return None, combined_meta
+
+    async def generate_search_expansion_levels(
+        self,
+        *,
+        original_query: str,
+        synthesis_response: QueryRefinementResponse,
+        accepted_dimensions: Dict[str, Any],
+        model: Optional[str] = None,
+        temperature: float = 0.2,
+        max_tokens: int = 1536,
+    ) -> tuple[List[SearchExpansionLevel], Dict[str, Any]]:
+        """Generate post-synthesis retrieval expansion levels with soft failure."""
+        start_time = time.monotonic()
+        level_0 = SearchExpansionLevel(
+            level=0,
+            label="Exact clarified question",
+            search_query=synthesis_response.integrated_statement,
+            relaxed_dimensions={},
+            rationale="Exact clarified query preserved as the review anchor.",
+        )
+        metadata: Dict[str, Any] = {
+            "used_llm": False,
+            "generated_level_count": 0,
+            "accepted_dimension_count": len(accepted_dimensions),
+        }
+
+        logger.info(
+            "Search expansion generation started",
+            extra={
+                "accepted_dimension_count": len(accepted_dimensions),
+                "integrated_statement_length": len(synthesis_response.integrated_statement),
+                "model": model or "(default)",
+                "temperature": temperature,
+                "max_tokens": max_tokens,
+            },
+        )
+        self.trace_emitter.emit(
+            "search_expansion_start",
+            metadata={
+                "accepted_dimension_count": len(accepted_dimensions),
+                "model": model or "(default)",
+                "temperature": temperature,
+                "max_tokens": max_tokens,
+            },
+        )
+
+        if not accepted_dimensions:
+            metadata["status"] = "skipped_no_accepted_dimensions"
+            metadata["duration_ms"] = round((time.monotonic() - start_time) * 1000)
+            logger.info("Search expansion skipped: no accepted dimensions")
+            return [level_0], metadata
+
+        prompt_builder = SearchExpansionPromptBuilder()
+        result, call_metadata = await self._run_search_expansion_call(
+            prompt_builder.get_system_prompt(),
+            prompt_builder.get_user_prompt(
+                synthesis_response=synthesis_response,
+                accepted_dimensions=accepted_dimensions,
+                original_query=original_query,
+            ),
+            accepted_dimensions,
+            model=model,
+            temperature=temperature,
+            max_tokens=min(max_tokens, 1536),
+        )
+        metadata.update(call_metadata or {})
+        metadata["duration_ms"] = round((time.monotonic() - start_time) * 1000)
+
+        if result is None:
+            metadata["status"] = "failed_level_0_only"
+            metadata["warning"] = "Search expansion failed validation or parsing; returned Level 0 only."
+            logger.warning(
+                "Search expansion returned Level 0 only after failure",
+                extra={"duration_ms": metadata["duration_ms"]},
+            )
+            return [level_0], metadata
+
+        generated_levels = result.levels[:4]
+        metadata["used_llm"] = True
+        metadata["status"] = "completed"
+        metadata["generated_level_count"] = len(generated_levels)
+        levels = [level_0] + generated_levels
+        logger.info(
+            "Search expansion generation completed",
+            extra={
+                "duration_ms": metadata["duration_ms"],
+                "returned_level_count": len(levels),
+                "generated_level_count": len(generated_levels),
+            },
+        )
+        return levels, metadata
 
     async def _run_split_synthesis(
         self,

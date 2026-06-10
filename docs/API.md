@@ -22,6 +22,7 @@ For server-to-server integrations, refinement workflow endpoints also support `X
 - `GET /api/v1/refinement/queries/{query_id}/status`
 - `POST /api/v1/refinement/queries/{query_id}/resume`
 - `POST /api/v1/refinement/synthesize`
+- `POST /api/v1/refinement/queries/{query_id}/search-expand`
 - `POST /api/v1/refinement/queries/{query_id}/forward-to-qa`
 - `GET /api/v1/refinement/queries/{query_id}/command-history`
 - `GET /api/v1/refinement/queries/{query_id}/inspect-messages`
@@ -167,6 +168,38 @@ Canonical synthesis field names used by the API and internal runtime are:
 The query persistence schema now uses the same canonical synthesis names. The SQLAlchemy model exposes the `metadata` database column as `synthesis_metadata` because `metadata` is a reserved declarative attribute name.
 
 The detailed `structured_output` contract is described below.
+
+#### `POST /api/v1/refinement/queries/{query_id}/search-expand`
+
+Generates optional search expansion levels from an already completed synthesis result. This endpoint is independent of `/refinement/synthesize`; synthesis must be called first, and search expansion reads the persisted synthesis fields from the query record.
+
+Request body is optional:
+
+```json
+{
+	"model": "optional-model-override"
+}
+```
+
+Returns `SearchExpandResponse` with these fields:
+
+- `query_id`: query record ID
+- `search_expansion_levels`: Level 0 plus optional broader retrieval levels
+- `metadata`: token and generation metadata for the search expansion call
+
+Level 0 is deterministic and always preserves the canonical refined statement:
+
+```json
+{
+	"level": 0,
+	"label": "Exact clarified question",
+	"search_query": "...same as integrated_statement...",
+	"relaxed_dimensions": {},
+	"rationale": "Exact clarified query preserved as the review anchor."
+}
+```
+
+The LLM generates only Levels 1-N. If generation, parsing, or validation fails, the endpoint returns Level 0 only rather than failing the completed synthesis. If synthesis has not yet completed for the query, the endpoint returns `409 Conflict`.
 
 ### Generic external integration snippet
 

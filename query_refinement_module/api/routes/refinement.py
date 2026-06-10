@@ -16,7 +16,7 @@ import asyncio
 import json
 import logging
 import time
-from fastapi import APIRouter, Depends, HTTPException, status, Request
+from fastapi import APIRouter, Body, Depends, HTTPException, status, Request
 from sqlalchemy.orm import Session
 from typing import Dict, Any, Optional, Union, List
 
@@ -58,7 +58,7 @@ from query_refinement_module.core import (
 from query_refinement_module.tracing import generate_request_id, get_logger, set_request_id
 from query_refinement_module.services.progress_tracker import get_progress_tracker, track_progress
 from query_refinement_module.models.progress import ProgressStage
-from query_refinement_module.schema import DimensionEvaluationResponse
+from query_refinement_module.schema import DimensionEvaluationResponse, QueryRefinementResponse
 
 from pydantic import BaseModel, Field, field_validator, AnyHttpUrl
 
@@ -212,6 +212,18 @@ class SynthesizeQueryResponse(BaseModel):
     integrated_statement: str
     used_llm: bool
     structured_output: Optional[Dict[str, Any]] = None
+
+
+class SearchExpandRequest(BaseModel):
+    """Optional controls for post-synthesis search expansion."""
+    model: Optional[str] = Field(None, description="Optional LLM model override")
+
+
+class SearchExpandResponse(BaseModel):
+    """Response with generated search expansion levels."""
+    query_id: int
+    search_expansion_levels: List[Dict[str, Any]]
+    metadata: Optional[Dict[str, Any]] = None
 
 
 class ForwardToQARequest(BaseModel):
@@ -2063,6 +2075,143 @@ async def _run_synthesis(
         integrated_statement=integrated_statement,
         used_llm=synthesis_result.get("used_llm", False),
         structured_output=structured_output,
+    )
+
+
+def _dimension_value_is_accepted(value: Any) -> bool:
+    if value is None:
+        return False
+    if isinstance(value, str):
+        return value.strip() not in {"", "[SKIPPED]", "null"}
+    return True
+
+
+def _reconstruct_synthesis_response_from_query(db_query) -> QueryRefinementResponse:
+    missing_fields = []
+    if not db_query.integrated_statement:
+        missing_fields.append("integrated_statement")
+    for field_name in ("dimensions_specifications", "search_optimized", "search_filters", "terminology"):
+        if getattr(db_query, field_name) is None:
+            missing_fields.append(field_name)
+
+    if missing_fields:
+        logger.warning(
+            "Cannot run search expansion before synthesis is persisted",
+            extra={"query_id": db_query.id, "missing_fields": missing_fields},
+        )
+        raise HTTPException(
+            status_code=status.HTTP_409_CONFLICT,
+            detail="Search expansion requires a completed synthesis result for this query.",
+        )
+
+    try:
+        return QueryRefinementResponse(
+            integrated_statement=db_query.integrated_statement,
+            dimensions_specifications=db_query.dimensions_specifications or {},
+            search_optimized=db_query.search_optimized,
+            search_filters=db_query.search_filters,
+            terminology=db_query.terminology,
+            metadata=db_query.synthesis_metadata,
+            processing_log=db_query.processing_log,
+        )
+    except Exception as exc:
+        logger.exception(
+            "Persisted synthesis result could not be reconstructed for search expansion",
+            extra={"query_id": db_query.id, "error": str(exc)},
+        )
+        raise HTTPException(
+            status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
+            detail="Stored synthesis result is invalid and cannot be used for search expansion.",
+        )
+
+
+@router.post("/queries/{query_id}/search-expand", response_model=SearchExpandResponse)
+async def search_expand_query(
+    query_id: int,
+    request: Optional[SearchExpandRequest] = Body(default=None),
+    manager: QueryRefinementManager = Depends(get_refinement_manager),
+    current_user = Depends(get_current_user_or_integration),
+    db: Session = Depends(get_db),
+):
+    """Generate optional post-synthesis search expansion levels for a query."""
+    request_id_val = generate_request_id()
+    set_request_id(request_id_val)
+    start_time = time.time()
+
+    logger.info(
+        "API: Generating search expansion levels",
+        extra={
+            "request_id": request_id_val,
+            "user_id": current_user.id,
+            "query_id": query_id,
+            "model_override": request.model if request else None,
+        },
+    )
+
+    db_query = get_query(db, query_id)
+    if not db_query:
+        raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Query not found")
+
+    if db_query.session.user_id != current_user.id:
+        raise HTTPException(status_code=status.HTTP_403_FORBIDDEN, detail="Access denied")
+
+    synthesis_response = _reconstruct_synthesis_response_from_query(db_query)
+    accepted_dimensions = {
+        key: value
+        for key, value in (db_query.dimensions_specifications or {}).items()
+        if _dimension_value_is_accepted(value)
+    }
+
+    logger.info(
+        "API: Search expansion inputs reconstructed",
+        extra={
+            "request_id": request_id_val,
+            "query_id": query_id,
+            "accepted_dimension_count": len(accepted_dimensions),
+            "integrated_statement_length": len(synthesis_response.integrated_statement),
+        },
+    )
+
+    try:
+        levels, metadata = await manager.generate_search_expansion_levels(
+            original_query=db_query.original_query,
+            synthesis_response=synthesis_response,
+            accepted_dimensions=accepted_dimensions,
+            model=request.model if request else None,
+        )
+    except Exception as exc:
+        logger.exception(
+            "API: Search expansion generation failed unexpectedly",
+            extra={"request_id": request_id_val, "query_id": query_id, "error": str(exc)},
+        )
+        raise HTTPException(
+            status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
+            detail=f"Failed to generate search expansion levels: {str(exc)}",
+        )
+
+    levels_payload = [level.model_dump() for level in levels]
+    save_query_refinement_response(
+        db,
+        query_id,
+        {"search_expansion_levels": levels_payload},
+    )
+
+    duration_ms = (time.time() - start_time) * 1000
+    logger.info(
+        "API: Search expansion completed",
+        extra={
+            "request_id": request_id_val,
+            "query_id": query_id,
+            "duration_ms": round(duration_ms, 2),
+            "returned_level_count": len(levels_payload),
+            "generated_level_count": metadata.get("generated_level_count", 0),
+            "status": metadata.get("status"),
+        },
+    )
+    return SearchExpandResponse(
+        query_id=query_id,
+        search_expansion_levels=levels_payload,
+        metadata=metadata,
     )
 
 

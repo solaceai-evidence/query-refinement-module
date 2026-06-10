@@ -25,7 +25,11 @@ from .response import (
     TerminologyResponse,
     KeywordSupportResponse,
     FilterSuggestionResponse,
+    SearchExpansionLevel,
+    SearchExpansionResponse,
 )
+
+from .search_expansion import SearchExpansionPromptBuilder
 
 # Registry
 from .registry import (
@@ -89,6 +93,9 @@ __all__ = [
     "TerminologyResponse",
     "KeywordSupportResponse",
     "FilterSuggestionResponse",
+    "SearchExpansionLevel",
+    "SearchExpansionResponse",
+    "SearchExpansionPromptBuilder",
     
     # Registry
     "list_frameworks",
