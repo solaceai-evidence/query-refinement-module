@@ -8,6 +8,7 @@ import logging
 import re
 import time
 import weakref
+from math import ceil
 from typing import Any, Dict, List, Optional, Type, Union
 
 from query_refinement_module.tracing import get_request_id, get_trace_id
@@ -29,6 +30,13 @@ except ImportError:
     httpx = None
 
 logger = logging.getLogger(__name__)
+
+
+def _estimate_tokens_from_text(char_count: int) -> int:
+    """Cheap fallback token estimate when the provider does not report prompt tokens."""
+    if char_count <= 0:
+        return 0
+    return max(1, ceil(char_count / 4))
 
 
 class LiteLLMProvider(LLMProviderInterface):
@@ -173,6 +181,60 @@ class LiteLLMProvider(LLMProviderInterface):
             # Use model prefix as provider name (handles custom models)
             return model.split("/")[0] if "/" in model else "unknown"
 
+    def _build_prompt_metrics(
+        self,
+        *,
+        target_model: str,
+        messages_list: List[Dict[str, Any]],
+        max_tokens: Optional[int],
+        response_format: Optional[Union[Dict[str, Any], Type["BaseModel"]]],
+    ) -> Dict[str, Any]:
+        """Summarize prompt size so latency can be compared against input volume."""
+        role_counts: Dict[str, int] = {}
+        role_chars: Dict[str, int] = {}
+        cached_messages = 0
+
+        for msg in messages_list:
+            role = str(msg.get("role", "unknown"))
+            content = str(msg.get("content", "") or "")
+            role_counts[role] = role_counts.get(role, 0) + 1
+            role_chars[role] = role_chars.get(role, 0) + len(content)
+            if msg.get("cache_control"):
+                cached_messages += 1
+
+        total_chars = sum(role_chars.values())
+        estimated_tokens = None
+        counter_error = None
+        if litellm is not None and hasattr(litellm, "token_counter"):
+            try:
+                estimated_tokens = litellm.token_counter(model=target_model, messages=messages_list)
+            except Exception as exc:
+                counter_error = f"{type(exc).__name__}: {exc}"
+
+        if estimated_tokens is None:
+            estimated_tokens = _estimate_tokens_from_text(total_chars)
+
+        response_format_name: Optional[str] = None
+        if response_format is not None:
+            if isinstance(response_format, dict):
+                response_format_name = response_format.get("type") or "dict"
+            else:
+                response_format_name = getattr(response_format, "__name__", type(response_format).__name__)
+
+        metrics: Dict[str, Any] = {
+            "message_count": len(messages_list),
+            "cached_message_count": cached_messages,
+            "role_counts": role_counts,
+            "role_char_counts": role_chars,
+            "prompt_char_count": total_chars,
+            "estimated_prompt_tokens": estimated_tokens,
+            "max_output_tokens": max_tokens,
+            "response_format": response_format_name,
+        }
+        if counter_error:
+            metrics["token_counter_error"] = counter_error
+        return metrics
+
     async def complete_async(self, *args, **kwargs) -> "LLMCompletionResult":
         """Complete a prompt asynchronously with automatic retry on rate limit errors.
         
@@ -284,6 +346,13 @@ class LiteLLMProvider(LLMProviderInterface):
         completion_kwargs.setdefault("temperature", temperature)
         if max_tokens is not None and "max_tokens" not in completion_kwargs:
             completion_kwargs["max_tokens"] = max_tokens
+
+        prompt_metrics = self._build_prompt_metrics(
+            target_model=target_model,
+            messages_list=messages_list,
+            max_tokens=completion_kwargs.get("max_tokens"),
+            response_format=response_format,
+        )
         
         # Get current request context for tracing (needed for logging below)
         request_id = get_request_id()
@@ -369,6 +438,9 @@ class LiteLLMProvider(LLMProviderInterface):
                 "temperature": completion_kwargs.get("temperature"),
                 "max_tokens": completion_kwargs.get("max_tokens"),
                 "stream": completion_kwargs.get("stream"),
+                "prompt_messages": prompt_metrics["message_count"],
+                "prompt_chars": prompt_metrics["prompt_char_count"],
+                "estimated_prompt_tokens": prompt_metrics["estimated_prompt_tokens"],
                 "request_id": request_id,
                 "trace_id": trace_id,
             },
@@ -504,6 +576,8 @@ class LiteLLMProvider(LLMProviderInterface):
                     "response_id": response.get("id"),
                     "prompt_tokens": usage.get("prompt_tokens") if usage else None,
                     "completion_tokens": usage.get("completion_tokens") if usage else None,
+                    "total_tokens": total_tokens,
+                    "prompt_metrics": prompt_metrics,
                     "llm_duration_ms": round(llm_duration, 2),
                     "request_id": request_id,
                     "trace_id": trace_id,
@@ -517,6 +591,9 @@ class LiteLLMProvider(LLMProviderInterface):
                     extra={
                         "llm_duration_ms": round(llm_duration, 2),
                         "total_tokens": total_tokens,
+                        "prompt_tokens": metadata.get("prompt_tokens"),
+                        "prompt_chars": prompt_metrics["prompt_char_count"],
+                        "estimated_prompt_tokens": prompt_metrics["estimated_prompt_tokens"],
                         "model": target_model,
                         "request_id": request_id,
                         "trace_id": trace_id,
@@ -624,6 +701,13 @@ class LiteLLMProvider(LLMProviderInterface):
         completion_kwargs.setdefault("temperature", temperature)
         if max_tokens is not None and "max_tokens" not in completion_kwargs:
             completion_kwargs["max_tokens"] = max_tokens
+
+        prompt_metrics = self._build_prompt_metrics(
+            target_model=target_model,
+            messages_list=messages_list,
+            max_tokens=completion_kwargs.get("max_tokens"),
+            response_format=response_format,
+        )
         
         # Get current request context for distributed tracing (needed for logging below)
         request_id = get_request_id()
@@ -676,6 +760,9 @@ class LiteLLMProvider(LLMProviderInterface):
                 "model": target_model,
                 "temperature": completion_kwargs.get("temperature"),
                 "max_tokens": completion_kwargs.get("max_tokens"),
+                "prompt_messages": prompt_metrics["message_count"],
+                "prompt_chars": prompt_metrics["prompt_char_count"],
+                "estimated_prompt_tokens": prompt_metrics["estimated_prompt_tokens"],
                 "request_id": request_id,
                 "trace_id": trace_id,
             },
@@ -738,6 +825,8 @@ class LiteLLMProvider(LLMProviderInterface):
                     "response_id": response.get("id"),
                     "prompt_tokens": usage.get("prompt_tokens") if usage else None,
                     "completion_tokens": usage.get("completion_tokens") if usage else None,
+                    "total_tokens": total_tokens,
+                    "prompt_metrics": prompt_metrics,
                     "request_id": request_id,
                     "trace_id": trace_id,
                 }

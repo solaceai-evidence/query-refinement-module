@@ -188,6 +188,12 @@ def test_litellm_provider_completion_and_model_info(monkeypatch):
     assert isinstance(result, LLMCompletionResult)
     assert result.context == "refined"
     assert result.metadata["provider"] == "litellm"
+    assert result.metadata["total_tokens"] == 12
+    prompt_metrics = result.metadata["prompt_metrics"]
+    assert prompt_metrics["message_count"] == 2
+    assert prompt_metrics["prompt_char_count"] == len("System") + len("Question?")
+    assert prompt_metrics["max_output_tokens"] == 100
+    assert prompt_metrics["estimated_prompt_tokens"] >= 1
 
     call = stub.calls[0]
     assert call["model"] == "override"
@@ -201,6 +207,48 @@ def test_litellm_provider_completion_and_model_info(monkeypatch):
     assert info["model"] == "demo"
     assert info["provider"] == "litellm"
     assert info["pricing"] == {"model": "demo", "cost": 0.01}
+
+
+@pytest.mark.asyncio
+async def test_litellm_provider_async_includes_prompt_metrics(monkeypatch):
+    import query_refinement_module.providers.llm as llm_module
+
+    class StubLiteLLM:
+        def __init__(self):
+            self.calls = []
+
+        async def acompletion(self, **kwargs):
+            self.calls.append(kwargs)
+            return {
+                "choices": [{"message": {"content": '{"complete": true, "current": "adults", "question": ""}'}}],
+                "usage": {"prompt_tokens": 7, "completion_tokens": 5, "total_tokens": 12},
+                "id": "async-resp-1",
+            }
+
+    stub = StubLiteLLM()
+    monkeypatch.setattr(llm_module, "litellm", stub)
+
+    provider = LiteLLMProvider(
+        default_model="ollama/qwen2.5:72b",
+        enable_circuit_breaker=False,
+    )
+
+    result = await provider.complete_async(
+        messages=[
+            {"role": "system", "content": "System prompt"},
+            {"role": "user", "content": "User prompt"},
+        ],
+        max_tokens=64,
+    )
+
+    prompt_metrics = result.metadata["prompt_metrics"]
+    assert prompt_metrics["message_count"] == 2
+    assert prompt_metrics["role_counts"] == {"system": 1, "user": 1}
+    assert prompt_metrics["prompt_char_count"] == len("System prompt") + len("User prompt")
+    assert prompt_metrics["estimated_prompt_tokens"] >= 1
+    assert result.metadata["prompt_tokens"] == 7
+    assert result.metadata["completion_tokens"] == 5
+    assert result.metadata["total_tokens"] == 12
 
 
 def test_file_tracing_provider_writes_json(tmp_path):

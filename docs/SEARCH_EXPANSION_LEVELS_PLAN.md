@@ -2,6 +2,10 @@
 
 Status: Draft for review
 
+## Scope
+
+This feature is implemented in the **CLI** and **API** only. The web application is explicitly out of scope and requires no changes.
+
 ## Purpose
 
 Add graduated search expansion levels after synthesis so downstream retrieval can broaden recall without changing the canonical refined question.
@@ -306,58 +310,61 @@ The wrapper approach is lower risk because it avoids changing the shared split-c
 
 File: `query_refinement_module/core.py`
 
-After `_run_split_synthesis()` succeeds in `synthesize_refined_query()`, call the new third stage:
+`synthesize_refined_query()` and its `result_dict` remain unchanged. Search expansion is not bundled into that method. It is always invoked separately — either from the CLI after a user confirmation prompt or from the dedicated API endpoint.
 
-```python
-search_expansion_levels, expansion_metadata = await self.generate_search_expansion_levels(
-    original_query=session.original_query,
-    synthesis_response=synthesis_response,
-    accepted_dimensions=accepted_dimensions,
-    model=model,
-    temperature=resolved_temperature,
-    max_tokens=min(resolved_max_tokens, 1536),
-)
-```
+`generate_search_expansion_levels()` is a standalone public method on `QueryRefinementManager`, callable independently after synthesis has completed. It does not require the live `RefinementSession` object; callers reconstruct its inputs from the persisted synthesis result.
 
-Then add to `result_dict`:
-
-```python
-"search_expansion_levels": [level.model_dump() for level in search_expansion_levels]
-```
-
-Metadata should distinguish synthesis and expansion usage. For example:
+Metadata returned by `generate_search_expansion_levels()` should be self-contained:
 
 ```python
 "metadata": {
-    "synthesis": aggregated_metadata,
-    "search_expansion": expansion_metadata,
+    "prompt_tokens": ...,
+    "completion_tokens": ...,
+    "total_tokens": ...,
 }
 ```
 
-If preserving the existing flat token metadata is important for compatibility, keep flat totals and add nested per-stage metadata separately.
+This keeps it independent of the synthesis metadata structure.
 
 ### Phase 6 - API Exposure
 
 File: `query_refinement_module/api/routes/refinement.py`
 
-Update `SynthesizeQueryResponse`:
+Search expansion is exposed as a **dedicated, independent endpoint**. It is not bundled into `/synthesize` and `SynthesizeQueryResponse` is not changed.
 
-```python
-search_expansion_levels: Optional[List[Dict[str, Any]]] = None
+The existing `/synthesize` endpoint and `_run_synthesis()` helper remain unchanged.
+
+#### New endpoint
+
+```
+POST /api/v1/refinement/queries/{query_id}/search-expand
 ```
 
-In the shared synthesis helper, include `search_expansion_levels` in:
+Authentication: same as the other refinement workflow endpoints (`Authorization: Bearer <token>` or `X-API-Key`).
 
-- the returned `SynthesizeQueryResponse`
-- `structured_output`
-- the payload passed to `save_query_refinement_response()`
+Request body: none required (the query ID is in the path). An optional `model` override field may be accepted for consistency with other LLM-calling endpoints.
 
-Because this is now a logical third stage, progress and webhook behavior should be chosen deliberately:
+Behavior:
 
-- Minimal first iteration: keep public `synthesis.started` and `synthesis.complete` semantics unchanged, and add internal trace events for `search_expansion_start` and `search_expansion_complete`.
-- More explicit iteration: add progress stages such as `SEARCH_EXPANDING` and `SEARCH_EXPANSION_COMPLETE` before final `COMPLETED`.
+1. Resolve `query_id`; return 404 if not found, 403 if access denied.
+2. Load the persisted synthesis result from the DB record (`refined_query` / `integrated_statement`, `dimensions_specifications`, `search_optimized`, `search_filters`, `terminology`). Return 409 if synthesis has not yet completed for this query.
+3. Reconstruct `QueryRefinementResponse` and `accepted_dimensions` from the stored DB fields. `accepted_dimensions` is derived from `dimensions_specifications` by filtering out `[SKIPPED]` entries.
+4. Call `manager.generate_search_expansion_levels(...)` with the reconstructed inputs.
+5. Persist the result using `save_query_refinement_response()` update for the `search_expansion_levels` column (Phase 7).
+6. Return a `SearchExpandResponse`.
 
-The minimal first iteration is recommended unless the frontend needs to show the additional stage.
+#### Response model
+
+```python
+class SearchExpandResponse(BaseModel):
+    query_id: int
+    search_expansion_levels: List[Dict[str, Any]]
+    metadata: Optional[Dict[str, Any]] = None
+```
+
+#### Progress and webhook behavior
+
+Minimal first iteration: emit internal trace events `search_expansion_start` and `search_expansion_complete` only. No new public `ProgressStage` values are needed unless the frontend requires them. The web application is out of scope so no progress-stage changes are required.
 
 ### Phase 7 - Persistence
 
@@ -381,13 +388,40 @@ Decision point: if persistence is not required for the first iteration, this pha
 
 File: `query_refinement_module/cli.py`
 
-The CLI currently displays synthesis outputs from `manager.synthesize_refined_query(session)`. If expansion is returned by that method, add an optional display section for search expansion levels.
+After synthesis completes and the result is displayed, prompt the user interactively:
 
-Keep this concise:
+```
+Would you like to generate search expansion levels? [y/N] 
+```
+
+Implementation notes:
+
+- Use `await asyncio.to_thread(input, ...)` consistent with how user input is read elsewhere in the CLI.
+- Default to No if the user presses Enter without typing.
+- Accept `y` or `yes` (case-insensitive) as confirmation; anything else skips expansion.
+- If confirmed, call `manager.generate_search_expansion_levels()` using the `synthesis` result dict and `accepted_dimensions` derived from the session steps.
+- If the call fails, print a warning and continue — do not abort the CLI session.
+
+Display format (keep concise):
+
+```
+────────────────────────────────────────────────────────────────────────────────
+SEARCH EXPANSION LEVELS
+────────────────────────────────────────────────────────────────────────────────
+Level 0 — Exact clarified question
+  <integrated_statement>
+
+Level 1 — <label>
+  <search_query>
+  Relaxed: <dimension>: <value>
+  Rationale: <rationale>
+
+...
+```
 
 - Show Level 0 and each broader level.
-- Show relaxed dimensions and rationale.
-- Avoid printing excessive JSON unless a verbose mode already exists.
+- Show relaxed dimensions and rationale for each level.
+- Avoid printing raw JSON unless a verbose flag is already present.
 
 ### Phase 9 - Tests
 
@@ -428,7 +462,7 @@ Manual scenario checks:
 
 ## Open Decisions
 
-1. Whether search expansion should run by default for all `/synthesize` calls or be controlled by a setting or request flag.
+1. API: search expansion is an independent on-demand endpoint (`POST /queries/{query_id}/search-expand`), not bundled into `/synthesize`. CLI: search expansion runs only when the user confirms the interactive prompt. Web app: out of scope. No further decision needed on this point.
 2. Persistence timing: implement the DB column immediately or return expansion levels in the API first and persist later.
 3. Whether downstream consumers need per-level keyword support. The recommended first iteration omits it.
 4. Whether to add public progress stages for search expansion or keep it as internal tracing only.

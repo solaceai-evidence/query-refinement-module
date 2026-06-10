@@ -834,6 +834,23 @@ class QueryRefinementManager:
             messages=messages,
             attempt_number=1,
         )
+
+        prompt_metrics = {}
+        if hasattr(self, "_last_llm_metadata"):
+            prompt_metrics = getattr(self, "_last_llm_metadata", {}) or {}
+            prompt_metrics = prompt_metrics.get("prompt_metrics", {}) or {}
+
+        if prompt_metrics:
+            self.trace_emitter.emit(
+                "llm_validation_prompt_metrics",
+                metadata={
+                    "aspect_id": aspect.id,
+                    "message_count": prompt_metrics.get("message_count", 0),
+                    "prompt_char_count": prompt_metrics.get("prompt_char_count", 0),
+                    "estimated_prompt_tokens": prompt_metrics.get("estimated_prompt_tokens", 0),
+                    "max_output_tokens": prompt_metrics.get("max_output_tokens"),
+                },
+            )
         
         if llm_error:
             return "", None, True, llm_error
@@ -881,11 +898,15 @@ class QueryRefinementManager:
             import time
             call_start = time.time()
 
+            self._last_llm_metadata = {}
+
             result = await self.llm_provider.complete_async(
                 messages=messages,
                 response_format=DimensionEvaluationResponse,  # ✨ Structured output
                 cache_system_prompt=True  # System prompts are static per-aspect
             )
+
+            self._last_llm_metadata = result.metadata or {}
             
             call_duration = (time.time() - call_start) * 1000
             
@@ -935,6 +956,7 @@ class QueryRefinementManager:
             return response_text, None
             
         except Exception as exc:  # pragma: no cover
+            self._last_llm_metadata = {}
             logger.exception(
                 "LLM call failed while processing aspect %s on attempt %d: %s",
                 aspect.id,
@@ -1691,11 +1713,18 @@ class QueryRefinementManager:
                     "prompt_tokens": (metadata or {}).get("prompt_tokens", 0),
                     "total_tokens": (metadata or {}).get("total_tokens", 0),
                     "duration_ms": duration_ms,
+                    "prompt_char_count": ((metadata or {}).get("prompt_metrics") or {}).get("prompt_char_count", 0),
+                    "estimated_prompt_tokens": ((metadata or {}).get("prompt_metrics") or {}).get("estimated_prompt_tokens", 0),
+                    "message_count": ((metadata or {}).get("prompt_metrics") or {}).get("message_count", 0),
                 },
             )
             logger.info(
-                "Split synthesis call '%s' completed in %dms (completion_tokens=%d)",
-                call_name, duration_ms, (metadata or {}).get("completion_tokens", 0),
+                "Split synthesis call '%s' completed in %dms (completion_tokens=%d, prompt_chars=%d, estimated_prompt_tokens=%d)",
+                call_name,
+                duration_ms,
+                (metadata or {}).get("completion_tokens", 0),
+                ((metadata or {}).get("prompt_metrics") or {}).get("prompt_char_count", 0),
+                ((metadata or {}).get("prompt_metrics") or {}).get("estimated_prompt_tokens", 0),
             )
             return parsed, metadata
 
@@ -1777,7 +1806,14 @@ class QueryRefinementManager:
         aspects = [step.refinement_aspect for step in session.steps]
         pb = SynthesisPromptBuilder()
 
-        agg: Dict[str, Any] = {"prompt_tokens": 0, "completion_tokens": 0, "total_tokens": 0}
+        agg: Dict[str, Any] = {
+            "prompt_tokens": 0,
+            "completion_tokens": 0,
+            "total_tokens": 0,
+            "prompt_char_count": 0,
+            "estimated_prompt_tokens": 0,
+            "call_prompt_metrics": {},
+        }
 
         def _cap_tokens(budget: int) -> int:
             if max_tokens_ceiling is None:
@@ -1790,6 +1826,9 @@ class QueryRefinementManager:
             agg["prompt_tokens"] += meta.get("prompt_tokens", 0)
             agg["completion_tokens"] += meta.get("completion_tokens", 0)
             agg["total_tokens"] += meta.get("total_tokens", 0)
+            prompt_metrics = meta.get("prompt_metrics") or {}
+            agg["prompt_char_count"] += prompt_metrics.get("prompt_char_count", 0)
+            agg["estimated_prompt_tokens"] += prompt_metrics.get("estimated_prompt_tokens", 0)
 
         # --- Call 1: Statement -------------------------------------------
         stmt_user = pb.get_statement_prompt(
@@ -1807,6 +1846,8 @@ class QueryRefinementManager:
             temperature=temperature,
             max_tokens=_cap_tokens(512),
         )
+        if stmt_meta:
+            agg["call_prompt_metrics"]["statement"] = stmt_meta.get("prompt_metrics") or {}
         _accumulate(stmt_meta)
         integrated_statement: str = (
             stmt_result.integrated_statement if stmt_result else session.original_query
@@ -1852,6 +1893,12 @@ class QueryRefinementManager:
         (sem_result, sem_meta), (term_result, term_meta), (filt_result, filt_meta) = (
             await asyncio.gather(semantic_coro, terminology_coro, filter_coro)
         )
+        if sem_meta:
+            agg["call_prompt_metrics"]["semantic"] = sem_meta.get("prompt_metrics") or {}
+        if term_meta:
+            agg["call_prompt_metrics"]["terminology"] = term_meta.get("prompt_metrics") or {}
+        if filt_meta:
+            agg["call_prompt_metrics"]["filter_resolution"] = filt_meta.get("prompt_metrics") or {}
         for m in (sem_meta, term_meta, filt_meta):
             _accumulate(m)
 
@@ -1870,6 +1917,8 @@ class QueryRefinementManager:
             temperature=temperature,
             max_tokens=_cap_tokens(512),
         )
+        if kw_meta:
+            agg["call_prompt_metrics"]["keyword_support"] = kw_meta.get("prompt_metrics") or {}
         _accumulate(kw_meta)
 
         # --- Assemble ---------------------------------------------------
@@ -2044,6 +2093,8 @@ class QueryRefinementManager:
                 "prompt_tokens": aggregated_metadata.get("prompt_tokens", 0),
                 "completion_tokens": aggregated_metadata.get("completion_tokens", 0),
                 "total_tokens": aggregated_metadata.get("total_tokens", 0),
+                "prompt_char_count": aggregated_metadata.get("prompt_char_count", 0),
+                "estimated_prompt_tokens": aggregated_metadata.get("estimated_prompt_tokens", 0),
             },
         )
 
@@ -2061,6 +2112,8 @@ class QueryRefinementManager:
                 "structured_response": True,
                 "prompt_tokens": aggregated_metadata.get("prompt_tokens", 0),
                 "completion_tokens": aggregated_metadata.get("completion_tokens", 0),
+                "prompt_char_count": aggregated_metadata.get("prompt_char_count", 0),
+                "estimated_prompt_tokens": aggregated_metadata.get("estimated_prompt_tokens", 0),
             },
         )
 

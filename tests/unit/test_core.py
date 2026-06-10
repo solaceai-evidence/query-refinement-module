@@ -1521,7 +1521,7 @@ class TestSynthesisTracingTransparency:
 
     @pytest.mark.asyncio
     async def test_query_synthesis_complete_includes_token_counts(self):
-        """query_synthesis_complete event metadata must include prompt/completion/total_tokens."""
+        """query_synthesis_complete event metadata must include token and prompt-size totals."""
         manager = build_manager(responses=make_split_responses(integrated_statement="stmt"))
         session = RefinementSession(original_query="q")
 
@@ -1535,10 +1535,14 @@ class TestSynthesisTracingTransparency:
         assert "prompt_tokens" in meta, "query_synthesis_complete must include prompt_tokens"
         assert "completion_tokens" in meta, "query_synthesis_complete must include completion_tokens"
         assert "total_tokens" in meta, "query_synthesis_complete must include total_tokens"
+        assert "prompt_char_count" in meta, "query_synthesis_complete must include prompt_char_count"
+        assert "estimated_prompt_tokens" in meta, "query_synthesis_complete must include estimated_prompt_tokens"
         # All token counts must be non-negative integers
         assert isinstance(meta["prompt_tokens"], int) and meta["prompt_tokens"] >= 0
         assert isinstance(meta["completion_tokens"], int) and meta["completion_tokens"] >= 0
         assert isinstance(meta["total_tokens"], int) and meta["total_tokens"] >= 0
+        assert isinstance(meta["prompt_char_count"], int) and meta["prompt_char_count"] >= 0
+        assert isinstance(meta["estimated_prompt_tokens"], int) and meta["estimated_prompt_tokens"] >= 0
 
     @pytest.mark.asyncio
     async def test_query_synthesis_complete_includes_structured_response_flag(self):
@@ -1572,7 +1576,7 @@ class TestSynthesisTracingTransparency:
 
     @pytest.mark.asyncio
     async def test_split_call_ok_events_include_token_info(self):
-        """Each split_call_*_ok event must carry tokens/prompt_tokens/total_tokens."""
+        """Each split_call_*_ok event must carry token and prompt-size metadata."""
         manager = build_manager(responses=make_split_responses(integrated_statement="stmt"))
         session = RefinementSession(original_query="q")
 
@@ -1586,6 +1590,9 @@ class TestSynthesisTracingTransparency:
             assert "tokens" in meta
             assert "prompt_tokens" in meta
             assert "total_tokens" in meta
+            assert "prompt_char_count" in meta
+            assert "estimated_prompt_tokens" in meta
+            assert "message_count" in meta
 
     @pytest.mark.asyncio
     async def test_query_synthesis_start_includes_model_field(self):
