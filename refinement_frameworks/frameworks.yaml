@@ -1,259 +1,156 @@
 cocopop:
   - user_context:
       user_type: "policy maker, humanitarian practitioner, health professional, or researcher working on climate-health emergencies"
-      context: "Systematic evidence retrieval and question refinement for climate-health emergencies.
-        The user is formulating a precise, search-ready question to scope a systematic review and
-        recover sufficient evidence across scientific literature, humanitarian reports, policy
-        guidance, impact assessments, and case studies. The refined question must faithfully
-        represent the user's intended review scope while being broad enough to recover adequate
-        evidence. Ask as few follow-up questions as possible."
+      context: "Question refinement for climate-health emergency evidence retrieval. The system must clarify only the dimensions needed to define the user's intended review question: condition, context, and population. Preserve the user's scope exactly; later search-expansion stages may broaden retrieval, but this refinement stage must not broaden or reinterpret the review scope."
       tone: "pragmatic"
       complexity: "advanced"
       examples_from: "climate-health evidence retrieval"
       constraints:
-        - "Prefer broad, retrieval-usable wording over premature narrowing."
-        - "Ask only when the input is vague, ambiguous, or so narrow that it will likely suppress recall."
-        - "Never silently replace the user's stated element with a broader alternative; the refined output must be faithful to what the user confirmed."
-        - "When an anchor is hyperlocal or a single-event, ask once to clarify whether the review is specifically about that site or a broader class of comparable settings."
+        - "Extract stated information into the relevant dimension using the user's wording with minimal normalization."
+        - "Ask a follow-up only when the current dimension is missing, vague, internally inconsistent, or names multiple unrelated options without a primary focus."
+        - "Do not ask for optional subdetails such as diagnostic threshold, service level, urban/rural status, age band, or socioeconomic context unless the user already made that detail central but unclear."
+        - "Do not broaden hyperlocal, narrow, or event-specific wording during refinement; preserve it exactly if it is clear."
+        - "If a narrow scope may reduce recall, leave it for the later search-expansion stage rather than asking the user to broaden it."
+
   - id: condition
     name: Condition
-    description:
-      The health condition, disease, symptom, problem, or social issue
-      under study, including its case definition, diagnostic criteria, and
-      climate-health linkage.
+    description: "The health condition, disease, symptom cluster, public-health problem, or social issue under study."
     specifications: |
-      **Task:** Extract the health condition from the query into a single search-ready string that
-      reflects exactly what the user stated, including any climate linkage, case definition, temporal
-      qualifier, symptom cluster, or causal pathway they mentioned; omit details not stated.
+      **Task:** Extract the condition from the query into one clear, search-ready string.
 
-      **Accept as complete:**
-      - Any explicit named condition, symptom cluster, syndrome, condition family, or public-health
-        problem that maps to a coherent body of literature.
-      - Broad but explicit condition families such as "waterborne diseases", "heat illness",
-        "malnutrition", "smoke-related respiratory illness", or "mental health impacts".
-      - Conditions with a stated climate linkage, case definition, temporal qualifier, symptom
-        cluster, or causal pathway when the user has mentioned them.
+      **Complete when:**
+      - The query states a named condition, disease, syndrome, symptom cluster, condition family, or public-health problem.
+      - An umbrella diagnosis such as "diabetes", "asthma", or "depression" is stated without subtype, unless the surrounding query makes subtype materially important.
+      - The condition is broad but coherent, such as "waterborne diseases", "heat illness", "malnutrition", "respiratory illness", or "mental health impacts".
+      - The condition includes a stated climate linkage, event phase, causal pathway, or case definition; preserve those details exactly.
 
-      **Ask to clarify when:**
-      - No recognizable condition anchor is present.
-      - The wording is vague or semantically diffuse and cannot be searched as stated
-        (e.g., "health impacts", "illness", or "problem" with no named condition family).
+      **Ask only when:**
+      - No condition or condition family is present.
+      - The wording is too vague to search as a condition, such as "health impacts", "illness", or "problems" alone.
       - Multiple unrelated condition families are named and no primary focus is clear.
+      - A condition qualifier is central but unclear, such as an undefined case definition or ambiguous event phase.
+      - The condition is stated at umbrella level, but the surrounding query makes subtype materially important and the subtype is unclear.
 
-      **Offer scope clarification when:**
-      - The condition is defined by a micro-subtype, unusually narrow diagnostic threshold, or
-        very short event window that is likely to suppress recall.
-      - Ask once whether the review is specifically about that precise condition definition or
-        whether a broader condition family or wider time window should also be in scope.
-      - Do not replace the stated condition with a broader one; let the user's answer determine
-        the refined output.
-
-      **Never ask unless already raised by the user:**
-      - Climate-health linkage
-      - Case definition or diagnostic threshold
-      - Temporal qualifier
-      - Symptom cluster
-      - Causal pathway
-
-      If these details are absent, omit them silently from the current value.
+      **Do not ask for:**
+      - A narrower diagnosis, subtype, threshold, causal pathway, or climate-health linkage unless the user already mentioned it and it is unclear.
+      - Broader condition families for recall. Preserve narrow condition wording when it is clear.
     examples:
       clear:
         - statement: "Waterborne diseases following flooding"
-          rationale: Broad but explicit condition family with a clear hazard anchor; usable for broad evidence retrieval.
-        - statement: "Malnutrition during drought"
-          rationale: Broad but coherent public-health problem with a clear climate linkage; should be accepted without forcing subtype narrowing.
-        - statement: "Acute watery diarrhoea following flood-related water contamination"
-          rationale: Named condition and hazard linkage are explicit and search-ready; the phrase does not over-restrict to a single event phase.
+          rationale: Condition family and climate event are explicit.
+        - statement: "Diabetes during extreme heat"
+          rationale: Diabetes is already a coherent condition anchor; subtype is not required unless the rest of the query makes it central.
+        - statement: "Acute watery diarrhoea after flood-related water contamination"
+          rationale: Condition and linkage are explicit and should be preserved.
+        - statement: "Mental health impacts of prolonged drought"
+          rationale: Broad but coherent condition family.
       needs_refinement:
         - statement: "Health impacts of sea-level rise"
-          issue: No recognizable condition or condition family is named.
-          example_question: "Which health condition or condition family are you focusing on?"
+          issue: No condition or condition family is named.
+          example_question: "Which health condition or condition family should the review focus on?"
         - statement: "Illness after climate shocks"
-          issue: Too vague to search because no condition anchor is provided.
-          example_question: "Which condition or condition family do you want to retrieve evidence on?"
-      partial:
-        - statement: "Fever and respiratory distress after wildfire exposure"
-          has: symptom cluster and hazard anchor
-          missing: named condition family remains unclear
-          example_question: "Do you want evidence on smoke-related respiratory illness, heat illness, or another condition family?"
+          issue: Too vague to identify a searchable condition.
+          example_question: "Which condition or condition family do you mean?"
       ambiguous:
         - statement: "Climate-related illness in displaced populations"
-          issue: The phrase is too diffuse to map to one coherent evidence base.
+          issue: The condition is too diffuse to map to one evidence base.
           example_question: "Which condition family do you mean, for example heat illness, waterborne disease, respiratory illness, malnutrition, or mental health impacts?"
-        - statement: "Post-flood disease"
-          issue: Hazard is clear but the condition family is still ambiguous.
-          example_question: "Which disease or condition family are you focusing on?"
-      other:
-        - statement: "Acute-phase cholera only, excluding subacute presentations and the recovery period"
-          note: Restricting to the acute phase and explicitly excluding subacute cases is too narrow for default retrieval unless the user is deliberately scoping the review to the immediate outbreak response.
-          guidance: "I have your condition as acute-phase cholera restricted to the immediate outbreak window. Is your review specifically about that acute response phase, or should it also cover cholera outcomes across the broader post-flood period including subacute presentations?"
+        - statement: "Diabetes complications in pregnant women during heatwaves"
+          issue: The query signals that a more specific diabetes subtype or pregnancy-related form may matter, but it is unclear which one is intended.
+          example_question: "Do you want the review to focus on diabetes broadly, or a specific type such as type 1, type 2, or gestational diabetes?"
+
   - id: context
     name: Context
-    description:
-      The geographic, environmental, and implementation setting in which
-      the condition occurs and in which any response or intervention would be
-      applied.
+    description: "The geographic, environmental, emergency, or implementation setting in which the condition occurs."
     depends_on:
       - condition
     specifications: |
-      **Task:** Extract the geographic, environmental, and implementation setting from the query into
-      a single search-ready string that reflects exactly what the user stated; omit details not mentioned.
+      **Task:** Extract the context from the query into one clear, search-ready string.
 
-      **Accept as complete:**
-      - Any explicit geography, region, country, sub-region, broad setting, resource setting,
-        or exposure setting that is retrieval-usable.
-      - Broad anchors such as "Sub-Saharan Africa", "South Asia", "LMICs", "displacement camps",
-        "coastal communities", or "flood-affected areas".
-      - Named camps, settlements, districts, provinces, or other recognized places when they are
-        paired with a broader geographic or setting anchor and remain retrieval-usable.
+      **Complete when:**
+      - The query states a geography, region, country, district, named place, facility, camp, community, exposure setting, emergency setting, or implementation setting.
+      - The context is broad but explicit, such as "Sub-Saharan Africa", "LMICs", "coastal communities", "displacement camps", or "flood-affected areas in Bangladesh".
+      - The context is narrow, hyperlocal, or event-specific but clear; preserve it exactly.
 
-      **Ask to clarify when:**
-      - No usable geographic or setting anchor is present.
-      - The wording is ambiguous or too generic to search as stated
-        (e.g., "field settings", "affected areas", or "the region" with no anchor).
-      - The user explicitly raises implementation, feasibility, or delivery-platform constraints
-        but the relevant health-system or service setting is still unclear.
-      - The user explicitly makes emergency phase central but the phase wording is still vague
-        (e.g., "during the crisis").
+      **Ask only when:**
+      - No usable geographic, environmental, emergency, or implementation setting is present.
+      - The setting wording is ambiguous, such as "field settings", "affected areas", or "the region" without an anchor.
+      - The user makes implementation, feasibility, delivery platform, or emergency phase central but the relevant setting is unclear.
 
-      **Offer scope clarification when:**
-      - The query is framed around a single facility, service point, ward, camp block, camp sector,
-        village cluster, or narrow single-event window that is likely to suppress recall, even when
-        a broader administrative anchor is also present.
-      - Ask once whether the review is specifically about that site or whether a broader class of
-        comparable settings should be in scope (e.g., the full camp, district, region, country,
-        or comparable setting class).
-      - Do not replace the stated setting with a broader one; let the user's answer determine the
-        refined output.
+      **Do not ask for:**
+      - Broader geography, broader setting class, resource level, urban/rural status, health-system level, or time phase unless the user already made that detail central but unclear.
+      - Broader wording to improve recall. Preserve named camps, facilities, districts, villages, or short event windows when clear.
 
-      **Never ask unless already raised by the user:**
-      - Health-system level or capacity
-      - Urban, rural, or peri-urban classification
-      - Temporal context
-      - Income or resource setting
-      - Socioeconomic or political context
-
-      If these details are absent, omit them silently from the current value.
-
-      **Standardization rules:**
+      **Standardization:**
       - "poor countries" -> "low- and middle-income countries (LMICs)"
       - "rich countries" -> "high-income countries"
-      - Preserve recognized named settings when they remain retrieval-usable; do not ask to broaden
-        solely because a camp, district, province, or other recognized place is named.
-      - Preserve broad regional labels if they are retrieval-usable. Do not ask just to tighten geography.
     examples:
       clear:
-        - statement: "Sub-Saharan Africa"
-          rationale: Broad regional scope is acceptable for retrieval when it is intentionally broad.
-        - statement: "Flood-affected districts in Bangladesh"
-          rationale: Country and exposure setting are explicit and search-usable without further narrowing.
         - statement: "Rohingya camps in Cox's Bazar district, Bangladesh"
-          rationale: The named camp setting is acceptable because it is paired with district and country anchors and remains retrieval-usable.
-        - statement: "Rural displacement camps in Bangladesh following riverine flooding"
-          rationale: Geography, setting, and hazard anchor are already sufficient for retrieval.
+          rationale: Named setting, district, and country are explicit.
+        - statement: "One cholera treatment centre in Kutupalong camp during the first 72 hours after flooding"
+          rationale: Narrow but clear context; preserve it rather than broadening.
+        - statement: "Flood-affected districts in Bangladesh"
+          rationale: Geography and exposure setting are explicit.
       needs_refinement:
-        - statement: "Field settings"
-          issue: Too ambiguous to search because the geography and setting type are both unclear.
-          example_question: "Which country, region, or setting do you mean by field settings?"
         - statement: "Affected areas"
-          issue: No usable geographic or implementation anchor is provided.
-          example_question: "Which country, region, or setting should the search focus on?"
+          issue: No usable geographic or setting anchor is provided.
+          example_question: "Which country, region, or setting should the review focus on?"
+        - statement: "Field settings"
+          issue: The setting type and geography are unclear.
+          example_question: "Which field setting do you mean, for example community outreach, displacement camps, primary care clinics, or a specific country or region?"
       partial:
         - statement: "Flood-affected districts in Bangladesh considering vaccine delivery"
-          has: geographic setting and implementation focus
-          missing: delivery platform or health-system level is unclear even though feasibility is part of the request
-          example_question: "Which delivery platform or health-system setting is relevant, for example community outreach, primary care clinics, or district hospitals?"
-      ambiguous:
-        - statement: "Field settings in the Global South"
-          issue: '"Field settings" is ambiguous, but the broad regional scope itself does not need tightening.'
-          example_question: "Which type of setting do you mean, for example community outreach, primary care, or humanitarian field hospital?"
-      other:
-        - statement: "Patients treated at one cholera treatment centre in Kutupalong camp during the first 72 hours after major flooding"
-          note: Kutupalong is a meaningful named setting, but a single treatment centre and a very short post-flood window are too narrow for default retrieval.
-          guidance: "I have your context as one cholera treatment centre in Kutupalong camp within the first 72 hours of flooding. Is your review specifically about that treatment site and acute window, or should it cover Kutupalong camp as a whole, Rohingya camps in Cox's Bazar district, or a broader post-flood period?"
-        - statement: "Residents served by one primary health post in Rohingya camps in Cox's Bazar district, Bangladesh"
-          note: The district and camp setting are useful, but one health post is too narrow for default retrieval.
-          guidance: "I have your context as one primary health post in Rohingya camps in Cox's Bazar. Is your review specifically about that service point, or should it cover Rohingya camps in Cox's Bazar district more broadly?"
-        - statement: "Agricultural workers in one village cluster of Maharashtra during the first three days of a severe heatwave"
-          note: Maharashtra is a useful state anchor, but the village-cluster framing and acute event phase are too narrow for default retrieval.
-          guidance: "I have your context as one village cluster in Maharashtra during the first three days of a heatwave. Is your review specifically about that cluster and acute phase, or should it cover rural Maharashtra or agricultural settings across western India over the broader heatwave period?"
-        - statement: "Vineyard workers in one agricultural valley of Maule during the first 48 hours of a major wildfire smoke episode"
-          note: Maule is a useful regional anchor, but one valley and a very short smoke window are too narrow for default retrieval.
-          guidance: "I have your context as one agricultural valley in Maule within the first 48 hours of a wildfire smoke episode. Is your review specifically about that valley and acute window, or should it cover Maule region more broadly or wildfire-affected agricultural settings in rural central Chile?"
+          has: "geography and exposure setting"
+          missing: "the delivery setting is central but unclear"
+          example_question: "Which delivery setting is relevant, for example community outreach, primary care clinics, district hospitals, or mobile teams?"
+
   - id: population
     name: Population
-    description:
-      The group of individuals or entities whose health outcomes are the
-      focus of the question, defined by demographic characteristics,
-      vulnerability, exposure, and inclusion criteria that shape evidence
-      applicability.
+    description: "The people or groups whose health outcomes, risks, or service needs are the focus of the question."
     depends_on:
       - condition
       - context
     specifications: |
-      **Task:** Extract the target population from the query into a single search-ready string that
-      reflects exactly what the user stated, including any age, life-stage, or vulnerability markers
-      they mentioned; omit details not stated.
+      **Task:** Extract the population from the query into one clear, search-ready string.
 
-      **Accept as complete:**
-      - Any explicit, interpretable population anchor such as all populations, residents, adults,
-        children, older adults, displaced people, health workers, farmers, pregnant women,
-        households, or a named community.
-      - Broad life-stage labels such as adults, children, adolescents, or older adults.
-      - Named subgroups with stated vulnerability markers when the user has mentioned them.
+      **Complete when:**
+      - The query states a population group, community, exposure group, vulnerability group, occupation, service-user group, age/life-stage group, or "all affected people".
+      - The population is broad but interpretable, such as "adults", "children", "displaced populations", "outdoor workers", "households", or "coastal communities".
+      - The population is narrow or tied to one service point but clear; preserve it exactly.
 
-      **Ask to clarify when:**
-      - No usable population anchor is present.
-      - The wording is too vague to identify a meaningful group
-        (e.g., "people", "communities", or "local populations" with no interpretable anchor).
-      - Multiple unrelated populations are mentioned and no primary focus is clear.
-      - The topic is explicitly age-defined but no usable age or life-stage anchor is given.
-      - The query explicitly centers disparities across named groups but no population group is given.
+      **Ask only when:**
+      - No usable population is present.
+      - The wording is too generic to identify a group, such as "people", "communities", or "local populations" without an interpretable anchor.
+      - Multiple unrelated populations are named and no primary focus is clear.
+      - The topic is explicitly age-defined, pregnancy-defined, occupationally defined, or vulnerability-defined but the relevant group is unclear.
 
-      **Offer scope clarification when:**
-      - The population is defined by an ultra-narrow age band, single service-access point, or
-        micro-subgroup that is likely to suppress recall.
-      - Ask once whether the review is specifically about that subgroup or whether a broader
-        adjacent population should also be in scope.
-      - Do not replace the stated population with a broader one; let the user's answer determine
-        the refined output.
+      **Do not ask for:**
+      - Sex, gender, ethnicity, age band, subgroup, vulnerability marker, or broader adjacent population unless the user already made that detail central but unclear.
+      - Broader population wording to improve recall. Preserve narrow population wording when clear.
 
-      **Never ask unless already raised by the user:**
-      - Sex or gender
-      - Ethnicity or race
-      - Subgroup characteristics
-
-      If these details are absent, omit them silently from the current value.
-
-      **Age standardization:**
+      **Standardization:**
       - "kids" -> "children"
       - "elderly" -> "older adults"
-      - Preserve broad labels such as "adults" or "children". Do not narrow them by default.
+
+      **Output rule:** Use the shortest faithful population phrase. Omit unstated details.
     examples:
       clear:
-        - statement: "Adults in cyclone-affected coastal communities"
-          rationale: Broad adult population is acceptable and should not trigger age tightening by default.
         - statement: "Displaced populations following flooding"
-          rationale: Broad but interpretable population anchor with clear exposure context.
+          rationale: Population and exposure context are explicit.
+        - statement: "Pregnant women attending one maternity post in Rohingya camps in Cox's Bazar"
+          rationale: Narrow but clear population; preserve it rather than broadening.
         - statement: "Children under 5 years in drought-affected households"
-          rationale: Population and age anchor are already explicit and search-ready.
-      ambiguous:
-        - statement: "Local populations in climate hotspots"
-          issue: '"Local populations" does not identify a meaningful group for retrieval.'
-          example_question: "Which population group do you mean, for example all residents, outdoor workers, farming households, or displaced people?"
-      partial:
-        - statement: '"People" - query concerns neonatal mortality after extreme heat'
-          has: a generic population placeholder
-          missing: the topic is explicitly age-defined but no usable age or life-stage anchor is given
-          example_question: "Which population are you focusing on, for example newborns, pregnant women, or the general population?"
+          rationale: Age group and household context are explicit.
       needs_refinement:
         - statement: "People"
-          issue: No meaningful population anchor is provided.
-          example_question: "Which population group should the search focus on?"
+          issue: No meaningful population group is provided.
+          example_question: "Which population group should the review focus on?"
         - statement: "Community members"
-          issue: No meaningful population anchor specific enough to scope a review population.
-          example_question: "Which population do you mean, for example all residents, children under 5, adults, older adults, or a specific group such as displaced people, outdoor workers, or farmers?"
-      other:
-        - statement: "Pregnant women attending one maternity post in Rohingya camps in Cox's Bazar"
-          note: The population is restricted to users of one service point, which is likely too narrow for broad retrieval.
-          guidance: "I have your population as pregnant women at one maternity post in Rohingya camps in Cox's Bazar. Is your review specifically about that service point, or should it cover pregnant women across Rohingya camps in Cox's Bazar district more broadly?"
+          issue: Too generic to identify the target population.
+          example_question: "Which population do you mean, for example all residents, children, older adults, displaced people, outdoor workers, or farming households?"
+      partial:
+        - statement: "People affected by neonatal mortality after extreme heat"
+          has: "generic people placeholder and age-defined condition"
+          missing: "the relevant population group is unclear"
+          example_question: "Which population should the review focus on, for example newborns, pregnant women, or households with newborns?"
