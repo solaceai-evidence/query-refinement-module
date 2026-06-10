@@ -170,14 +170,14 @@ async def test_run_synthesis_persists_full_response_payload(test_db_session, mon
         "terminology": {"synonyms": {"COPD": ["chronic obstructive pulmonary disease"]}},
     }
     assert db_query.refined_query == "Adults with COPD receiving pulmonary rehab."
-    assert db_query.synthesized_statement == "Adults with COPD receiving pulmonary rehab."
-    assert db_query.refined_dimensions == {"population": "Adults with COPD"}
+    assert db_query.integrated_statement == "Adults with COPD receiving pulmonary rehab."
+    assert db_query.dimensions_specifications == {"population": "Adults with COPD"}
     assert db_query.search_optimized == {"semantic": "pulmonary rehabilitation for COPD adults"}
     assert db_query.search_filters == {"publication_types": ["Systematic review"]}
     assert db_query.terminology == {
         "synonyms": {"COPD": ["chronic obstructive pulmonary disease"]}
     }
-    assert db_query.response_metadata == {"total_tokens": 1234}
+    assert db_query.synthesis_metadata == {"total_tokens": 1234}
     assert db_query.processing_log == {"preserved": ["population"]}
     assert db_query.completed_at is not None
     assert user.has_completed_workflow is True

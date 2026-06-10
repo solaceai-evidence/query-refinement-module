@@ -1,7 +1,7 @@
 """
 Pydantic schemas for request/response validation.
 """
-from pydantic import AliasChoices, BaseModel, ConfigDict, EmailStr, Field, field_validator
+from pydantic import BaseModel, ConfigDict, EmailStr, Field, field_validator
 from typing import Any, Dict, Optional, List
 from datetime import datetime
 import re
@@ -150,7 +150,7 @@ class QueryUpdate(BaseModel):
 
 class QueryResponse(BaseModel):
     """Schema for query in responses - includes full QueryRefinementResponse fields."""
-    model_config = ConfigDict(from_attributes=True, populate_by_name=True)
+    model_config = ConfigDict(from_attributes=True, extra="forbid")
     
     id: int
     session_id: int
@@ -161,22 +161,33 @@ class QueryResponse(BaseModel):
     completed_at: Optional[datetime] = None
     
     # QueryRefinementResponse fields exposed with canonical API names.
-    integrated_statement: Optional[str] = Field(
-        default=None,
-        validation_alias=AliasChoices("integrated_statement", "synthesized_statement"),
-    )
-    dimensions_specifications: Optional[Dict[str, Any]] = Field(
-        default=None,
-        validation_alias=AliasChoices("dimensions_specifications", "refined_dimensions"),
-    )
+    integrated_statement: Optional[str] = None
+    dimensions_specifications: Optional[Dict[str, Any]] = None
     search_optimized: Optional[Dict[str, Any]] = None
     search_filters: Optional[Dict[str, Any]] = None
     terminology: Optional[Dict[str, Any]] = None
-    metadata: Optional[Dict[str, Any]] = Field(
-        default=None,
-        validation_alias=AliasChoices("metadata", "response_metadata"),
-    )
+    metadata: Optional[Dict[str, Any]] = None
     processing_log: Optional[Dict[str, Any]] = None
+
+    @classmethod
+    def from_query_record(cls, query: Any) -> "QueryResponse":
+        """Build the canonical API response from a persisted query record."""
+        return cls(
+            id=query.id,
+            session_id=query.session_id,
+            original_query=query.original_query,
+            refined_query=query.refined_query,
+            created_at=query.created_at,
+            updated_at=query.updated_at,
+            completed_at=query.completed_at,
+            integrated_statement=getattr(query, "integrated_statement", None),
+            dimensions_specifications=getattr(query, "dimensions_specifications", None),
+            search_optimized=getattr(query, "search_optimized", None),
+            search_filters=getattr(query, "search_filters", None),
+            terminology=getattr(query, "terminology", None),
+            metadata=getattr(query, "synthesis_metadata", None),
+            processing_log=getattr(query, "processing_log", None),
+        )
 
 
 # ==========================================

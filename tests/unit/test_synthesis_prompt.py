@@ -52,24 +52,16 @@ class TestSynthesisPromptBuilder:
         sample_aspects,
         refinement_values,
     ):
-        """PromptBuilder should delegate synthesis user content to SynthesisPromptBuilder."""
-        prompt_builder = PromptBuilder()
-        messages = prompt_builder.build_synthesis_messages(
-            original_input="diabetes treatment outcomes",
-            dimensions=refinement_values,
-            dimension_list=sample_aspects,
-        )
-
+        """SynthesisPromptBuilder should produce the canonical monolithic user prompt shape."""
         canonical_user_prompt = SynthesisPromptBuilder.get_synthesis_prompt(
             original_input="diabetes treatment outcomes",
             aspectID_value_mapping=refinement_values,
             aspect_list=sample_aspects,
         )
 
-        assert len(messages) == 2
-        assert messages[0]["role"] == "system"
-        assert messages[1]["role"] == "user"
-        assert messages[1]["content"] == canonical_user_prompt
+        assert "## Original Input" in canonical_user_prompt
+        assert "## Clarified Dimensions" in canonical_user_prompt
+        assert "Target Population" in canonical_user_prompt
 
     def test_build_synthesis_prompt_basic(self, sample_aspects, refinement_values):
         """Test basic synthesis prompt building."""

@@ -16,6 +16,7 @@ from query_refinement_module.schema import (
     get_framework,
     # Prompt builder
     PromptBuilder,
+    SynthesisPromptBuilder,
     get_prompt_builder,
     render_template,
     # Templates
@@ -234,8 +235,8 @@ class TestPromptBuilder:
 
     def test_get_synthesis_system_prompt(self):
         """Test getting synthesis system prompt."""
-        builder = PromptBuilder()
-        prompt = builder.get_synthesis_system_prompt()
+        builder = SynthesisPromptBuilder()
+        prompt = builder.get_system_prompt()
         assert isinstance(prompt, str)
         assert "SYNTHESIS" in prompt or "integrated_statement" in prompt
 

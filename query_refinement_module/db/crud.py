@@ -276,10 +276,7 @@ def save_query_refinement_response(
     Called when session is complete to persist all response fields
     for evaluation purposes.
     
-    Maps from API field names to database column names:
-        - integrated_statement (API) → synthesized_statement (DB)
-        - dimensions_specifications (API) → refined_dimensions (DB)
-        - search_optimized, search_filters, terminology (same in both)
+    Persists canonical QueryRefinementResponse fields.
     
     Args:
         db: Database session
@@ -298,19 +295,18 @@ def save_query_refinement_response(
         
         integrated_statement = response.get('integrated_statement')
         dimensions_specifications = response.get('dimensions_specifications')
-        response_metadata = response.get('metadata')
+        metadata_payload = response.get('metadata')
 
         processing_log = response.get('processing_log')
 
-        # Map canonical API fields to legacy database column names.
+        # Store canonical synthesis fields.
         if integrated_statement is not None:
-            query.synthesized_statement = integrated_statement
+            query.integrated_statement = integrated_statement
             # Also update legacy refined_query field
             query.refined_query = integrated_statement
         
-        # Store canonical dimension specifications in the legacy DB column.
         if dimensions_specifications is not None:
-            query.refined_dimensions = dimensions_specifications
+            query.dimensions_specifications = dimensions_specifications
         
         # Store search optimization
         if 'search_optimized' in response:
@@ -325,8 +321,8 @@ def save_query_refinement_response(
             query.terminology = response['terminology']
 
         # Store optional metadata and processing logs when present.
-        if response_metadata is not None:
-            query.response_metadata = response_metadata
+        if metadata_payload is not None:
+            query.synthesis_metadata = metadata_payload
 
         if processing_log is not None:
             query.processing_log = processing_log

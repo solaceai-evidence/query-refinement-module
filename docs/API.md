@@ -164,7 +164,7 @@ Canonical synthesis field names used by the API and internal runtime are:
 - `metadata`
 - `processing_log`
 
-Database column names such as `synthesized_statement` and `refined_dimensions` are persistence details only and are not part of the public API contract.
+The query persistence schema now uses the same canonical synthesis names. The SQLAlchemy model exposes the `metadata` database column as `synthesis_metadata` because `metadata` is a reserved declarative attribute name.
 
 The detailed `structured_output` contract is described below.
 

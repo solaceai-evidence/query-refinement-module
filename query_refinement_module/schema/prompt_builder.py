@@ -34,7 +34,6 @@ __all__ = [
     "PromptBuilder",
     "render_template",
     "create_dimension_prompt",
-    "create_synthesis_prompt",
     "get_prompt_builder",
     "build_refinement_messages",
 ]
@@ -285,60 +284,6 @@ class PromptBuilder(_PromptBuilderBase):
     # Synthesis Prompts
     # =========================================================================
     
-    def get_synthesis_system_prompt(self) -> str:
-        """
-        Get the synthesis system prompt.
-        
-        Returns:
-            The synthesis template string
-        """
-        from .synthesis import SynthesisPromptBuilder
-
-        return SynthesisPromptBuilder.get_system_prompt().strip()
-    
-    def render_synthesis_original_input(self, original_input: str) -> str:
-        """
-        Render the original input message for synthesis.
-        
-        Args:
-            original_input: The user's original research query
-            
-        Returns:
-            Just the original input text (template handles formatting)
-        """
-        return original_input
-    
-    def render_synthesis_dimensions(
-        self,
-        dimensions: Dict[str, str],
-        dimension_list: List[RefinementDimension]
-    ) -> str:
-        """
-        Render the clarified dimensions for synthesis.
-        
-        Args:
-            dimensions: Dict mapping dimension ID to assembled value
-            dimension_list: List of dimension definitions
-            
-        Returns:
-            Formatted dimensions for synthesis
-        """
-        # Build ID -> dimension mapping
-        dim_map = {d.id: d for d in dimension_list}
-        
-        lines = ["## Clarified Dimensions\n"]
-        for dim_id, value in dimensions.items():
-            dim = dim_map.get(dim_id)
-            if dim:
-                # [SKIPPED] if None or empty
-                display_value = value if value else "[SKIPPED]"
-                lines.append(f"**{dim.name}** ({dim.description}): {display_value}")
-            else:
-                display_value = value if value else "[SKIPPED]"
-                lines.append(f"**{dim_id}**: {display_value}")
-        
-        return "\n".join(lines)
-    
     # =========================================================================
     # Combined System Prompt Builder
     # =========================================================================
@@ -578,42 +523,6 @@ class PromptBuilder(_PromptBuilderBase):
         
         return messages
     
-    def build_synthesis_messages(
-        self,
-        original_input: str,
-        dimensions: Dict[str, str],
-        dimension_list: List[RefinementDimension]
-    ) -> List[Dict[str, str]]:
-        """
-        Build the complete message list for synthesis.
-        
-        Returns a list of messages ready for LLM API:
-        1. System prompt (synthesis template)
-        2. Original input
-        3. Clarified dimensions
-        
-        Args:
-            original_input: The user's original research query
-            dimensions: Dict mapping dimension ID to assembled value
-            dimension_list: List of dimension definitions
-            
-        Returns:
-            List of {role: str, content: str} message dicts
-        """
-        from .synthesis import SynthesisPromptBuilder
-
-        return [
-            {"role": "system", "content": self.get_synthesis_system_prompt()},
-            {
-                "role": "user",
-                "content": SynthesisPromptBuilder.get_synthesis_prompt(
-                    original_input=original_input,
-                    aspectID_value_mapping=dimensions,
-                    aspect_list=dimension_list,
-                ),
-            },
-        ]
-    
     # =========================================================================
     # Legacy Methods (for backward compatibility)
     # =========================================================================
@@ -658,38 +567,6 @@ class PromptBuilder(_PromptBuilderBase):
             dependencies=dependencies if dependencies else None
         )
     
-    def build_synthesis_prompt(
-        self,
-        all_dimensions: List[CompletedDimension],
-        original_input: str,
-        user_context: UserContext,
-        synthesis_purpose: str = "literature search and methodology design"
-    ) -> str:
-        """
-        Build synthesis prompt (legacy method).
-        
-        Args:
-            all_dimensions: All completed dimensions
-            original_input: Original user input
-            user_context: User context
-            synthesis_purpose: What the output will be used for
-            
-        Returns:
-            Complete synthesis prompt
-        """
-        # Convert completed dimensions to dict format
-        dimensions = {d.id: d.assembled_value for d in all_dimensions}
-        
-        # Build messages and combine
-        messages = self.build_synthesis_messages(
-            original_input=original_input,
-            dimensions=dimensions,
-            dimension_list=[]  # Empty since we don't have full dimension definitions
-        )
-        
-        return "\n\n".join(m["content"] for m in messages)
-
-
 # =============================================================================
 # Default Instance & Convenience Functions
 # =============================================================================
@@ -763,28 +640,3 @@ def create_dimension_prompt(
         dependency_values=dependency_values or {}
     )
 
-
-def create_synthesis_prompt(
-    all_dimensions: List[CompletedDimension],
-    original_input: str,
-    user_context: UserContext,
-    synthesis_purpose: str = "literature search and methodology design"
-) -> str:
-    """
-    Convenience function to create synthesis prompt.
-    
-    Args:
-        all_dimensions: All completed dimensions
-        original_input: Original user input
-        user_context: User context
-        synthesis_purpose: Purpose of synthesis
-        
-    Returns:
-        Formatted synthesis prompt
-    """
-    return _default_builder.build_synthesis_prompt(
-        all_dimensions=all_dimensions,
-        original_input=original_input,
-        user_context=user_context,
-        synthesis_purpose=synthesis_purpose
-    )

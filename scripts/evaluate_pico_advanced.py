@@ -4,7 +4,7 @@
 Tests the complete refinement + synthesis pipeline:
   1. Dimension refinement — all 6 pico_advanced dims in dependency order,
      each receiving the real completed_context from prior dims.
-  2. Synthesis — all completed dims passed to build_synthesis_messages(),
+    2. Synthesis — all completed dims passed through the canonical split-synthesis pipeline,
      response validated for structural correctness and key-term coverage.
 
 Run:

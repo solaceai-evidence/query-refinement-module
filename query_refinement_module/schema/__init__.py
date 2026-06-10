@@ -54,7 +54,6 @@ from .prompt_builder import (
     PromptBuilder,
     render_template,
     create_dimension_prompt,
-    create_synthesis_prompt,
     get_prompt_builder,
 )
 
@@ -111,7 +110,6 @@ __all__ = [
     "PromptBuilder",
     "render_template",
     "create_dimension_prompt",
-    "create_synthesis_prompt",
     "get_prompt_builder",
     
     # Templates
