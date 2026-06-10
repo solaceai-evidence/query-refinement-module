@@ -105,6 +105,8 @@ class _FakeManager:
             "search_optimized": {"semantic": "pulmonary rehabilitation for COPD adults"},
             "search_filters": {"publication_types": ["Systematic review"]},
             "terminology": {"synonyms": {"COPD": ["chronic obstructive pulmonary disease"]}},
+            "metadata": {"total_tokens": 1234},
+            "processing_log": {"preserved": ["population"]},
             "used_llm": True,
         }
 
@@ -175,6 +177,8 @@ async def test_run_synthesis_persists_full_response_payload(test_db_session, mon
     assert db_query.terminology == {
         "synonyms": {"COPD": ["chronic obstructive pulmonary disease"]}
     }
+    assert db_query.response_metadata == {"total_tokens": 1234}
+    assert db_query.processing_log == {"preserved": ["population"]}
     assert db_query.completed_at is not None
     assert user.has_completed_workflow is True
     assert tracker.calls == [str(db_query.id)]

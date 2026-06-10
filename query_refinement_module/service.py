@@ -24,6 +24,7 @@ from .core import (
     parse_user_command,
 )
 from .interfaces import SessionStorageInterface, TracingProviderInterface
+from .next_prompt import resolve_next_prompt
 from .providers import LiteLLMProvider
 from .settings import LLMSettings
 
@@ -64,15 +65,6 @@ class QueryRefinementService:
         self._manager = manager
         self._storage = storage
         self._session_id_factory = session_id_factory or (lambda: str(uuid.uuid4()))
-
-    @staticmethod
-    def _get_next_step(session: RefinementSession):
-        """Return the next step requiring user attention, preferring dependency-aware selection."""
-
-        get_next_unrefined_aspect = getattr(session, "get_next_unrefined_aspect", None)
-        if callable(get_next_unrefined_aspect):
-            return get_next_unrefined_aspect()
-        return session.get_active_step()
 
     @staticmethod
     def _build_prompt_payload(
@@ -270,49 +262,19 @@ class QueryRefinementService:
 
     async def _build_next_prompt(self, session: RefinementSession) -> Optional[NextPrompt]:
         """Construct the next prompt using the manager's canonical analysis path."""
-
-        max_attempts = max(len(getattr(session, "steps", []) or []), 1)
-        attempts = 0
-
-        while attempts < max_attempts:
-            attempts += 1
-            step = self._get_next_step(session)
-            if not step:
-                return None
-
-            if step.follow_up_question:
-                return self._build_prompt_payload(session, step, step.follow_up_question)
-
-            try:
-                analysis_result = await self._manager.get_analysis_prompts(
-                    session=session,
-                    aspect_id=step.refinement_aspect.id,
-                    mode="initial",
-                )
-                status = self._manager.process_analysis_result(
-                    session=session,
-                    aspect_id=step.refinement_aspect.id,
-                    result=analysis_result,
-                )
-            except Exception as exc:  # pragma: no cover - best effort fallback
-                logger.warning(
-                    "Failed to analyze initial prompt for aspect '%s': %s",
-                    step.refinement_aspect.name,
-                    exc,
-                )
-                fallback_question = f"Please provide details about {step.refinement_aspect.name}"
-                step.follow_up_question = fallback_question
-                return self._build_prompt_payload(session, step, fallback_question)
-
-            if status.get("complete", False):
-                continue
-
-            question = status.get("next_question") or step.follow_up_question
-            if not question:
-                fallback_question = f"Please provide details about {step.refinement_aspect.name}"
-                step.follow_up_question = fallback_question
-                question = fallback_question
-
-            return self._build_prompt_payload(session, step, question)
-
-        return None
+        return await resolve_next_prompt(
+            session,
+            analyze_initial=lambda step: self._manager.get_analysis_prompts(
+                session=session,
+                aspect_id=step.refinement_aspect.id,
+                mode="initial",
+            ),
+            process_analysis_result=lambda step, result: self._manager.process_analysis_result(
+                session=session,
+                aspect_id=step.refinement_aspect.id,
+                result=result,
+            ),
+            build_payload=self._build_prompt_payload,
+            logger=logger,
+            failure_log_message="Failed to analyze initial prompt for aspect '%s': %s",
+        )
