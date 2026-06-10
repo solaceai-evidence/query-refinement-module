@@ -1,7 +1,7 @@
 """
 Pydantic schemas for request/response validation.
 """
-from pydantic import BaseModel, ConfigDict, EmailStr, Field, field_validator
+from pydantic import AliasChoices, BaseModel, ConfigDict, EmailStr, Field, field_validator
 from typing import Any, Dict, Optional, List
 from datetime import datetime
 import re
@@ -150,23 +150,32 @@ class QueryUpdate(BaseModel):
 
 class QueryResponse(BaseModel):
     """Schema for query in responses - includes full QueryRefinementResponse fields."""
-    model_config = ConfigDict(from_attributes=True)
+    model_config = ConfigDict(from_attributes=True, populate_by_name=True)
     
     id: int
     session_id: int
     original_query: str
-    refined_query: Optional[str] = None  # Deprecated - use synthesized_statement
+    refined_query: Optional[str] = None  # Deprecated - use integrated_statement
     created_at: datetime
     updated_at: datetime
     completed_at: Optional[datetime] = None
     
-    # QueryRefinementResponse fields (stored for evaluation)
-    synthesized_statement: Optional[str] = None
-    refined_dimensions: Optional[Dict[str, Any]] = None
+    # QueryRefinementResponse fields exposed with canonical API names.
+    integrated_statement: Optional[str] = Field(
+        default=None,
+        validation_alias=AliasChoices("integrated_statement", "synthesized_statement"),
+    )
+    dimensions_specifications: Optional[Dict[str, Any]] = Field(
+        default=None,
+        validation_alias=AliasChoices("dimensions_specifications", "refined_dimensions"),
+    )
     search_optimized: Optional[Dict[str, Any]] = None
     search_filters: Optional[Dict[str, Any]] = None
     terminology: Optional[Dict[str, Any]] = None
-    response_metadata: Optional[Dict[str, Any]] = None
+    metadata: Optional[Dict[str, Any]] = Field(
+        default=None,
+        validation_alias=AliasChoices("metadata", "response_metadata"),
+    )
     processing_log: Optional[Dict[str, Any]] = None
 
 

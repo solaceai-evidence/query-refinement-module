@@ -1365,7 +1365,7 @@ class TestStructuredOutputReliability:
 
     _REQUIRED_KEYS = {
         "integrated_statement", "used_llm", "clarifications", "baseline_summaries",
-        "refinement_aspect_values", "metadata", "dimensions_specifications",
+        "metadata", "dimensions_specifications",
         "search_optimized", "search_filters", "terminology",
     }
 
@@ -1377,6 +1377,7 @@ class TestStructuredOutputReliability:
         session = RefinementSession(original_query="q")
         result = await manager.synthesize_refined_query(session)
         assert self._REQUIRED_KEYS.issubset(result.keys())
+        assert "refinement_aspect_values" not in result
 
     @pytest.mark.asyncio
     async def test_result_shape_on_total_llm_failure(self):
@@ -1391,6 +1392,7 @@ class TestStructuredOutputReliability:
         session = RefinementSession(original_query="q")
         result = await manager.synthesize_refined_query(session)
         assert self._REQUIRED_KEYS.issubset(result.keys())
+        assert "refinement_aspect_values" not in result
         assert result["used_llm"] is True
         assert isinstance(result["search_filters"].fields_of_study, list)
 

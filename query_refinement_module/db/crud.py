@@ -297,28 +297,18 @@ def save_query_refinement_response(
         query.completed_at = datetime.now(timezone.utc)
         
         integrated_statement = response.get('integrated_statement')
-        if integrated_statement is None:
-            integrated_statement = response.get('synthesized_statement')
-
         dimensions_specifications = response.get('dimensions_specifications')
-        if dimensions_specifications is None:
-            dimensions_specifications = response.get('detail_values')
-        if dimensions_specifications is None:
-            dimensions_specifications = response.get('refined_dimensions')
-
         response_metadata = response.get('metadata')
-        if response_metadata is None:
-            response_metadata = response.get('response_metadata')
 
         processing_log = response.get('processing_log')
 
-        # Map API field to database column (integrated_statement → synthesized_statement)
+        # Map canonical API fields to legacy database column names.
         if integrated_statement is not None:
             query.synthesized_statement = integrated_statement
             # Also update legacy refined_query field
             query.refined_query = integrated_statement
         
-        # Map API field to database column (dimensions_specifications → refined_dimensions)
+        # Store canonical dimension specifications in the legacy DB column.
         if dimensions_specifications is not None:
             query.refined_dimensions = dimensions_specifications
         

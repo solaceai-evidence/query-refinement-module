@@ -331,8 +331,8 @@ from query_refinement_module.schema.response import (
 def _make_qrr() -> QueryRefinementResponse:
     """Minimal valid QueryRefinementResponse for testing."""
     return QueryRefinementResponse(**{
-        "synthesized_statement": "Refined query for testing",
-        "refined_dimensions": {"population": "adults"},
+        "integrated_statement": "Refined query for testing",
+        "dimensions_specifications": {"population": "adults"},
         "search_optimized": {
             "semantic": "adults health outcomes",
             "keyword": {
@@ -390,12 +390,12 @@ async def test_litellm_provider_constrained_decoding_dimension():
 
 @pytest.mark.asyncio
 async def test_litellm_provider_constrained_decoding_synthesis():
-    """QueryRefinementResponse + constrained_decoding=True → guided_json uses aliased schema keys."""
+    """QueryRefinementResponse + constrained_decoding=True → guided_json uses canonical schema keys."""
     import query_refinement_module.providers.llm as llm_module
 
     qrr = _make_qrr()
     mock_response = {
-        "choices": [{"message": {"content": qrr.model_dump_json(by_alias=True)}}],
+        "choices": [{"message": {"content": qrr.model_dump_json()}}],
         "usage": {"total_tokens": 120},
         "id": "syn-test-1",
     }
@@ -415,11 +415,11 @@ async def test_litellm_provider_constrained_decoding_synthesis():
 
     call_kwargs = mock_litellm.acompletion.call_args.kwargs
     guided = call_kwargs["extra_body"]["guided_json"]
-    # Schema must use alias keys so it matches what the synthesis prompt instructs the LLM to produce
+    # Schema must use canonical keys so it matches what the synthesis prompt instructs the LLM to produce.
     props = guided.get("properties", guided.get("$defs", {}).get("QueryRefinementResponse", {}).get("properties", {}))
-    assert "synthesized_statement" in props or any(
-        "synthesized_statement" in str(v) for v in guided.values()
-    ), "guided_json schema must use aliased field name 'synthesized_statement'"
+    assert "integrated_statement" in props or any(
+        "integrated_statement" in str(v) for v in guided.values()
+    ), "guided_json schema must use canonical field name 'integrated_statement'"
     assert "response_format" not in call_kwargs
 
     assert isinstance(result.context, QueryRefinementResponse)

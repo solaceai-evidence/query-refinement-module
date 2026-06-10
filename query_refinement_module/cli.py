@@ -305,8 +305,8 @@ async def run_cli(manager: QueryRefinementManager, framework_name: str, query: s
                 else:
                     print(f"Refined:  {session.original_query}\n")
                 
-                # Show refined dimensions (key is refinement_aspect_values in the result dict)
-                detail_values = synthesis.get("refinement_aspect_values") or synthesis.get("detail_values")
+                # Show refined dimensions from the canonical synthesis field.
+                detail_values = synthesis.get("dimensions_specifications")
                 if detail_values:
                     print("─"*80)
                     print("REFINED DIMENSIONS")
@@ -314,7 +314,7 @@ async def run_cli(manager: QueryRefinementManager, framework_name: str, query: s
                     for aspect_id, value in detail_values.items():
                         aspect = next((s.refinement_aspect for s in session.steps if s.refinement_aspect.id == aspect_id), None)
                         aspect_name = aspect.name if aspect else aspect_id
-                        if value and value != "[SKIPPED]" and value != "null":
+                        if value is not None and value != "" and value != "[SKIPPED]" and value != "null":
                             print(f"• {aspect_name}: {value}")
                     print()
                 

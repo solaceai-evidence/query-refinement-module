@@ -154,6 +154,18 @@ Returns `SynthesizeQueryResponse` with these fields:
 - `used_llm`: whether synthesis used the LLM path
 - `structured_output`: optional structured result for clients that need search-ready fields
 
+Canonical synthesis field names used by the API and internal runtime are:
+
+- `integrated_statement`
+- `dimensions_specifications`
+- `search_optimized`
+- `search_filters`
+- `terminology`
+- `metadata`
+- `processing_log`
+
+Database column names such as `synthesized_statement` and `refined_dimensions` are persistence details only and are not part of the public API contract.
+
 The detailed `structured_output` contract is described below.
 
 ### Generic external integration snippet
@@ -554,6 +566,18 @@ Most non-validation API errors return:
 - `POST /api/v1/queries/followups`
 - `PUT /api/v1/queries/followups/{followup_id}`
 - `GET /api/v1/queries/refinement-steps/{step_id}/followups`
+
+When a query has already been synthesized, `QueryResponse` exposes the canonical synthesis fields:
+
+- `integrated_statement`
+- `dimensions_specifications`
+- `search_optimized`
+- `search_filters`
+- `terminology`
+- `metadata`
+- `processing_log`
+
+`refined_query` remains available only as a legacy convenience field.
 
 ## Feedback
 

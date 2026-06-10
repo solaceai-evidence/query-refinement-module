@@ -19,7 +19,7 @@ class Query(Base):
     
     Final Response Fields (stored using database column names):
     - synthesized_statement: Stores API's integrated_statement
-    - refined_dimensions: Stores API's dimensions_specifications (as detail_values)
+    - refined_dimensions: Stores API's dimensions_specifications
     - search_optimized: Search variants (semantic, keyword)
     - search_filters: Publication years, venues, authors, etc.
     - terminology: Synonyms, colloquial terms

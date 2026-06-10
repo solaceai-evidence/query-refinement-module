@@ -299,7 +299,7 @@ class LiteLLMProvider(LLMProviderInterface):
                 if isinstance(response_format, type) and issubclass(response_format, BaseModel):
                     if self._constrained_decoding:
                         # vLLM path: derive JSON Schema and pass as guided_json
-                        schema = response_format.model_json_schema(by_alias=True)
+                        schema = response_format.model_json_schema()
                         _constrained_parse_model = response_format
                         existing_extra = completion_kwargs.get("extra_body", {})
                         completion_kwargs["extra_body"] = {**existing_extra, "guided_json": schema}

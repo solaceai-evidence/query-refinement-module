@@ -16,7 +16,7 @@ The current framework format is designed for non-technical editing as well as ad
 | `id`             | string | Unique identifier used by `depends_on` references and in API responses                                  |
 | `name`           | string | Human-readable display name shown to the user                                                           |
 | `description`    | string | One-line description of what this dimension clarifies                                                   |
-| `specifications` | string | Evaluation instructions sent to the LLM. Supports `{query}`, `{statement}`, and `{input}` placeholders. |
+| `specifications` | string | Evaluation instructions sent to the LLM. Supports only `{query}`, `{statement}`, and `{input}` placeholders. |
 
 ### Optional
 
@@ -107,6 +107,18 @@ my_framework:
 ```
 
 Both formats produce identical behaviour. Prefer the nested form for clarity.
+
+### Supported placeholders in `specifications`
+
+Only the following placeholder tokens are substituted in the live runtime path:
+
+- `{query}`
+- `{statement}`
+- `{input}`
+
+These all resolve to the current user query text for the dimension under evaluation.
+
+Previously completed dimensions are not interpolated into `specifications` with arbitrary placeholders such as `{population}`. Instead, completed dimension values are provided separately in the prior-context system message, and the model is expected to extract from that context when relevant.
 
 ---
 
@@ -213,7 +225,6 @@ pico_framework:
       - population
     specifications: |
       **Research input:** {query}
-      Use the population context: {population}
 
       **Required:**
       - A named intervention or exposure

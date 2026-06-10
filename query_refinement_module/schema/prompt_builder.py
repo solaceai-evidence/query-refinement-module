@@ -220,6 +220,7 @@ class PromptBuilder(_PromptBuilderBase):
     def render_dimension_prompt(
         self,
         dimension: RefinementDimension,
+        query: Optional[str] = None,
         include_examples: bool = True
     ) -> str:
         """
@@ -263,10 +264,19 @@ class PromptBuilder(_PromptBuilderBase):
                 examples_dict['other'] = normalized_other
             has_examples = dimension.has_examples()
         
+        specifications = dimension.specifications
+        if query and any(token in specifications for token in ("{query}", "{statement}", "{input}")):
+            # Preserve documented YAML placeholder support on the live runtime path.
+            specifications = specifications.format(
+                query=query,
+                statement=query,
+                input=query,
+            )
+
         return self._dimension_template.render(
             name=dimension.name,
             description=dimension.description,
-            specifications=dimension.specifications,
+            specifications=specifications,
             examples=examples_dict,
             examples_section=has_examples
         )
@@ -480,6 +490,7 @@ class PromptBuilder(_PromptBuilderBase):
             'role': 'system',
             'content': self.render_dimension_prompt(
                 dimension=dimension,
+                query=query,
                 include_examples=True
             )
         })
@@ -546,6 +557,7 @@ class PromptBuilder(_PromptBuilderBase):
             reinforcement_parts.append(
                 self.render_dimension_prompt(
                     dimension=dimension,
+                    query=query,
                     include_examples=True,
                 )
             )

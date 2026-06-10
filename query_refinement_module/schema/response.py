@@ -5,7 +5,7 @@ This module defines the unified response structure used for both initial
 and follow-up analysis of refinement aspects.
 """
 
-from pydantic import BaseModel, ConfigDict, Field, field_validator, validator
+from pydantic import AliasChoices, BaseModel, ConfigDict, Field, field_validator, validator
 from typing import List, Optional, Literal, Dict, Any
 
 
@@ -171,20 +171,23 @@ class QueryRefinementResponse(BaseModel):
     model_config = ConfigDict(
         frozen=False,
         validate_assignment=True,
-        populate_by_name=True  # Allow both names for backward compatibility
+        populate_by_name=True
     )
     integrated_statement: str = Field(
         description="Integrated research specification preserving user's voice",
-        alias="synthesized_statement"  # Database column name (for backward compatibility)
+        validation_alias=AliasChoices("integrated_statement", "synthesized_statement"),
     )
     dimensions_specifications: Dict[str, Optional[str]] = Field(
         description="Normalized value for each dimension (dimension_id -> value)",
-        alias="refined_dimensions"  # Database column name (for backward compatibility)
+        validation_alias=AliasChoices("dimensions_specifications", "refined_dimensions"),
     )
     search_optimized: SearchOptimized
     search_filters: SearchFilters
     terminology: Terminology
-    metadata: Optional[Dict[str, Any]] = None
+    metadata: Optional[Dict[str, Any]] = Field(
+        default=None,
+        validation_alias=AliasChoices("metadata", "response_metadata"),
+    )
     processing_log: Optional[Dict[str, Any]] = None
 
 

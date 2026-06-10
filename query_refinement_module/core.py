@@ -1973,19 +1973,20 @@ class QueryRefinementManager:
         clarifications, baseline_summaries = self._gather_refinement_details(session)
         deterministic_filters = self._assemble_deterministic_search_filters(session)
 
-        # Build refinement_aspect_values map for structured consumption
-        # ALL dimensions MUST be included in synthesis, even if [SKIPPED]
-        refinement_aspect_values = {}
+        # Build the native-value dimension map used internally by split synthesis.
+        # The outward contract remains `dimensions_specifications`, which is the
+        # deterministic serialized view persisted and returned elsewhere.
+        canonical_dimensions = {}
         for step in session.steps:
             aspect_id = step.refinement_aspect.id
             # Check for non-empty value (None or empty string are considered "no value")
             if step.normalized_value is not None and step.normalized_value != "":
                 # Use native value (dict/list/str/etc) - either extracted from original or from user dialogue
-                refinement_aspect_values[aspect_id] = step.normalized_value
+                canonical_dimensions[aspect_id] = step.normalized_value
             else:
                 # No value: skipped explicitly (/skip), completed without value, or incomplete when /submit used
                 # Mark as [SKIPPED] to indicate user did not consider this dimension important
-                refinement_aspect_values[aspect_id] = "[SKIPPED]"
+                canonical_dimensions[aspect_id] = "[SKIPPED]"
 
         if not clarifications and not baseline_summaries:
             logger.info(
@@ -1998,7 +1999,7 @@ class QueryRefinementManager:
             )
 
         accepted_dimensions = {
-            k: v for k, v in refinement_aspect_values.items() if v != "[SKIPPED]"
+            k: v for k, v in canonical_dimensions.items() if v != "[SKIPPED]"
         }
 
         self.trace_emitter.emit(
@@ -2016,7 +2017,7 @@ class QueryRefinementManager:
         try:
             synthesis_response, aggregated_metadata = await self._run_split_synthesis(
                 session,
-                canonical_dimensions=refinement_aspect_values,
+                canonical_dimensions=canonical_dimensions,
                 accepted_dimensions=accepted_dimensions,
                 deterministic_filters=deterministic_filters,
                 additional_guidance=additional_guidance,
@@ -2068,7 +2069,6 @@ class QueryRefinementManager:
             "used_llm": True,
             "clarifications": clarifications,
             "baseline_summaries": baseline_summaries,
-            "refinement_aspect_values": refinement_aspect_values,
             "metadata": aggregated_metadata,
             "dimensions_specifications": synthesis_response.dimensions_specifications,
             "search_optimized": synthesis_response.search_optimized,
