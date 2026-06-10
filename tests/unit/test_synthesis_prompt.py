@@ -6,6 +6,7 @@ Tests the structured prompt building for query synthesis step.
 
 import pytest
 from query_refinement_module.schema import RefinementAspect, SynthesisPromptBuilder
+from query_refinement_module.schema.prompt_builder import PromptBuilder
 
 
 @pytest.fixture
@@ -45,6 +46,30 @@ def refinement_values():
 
 class TestSynthesisPromptBuilder:
     """Test suite for SynthesisPromptBuilder."""
+
+    def test_prompt_builder_synthesis_messages_match_canonical_user_prompt(
+        self,
+        sample_aspects,
+        refinement_values,
+    ):
+        """PromptBuilder should delegate synthesis user content to SynthesisPromptBuilder."""
+        prompt_builder = PromptBuilder()
+        messages = prompt_builder.build_synthesis_messages(
+            original_input="diabetes treatment outcomes",
+            dimensions=refinement_values,
+            dimension_list=sample_aspects,
+        )
+
+        canonical_user_prompt = SynthesisPromptBuilder.get_synthesis_prompt(
+            original_input="diabetes treatment outcomes",
+            aspectID_value_mapping=refinement_values,
+            aspect_list=sample_aspects,
+        )
+
+        assert len(messages) == 2
+        assert messages[0]["role"] == "system"
+        assert messages[1]["role"] == "user"
+        assert messages[1]["content"] == canonical_user_prompt
 
     def test_build_synthesis_prompt_basic(self, sample_aspects, refinement_values):
         """Test basic synthesis prompt building."""

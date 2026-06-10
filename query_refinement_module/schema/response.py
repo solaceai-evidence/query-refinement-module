@@ -28,7 +28,7 @@ class DimensionEvaluationResponse(BaseModel):
     
     current: str = Field(
         default="",
-        description="Assembled value using user's exact words (REQUIRED if complete=True, empty string otherwise)"
+        description="The accumulated value of this dimension using the user's exact words. Non-empty whenever any value has been extracted, regardless of completion state. Empty string only when no information for this dimension exists across all sources."
     )
     
     question: str = Field(

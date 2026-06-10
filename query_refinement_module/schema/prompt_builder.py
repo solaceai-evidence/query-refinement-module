@@ -242,6 +242,25 @@ class PromptBuilder(_PromptBuilderBase):
                 examples_dict = vars(dimension.examples)
             else:
                 examples_dict = dict(dimension.examples)
+            if examples_dict is not None:
+                # Support both historical keys for ambiguous examples.
+                ambiguous = list(examples_dict.get('ambiguous') or [])
+                vague_ambiguous = list(examples_dict.get('vague_ambiguous') or [])
+                if vague_ambiguous:
+                    examples_dict['ambiguous'] = ambiguous + vague_ambiguous
+
+                # Support both fields in `other` examples. The Jinja template renders
+                # `guidance`, so promote `example_question` when guidance is absent.
+                normalized_other = []
+                for example in list(examples_dict.get('other') or []):
+                    if isinstance(example, dict):
+                        normalized = dict(example)
+                        if not normalized.get('guidance') and normalized.get('example_question'):
+                            normalized['guidance'] = normalized['example_question']
+                        normalized_other.append(normalized)
+                    else:
+                        normalized_other.append(example)
+                examples_dict['other'] = normalized_other
             has_examples = dimension.has_examples()
         
         return self._dimension_template.render(
@@ -263,7 +282,9 @@ class PromptBuilder(_PromptBuilderBase):
         Returns:
             The synthesis template string
         """
-        return SYNTHESIS_TEMPLATE.strip()
+        from .synthesis import SynthesisPromptBuilder
+
+        return SynthesisPromptBuilder.get_system_prompt().strip()
     
     def render_synthesis_original_input(self, original_input: str) -> str:
         """
@@ -567,10 +588,18 @@ class PromptBuilder(_PromptBuilderBase):
         Returns:
             List of {role: str, content: str} message dicts
         """
+        from .synthesis import SynthesisPromptBuilder
+
         return [
             {"role": "system", "content": self.get_synthesis_system_prompt()},
-            {"role": "user", "content": self.render_synthesis_original_input(original_input)},
-            {"role": "user", "content": self.render_synthesis_dimensions(dimensions, dimension_list)},
+            {
+                "role": "user",
+                "content": SynthesisPromptBuilder.get_synthesis_prompt(
+                    original_input=original_input,
+                    aspectID_value_mapping=dimensions,
+                    aspect_list=dimension_list,
+                ),
+            },
         ]
     
     # =========================================================================

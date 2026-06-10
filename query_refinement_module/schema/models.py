@@ -269,7 +269,7 @@ class RefinementDimension(BaseModel):
     
     BASE_FIELD_DESCRIPTIONS: ClassVar[Dict[str, str]] = {
         "complete": "Whether the dimension has been sufficiently clarified",
-        "current": "The extracted/refined value when complete, empty string otherwise",
+        "current": "The accumulated value of this dimension assembled from all sources (original query, completed dimensions, conversation history) using the user's exact words. Non-empty whenever any value has been extracted, regardless of whether the dimension is complete. Empty string only when no information for this dimension exists across all sources.",
         "question": "Follow-up question when incomplete, empty string otherwise"
     }
     
@@ -323,12 +323,12 @@ class RefinementDimension(BaseModel):
             return ""
         
         sections = []
-        
+
         category_config = [
             ("clear", "CLEAR SPECIFICATIONS:"),
             ("needs_refinement", "NEEDS CLARIFICATION:"),
             ("partial", "PARTIAL INFORMATION:"),
-            ("vague_ambiguous", "VAGUE OR AMBIGUOUS:"),
+            ("ambiguous", "VAGUE OR AMBIGUOUS:"),
             ("other", "ADDITIONAL GUIDANCE:"),
         ]
         
@@ -336,7 +336,11 @@ class RefinementDimension(BaseModel):
             return text if text.rstrip().endswith(('.', '!', '?')) else text.rstrip() + '.'
         
         for category_key, header in category_config:
-            examples_list = getattr(self.examples, category_key, [])
+            if category_key == "ambiguous":
+                examples_list = list(getattr(self.examples, "ambiguous", []) or [])
+                examples_list.extend(getattr(self.examples, "vague_ambiguous", []) or [])
+            else:
+                examples_list = getattr(self.examples, category_key, [])
             if not examples_list:
                 continue
                 
@@ -367,9 +371,15 @@ class RefinementDimension(BaseModel):
                 
                 if hasattr(example, 'note') and example.note:
                     line_parts.append(f"Note: {ensure_period(example.note)}")
-                
+
+                guidance = None
                 if hasattr(example, 'guidance') and example.guidance:
-                    line_parts.append(f"Guidance: {ensure_period(example.guidance)}")
+                    guidance = example.guidance
+                elif hasattr(example, 'example_question') and example.example_question and category_key == "other":
+                    guidance = example.example_question
+
+                if guidance:
+                    line_parts.append(f"Guidance: {ensure_period(guidance)}")
                 
                 sections.append("  - " + " ".join(line_parts))
             
@@ -394,7 +404,7 @@ class RefinementDimension(BaseModel):
         
         instructions.append("\n**Rules:**")
         instructions.append("- `complete=true` → `current` must be non-empty, `question` must be empty string")
-        instructions.append("- `complete=false` → `question` must be non-empty, `current` must be empty string")
+        instructions.append("- `complete=false` → `question` must be non-empty. `current` must be non-empty if any value has been extracted so far. Use empty string for `current` ONLY when no information for this dimension exists across all sources.")
         
         return "\n".join(instructions)
     

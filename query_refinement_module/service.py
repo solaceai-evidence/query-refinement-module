@@ -65,6 +65,39 @@ class QueryRefinementService:
         self._storage = storage
         self._session_id_factory = session_id_factory or (lambda: str(uuid.uuid4()))
 
+    @staticmethod
+    def _get_next_step(session: RefinementSession):
+        """Return the next step requiring user attention, preferring dependency-aware selection."""
+
+        get_next_unrefined_aspect = getattr(session, "get_next_unrefined_aspect", None)
+        if callable(get_next_unrefined_aspect):
+            return get_next_unrefined_aspect()
+        return session.get_active_step()
+
+    @staticmethod
+    def _build_prompt_payload(
+        session: RefinementSession,
+        step,
+        question: str,
+    ) -> NextPrompt:
+        """Convert an active step into the service-layer prompt payload."""
+
+        dependency_context = {
+            dep_id: entry["value"]
+            for dep_id, entry in session.get_dependency_context(
+                step.refinement_aspect.id
+            ).items()
+        }
+
+        return NextPrompt(
+            aspect_id=step.refinement_aspect.id,
+            aspect_name=step.refinement_aspect.name,
+            question=question,
+            description=step.refinement_aspect.description,
+            reasoning=step.reasoning,
+            dependency_context=dependency_context,
+        )
+
     async def create_session(self, request: SessionCreateRequest) -> SessionCreateResponse:
         """Initialize a new refinement session using sequential on-demand workflow."""
 
@@ -87,8 +120,8 @@ class QueryRefinementService:
             )
             raise
 
+        next_prompt = await self._build_next_prompt(session)
         summary = self._manager.get_initialization_summary(session)
-        next_prompt = self._build_next_prompt(session)
 
         metadata = request.metadata or {}
         metadata = {**metadata, "session_id": session_id}
@@ -162,8 +195,8 @@ class QueryRefinementService:
                         "More clarification is required."
                     )
 
+        next_prompt = await self._build_next_prompt(session)
         summary = self._manager.get_initialization_summary(session)
-        next_prompt = self._build_next_prompt(session)
         session_complete = session.is_complete()
 
         try:
@@ -207,9 +240,20 @@ class QueryRefinementService:
                 exc_info=True,
             )
             raise
+        next_prompt = await self._build_next_prompt(session)
         summary = self._manager.get_initialization_summary(session)
-        next_prompt = self._build_next_prompt(session)
         history = session.get_full_conversation() if summary["total_aspects"] else None
+
+        try:
+            await asyncio.to_thread(self._storage.save_session, session_id, session)
+        except Exception as exc:
+            logger.error(
+                "Failed to save session to storage after status refresh: session_id=%s error=%s",
+                session_id,
+                exc,
+                exc_info=True,
+            )
+            raise
 
         return SessionStatusResponse(
             session_id=session_id,
@@ -224,40 +268,51 @@ class QueryRefinementService:
 
         await asyncio.to_thread(self._storage.delete_session, session_id)
 
-    @staticmethod
-    def _build_next_prompt(session: RefinementSession) -> Optional[NextPrompt]:
-        """Construct the next prompt payload for the caller."""
+    async def _build_next_prompt(self, session: RefinementSession) -> Optional[NextPrompt]:
+        """Construct the next prompt using the manager's canonical analysis path."""
 
-        step = session.get_active_step()
-        if not step:
-            return None
+        max_attempts = max(len(getattr(session, "steps", []) or []), 1)
+        attempts = 0
 
-        question = step.follow_up_question
-        if not question:
+        while attempts < max_attempts:
+            attempts += 1
+            step = self._get_next_step(session)
+            if not step:
+                return None
+
+            if step.follow_up_question:
+                return self._build_prompt_payload(session, step, step.follow_up_question)
+
             try:
-                question = step.refinement_aspect.get_evaluation_instructions_prompt(
-                    statement=session.original_query
+                analysis_result = await self._manager.get_analysis_prompts(
+                    session=session,
+                    aspect_id=step.refinement_aspect.id,
+                    mode="initial",
+                )
+                status = self._manager.process_analysis_result(
+                    session=session,
+                    aspect_id=step.refinement_aspect.id,
+                    result=analysis_result,
                 )
             except Exception as exc:  # pragma: no cover - best effort fallback
                 logger.warning(
-                    "Failed to build evaluation instructions prompt for aspect '%s': %s",
+                    "Failed to analyze initial prompt for aspect '%s': %s",
                     step.refinement_aspect.name,
                     exc,
                 )
-                question = step.refinement_aspect.description
+                fallback_question = f"Please provide details about {step.refinement_aspect.name}"
+                step.follow_up_question = fallback_question
+                return self._build_prompt_payload(session, step, fallback_question)
 
-        dependency_context = {
-            dep_id: entry["value"]
-            for dep_id, entry in session.get_dependency_context(
-                step.refinement_aspect.id
-            ).items()
-        }
+            if status.get("complete", False):
+                continue
 
-        return NextPrompt(
-            aspect_id=step.refinement_aspect.id,
-            aspect_name=step.refinement_aspect.name,
-            question=question,
-            description=step.refinement_aspect.description,
-            reasoning=step.reasoning,
-            dependency_context=dependency_context,
-        )
+            question = status.get("next_question") or step.follow_up_question
+            if not question:
+                fallback_question = f"Please provide details about {step.refinement_aspect.name}"
+                step.follow_up_question = fallback_question
+                question = fallback_question
+
+            return self._build_prompt_payload(session, step, question)
+
+        return None
