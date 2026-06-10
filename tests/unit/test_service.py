@@ -219,7 +219,6 @@ class ResponseStep:
             id="aspect", 
             description="desc",
             aspect_description="desc",
-            get_evaluation_instructions_prompt=lambda *, statement: f"Analyze {statement}"
         )
         self.analysis_reason = "reason"
         self.follow_up_history: List[Dict[str, str]] = []

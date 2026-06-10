@@ -306,12 +306,12 @@ async def run_cli(manager: QueryRefinementManager, framework_name: str, query: s
                     print(f"Refined:  {session.original_query}\n")
                 
                 # Show refined dimensions from the canonical synthesis field.
-                detail_values = synthesis.get("dimensions_specifications")
-                if detail_values:
+                dimension_values = synthesis.get("dimensions_specifications")
+                if dimension_values:
                     print("─"*80)
                     print("REFINED DIMENSIONS")
                     print("─"*80)
-                    for aspect_id, value in detail_values.items():
+                    for aspect_id, value in dimension_values.items():
                         aspect = next((s.refinement_aspect for s in session.steps if s.refinement_aspect.id == aspect_id), None)
                         aspect_name = aspect.name if aspect else aspect_id
                         if value is not None and value != "" and value != "[SKIPPED]" and value != "null":

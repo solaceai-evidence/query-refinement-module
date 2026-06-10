@@ -533,8 +533,7 @@ def run_scenario(
 
     try:
         # Build a RefinementSession from completed_context so we exercise the
-        # same _run_split_synthesis path that production uses — NOT the legacy
-        # monolithic build_synthesis_messages path.
+        # same split-synthesis path that production uses.
         dim_objects = framework
         dim_by_id = {d.id: d for d in dim_objects}
 
