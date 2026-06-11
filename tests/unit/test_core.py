@@ -20,6 +20,7 @@ from query_refinement_module.core import (
     get_help_text,
     is_user_command,
     parse_user_command,
+    _use_open_llm_synthesis_variant_for_model,
 )
 from query_refinement_module.interfaces import (
     LLMCompletionResult,
@@ -592,6 +593,106 @@ async def test_open_models_continue_to_use_split_synthesis_calls():
     await manager.synthesize_refined_query(session, model=OPEN_MODEL)
 
     assert len(manager.llm_provider.calls) == 5
+
+
+@pytest.mark.asyncio
+async def test_private_wrapper_models_still_use_single_monolithic_synthesis_call():
+    response = QueryRefinementResponse(
+        integrated_statement="Refined question",
+        dimensions_specifications={},
+        search_optimized={
+            "semantic": "semantic query",
+            "keyword": {
+                "structured": "query",
+                "phrases": [],
+                "terms": {"required": [], "optional": [], "excluded": []},
+            },
+        },
+        search_filters={
+            "publication_years": "",
+            "venues": [],
+            "authors": [],
+            "publication_types": [],
+            "fields_of_study": [],
+        },
+        terminology={"synonyms": {}, "colloquial": []},
+    )
+    manager = QueryRefinementManager(
+        llm_provider=StubLLMProvider([response]),
+        tracing_provider=StubTracingProvider(),
+    )
+    session = RefinementSession(original_query="q")
+
+    await manager.synthesize_refined_query(session, model="bedrock/anthropic.claude-3-7-sonnet")
+
+    assert len(manager.llm_provider.calls) == 1
+    assert manager.llm_provider.calls[0]["response_format"] is QueryRefinementResponse
+
+
+@pytest.mark.asyncio
+async def test_open_wrapper_models_still_use_split_synthesis_calls():
+    manager = QueryRefinementManager(
+        llm_provider=StubLLMProvider(make_split_responses(integrated_statement="stmt")),
+        tracing_provider=StubTracingProvider(),
+    )
+    session = RefinementSession(original_query="q")
+
+    await manager.synthesize_refined_query(session, model="google/gemma-2-27b")
+
+    assert len(manager.llm_provider.calls) == 5
+
+
+@pytest.mark.asyncio
+async def test_private_wrapper_provider_default_uses_monolithic_synthesis_call():
+    response = QueryRefinementResponse(
+        integrated_statement="Refined question",
+        dimensions_specifications={},
+        search_optimized={
+            "semantic": "semantic query",
+            "keyword": {
+                "structured": "query",
+                "phrases": [],
+                "terms": {"required": [], "optional": [], "excluded": []},
+            },
+        },
+        search_filters={
+            "publication_years": "",
+            "venues": [],
+            "authors": [],
+            "publication_types": [],
+            "fields_of_study": [],
+        },
+        terminology={"synonyms": {}, "colloquial": []},
+    )
+    provider = StubLLMProvider([response])
+    provider._default_model = "bedrock/anthropic.claude-3-7-sonnet"
+    manager = QueryRefinementManager(llm_provider=provider, tracing_provider=StubTracingProvider())
+    session = RefinementSession(original_query="q")
+
+    await manager.synthesize_refined_query(session)
+
+    assert len(provider.calls) == 1
+    assert provider.calls[0]["response_format"] is QueryRefinementResponse
+
+
+@pytest.mark.asyncio
+async def test_open_wrapper_provider_default_uses_split_synthesis_calls():
+    provider = StubLLMProvider(make_split_responses(integrated_statement="stmt"))
+    provider._default_model = "google/gemma-2-27b"
+    manager = QueryRefinementManager(llm_provider=provider, tracing_provider=StubTracingProvider())
+    session = RefinementSession(original_query="q")
+
+    await manager.synthesize_refined_query(session)
+
+    assert len(provider.calls) == 5
+
+
+def test_private_wrapper_model_ids_do_not_fall_back_to_open_variant():
+    with patch("query_refinement_module.core._using_open_llm_synthesis_variant", return_value=True):
+        assert _use_open_llm_synthesis_variant_for_model("bedrock/anthropic.claude-3-7-sonnet") is False
+        assert _use_open_llm_synthesis_variant_for_model("azure/openai/gpt-4o") is False
+        assert _use_open_llm_synthesis_variant_for_model("vertex_ai/gemini-1.5-pro") is False
+        assert _use_open_llm_synthesis_variant_for_model("llamaindex/openai/gpt-4o") is False
 
 
 def test_skipped_aspects_excluded_from_dependency_context():

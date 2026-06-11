@@ -93,14 +93,27 @@ def _using_open_llm_synthesis_variant() -> bool:
     return using_open_llm_prompt_templates()
 
 
+_PRIVATE_MODEL_FAMILY_PATTERN = re.compile(
+    r"(?:^|[/:._-])(claude|gpt|gemini|o1|o3|o4)(?:\d|[/:._-]|$)"
+)
+_OPEN_MODEL_FAMILY_PATTERN = re.compile(
+    r"(?:^|[/:._-])(qwen|llama|mistral|gemma|deepseek)(?:\d|[/:._-]|$)"
+)
+_PRIVATE_VENDOR_PATTERN = re.compile(r"(?:^|[/:._-])(anthropic|openai|google)(?:[/:._-]|$)")
+_OPEN_VENDOR_PATTERN = re.compile(r"(?:^|[/:._-])ollama(?:[/:._-]|$)")
+
+
 def _use_open_llm_synthesis_variant_for_model(model: Optional[str] = None) -> bool:
     if model:
         model_lower = model.strip().lower()
-        open_markers = ("ollama/", "qwen", "llama", "mistral", "gemma", "deepseek")
-        if any(marker in model_lower for marker in open_markers):
-            return True
-        if model_lower.startswith(("anthropic/", "claude-", "openai/", "gpt-", "o1", "o3", "o4", "gemini-", "google/")):
+        if _PRIVATE_MODEL_FAMILY_PATTERN.search(model_lower):
             return False
+        if _OPEN_MODEL_FAMILY_PATTERN.search(model_lower):
+            return True
+        if _PRIVATE_VENDOR_PATTERN.search(model_lower):
+            return False
+        if _OPEN_VENDOR_PATTERN.search(model_lower):
+            return True
     return _using_open_llm_synthesis_variant()
 
 

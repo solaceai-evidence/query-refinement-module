@@ -38,6 +38,7 @@ from query_refinement_module.schema.response import (
 )
 from query_refinement_module.schema.synthesis import (
     SynthesisPromptBuilder,
+    _use_open_llm_synthesis_variant_for_model,
     _extract_general_rules,
     _extract_template_section,
 )
@@ -109,6 +110,12 @@ class TestExtractTemplateSection:
         section = _extract_template_section("### search_filters.fields_of_study")
         assert "Medicine" in section
         assert "Psychology" in section
+
+
+def test_schema_helper_classifies_wrapper_private_and_open_models():
+    assert _use_open_llm_synthesis_variant_for_model("bedrock/anthropic.claude-3-7-sonnet") is False
+    assert _use_open_llm_synthesis_variant_for_model("llamaindex/openai/gpt-4o") is False
+    assert _use_open_llm_synthesis_variant_for_model("google/gemma-2-27b") is True
 
 
 # =============================================================================
