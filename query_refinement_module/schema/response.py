@@ -179,6 +179,29 @@ class SearchExpansionResponse(BaseModel):
         return v
 
 
+class SearchExpansionContext(BaseModel):
+    """Optional retrieval context that can inform search broadening."""
+    filters: Dict[str, Any] = Field(default_factory=dict)
+    synonyms: Dict[str, List[str]] = Field(default_factory=dict)
+
+
+class SearchExpansionInput(BaseModel):
+    """Standalone input contract for search expansion."""
+    anchor_query: str = Field(description="Exact Level 0 query preserved as the retrieval anchor")
+    eligible_dimensions: Dict[str, Any] = Field(
+        default_factory=dict,
+        description="Dimension values that may be relaxed for search broadening",
+    )
+    search_context: Optional[SearchExpansionContext] = None
+
+    @field_validator("anchor_query")
+    @classmethod
+    def validate_anchor_query(cls, v: str) -> str:
+        if not v or not v.strip():
+            raise ValueError("anchor_query must be non-empty")
+        return v.strip()
+
+
 
 
 
@@ -229,4 +252,6 @@ __all__ = [
     "FilterSuggestionResponse",
     "SearchExpansionLevel",
     "SearchExpansionResponse",
+    "SearchExpansionContext",
+    "SearchExpansionInput",
 ]

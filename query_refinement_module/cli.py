@@ -16,7 +16,7 @@ from .llm_model_defaults import get_model_defaults
 from .logging_utils import configure_file_logging
 from .providers import ConsoleTracing, FileTracingProvider, LiteLLMProvider
 from .schema import registry
-from .schema.response import QueryRefinementResponse
+from .schema.response import SearchExpansionContext, SearchExpansionInput, SearchFilters, Terminology
 from .settings import LLMSettings
 
 load_dotenv(override=False)
@@ -138,25 +138,28 @@ def _accepted_dimensions_from_session(session, fallback_dimensions: Optional[Dic
     }
 
 
-def _build_synthesis_response_for_expansion(
+def _build_search_expansion_input_from_synthesis(
     synthesis: Dict[str, Any],
-) -> QueryRefinementResponse:
+    eligible_dimensions: Dict[str, Any],
+) -> SearchExpansionInput:
     missing = [
         field_name
-        for field_name in ("integrated_statement", "dimensions_specifications", "search_optimized", "search_filters", "terminology")
+        for field_name in ("integrated_statement", "search_filters", "terminology")
         if synthesis.get(field_name) is None or synthesis.get(field_name) == ""
     ]
     if missing:
-        raise ValueError("Search expansion requires synthesis fields: " + ", ".join(missing))
+        raise ValueError("Search expansion bridge requires synthesis fields: " + ", ".join(missing))
 
-    return QueryRefinementResponse(
-        integrated_statement=synthesis["integrated_statement"],
-        dimensions_specifications=synthesis["dimensions_specifications"],
-        search_optimized=synthesis["search_optimized"],
-        search_filters=synthesis["search_filters"],
-        terminology=synthesis["terminology"],
-        metadata=synthesis.get("metadata"),
-        processing_log=synthesis.get("processing_log"),
+    search_filters = SearchFilters.model_validate(synthesis["search_filters"])
+    terminology = Terminology.model_validate(synthesis["terminology"])
+
+    return SearchExpansionInput(
+        anchor_query=synthesis["integrated_statement"],
+        eligible_dimensions=eligible_dimensions,
+        search_context=SearchExpansionContext(
+            filters=search_filters.model_dump(exclude_none=True),
+            synonyms=terminology.synonyms or {},
+        ),
     )
 
 
@@ -514,15 +517,16 @@ async def run_cli(manager: QueryRefinementManager, framework_name: str, query: s
                 if expand_answer in {"y", "yes"}:
                     logger.info("CLI: user requested search expansion")
                     try:
-                        synthesis_response = _build_synthesis_response_for_expansion(synthesis)
                         accepted_dimensions = _accepted_dimensions_from_session(
                             session,
-                            synthesis_response.dimensions_specifications,
+                            synthesis.get("dimensions_specifications"),
+                        )
+                        search_input = _build_search_expansion_input_from_synthesis(
+                            synthesis,
+                            accepted_dimensions,
                         )
                         levels, metadata = await manager.generate_search_expansion_levels(
-                            original_query=session.original_query,
-                            synthesis_response=synthesis_response,
-                            accepted_dimensions=accepted_dimensions,
+                            search_input=search_input,
                         )
                     except Exception as exc:
                         logger.warning("CLI: search expansion failed", exc_info=True)

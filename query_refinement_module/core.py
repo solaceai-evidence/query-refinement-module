@@ -73,6 +73,7 @@ from .schema import (
     SearchExpansionPromptBuilder,
     SearchExpansionResponse,
     SearchExpansionLevel,
+    SearchExpansionInput,
 )
 from .schema.synthesis import validate_synthesis_response
 from .schema.response import (
@@ -2047,33 +2048,31 @@ class QueryRefinementManager:
     async def generate_search_expansion_levels(
         self,
         *,
-        original_query: str,
-        synthesis_response: QueryRefinementResponse,
-        accepted_dimensions: Dict[str, Any],
+        search_input: SearchExpansionInput,
         model: Optional[str] = None,
         temperature: float = 0.2,
         max_tokens: int = 1536,
     ) -> tuple[List[SearchExpansionLevel], Dict[str, Any]]:
-        """Generate post-synthesis retrieval expansion levels with soft failure."""
+        """Generate retrieval expansion levels from a standalone expansion input."""
         start_time = time.monotonic()
         level_0 = SearchExpansionLevel(
             level=0,
             label="Exact clarified question",
-            search_query=synthesis_response.integrated_statement,
+            search_query=search_input.anchor_query,
             relaxed_dimensions={},
             rationale="Exact clarified query preserved as the review anchor.",
         )
         metadata: Dict[str, Any] = {
             "used_llm": False,
             "generated_level_count": 0,
-            "accepted_dimension_count": len(accepted_dimensions),
+            "accepted_dimension_count": len(search_input.eligible_dimensions),
         }
 
         logger.info(
             "Search expansion generation started",
             extra={
-                "accepted_dimension_count": len(accepted_dimensions),
-                "integrated_statement_length": len(synthesis_response.integrated_statement),
+                "accepted_dimension_count": len(search_input.eligible_dimensions),
+                "anchor_query_length": len(search_input.anchor_query),
                 "model": model or "(default)",
                 "temperature": temperature,
                 "max_tokens": max_tokens,
@@ -2082,14 +2081,14 @@ class QueryRefinementManager:
         self.trace_emitter.emit(
             "search_expansion_start",
             metadata={
-                "accepted_dimension_count": len(accepted_dimensions),
+                "accepted_dimension_count": len(search_input.eligible_dimensions),
                 "model": model or "(default)",
                 "temperature": temperature,
                 "max_tokens": max_tokens,
             },
         )
 
-        if not accepted_dimensions:
+        if not search_input.eligible_dimensions:
             metadata["status"] = "skipped_no_accepted_dimensions"
             metadata["duration_ms"] = round((time.monotonic() - start_time) * 1000)
             logger.info("Search expansion skipped: no accepted dimensions")
@@ -2098,12 +2097,8 @@ class QueryRefinementManager:
         prompt_builder = SearchExpansionPromptBuilder()
         result, call_metadata = await self._run_search_expansion_call(
             prompt_builder.get_system_prompt(),
-            prompt_builder.get_user_prompt(
-                synthesis_response=synthesis_response,
-                accepted_dimensions=accepted_dimensions,
-                original_query=original_query,
-            ),
-            accepted_dimensions,
+            prompt_builder.get_user_prompt(search_input=search_input),
+            search_input.eligible_dimensions,
             model=model,
             temperature=temperature,
             max_tokens=min(max_tokens, 1536),

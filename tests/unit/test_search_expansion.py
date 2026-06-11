@@ -1,25 +1,17 @@
 from __future__ import annotations
 
+import pytest
 from types import SimpleNamespace
 
-import pytest
-from fastapi import HTTPException
-
 from query_refinement_module.core import QueryRefinementManager
-from query_refinement_module.api.routes.refinement import (
-    _dimension_value_is_accepted,
-    _reconstruct_synthesis_response_from_query,
-)
+from query_refinement_module.api.routes.refinement import _dimension_value_is_accepted
 from query_refinement_module.schema.search_expansion import SearchExpansionPromptBuilder
 from query_refinement_module.schema.response import (
-    KeywordSearch,
-    QueryRefinementResponse,
+    SearchExpansionContext,
+    SearchExpansionInput,
     SearchExpansionLevel,
     SearchExpansionResponse,
     SearchFilters,
-    SearchOptimized,
-    SearchTerms,
-    Terminology,
 )
 
 
@@ -36,24 +28,18 @@ class StubProvider:
         )
 
 
-def _synthesis_response() -> QueryRefinementResponse:
-    return QueryRefinementResponse(
-        integrated_statement="Studies of heatwave impacts on pregnant people in London.",
-        dimensions_specifications={
+def _search_input() -> SearchExpansionInput:
+    return SearchExpansionInput(
+        anchor_query="Studies of heatwave impacts on pregnant people in London.",
+        eligible_dimensions={
             "population": "pregnant people",
             "condition": "heatwave impacts",
             "geography": "London",
         },
-        search_optimized=SearchOptimized(
-            semantic="heatwave impacts pregnant people London",
-            keyword=KeywordSearch(
-                structured="heatwave AND pregnancy",
-                phrases=["heatwave impacts"],
-                terms=SearchTerms(required=["heatwave"], optional=["pregnancy"], excluded=[]),
-            ),
+        search_context=SearchExpansionContext(
+            filters=SearchFilters(fields_of_study=["Medicine"]).model_dump(exclude_none=True),
+            synonyms={"heatwave": ["extreme heat"]},
         ),
-        search_filters=SearchFilters(fields_of_study=["Medicine"]),
-        terminology=Terminology(synonyms={"heatwave": ["extreme heat"]}),
     )
 
 
@@ -75,18 +61,15 @@ def test_prompt_builder_system_prompt_non_empty():
     assert SearchExpansionPromptBuilder.get_system_prompt()
 
 
-def test_prompt_builder_user_prompt_includes_exact_integrated_statement():
-    synthesis = _synthesis_response()
+def test_prompt_builder_user_prompt_includes_exact_anchor_and_search_context():
+    search_input = _search_input()
 
-    prompt = SearchExpansionPromptBuilder.get_user_prompt(
-        synthesis_response=synthesis,
-        accepted_dimensions={"geography": "London"},
-        original_query="heat and pregnancy",
-    )
+    prompt = SearchExpansionPromptBuilder.get_user_prompt(search_input=search_input)
 
-    assert synthesis.integrated_statement in prompt
+    assert search_input.anchor_query in prompt
     assert "Level 0" in prompt
     assert "geography" in prompt
+    assert "extreme heat" in prompt
 
 
 def test_search_expansion_response_parses_valid_llm_output():
@@ -108,16 +91,18 @@ def test_search_expansion_response_parses_valid_llm_output():
 @pytest.mark.asyncio
 async def test_generate_search_expansion_levels_injects_level_0_exactly():
     manager = QueryRefinementManager(StubProvider(_valid_response()))
-    synthesis = _synthesis_response()
+    search_input = _search_input()
 
     levels, metadata = await manager.generate_search_expansion_levels(
-        original_query="heat and pregnancy",
-        synthesis_response=synthesis,
-        accepted_dimensions={"geography": "London"},
+        search_input=SearchExpansionInput(
+            anchor_query=search_input.anchor_query,
+            eligible_dimensions={"geography": "London"},
+            search_context=search_input.search_context,
+        ),
     )
 
     assert levels[0].level == 0
-    assert levels[0].search_query == synthesis.integrated_statement
+    assert levels[0].search_query == search_input.anchor_query
     assert levels[1].level == 1
     assert metadata["status"] == "completed"
     assert metadata["generated_level_count"] == 1
@@ -127,16 +112,14 @@ async def test_generate_search_expansion_levels_injects_level_0_exactly():
 async def test_empty_accepted_dimensions_return_level_0_only():
     provider = StubProvider(_valid_response())
     manager = QueryRefinementManager(provider)
-    synthesis = _synthesis_response()
+    search_input = _search_input()
 
     levels, metadata = await manager.generate_search_expansion_levels(
-        original_query="heat and pregnancy",
-        synthesis_response=synthesis,
-        accepted_dimensions={},
+        search_input=SearchExpansionInput(anchor_query=search_input.anchor_query, eligible_dimensions={}),
     )
 
     assert len(levels) == 1
-    assert levels[0].search_query == synthesis.integrated_statement
+    assert levels[0].search_query == search_input.anchor_query
     assert provider.calls == []
     assert metadata["status"] == "skipped_no_accepted_dimensions"
 
@@ -226,41 +209,6 @@ def test_validate_search_expansion_result_rejects_more_than_four_generated_level
     error = QueryRefinementManager._validate_search_expansion_result(result, {})
 
     assert "at most four" in error
-
-
-def test_api_reconstructs_synthesis_response_from_persisted_query():
-    synthesis = _synthesis_response()
-    db_query = SimpleNamespace(
-        id=42,
-        integrated_statement=synthesis.integrated_statement,
-        dimensions_specifications=synthesis.dimensions_specifications,
-        search_optimized=synthesis.search_optimized.model_dump(),
-        search_filters=synthesis.search_filters.model_dump(),
-        terminology=synthesis.terminology.model_dump(),
-        synthesis_metadata={"source": "test"},
-        processing_log=None,
-    )
-
-    reconstructed = _reconstruct_synthesis_response_from_query(db_query)
-
-    assert reconstructed.integrated_statement == synthesis.integrated_statement
-    assert reconstructed.search_optimized.semantic == synthesis.search_optimized.semantic
-
-
-def test_api_reconstruct_rejects_queries_without_completed_synthesis():
-    db_query = SimpleNamespace(
-        id=42,
-        integrated_statement=None,
-        dimensions_specifications=None,
-        search_optimized=None,
-        search_filters=None,
-        terminology=None,
-    )
-
-    with pytest.raises(HTTPException) as exc:
-        _reconstruct_synthesis_response_from_query(db_query)
-
-    assert exc.value.status_code == 409
 
 
 @pytest.mark.parametrize("value, expected", [

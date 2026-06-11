@@ -22,7 +22,7 @@ For server-to-server integrations, refinement workflow endpoints also support `X
 - `GET /api/v1/refinement/queries/{query_id}/status`
 - `POST /api/v1/refinement/queries/{query_id}/resume`
 - `POST /api/v1/refinement/synthesize`
-- `POST /api/v1/refinement/queries/{query_id}/search-expand`
+- `POST /api/v1/refinement/search-expand`
 - `POST /api/v1/refinement/queries/{query_id}/forward-to-qa`
 - `GET /api/v1/refinement/queries/{query_id}/command-history`
 - `GET /api/v1/refinement/queries/{query_id}/inspect-messages`
@@ -169,37 +169,52 @@ The query persistence schema now uses the same canonical synthesis names. The SQ
 
 The detailed `structured_output` contract is described below.
 
-#### `POST /api/v1/refinement/queries/{query_id}/search-expand`
+#### `POST /api/v1/refinement/search-expand`
 
-Generates optional search expansion levels from an already completed synthesis result. This endpoint is independent of `/refinement/synthesize`; synthesis must be called first, and search expansion reads the persisted synthesis fields from the query record.
+Generates optional search expansion levels from a standalone request payload. The endpoint does not depend on a persisted query or a completed synthesis result. Callers provide the exact Level 0 anchor query, the dimensions eligible for search-only relaxation, and optional search context with filters and synonyms.
 
-Request body is optional:
+Request body:
 
 ```json
 {
+	"anchor_query": "In adults over 65, compare aspirin versus placebo for stroke prevention.",
+	"eligible_dimensions": {
+		"population": "adults over 65",
+		"intervention": "aspirin",
+		"comparator": "placebo",
+		"outcome": "stroke prevention"
+	},
+	"search_context": {
+		"filters": {
+			"publication_types": ["randomized controlled trial"]
+		},
+		"synonyms": {
+			"aspirin": ["acetylsalicylic acid"],
+			"older adults": ["elderly"]
+		}
+	},
 	"model": "optional-model-override"
 }
 ```
 
 Returns `SearchExpandResponse` with these fields:
 
-- `query_id`: query record ID
 - `search_expansion_levels`: Level 0 plus optional broader retrieval levels
 - `metadata`: token and generation metadata for the search expansion call
 
-Level 0 is deterministic and always preserves the canonical refined statement:
+Level 0 is deterministic and always preserves the supplied anchor query:
 
 ```json
 {
 	"level": 0,
 	"label": "Exact clarified question",
-	"search_query": "...same as integrated_statement...",
+	"search_query": "...same as anchor_query...",
 	"relaxed_dimensions": {},
 	"rationale": "Exact clarified query preserved as the review anchor."
 }
 ```
 
-The LLM generates only Levels 1-N. If generation, parsing, or validation fails, the endpoint returns Level 0 only rather than failing the completed synthesis. If synthesis has not yet completed for the query, the endpoint returns `409 Conflict`.
+The LLM generates only Levels 1-N. If generation, parsing, or validation fails, the endpoint returns Level 0 only rather than failing the request.
 
 ### Generic external integration snippet
 
@@ -454,11 +469,10 @@ Notes:
 - `search_optimized.keyword.terms.optional` contains precision-raising terms.
 - `search_optimized.keyword.terms.excluded` contains only true confounders, not close variants of the target concept.
 
-#### `POST /api/v1/refinement/queries/{query_id}/search-expand` (200)
+#### `POST /api/v1/refinement/search-expand` (200)
 
 ```json
 {
-	"query_id": 123,
 	"search_expansion_levels": [
 		{
 			"level": 0,
@@ -491,8 +505,7 @@ Notes:
 
 Notes:
 
-- Call `/api/v1/refinement/synthesize` first. This endpoint reconstructs its input from the persisted synthesis fields and returns `409 Conflict` if synthesis has not completed.
-- `search_expansion_levels[0].search_query` always equals the persisted `integrated_statement` exactly.
+- `search_expansion_levels[0].search_query` always equals the supplied `anchor_query` exactly.
 - Levels 1-N are optional search-only broadening variants. They do not update `integrated_statement` or redefine the review scope.
 - If expansion generation fails validation, the response still returns Level 0 with warning metadata.
 

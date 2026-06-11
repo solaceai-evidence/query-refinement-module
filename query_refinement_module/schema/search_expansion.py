@@ -1,11 +1,11 @@
-"""Prompt builder for post-synthesis search expansion."""
+"""Prompt builder for standalone search expansion."""
 
 from __future__ import annotations
 
 import json
 from typing import Any, Dict
 
-from .response import QueryRefinementResponse
+from .response import SearchExpansionInput
 
 
 def _to_jsonable(value: Any) -> Any:
@@ -29,23 +29,18 @@ class SearchExpansionPromptBuilder:
 
     @staticmethod
     def get_user_prompt(
-        synthesis_response: QueryRefinementResponse,
-        accepted_dimensions: Dict[str, Any],
-        original_query: str,
+        search_input: SearchExpansionInput,
     ) -> str:
+        search_context = search_input.search_context or {}
         support_context = {
-            "search_optimized_semantic": synthesis_response.search_optimized.semantic,
-            "search_filters": _to_jsonable(synthesis_response.search_filters),
-            "terminology_synonyms": synthesis_response.terminology.synonyms,
+            "filters": _to_jsonable(getattr(search_context, "filters", {})),
+            "synonyms": _to_jsonable(getattr(search_context, "synonyms", {})),
         }
         return (
-            f"## Original Query\n\n{original_query}\n\n"
             "## Level 0 Anchor (already established; do not regenerate)\n\n"
-            f"{synthesis_response.integrated_statement}\n\n"
-            "## Dimensions Specifications\n\n"
-            f"{json.dumps(_to_jsonable(synthesis_response.dimensions_specifications), ensure_ascii=False, indent=2)}\n\n"
-            "## Accepted Dimensions Eligible for Search-Only Relaxation\n\n"
-            f"{json.dumps(_to_jsonable(accepted_dimensions), ensure_ascii=False, indent=2)}\n\n"
+            f"{search_input.anchor_query}\n\n"
+            "## Eligible Dimensions For Search-Only Relaxation\n\n"
+            f"{json.dumps(_to_jsonable(search_input.eligible_dimensions), ensure_ascii=False, indent=2)}\n\n"
             "## Supporting Search Context\n\n"
             f"{json.dumps(support_context, ensure_ascii=False, indent=2)}\n\n"
             "Reminder: Level 0 is already established and must not be regenerated. "

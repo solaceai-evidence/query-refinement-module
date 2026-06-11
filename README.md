@@ -117,7 +117,7 @@ poetry run query-refine --framework pico_advanced
 
 After the final refined query is generated, the CLI asks whether to generate optional search expansion levels. Press Enter to skip, or answer `y` / `yes` to produce Level 0 plus broader retrieval variants. Level 0 is always the exact refined statement; broader levels are search-only variants for recall and do not change the canonical refined question.
 
-For API integrations, search expansion is available separately after synthesis via `POST /api/v1/refinement/queries/{query_id}/search-expand`. It is not bundled into `/api/v1/refinement/synthesize`, and the web application does not expose it yet.
+For API integrations, search expansion is available as a standalone endpoint via `POST /api/v1/refinement/search-expand`. It accepts an explicit anchor query, eligible dimensions, and optional search context with filters and synonyms. It is not bundled into `/api/v1/refinement/synthesize`, and the web application does not expose it yet.
 
 ## How frameworks are loaded and selected
 

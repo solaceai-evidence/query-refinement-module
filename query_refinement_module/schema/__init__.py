@@ -27,6 +27,8 @@ from .response import (
     FilterSuggestionResponse,
     SearchExpansionLevel,
     SearchExpansionResponse,
+    SearchExpansionContext,
+    SearchExpansionInput,
 )
 
 from .search_expansion import SearchExpansionPromptBuilder
@@ -95,6 +97,8 @@ __all__ = [
     "FilterSuggestionResponse",
     "SearchExpansionLevel",
     "SearchExpansionResponse",
+    "SearchExpansionContext",
+    "SearchExpansionInput",
     "SearchExpansionPromptBuilder",
     
     # Registry
