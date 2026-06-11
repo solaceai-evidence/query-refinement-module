@@ -1,0 +1,524 @@
+{
+  "model": "ollama/qwen2.5:72b",
+  "prompt_variant": "open_llm",
+  "query": "What evidence exists on diabetes complications during heatwaves in pregnancy?",
+  "dimensions": {
+    "condition": "Diabetes complications during pregnancy under heatwave exposure"
+  },
+  "iterations": 3,
+  "warmup": 0,
+  "total_duration_ms": {
+    "mean_ms": 64107.34,
+    "median_ms": 43881.88,
+    "min_ms": 42293.62,
+    "max_ms": 106146.53
+  },
+  "post_statement_overlap_ms": {
+    "mean_ms": 5602.0,
+    "median_ms": 3737.96,
+    "min_ms": 3507.29,
+    "max_ms": 9560.76
+  },
+  "call_duration_ms": {
+    "statement": {
+      "mean_ms": 12287.26,
+      "median_ms": 3893.39,
+      "min_ms": 3555.02,
+      "max_ms": 29413.37
+    },
+    "semantic": {
+      "mean_ms": 5602.89,
+      "median_ms": 3738.34,
+      "min_ms": 3508.25,
+      "max_ms": 9562.07
+    },
+    "terminology": {
+      "mean_ms": 17863.79,
+      "median_ms": 13780.3,
+      "min_ms": 13416.79,
+      "max_ms": 26394.28
+    },
+    "filter_resolution": {
+      "mean_ms": 27806.51,
+      "median_ms": 20304.57,
+      "min_ms": 19797.99,
+      "max_ms": 43316.96
+    },
+    "keyword_support": {
+      "mean_ms": 24011.64,
+      "median_ms": 19682.78,
+      "min_ms": 18938.74,
+      "max_ms": 33413.4
+    }
+  },
+  "runs": [
+    {
+      "integrated_statement": "What evidence exists on diabetes complications during pregnancy under heatwave exposure?",
+      "metadata": {
+        "prompt_tokens": 2385,
+        "completion_tokens": 256,
+        "total_tokens": 2641,
+        "prompt_char_count": 10926,
+        "estimated_prompt_tokens": 2259,
+        "call_prompt_metrics": {
+          "statement": {
+            "message_count": 2,
+            "cached_message_count": 0,
+            "role_counts": {
+              "system": 1,
+              "user": 1
+            },
+            "role_char_counts": {
+              "system": 1594,
+              "user": 200
+            },
+            "prompt_char_count": 1794,
+            "estimated_prompt_tokens": 372,
+            "max_output_tokens": 512,
+            "response_format": "StatementResponse"
+          },
+          "semantic": {
+            "message_count": 2,
+            "cached_message_count": 0,
+            "role_counts": {
+              "system": 1,
+              "user": 1
+            },
+            "role_char_counts": {
+              "system": 1366,
+              "user": 224
+            },
+            "prompt_char_count": 1590,
+            "estimated_prompt_tokens": 322,
+            "max_output_tokens": 256,
+            "response_format": "SemanticQueryResponse"
+          },
+          "terminology": {
+            "message_count": 2,
+            "cached_message_count": 0,
+            "role_counts": {
+              "system": 1,
+              "user": 1
+            },
+            "role_char_counts": {
+              "system": 1615,
+              "user": 213
+            },
+            "prompt_char_count": 1828,
+            "estimated_prompt_tokens": 374,
+            "max_output_tokens": 1024,
+            "response_format": "TerminologyResponse"
+          },
+          "filter_resolution": {
+            "message_count": 2,
+            "cached_message_count": 0,
+            "role_counts": {
+              "system": 1,
+              "user": 1
+            },
+            "role_char_counts": {
+              "system": 1987,
+              "user": 604
+            },
+            "prompt_char_count": 2591,
+            "estimated_prompt_tokens": 544,
+            "max_output_tokens": 256,
+            "response_format": "FilterSuggestionResponse"
+          },
+          "keyword_support": {
+            "message_count": 2,
+            "cached_message_count": 0,
+            "role_counts": {
+              "system": 1,
+              "user": 1
+            },
+            "role_char_counts": {
+              "system": 2648,
+              "user": 475
+            },
+            "prompt_char_count": 3123,
+            "estimated_prompt_tokens": 647,
+            "max_output_tokens": 512,
+            "response_format": "KeywordSupportResponse"
+          }
+        },
+        "call_timings": {
+          "statement": {
+            "call_name": "statement",
+            "status": "succeeded",
+            "duration_ms": 29413.37,
+            "repair_attempted": false,
+            "repair_succeeded": false,
+            "started_offset_ms": 0.06,
+            "ended_offset_ms": 29413.43
+          },
+          "semantic": {
+            "call_name": "semantic",
+            "status": "succeeded",
+            "duration_ms": 9562.07,
+            "repair_attempted": false,
+            "repair_succeeded": false,
+            "started_offset_ms": 29414.67,
+            "ended_offset_ms": 38976.74
+          },
+          "terminology": {
+            "call_name": "terminology",
+            "status": "succeeded",
+            "duration_ms": 26394.28,
+            "repair_attempted": false,
+            "repair_succeeded": false,
+            "started_offset_ms": 29415.96,
+            "ended_offset_ms": 55810.24
+          },
+          "filter_resolution": {
+            "call_name": "filter_resolution",
+            "status": "succeeded",
+            "duration_ms": 43316.96,
+            "repair_attempted": false,
+            "repair_succeeded": false,
+            "started_offset_ms": 29415.98,
+            "ended_offset_ms": 72732.93
+          },
+          "keyword_support": {
+            "call_name": "keyword_support",
+            "status": "succeeded",
+            "duration_ms": 33413.4,
+            "repair_attempted": false,
+            "repair_succeeded": false,
+            "started_offset_ms": 72733.11,
+            "ended_offset_ms": 106146.5
+          }
+        },
+        "parallel_timing": {
+          "post_statement": {
+            "call_names": [
+              "semantic",
+              "terminology",
+              "filter_resolution"
+            ],
+            "started_ms": 29414.67,
+            "ended_ms": 72732.93,
+            "span_ms": 43318.26,
+            "latest_start_ms": 29415.98,
+            "earliest_end_ms": 38976.74,
+            "overlap_window_ms": 9560.76,
+            "fully_overlapped": true
+          }
+        },
+        "duration_ms": 106146.53
+      }
+    },
+    {
+      "integrated_statement": "What evidence exists on diabetes complications during pregnancy under heatwave exposure?",
+      "metadata": {
+        "prompt_tokens": 2385,
+        "completion_tokens": 256,
+        "total_tokens": 2641,
+        "prompt_char_count": 10926,
+        "estimated_prompt_tokens": 2259,
+        "call_prompt_metrics": {
+          "statement": {
+            "message_count": 2,
+            "cached_message_count": 0,
+            "role_counts": {
+              "system": 1,
+              "user": 1
+            },
+            "role_char_counts": {
+              "system": 1594,
+              "user": 200
+            },
+            "prompt_char_count": 1794,
+            "estimated_prompt_tokens": 372,
+            "max_output_tokens": 512,
+            "response_format": "StatementResponse"
+          },
+          "semantic": {
+            "message_count": 2,
+            "cached_message_count": 0,
+            "role_counts": {
+              "system": 1,
+              "user": 1
+            },
+            "role_char_counts": {
+              "system": 1366,
+              "user": 224
+            },
+            "prompt_char_count": 1590,
+            "estimated_prompt_tokens": 322,
+            "max_output_tokens": 256,
+            "response_format": "SemanticQueryResponse"
+          },
+          "terminology": {
+            "message_count": 2,
+            "cached_message_count": 0,
+            "role_counts": {
+              "system": 1,
+              "user": 1
+            },
+            "role_char_counts": {
+              "system": 1615,
+              "user": 213
+            },
+            "prompt_char_count": 1828,
+            "estimated_prompt_tokens": 374,
+            "max_output_tokens": 1024,
+            "response_format": "TerminologyResponse"
+          },
+          "filter_resolution": {
+            "message_count": 2,
+            "cached_message_count": 0,
+            "role_counts": {
+              "system": 1,
+              "user": 1
+            },
+            "role_char_counts": {
+              "system": 1987,
+              "user": 604
+            },
+            "prompt_char_count": 2591,
+            "estimated_prompt_tokens": 544,
+            "max_output_tokens": 256,
+            "response_format": "FilterSuggestionResponse"
+          },
+          "keyword_support": {
+            "message_count": 2,
+            "cached_message_count": 0,
+            "role_counts": {
+              "system": 1,
+              "user": 1
+            },
+            "role_char_counts": {
+              "system": 2648,
+              "user": 475
+            },
+            "prompt_char_count": 3123,
+            "estimated_prompt_tokens": 647,
+            "max_output_tokens": 512,
+            "response_format": "KeywordSupportResponse"
+          }
+        },
+        "call_timings": {
+          "statement": {
+            "call_name": "statement",
+            "status": "succeeded",
+            "duration_ms": 3893.39,
+            "repair_attempted": false,
+            "repair_succeeded": false,
+            "started_offset_ms": 0.1,
+            "ended_offset_ms": 3893.48
+          },
+          "semantic": {
+            "call_name": "semantic",
+            "status": "succeeded",
+            "duration_ms": 3738.34,
+            "repair_attempted": false,
+            "repair_succeeded": false,
+            "started_offset_ms": 3893.75,
+            "ended_offset_ms": 7632.09
+          },
+          "terminology": {
+            "call_name": "terminology",
+            "status": "succeeded",
+            "duration_ms": 13780.3,
+            "repair_attempted": false,
+            "repair_succeeded": false,
+            "started_offset_ms": 3894.12,
+            "ended_offset_ms": 17674.43
+          },
+          "filter_resolution": {
+            "call_name": "filter_resolution",
+            "status": "succeeded",
+            "duration_ms": 20304.57,
+            "repair_attempted": false,
+            "repair_succeeded": false,
+            "started_offset_ms": 3894.13,
+            "ended_offset_ms": 24198.71
+          },
+          "keyword_support": {
+            "call_name": "keyword_support",
+            "status": "succeeded",
+            "duration_ms": 19682.78,
+            "repair_attempted": false,
+            "repair_succeeded": false,
+            "started_offset_ms": 24199.09,
+            "ended_offset_ms": 43881.86
+          }
+        },
+        "parallel_timing": {
+          "post_statement": {
+            "call_names": [
+              "semantic",
+              "terminology",
+              "filter_resolution"
+            ],
+            "started_ms": 3893.75,
+            "ended_ms": 24198.71,
+            "span_ms": 20304.96,
+            "latest_start_ms": 3894.13,
+            "earliest_end_ms": 7632.09,
+            "overlap_window_ms": 3737.96,
+            "fully_overlapped": true
+          }
+        },
+        "duration_ms": 43881.88
+      }
+    },
+    {
+      "integrated_statement": "What evidence exists on diabetes complications during pregnancy under heatwave exposure?",
+      "metadata": {
+        "prompt_tokens": 2385,
+        "completion_tokens": 256,
+        "total_tokens": 2641,
+        "prompt_char_count": 10926,
+        "estimated_prompt_tokens": 2259,
+        "call_prompt_metrics": {
+          "statement": {
+            "message_count": 2,
+            "cached_message_count": 0,
+            "role_counts": {
+              "system": 1,
+              "user": 1
+            },
+            "role_char_counts": {
+              "system": 1594,
+              "user": 200
+            },
+            "prompt_char_count": 1794,
+            "estimated_prompt_tokens": 372,
+            "max_output_tokens": 512,
+            "response_format": "StatementResponse"
+          },
+          "semantic": {
+            "message_count": 2,
+            "cached_message_count": 0,
+            "role_counts": {
+              "system": 1,
+              "user": 1
+            },
+            "role_char_counts": {
+              "system": 1366,
+              "user": 224
+            },
+            "prompt_char_count": 1590,
+            "estimated_prompt_tokens": 322,
+            "max_output_tokens": 256,
+            "response_format": "SemanticQueryResponse"
+          },
+          "terminology": {
+            "message_count": 2,
+            "cached_message_count": 0,
+            "role_counts": {
+              "system": 1,
+              "user": 1
+            },
+            "role_char_counts": {
+              "system": 1615,
+              "user": 213
+            },
+            "prompt_char_count": 1828,
+            "estimated_prompt_tokens": 374,
+            "max_output_tokens": 1024,
+            "response_format": "TerminologyResponse"
+          },
+          "filter_resolution": {
+            "message_count": 2,
+            "cached_message_count": 0,
+            "role_counts": {
+              "system": 1,
+              "user": 1
+            },
+            "role_char_counts": {
+              "system": 1987,
+              "user": 604
+            },
+            "prompt_char_count": 2591,
+            "estimated_prompt_tokens": 544,
+            "max_output_tokens": 256,
+            "response_format": "FilterSuggestionResponse"
+          },
+          "keyword_support": {
+            "message_count": 2,
+            "cached_message_count": 0,
+            "role_counts": {
+              "system": 1,
+              "user": 1
+            },
+            "role_char_counts": {
+              "system": 2648,
+              "user": 475
+            },
+            "prompt_char_count": 3123,
+            "estimated_prompt_tokens": 647,
+            "max_output_tokens": 512,
+            "response_format": "KeywordSupportResponse"
+          }
+        },
+        "call_timings": {
+          "statement": {
+            "call_name": "statement",
+            "status": "succeeded",
+            "duration_ms": 3555.02,
+            "repair_attempted": false,
+            "repair_succeeded": false,
+            "started_offset_ms": 0.1,
+            "ended_offset_ms": 3555.12
+          },
+          "semantic": {
+            "call_name": "semantic",
+            "status": "succeeded",
+            "duration_ms": 3508.25,
+            "repair_attempted": false,
+            "repair_succeeded": false,
+            "started_offset_ms": 3555.63,
+            "ended_offset_ms": 7063.87
+          },
+          "terminology": {
+            "call_name": "terminology",
+            "status": "succeeded",
+            "duration_ms": 13416.79,
+            "repair_attempted": false,
+            "repair_succeeded": false,
+            "started_offset_ms": 3556.56,
+            "ended_offset_ms": 16973.34
+          },
+          "filter_resolution": {
+            "call_name": "filter_resolution",
+            "status": "succeeded",
+            "duration_ms": 19797.99,
+            "repair_attempted": false,
+            "repair_succeeded": false,
+            "started_offset_ms": 3556.58,
+            "ended_offset_ms": 23354.56
+          },
+          "keyword_support": {
+            "call_name": "keyword_support",
+            "status": "succeeded",
+            "duration_ms": 18938.74,
+            "repair_attempted": false,
+            "repair_succeeded": false,
+            "started_offset_ms": 23354.86,
+            "ended_offset_ms": 42293.6
+          }
+        },
+        "parallel_timing": {
+          "post_statement": {
+            "call_names": [
+              "semantic",
+              "terminology",
+              "filter_resolution"
+            ],
+            "started_ms": 3555.63,
+            "ended_ms": 23354.56,
+            "span_ms": 19798.93,
+            "latest_start_ms": 3556.58,
+            "earliest_end_ms": 7063.87,
+            "overlap_window_ms": 3507.29,
+            "fully_overlapped": true
+          }
+        },
+        "duration_ms": 42293.62
+      }
+    }
+  ]
+}

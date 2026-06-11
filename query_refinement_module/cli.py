@@ -239,7 +239,7 @@ async def run_cli(manager: QueryRefinementManager, framework_name: str, query: s
                 print(f"\n{context_text}\n")
 
             # Generate initial question for this aspect using unified approach
-            print(" Generating clarifying question...\n")
+            print(" Checking if clarification is needed...\n")
             try:
                 result = await manager.get_analysis_prompts(
                     session=session,

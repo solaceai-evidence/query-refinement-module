@@ -178,6 +178,8 @@ async def test_run_synthesis_persists_full_response_payload(test_db_session, mon
         "synonyms": {"COPD": ["chronic obstructive pulmonary disease"]}
     }
     assert db_query.synthesis_metadata == {"total_tokens": 1234}
+    assert "call_timings" not in db_query.synthesis_metadata
+    assert "parallel_timing" not in db_query.synthesis_metadata
     assert db_query.processing_log == {"preserved": ["population"]}
     assert db_query.completed_at is not None
     assert user.has_completed_workflow is True

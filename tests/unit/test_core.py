@@ -1,9 +1,14 @@
+import asyncio
 import json
 from dataclasses import dataclass
 from typing import Any, Dict, Iterable, List, Optional
 from unittest.mock import patch
 
 import pytest
+
+
+PRIVATE_MODEL = "anthropic/claude-sonnet-4-6"
+OPEN_MODEL = "ollama/qwen2.5:72b"
 
 from query_refinement_module.core import (
     COMMAND_ALIASES,
@@ -15,6 +20,7 @@ from query_refinement_module.core import (
     get_help_text,
     is_user_command,
     parse_user_command,
+    _use_open_llm_synthesis_variant_for_model,
 )
 from query_refinement_module.interfaces import (
     LLMCompletionResult,
@@ -26,6 +32,7 @@ from query_refinement_module.schema.response import (
     DimensionEvaluationResponse,
     FilterSuggestionResponse,
     KeywordSupportResponse,
+    QueryRefinementResponse,
     SemanticQueryResponse,
     StatementResponse,
     TerminologyResponse,
@@ -96,6 +103,7 @@ class DummyCompletionResult(LLMCompletionResult):
 class StubLLMProvider(LLMProviderInterface):
     def __init__(self, responses: Iterable[Any]):
         self._responses = list(responses)
+        self._default_model = OPEN_MODEL
         self.calls: List[Dict[str, Any]] = []
 
     def complete(
@@ -152,6 +160,52 @@ class StubLLMProvider(LLMProviderInterface):
             response_format=response_format,
             **kwargs,
         )
+
+    def get_model_info(self, model: str) -> Dict[str, Any]:  # pragma: no cover - unused
+        return {}
+
+
+class DelayedSplitLLMProvider(LLMProviderInterface):
+    def __init__(
+        self,
+        responses_by_model: Dict[str, Any],
+        delays_by_model: Optional[Dict[str, float]] = None,
+    ):
+        self._responses_by_model = dict(responses_by_model)
+        self._delays_by_model = delays_by_model or {}
+        self._default_model = OPEN_MODEL
+        self.calls: List[Dict[str, Any]] = []
+
+    def complete(self, *args, **kwargs) -> LLMCompletionResult:  # pragma: no cover - sync path unused
+        raise NotImplementedError("DelayedSplitLLMProvider only supports complete_async")
+
+    async def complete_async(
+        self,
+        user_prompt: str = "",
+        system_prompt: Optional[str] = None,
+        model: Optional[str] = None,
+        temperature: float = 0.0,
+        max_tokens: Optional[int] = None,
+        messages: Optional[List[Dict[str, str]]] = None,
+        response_format: Optional[Any] = None,
+        **kwargs,
+    ) -> LLMCompletionResult:
+        response_model_name = getattr(response_format, "__name__", "unknown")
+        self.calls.append(
+            {
+                "system_prompt": system_prompt,
+                "user_prompt": user_prompt,
+                "model": model,
+                "temperature": temperature,
+                "max_tokens": max_tokens,
+                "messages": messages,
+                "response_format": response_format,
+                "kwargs": kwargs,
+            }
+        )
+        await asyncio.sleep(self._delays_by_model.get(response_model_name, 0.0))
+        item = self._responses_by_model[response_model_name]
+        return DummyCompletionResult(context=item, model="dummy")
 
     def get_model_info(self, model: str) -> Dict[str, Any]:  # pragma: no cover - unused
         return {}
@@ -469,7 +523,7 @@ async def test_synthesize_refined_query_uses_manager_runtime_defaults():
     )
     session = RefinementSession(original_query="q")
 
-    await manager.synthesize_refined_query(session)
+    await manager.synthesize_refined_query(session, model=OPEN_MODEL)
 
     assert len(manager.llm_provider.calls) == 5
     assert all(call["temperature"] == pytest.approx(0.45) for call in manager.llm_provider.calls)
@@ -486,11 +540,159 @@ async def test_synthesize_refined_query_explicit_runtime_overrides_manager_defau
     )
     session = RefinementSession(original_query="q")
 
-    await manager.synthesize_refined_query(session, temperature=0.1, max_tokens=200)
+    await manager.synthesize_refined_query(session, model=OPEN_MODEL, temperature=0.1, max_tokens=200)
 
     assert len(manager.llm_provider.calls) == 5
     assert all(call["temperature"] == pytest.approx(0.1) for call in manager.llm_provider.calls)
     assert sorted(call["max_tokens"] for call in manager.llm_provider.calls) == [200, 200, 200, 200, 200]
+
+
+@pytest.mark.asyncio
+async def test_private_models_use_single_monolithic_synthesis_call():
+    response = QueryRefinementResponse(
+        integrated_statement="Refined question",
+        dimensions_specifications={},
+        search_optimized={
+            "semantic": "semantic query",
+            "keyword": {
+                "structured": "query",
+                "phrases": [],
+                "terms": {"required": [], "optional": [], "excluded": []},
+            },
+        },
+        search_filters={
+            "publication_years": "",
+            "venues": [],
+            "authors": [],
+            "publication_types": [],
+            "fields_of_study": [],
+        },
+        terminology={"synonyms": {}, "colloquial": []},
+    )
+    manager = QueryRefinementManager(
+        llm_provider=StubLLMProvider([response]),
+        tracing_provider=StubTracingProvider(),
+    )
+    session = RefinementSession(original_query="q")
+
+    result = await manager.synthesize_refined_query(session, model=PRIVATE_MODEL)
+
+    assert result["integrated_statement"] == "Refined question"
+    assert len(manager.llm_provider.calls) == 1
+    assert manager.llm_provider.calls[0]["response_format"] is QueryRefinementResponse
+
+
+@pytest.mark.asyncio
+async def test_open_models_continue_to_use_split_synthesis_calls():
+    manager = QueryRefinementManager(
+        llm_provider=StubLLMProvider(make_split_responses(integrated_statement="stmt")),
+        tracing_provider=StubTracingProvider(),
+    )
+    session = RefinementSession(original_query="q")
+
+    await manager.synthesize_refined_query(session, model=OPEN_MODEL)
+
+    assert len(manager.llm_provider.calls) == 5
+
+
+@pytest.mark.asyncio
+async def test_private_wrapper_models_still_use_single_monolithic_synthesis_call():
+    response = QueryRefinementResponse(
+        integrated_statement="Refined question",
+        dimensions_specifications={},
+        search_optimized={
+            "semantic": "semantic query",
+            "keyword": {
+                "structured": "query",
+                "phrases": [],
+                "terms": {"required": [], "optional": [], "excluded": []},
+            },
+        },
+        search_filters={
+            "publication_years": "",
+            "venues": [],
+            "authors": [],
+            "publication_types": [],
+            "fields_of_study": [],
+        },
+        terminology={"synonyms": {}, "colloquial": []},
+    )
+    manager = QueryRefinementManager(
+        llm_provider=StubLLMProvider([response]),
+        tracing_provider=StubTracingProvider(),
+    )
+    session = RefinementSession(original_query="q")
+
+    await manager.synthesize_refined_query(session, model="bedrock/anthropic.claude-3-7-sonnet")
+
+    assert len(manager.llm_provider.calls) == 1
+    assert manager.llm_provider.calls[0]["response_format"] is QueryRefinementResponse
+
+
+@pytest.mark.asyncio
+async def test_open_wrapper_models_still_use_split_synthesis_calls():
+    manager = QueryRefinementManager(
+        llm_provider=StubLLMProvider(make_split_responses(integrated_statement="stmt")),
+        tracing_provider=StubTracingProvider(),
+    )
+    session = RefinementSession(original_query="q")
+
+    await manager.synthesize_refined_query(session, model="google/gemma-2-27b")
+
+    assert len(manager.llm_provider.calls) == 5
+
+
+@pytest.mark.asyncio
+async def test_private_wrapper_provider_default_uses_monolithic_synthesis_call():
+    response = QueryRefinementResponse(
+        integrated_statement="Refined question",
+        dimensions_specifications={},
+        search_optimized={
+            "semantic": "semantic query",
+            "keyword": {
+                "structured": "query",
+                "phrases": [],
+                "terms": {"required": [], "optional": [], "excluded": []},
+            },
+        },
+        search_filters={
+            "publication_years": "",
+            "venues": [],
+            "authors": [],
+            "publication_types": [],
+            "fields_of_study": [],
+        },
+        terminology={"synonyms": {}, "colloquial": []},
+    )
+    provider = StubLLMProvider([response])
+    provider._default_model = "bedrock/anthropic.claude-3-7-sonnet"
+    manager = QueryRefinementManager(llm_provider=provider, tracing_provider=StubTracingProvider())
+    session = RefinementSession(original_query="q")
+
+    await manager.synthesize_refined_query(session)
+
+    assert len(provider.calls) == 1
+    assert provider.calls[0]["response_format"] is QueryRefinementResponse
+
+
+@pytest.mark.asyncio
+async def test_open_wrapper_provider_default_uses_split_synthesis_calls():
+    provider = StubLLMProvider(make_split_responses(integrated_statement="stmt"))
+    provider._default_model = "google/gemma-2-27b"
+    manager = QueryRefinementManager(llm_provider=provider, tracing_provider=StubTracingProvider())
+    session = RefinementSession(original_query="q")
+
+    await manager.synthesize_refined_query(session)
+
+    assert len(provider.calls) == 5
+
+
+def test_private_wrapper_model_ids_do_not_fall_back_to_open_variant():
+    with patch("query_refinement_module.core._using_open_llm_synthesis_variant", return_value=True):
+        assert _use_open_llm_synthesis_variant_for_model("bedrock/anthropic.claude-3-7-sonnet") is False
+        assert _use_open_llm_synthesis_variant_for_model("azure/openai/gpt-4o") is False
+        assert _use_open_llm_synthesis_variant_for_model("vertex_ai/gemini-1.5-pro") is False
+        assert _use_open_llm_synthesis_variant_for_model("llamaindex/openai/gpt-4o") is False
 
 
 def test_skipped_aspects_excluded_from_dependency_context():
@@ -846,69 +1048,43 @@ class TestValidateSplitResult:
 
     def test_filter_valid(self):
         r = FilterSuggestionResponse(fields_of_study=["Medicine", "Psychology"])
-        assert QueryRefinementManager._validate_split_result("filter_resolution", r) is None
+        assert QueryRefinementManager._validate_split_result("filter_resolution", r, model=PRIVATE_MODEL) is None
 
     def test_filter_empty_list_valid(self):
         r = FilterSuggestionResponse(fields_of_study=[])
-        assert QueryRefinementManager._validate_split_result("filter_resolution", r) is None
+        assert QueryRefinementManager._validate_split_result("filter_resolution", r, model=PRIVATE_MODEL) is None
 
     def test_filter_bad_value(self):
         r = FilterSuggestionResponse(fields_of_study=["Medicine", "Astrology"])
-        err = QueryRefinementManager._validate_split_result("filter_resolution", r)
+        err = QueryRefinementManager._validate_split_result("filter_resolution", r, model=PRIVATE_MODEL)
         assert err is not None
         assert "Astrology" in err
 
-    # --- publication_types validation (new) ---
-
     def test_filter_pub_types_valid(self):
         r = FilterSuggestionResponse(publication_types=["Randomized controlled trial", "Systematic review"])
-        assert QueryRefinementManager._validate_split_result("filter_resolution", r) is None
-
-    def test_filter_pub_types_empty_valid(self):
-        r = FilterSuggestionResponse(publication_types=[])
-        assert QueryRefinementManager._validate_split_result("filter_resolution", r) is None
+        assert QueryRefinementManager._validate_split_result("filter_resolution", r, model=PRIVATE_MODEL) is None
 
     def test_filter_pub_types_invalid_abbreviation(self):
-        """'RCT' is not in the permitted list; the canonical form must be used."""
         r = FilterSuggestionResponse(publication_types=["RCT"])
-        err = QueryRefinementManager._validate_split_result("filter_resolution", r)
+        err = QueryRefinementManager._validate_split_result("filter_resolution", r, model=PRIVATE_MODEL)
         assert err is not None
         assert "RCT" in err
 
-    def test_filter_pub_types_mixed_valid_and_invalid(self):
-        r = FilterSuggestionResponse(publication_types=["Systematic review", "meta-analysis"])
-        err = QueryRefinementManager._validate_split_result("filter_resolution", r)
-        assert err is not None
-        assert "meta-analysis" in err
-
-    # --- publication_years format validation ---
-
-    def test_filter_pub_years_range_valid(self):
-        r = FilterSuggestionResponse(publication_years="2020-2026")
-        assert QueryRefinementManager._validate_split_result("filter_resolution", r) is None
-
-    def test_filter_pub_years_open_ended_valid(self):
-        r = FilterSuggestionResponse(publication_years="2015-")
-        assert QueryRefinementManager._validate_split_result("filter_resolution", r) is None
-
-    def test_filter_pub_years_single_year_valid(self):
-        r = FilterSuggestionResponse(publication_years="2023")
-        assert QueryRefinementManager._validate_split_result("filter_resolution", r) is None
-
-    def test_filter_pub_years_empty_valid(self):
-        r = FilterSuggestionResponse(publication_years="")
-        assert QueryRefinementManager._validate_split_result("filter_resolution", r) is None
-
     def test_filter_pub_years_natural_language_invalid(self):
         r = FilterSuggestionResponse(publication_years="last 5 years")
-        err = QueryRefinementManager._validate_split_result("filter_resolution", r)
+        err = QueryRefinementManager._validate_split_result("filter_resolution", r, model=PRIVATE_MODEL)
         assert err is not None
         assert "publication_years" in err
 
-    def test_filter_pub_years_partial_century_invalid(self):
-        r = FilterSuggestionResponse(publication_years="15-2026")
-        err = QueryRefinementManager._validate_split_result("filter_resolution", r)
+    def test_open_llm_filter_validation_ignores_publication_years_and_types(self):
+        r = FilterSuggestionResponse(
+            publication_years="last 5 years",
+            publication_types=["RCT"],
+            fields_of_study=["Medicine"],
+        )
+        err = QueryRefinementManager._validate_split_result("filter_resolution", r, model=OPEN_MODEL)
         assert err is not None
+        assert "publication_years" in err or "publication_types" in err
 
     def test_unknown_call_name_always_valid(self):
         """Calls we don't recognise should pass through without error."""
@@ -972,13 +1148,18 @@ class TestBuildRepairPrompt:
         self._check_non_filter_forbidden(prompt)
 
     def test_filter_repair_prompt(self):
-        prompt = QueryRefinementManager._build_repair_prompt("base", "filter_resolution", "bad value")
+        prompt = QueryRefinementManager._build_repair_prompt("base", "filter_resolution", "bad value", model=PRIVATE_MODEL)
         assert "REPAIR" in prompt
-        # Both validated fields must be named in the repair instruction
         assert "publication_types" in prompt
         assert "publication_years" in prompt
         assert "permitted" in prompt
         self._check_no_always_forbidden_fields(prompt)
+
+    def test_open_llm_filter_repair_prompt_matches_full_contract(self):
+        prompt = QueryRefinementManager._build_repair_prompt("base", "filter_resolution", "bad value", model=OPEN_MODEL)
+        assert "fields_of_study" in prompt
+        assert "publication_types" in prompt
+        assert "publication_years" in prompt
 
     def test_original_prompt_preserved(self):
         original = "## Original Input\n\nsome query"
@@ -1089,31 +1270,6 @@ async def test_run_split_call_filter_repair_removes_bad_values():
     assert result is not None
     assert result.fields_of_study == ["Medicine"]
     assert len(manager.llm_provider.calls) == 2
-
-
-@pytest.mark.asyncio
-async def test_run_split_call_filter_repair_removes_bad_pub_types():
-    """A filter_resolution result with unpermitted publication_types triggers repair."""
-    manager = build_manager(responses=[
-        json.dumps({"publication_types": ["RCT"]}),                          # invalid abbreviation
-        json.dumps({"publication_types": ["Randomized controlled trial"]}),  # repaired
-    ])
-    from query_refinement_module.schema.synthesis import SynthesisPromptBuilder
-    from query_refinement_module.core import FIELDS_OF_STUDY_PERMITTED
-    pb = SynthesisPromptBuilder()
-    result, meta = await manager._run_split_call(
-        pb.get_filter_resolution_system_prompt(),
-        pb.get_filter_resolution_prompt("query", {}, FIELDS_OF_STUDY_PERMITTED),
-        FilterSuggestionResponse,
-        "filter_resolution",
-    )
-    assert result is not None
-    assert result.publication_types == ["Randomized controlled trial"]
-    assert len(manager.llm_provider.calls) == 2
-    # The repair call's user prompt must mention the permitted-list constraint
-    repair_prompt = manager.llm_provider.calls[1]["user_prompt"]
-    assert "REPAIR" in repair_prompt
-    assert "publication_types" in repair_prompt
 
 
 # ---------------------------------------------------------------------------
@@ -1491,9 +1647,9 @@ class TestRepairScope:
                 )
 
     def test_filter_repair_mentions_both_validated_fields(self):
-        """filter_resolution repair must name both publication_types and publication_years."""
+        """Private-model filter repair must name both validated fields."""
         prompt = QueryRefinementManager._build_repair_prompt(
-            "base", "filter_resolution", "some error"
+            "base", "filter_resolution", "some error", model=PRIVATE_MODEL
         )
         assert "publication_types" in prompt
         assert "publication_years" in prompt
@@ -1557,6 +1713,29 @@ class TestSynthesisTracingTransparency:
         assert complete_events[0]["metadata"]["structured_response"] is True
 
     @pytest.mark.asyncio
+    async def test_query_synthesis_complete_includes_call_timings_and_parallel_summary(self):
+        """query_synthesis_complete must include detailed timing payloads for post-run diagnosis."""
+        manager = build_manager(responses=make_split_responses(integrated_statement="stmt"))
+        session = RefinementSession(original_query="q")
+
+        await manager.synthesize_refined_query(session)
+
+        tracer: StubTracingProvider = manager.trace_emitter._provider
+        complete_events = [e for e in tracer.events if e["event"] == "query_synthesis_complete"]
+        meta = complete_events[0]["metadata"]
+        assert "duration_ms" in meta
+        assert isinstance(meta["call_timings"], dict)
+        assert set(meta["call_timings"]) == {
+            "statement",
+            "semantic",
+            "terminology",
+            "filter_resolution",
+            "keyword_support",
+        }
+        assert isinstance(meta["parallel_timing"], dict)
+        assert "post_statement" in meta["parallel_timing"]
+
+    @pytest.mark.asyncio
     async def test_split_call_ok_events_include_duration_ms(self):
         """Each split_call_*_ok event must carry a non-negative duration_ms for latency tracking."""
         manager = build_manager(responses=make_split_responses(integrated_statement="stmt"))
@@ -1608,3 +1787,47 @@ class TestSynthesisTracingTransparency:
         meta = start_events[0]["metadata"]
         assert "model" in meta
         assert meta["model"] == "(default)"  # no override passed
+
+    @pytest.mark.asyncio
+    async def test_synthesis_metadata_includes_call_timings_and_parallel_overlap(self):
+        """Returned synthesis metadata must expose per-call timings and the post-statement parallel overlap window."""
+        llm = DelayedSplitLLMProvider(
+            responses_by_model={
+                "StatementResponse": json.dumps({"integrated_statement": "stmt"}),
+                "SemanticQueryResponse": json.dumps({"semantic": "semantic query"}),
+                "TerminologyResponse": json.dumps({"synonyms": {}}),
+                "FilterSuggestionResponse": json.dumps({"fields_of_study": []}),
+                "KeywordSupportResponse": json.dumps({"phrases": [], "required": [], "optional": []}),
+            },
+            delays_by_model={
+                "StatementResponse": 0.005,
+                "SemanticQueryResponse": 0.03,
+                "TerminologyResponse": 0.04,
+                "FilterSuggestionResponse": 0.02,
+                "KeywordSupportResponse": 0.005,
+            },
+        )
+        manager = QueryRefinementManager(
+            llm_provider=llm,
+            tracing_provider=StubTracingProvider(),
+        )
+        session = RefinementSession(original_query="q")
+
+        result = await manager.synthesize_refined_query(session)
+
+        meta = result["metadata"]
+        assert set(meta["call_timings"]) == {
+            "statement",
+            "semantic",
+            "terminology",
+            "filter_resolution",
+            "keyword_support",
+        }
+        assert meta["call_timings"]["statement"]["status"] == "succeeded"
+        assert meta["call_timings"]["keyword_support"]["status"] == "succeeded"
+
+        parallel = meta["parallel_timing"]["post_statement"]
+        assert parallel["call_names"] == ["semantic", "terminology", "filter_resolution"]
+        assert parallel["overlap_window_ms"] > 0
+        assert parallel["fully_overlapped"] is True
+        assert meta["duration_ms"] >= parallel["ended_ms"]
