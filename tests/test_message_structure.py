@@ -16,16 +16,21 @@ import query_refinement_module.schema.templates as templates_module
 import query_refinement_module.schema.prompt_builder as prompt_builder_module
 
 
-def test_message_structure_with_user_context():
-    """Test that messages include user context after global directive with cache markers."""
-    # Load framework with user context (force reload from specific file)
+def _load_framework_from_current_yaml():
     import os
     os.environ["REFINEMENT_FRAMEWORK_PATH"] = "refinement_frameworks/frameworks.yaml"
     registry.reload_from_env()
-    
-    aspects = registry.get_framework("pico_advanced")
-    assert aspects is not None, "Should load PICO framework"
+    framework_names = registry.list_frameworks()
+    assert framework_names, "Should load at least one framework"
+    aspects = registry.get_framework(framework_names[0])
+    assert aspects is not None, "Should load framework aspects"
     assert len(aspects) > 0, "Should have aspects"
+    return aspects
+
+
+def test_message_structure_with_user_context():
+    """Test that messages include user context after global directive with cache markers."""
+    aspects = _load_framework_from_current_yaml()
     
     # Get first aspect with user context
     aspect = aspects[0]
@@ -71,12 +76,7 @@ def test_message_structure_with_user_context():
 
 def test_message_structure_with_dependencies():
     """Test that completed dimensions and dependencies are included correctly."""
-    # Load framework
-    import os
-    os.environ["REFINEMENT_FRAMEWORK_PATH"] = "refinement_frameworks/frameworks.yaml"
-    registry.reload_from_env()
-    
-    aspects = registry.get_framework("pico_advanced")
+    aspects = _load_framework_from_current_yaml()
     
     # Get an aspect that has dependencies (e.g., outcome might depend on intervention)
     aspects_with_deps = [a for a in aspects if a.depends_on]
@@ -124,12 +124,7 @@ def test_message_structure_with_dependencies():
 
 def test_message_structure_with_conversation_history():
     """Test that conversation history is appended correctly."""
-    # Load framework
-    import os
-    os.environ["REFINEMENT_FRAMEWORK_PATH"] = "refinement_frameworks/frameworks.yaml"
-    registry.reload_from_env()
-    
-    aspects = registry.get_framework("pico_advanced")
+    aspects = _load_framework_from_current_yaml()
     aspect = aspects[0]
     state = AspectRefinementState(refinement_aspect=aspect)
     
@@ -211,12 +206,7 @@ def test_no_user_context_when_not_specified():
 
 def test_cache_markers_only_on_first_two_system_messages():
     """Test that _cache markers are only applied to global and user context."""
-    # Load framework with user context
-    import os
-    os.environ["REFINEMENT_FRAMEWORK_PATH"] = "refinement_frameworks/frameworks.yaml"
-    registry.reload_from_env()
-    
-    aspects = registry.get_framework("pico_advanced")
+    aspects = _load_framework_from_current_yaml()
     aspect = aspects[0]
     state = AspectRefinementState(refinement_aspect=aspect)
     

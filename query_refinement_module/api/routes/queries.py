@@ -184,7 +184,7 @@ def create_new_query(
         raise HTTPException(status_code=status.HTTP_403_FORBIDDEN, detail="Access denied")
     
     query = create_query(db, session_id=query_data.session_id, original_query=query_data.original_query)
-    return query
+    return QueryResponse.from_query_record(query)
 
 
 @router.get("/{query_id}", response_model=QueryResponse)
@@ -205,7 +205,7 @@ def get_query_details(
     if session.user_id != current_user.id:
         raise HTTPException(status_code=status.HTTP_403_FORBIDDEN, detail="Access denied")
     
-    return query
+    return QueryResponse.from_query_record(query)
 
 
 @router.put("/{query_id}", response_model=QueryResponse)
@@ -228,7 +228,7 @@ def update_query(
         raise HTTPException(status_code=status.HTTP_403_FORBIDDEN, detail="Access denied")
     
     query = update_refined_query(db, query_id=query_id, refined_query=query_update.refined_query)
-    return query
+    return QueryResponse.from_query_record(query)
 
 
 @router.get("/sessions/{session_id}/queries", response_model=List[QueryResponse])
@@ -247,7 +247,7 @@ def list_session_queries(
         raise HTTPException(status_code=status.HTTP_403_FORBIDDEN, detail="Access denied")
     
     queries = get_session_queries(db, session_id=session_id)
-    return queries
+    return [QueryResponse.from_query_record(query) for query in queries]
 
 
 # ==========================================

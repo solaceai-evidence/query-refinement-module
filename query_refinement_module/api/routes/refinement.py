@@ -47,6 +47,7 @@ from query_refinement_module.schema.registry import get_framework, list_framewor
 from query_refinement_module.api.session_manager import SessionManager
 from query_refinement_module.audit import audit_service
 from query_refinement_module.db.models.audit_log import AuditEventType
+from query_refinement_module.next_prompt import build_fallback_question, resolve_next_prompt
 from query_refinement_module.settings import LLMSettings
 from query_refinement_module.core import (
     QueryRefinementManager,
@@ -428,99 +429,88 @@ async def _build_next_prompt(manager, session, db=None, db_steps=None) -> Option
     
     Uses get_next_unrefined_aspect() for sequential on-demand refinement.
     """
-    max_attempts = len(session.steps)  # Prevent infinite loop
-    attempts = 0
-    
-    while attempts < max_attempts:
-        attempts += 1
-        step = session.get_next_unrefined_aspect()
-        
-        logger.info(f"_build_next_prompt attempt {attempts}: next_unrefined_aspect={'exists' if step else 'None'}")
-        if not step:
-            logger.info("  -> No unrefined aspects remaining, returning None")
-            return None
-        
-        # If question already exists (from previous analysis), use it
-        if step.follow_up_question:
-            result = {
-                "aspect_id": step.refinement_aspect.id,
-                "name": step.refinement_aspect.name,
-                "aspect_name": step.refinement_aspect.name,
-                "question": step.follow_up_question,
-                "description": step.refinement_aspect.description or "",
-            }
-            logger.info(f"  -> Using existing question for '{result['name']}', question: '{result['question'][:100]}...")
-            return result
-        
-        # No question exists - analyze with LLM to determine if dimension is already clear
+    def _build_prompt_payload(_, step, question: str) -> Dict[str, Any]:
+        return {
+            "aspect_id": step.refinement_aspect.id,
+            "name": step.refinement_aspect.name,
+            "aspect_name": step.refinement_aspect.name,
+            "question": question,
+            "description": step.refinement_aspect.description or "",
+        }
+
+    def _persist_auto_completion(step, status: Dict[str, Any]) -> None:
+        logger.info(
+            "  -> Dimension '%s' auto-completed with value: %s",
+            step.refinement_aspect.name,
+            str(status.get("current", ""))[:100],
+        )
+        if not db or not db_steps or step.normalized_value_as_str is None:
+            return
+
+        db_step_row = _find_db_step_for_aspect(db_steps, step.refinement_aspect)
+        if not db_step_row:
+            return
+
         try:
-            llm_start = time.time()
-            logger.info(f"  -> Generating question via LLM analysis for aspect '{step.refinement_aspect.name}'")
-            logger.info(f"  -> Aspect ID: {step.refinement_aspect.id}, mode: initial")
-            
-            # Call LLM to analyze dimension with full context
-            analysis_result = await _generate_question_with_retry(
-                manager=manager,
-                session=session,
-                aspect_id=step.refinement_aspect.id,
-                mode='initial'
+            update_refinement_step_final_value(
+                db,
+                db_step_row.id,
+                step.normalized_value_as_str,
+                is_complete=True,
+                was_skipped=False,
+                user_ended_early=False,
             )
-            
-            llm_duration = (time.time() - llm_start) * 1000
-            logger.info(f"  -> LLM call completed in {llm_duration:.2f}ms for aspect '{step.refinement_aspect.name}'")
-            
-            # Process the analysis
-            status = manager.process_analysis_result(
-                session=session,
-                aspect_id=step.refinement_aspect.id,
-                result=analysis_result
+        except Exception as exc:
+            logger.warning(
+                "  -> Could not persist auto-completion for '%s': %s",
+                step.refinement_aspect.name,
+                exc,
             )
-            
-            if status['complete']:
-                # Dimension is already clear - auto-completed, loop to next
-                logger.info(f"  -> Dimension '{step.refinement_aspect.name}' auto-completed with value: {str(status.get('current', ''))[:100]}")
-                # Persist auto-completion to DB so it survives Redis TTL expiry
-                if db and db_steps and step.normalized_value_as_str is not None:
-                    _db_step_row = _find_db_step_for_aspect(db_steps, step.refinement_aspect)
-                    if _db_step_row:
-                        try:
-                            update_refinement_step_final_value(
-                                db, _db_step_row.id, step.normalized_value_as_str,
-                                is_complete=True, was_skipped=False, user_ended_early=False
-                            )
-                        except Exception as _exc:
-                            logger.warning(f"  -> Could not persist auto-completion for '{step.refinement_aspect.name}': {_exc}")
-                continue
-            else:
-                # Dimension needs clarification - return the question
-                result = {
-                    "aspect_id": step.refinement_aspect.id,
-                    "name": step.refinement_aspect.name,
-                    "aspect_name": step.refinement_aspect.name,
-                    "question": status['next_question'],
-                    "description": step.refinement_aspect.description or "",
-                }
-                logger.info(f"  -> Generated question for '{result['name']}', question: '{result['question'][:100]}...")
-                return result
-                
-        except Exception as e:
-            # LLM failed - use simple fallback
-            logger.error(f"  -> LLM analysis failed for aspect '{step.refinement_aspect.name}': {e}")
-            fallback_question = f"Please provide details about {step.refinement_aspect.name}"
-            step.follow_up_question = fallback_question
-            
-            result = {
-                "aspect_id": step.refinement_aspect.id,
-                "name": step.refinement_aspect.name,
-                "aspect_name": step.refinement_aspect.name,
-                "question": fallback_question,
-                "description": step.refinement_aspect.description or "",
-            }
-            logger.info(f"  -> Using fallback question for '{result['name']}'")
-            return result
-    
-    # Max attempts reached without finding a dimension that needs clarification
-    logger.warning(f"_build_next_prompt: Max attempts ({max_attempts}) reached")
+
+    async def _analyze_initial(step):
+        llm_start = time.time()
+        logger.info("  -> Generating question via LLM analysis for aspect '%s'", step.refinement_aspect.name)
+        logger.info("  -> Aspect ID: %s, mode: initial", step.refinement_aspect.id)
+
+        analysis_result = await _generate_question_with_retry(
+            manager=manager,
+            session=session,
+            aspect_id=step.refinement_aspect.id,
+            mode="initial",
+        )
+
+        llm_duration = (time.time() - llm_start) * 1000
+        logger.info(
+            "  -> LLM call completed in %.2fms for aspect '%s'",
+            llm_duration,
+            step.refinement_aspect.name,
+        )
+        return analysis_result
+
+    next_prompt = await resolve_next_prompt(
+        session,
+        analyze_initial=_analyze_initial,
+        process_analysis_result=lambda step, result: manager.process_analysis_result(
+            session=session,
+            aspect_id=step.refinement_aspect.id,
+            result=result,
+        ),
+        build_payload=_build_prompt_payload,
+        on_auto_completed=_persist_auto_completion,
+        logger=logger,
+        failure_log_message="  -> LLM analysis failed for aspect '%s': %s",
+        fallback_question_builder=build_fallback_question,
+    )
+
+    if next_prompt:
+        logger.info(
+            "  -> Prepared question for '%s': '%s...'",
+            next_prompt["name"],
+            next_prompt["question"][:100],
+        )
+        return next_prompt
+
+    logger.info("  -> No unrefined aspects remaining, returning None")
     return None
 
 
@@ -2011,14 +2001,23 @@ async def _run_synthesis(
                 if structured_output
                 else synthesis_result.get("terminology")
             ),
+            "metadata": synthesis_result.get("metadata"),
+            "processing_log": synthesis_result.get("processing_log"),
         },
     )
+    synthesis_metadata = synthesis_result.get("metadata") or {}
+    parallel_timing = synthesis_metadata.get("parallel_timing") or {}
+    post_statement_parallel = parallel_timing.get("post_statement") or {}
     logger.info(
         "Database updated with refined query",
         extra={
             "request_id": request_id,
             "query_id": query_id,
             "db_integrated_statement_length": len(db_query.refined_query) if db_query.refined_query else 0,
+            "synthesis_duration_ms": synthesis_metadata.get("duration_ms", 0),
+            "synthesis_call_count": len(synthesis_metadata.get("call_timings") or {}),
+            "post_statement_overlap_ms": post_statement_parallel.get("overlap_window_ms", 0),
+            "post_statement_fully_overlapped": post_statement_parallel.get("fully_overlapped"),
         },
     )
 

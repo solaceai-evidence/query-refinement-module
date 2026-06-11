@@ -145,8 +145,8 @@ class TestSynthesisResponseValidation:
     def test_valid_response_passes(self):
         """Test valid synthesis response passes validation."""
         response = {
-            "synthesized_statement": "A refined research question",
-            "refined_dimensions": {"population": "adults"},
+            "integrated_statement": "A refined research question",
+            "dimensions_specifications": {"population": "adults"},
             "search_optimized": {
                 "semantic": "semantic query",
                 "keyword": {
@@ -190,12 +190,13 @@ class TestSynthesisResponseValidation:
         # Should not raise
         result = validate_synthesis_response(response)
         assert result.integrated_statement == "A refined research question"
+        assert result.dimensions_specifications == {"population": "adults"}
     
     def test_valid_response_without_optional_fields(self):
         """Test valid synthesis response with optional fields omitted."""
         response = {
-            "synthesized_statement": "A refined research question",
-            "refined_dimensions": {"population": "adults"},
+            "integrated_statement": "A refined research question",
+            "dimensions_specifications": {"population": "adults"},
             "search_optimized": {
                 "semantic": "semantic query",
                 "keyword": {
@@ -230,3 +231,32 @@ class TestSynthesisResponseValidation:
         assert result.terminology.domain_specific is None
         assert result.metadata is None
         assert result.processing_log is None
+
+    def test_legacy_aliases_are_rejected_by_canonical_response_model(self):
+        """Legacy alias fields should not parse through the canonical synthesis response model."""
+        response = {
+            "synthesized_statement": "A refined research question",
+            "refined_dimensions": {"population": "adults"},
+            "search_optimized": {
+                "semantic": "semantic query",
+                "keyword": {
+                    "structured": "query",
+                    "phrases": [],
+                    "terms": {"required": [], "optional": [], "excluded": []},
+                },
+            },
+            "search_filters": {
+                "publication_years": "",
+                "venues": [],
+                "authors": [],
+                "publication_types": [],
+                "fields_of_study": [],
+            },
+            "terminology": {
+                "synonyms": {},
+                "colloquial": [],
+            },
+        }
+
+        with pytest.raises(Exception):
+            validate_synthesis_response(response)

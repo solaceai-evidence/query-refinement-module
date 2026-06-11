@@ -188,6 +188,12 @@ def test_litellm_provider_completion_and_model_info(monkeypatch):
     assert isinstance(result, LLMCompletionResult)
     assert result.context == "refined"
     assert result.metadata["provider"] == "litellm"
+    assert result.metadata["total_tokens"] == 12
+    prompt_metrics = result.metadata["prompt_metrics"]
+    assert prompt_metrics["message_count"] == 2
+    assert prompt_metrics["prompt_char_count"] == len("System") + len("Question?")
+    assert prompt_metrics["max_output_tokens"] == 100
+    assert prompt_metrics["estimated_prompt_tokens"] >= 1
 
     call = stub.calls[0]
     assert call["model"] == "override"
@@ -201,6 +207,48 @@ def test_litellm_provider_completion_and_model_info(monkeypatch):
     assert info["model"] == "demo"
     assert info["provider"] == "litellm"
     assert info["pricing"] == {"model": "demo", "cost": 0.01}
+
+
+@pytest.mark.asyncio
+async def test_litellm_provider_async_includes_prompt_metrics(monkeypatch):
+    import query_refinement_module.providers.llm as llm_module
+
+    class StubLiteLLM:
+        def __init__(self):
+            self.calls = []
+
+        async def acompletion(self, **kwargs):
+            self.calls.append(kwargs)
+            return {
+                "choices": [{"message": {"content": '{"complete": true, "current": "adults", "question": ""}'}}],
+                "usage": {"prompt_tokens": 7, "completion_tokens": 5, "total_tokens": 12},
+                "id": "async-resp-1",
+            }
+
+    stub = StubLiteLLM()
+    monkeypatch.setattr(llm_module, "litellm", stub)
+
+    provider = LiteLLMProvider(
+        default_model="ollama/qwen2.5:72b",
+        enable_circuit_breaker=False,
+    )
+
+    result = await provider.complete_async(
+        messages=[
+            {"role": "system", "content": "System prompt"},
+            {"role": "user", "content": "User prompt"},
+        ],
+        max_tokens=64,
+    )
+
+    prompt_metrics = result.metadata["prompt_metrics"]
+    assert prompt_metrics["message_count"] == 2
+    assert prompt_metrics["role_counts"] == {"system": 1, "user": 1}
+    assert prompt_metrics["prompt_char_count"] == len("System prompt") + len("User prompt")
+    assert prompt_metrics["estimated_prompt_tokens"] >= 1
+    assert result.metadata["prompt_tokens"] == 7
+    assert result.metadata["completion_tokens"] == 5
+    assert result.metadata["total_tokens"] == 12
 
 
 def test_file_tracing_provider_writes_json(tmp_path):
@@ -331,8 +379,8 @@ from query_refinement_module.schema.response import (
 def _make_qrr() -> QueryRefinementResponse:
     """Minimal valid QueryRefinementResponse for testing."""
     return QueryRefinementResponse(**{
-        "synthesized_statement": "Refined query for testing",
-        "refined_dimensions": {"population": "adults"},
+        "integrated_statement": "Refined query for testing",
+        "dimensions_specifications": {"population": "adults"},
         "search_optimized": {
             "semantic": "adults health outcomes",
             "keyword": {
@@ -390,12 +438,12 @@ async def test_litellm_provider_constrained_decoding_dimension():
 
 @pytest.mark.asyncio
 async def test_litellm_provider_constrained_decoding_synthesis():
-    """QueryRefinementResponse + constrained_decoding=True → guided_json uses aliased schema keys."""
+    """QueryRefinementResponse + constrained_decoding=True → guided_json uses canonical schema keys."""
     import query_refinement_module.providers.llm as llm_module
 
     qrr = _make_qrr()
     mock_response = {
-        "choices": [{"message": {"content": qrr.model_dump_json(by_alias=True)}}],
+        "choices": [{"message": {"content": qrr.model_dump_json()}}],
         "usage": {"total_tokens": 120},
         "id": "syn-test-1",
     }
@@ -415,11 +463,11 @@ async def test_litellm_provider_constrained_decoding_synthesis():
 
     call_kwargs = mock_litellm.acompletion.call_args.kwargs
     guided = call_kwargs["extra_body"]["guided_json"]
-    # Schema must use alias keys so it matches what the synthesis prompt instructs the LLM to produce
+    # Schema must use canonical keys so it matches what the synthesis prompt instructs the LLM to produce.
     props = guided.get("properties", guided.get("$defs", {}).get("QueryRefinementResponse", {}).get("properties", {}))
-    assert "synthesized_statement" in props or any(
-        "synthesized_statement" in str(v) for v in guided.values()
-    ), "guided_json schema must use aliased field name 'synthesized_statement'"
+    assert "integrated_statement" in props or any(
+        "integrated_statement" in str(v) for v in guided.values()
+    ), "guided_json schema must use canonical field name 'integrated_statement'"
     assert "response_format" not in call_kwargs
 
     assert isinstance(result.context, QueryRefinementResponse)

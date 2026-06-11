@@ -28,7 +28,7 @@ class DimensionEvaluationResponse(BaseModel):
     
     current: str = Field(
         default="",
-        description="Assembled value using user's exact words (REQUIRED if complete=True, empty string otherwise)"
+        description="The accumulated value of this dimension using the user's exact words. Non-empty whenever any value has been extracted, regardless of completion state. Empty string only when no information for this dimension exists across all sources."
     )
     
     question: str = Field(
@@ -170,16 +170,13 @@ class QueryRefinementResponse(BaseModel):
     """
     model_config = ConfigDict(
         frozen=False,
-        validate_assignment=True,
-        populate_by_name=True  # Allow both names for backward compatibility
+        validate_assignment=True
     )
     integrated_statement: str = Field(
         description="Integrated research specification preserving user's voice",
-        alias="synthesized_statement"  # Database column name (for backward compatibility)
     )
     dimensions_specifications: Dict[str, Optional[str]] = Field(
         description="Normalized value for each dimension (dimension_id -> value)",
-        alias="refined_dimensions"  # Database column name (for backward compatibility)
     )
     search_optimized: SearchOptimized
     search_filters: SearchFilters

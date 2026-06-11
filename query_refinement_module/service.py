@@ -24,6 +24,7 @@ from .core import (
     parse_user_command,
 )
 from .interfaces import SessionStorageInterface, TracingProviderInterface
+from .next_prompt import resolve_next_prompt
 from .providers import LiteLLMProvider
 from .settings import LLMSettings
 
@@ -65,6 +66,30 @@ class QueryRefinementService:
         self._storage = storage
         self._session_id_factory = session_id_factory or (lambda: str(uuid.uuid4()))
 
+    @staticmethod
+    def _build_prompt_payload(
+        session: RefinementSession,
+        step,
+        question: str,
+    ) -> NextPrompt:
+        """Convert an active step into the service-layer prompt payload."""
+
+        dependency_context = {
+            dep_id: entry["value"]
+            for dep_id, entry in session.get_dependency_context(
+                step.refinement_aspect.id
+            ).items()
+        }
+
+        return NextPrompt(
+            aspect_id=step.refinement_aspect.id,
+            aspect_name=step.refinement_aspect.name,
+            question=question,
+            description=step.refinement_aspect.description,
+            reasoning=step.reasoning,
+            dependency_context=dependency_context,
+        )
+
     async def create_session(self, request: SessionCreateRequest) -> SessionCreateResponse:
         """Initialize a new refinement session using sequential on-demand workflow."""
 
@@ -87,8 +112,8 @@ class QueryRefinementService:
             )
             raise
 
+        next_prompt = await self._build_next_prompt(session)
         summary = self._manager.get_initialization_summary(session)
-        next_prompt = self._build_next_prompt(session)
 
         metadata = request.metadata or {}
         metadata = {**metadata, "session_id": session_id}
@@ -162,8 +187,8 @@ class QueryRefinementService:
                         "More clarification is required."
                     )
 
+        next_prompt = await self._build_next_prompt(session)
         summary = self._manager.get_initialization_summary(session)
-        next_prompt = self._build_next_prompt(session)
         session_complete = session.is_complete()
 
         try:
@@ -207,9 +232,20 @@ class QueryRefinementService:
                 exc_info=True,
             )
             raise
+        next_prompt = await self._build_next_prompt(session)
         summary = self._manager.get_initialization_summary(session)
-        next_prompt = self._build_next_prompt(session)
         history = session.get_full_conversation() if summary["total_aspects"] else None
+
+        try:
+            await asyncio.to_thread(self._storage.save_session, session_id, session)
+        except Exception as exc:
+            logger.error(
+                "Failed to save session to storage after status refresh: session_id=%s error=%s",
+                session_id,
+                exc,
+                exc_info=True,
+            )
+            raise
 
         return SessionStatusResponse(
             session_id=session_id,
@@ -224,40 +260,21 @@ class QueryRefinementService:
 
         await asyncio.to_thread(self._storage.delete_session, session_id)
 
-    @staticmethod
-    def _build_next_prompt(session: RefinementSession) -> Optional[NextPrompt]:
-        """Construct the next prompt payload for the caller."""
-
-        step = session.get_active_step()
-        if not step:
-            return None
-
-        question = step.follow_up_question
-        if not question:
-            try:
-                question = step.refinement_aspect.get_evaluation_instructions_prompt(
-                    statement=session.original_query
-                )
-            except Exception as exc:  # pragma: no cover - best effort fallback
-                logger.warning(
-                    "Failed to build evaluation instructions prompt for aspect '%s': %s",
-                    step.refinement_aspect.name,
-                    exc,
-                )
-                question = step.refinement_aspect.description
-
-        dependency_context = {
-            dep_id: entry["value"]
-            for dep_id, entry in session.get_dependency_context(
-                step.refinement_aspect.id
-            ).items()
-        }
-
-        return NextPrompt(
-            aspect_id=step.refinement_aspect.id,
-            aspect_name=step.refinement_aspect.name,
-            question=question,
-            description=step.refinement_aspect.description,
-            reasoning=step.reasoning,
-            dependency_context=dependency_context,
+    async def _build_next_prompt(self, session: RefinementSession) -> Optional[NextPrompt]:
+        """Construct the next prompt using the manager's canonical analysis path."""
+        return await resolve_next_prompt(
+            session,
+            analyze_initial=lambda step: self._manager.get_analysis_prompts(
+                session=session,
+                aspect_id=step.refinement_aspect.id,
+                mode="initial",
+            ),
+            process_analysis_result=lambda step, result: self._manager.process_analysis_result(
+                session=session,
+                aspect_id=step.refinement_aspect.id,
+                result=result,
+            ),
+            build_payload=self._build_prompt_payload,
+            logger=logger,
+            failure_log_message="Failed to analyze initial prompt for aspect '%s': %s",
         )

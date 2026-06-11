@@ -2,7 +2,7 @@
 Query model for storing user queries in a session.
 
 Stores the original query and, upon completion, the full QueryRefinementResponse
-for evaluation purposes (synthesized statement, search variants, terminology, etc.).
+for evaluation purposes (integrated statement, search variants, terminology, etc.).
 """
 from sqlalchemy import Column, Integer, String, Text, DateTime, ForeignKey, JSON, Boolean
 from sqlalchemy.orm import relationship
@@ -17,17 +17,14 @@ class Query(Base):
     - original_query: User's initial input
     - refined_query: Legacy field (for backward compatibility)
     
-    Final Response Fields (stored using database column names):
-    - synthesized_statement: Stores API's integrated_statement
-    - refined_dimensions: Stores API's dimensions_specifications (as detail_values)
+    Final Response Fields:
+    - integrated_statement: Final synthesized research statement
+    - dimensions_specifications: Normalized value for each dimension
     - search_optimized: Search variants (semantic, keyword)
     - search_filters: Publication years, venues, authors, etc.
     - terminology: Synonyms, colloquial terms
-    - response_metadata: Additional context
+    - metadata: Additional context
     - processing_log: Processing history
-    
-    Note: Database column names differ from API field names for historical reasons.
-    crud.py handles the mapping between API and database names.
     """
     __tablename__ = "queries"
 
@@ -48,11 +45,11 @@ class Query(Base):
     # Stored as JSON for evaluation purposes
     # =========================================================================
     
-    # Synthesized research statement preserving user's voice
-    synthesized_statement = Column(Text, nullable=True)
+    # Integrated research statement preserving user's voice
+    integrated_statement = Column(Text, nullable=True)
     
     # Normalized value for each dimension {dimension_id: value}
-    refined_dimensions = Column(JSON, nullable=True)
+    dimensions_specifications = Column(JSON, nullable=True)
     
     # Search optimization variants (semantic, keyword, grey_literature)
     search_optimized = Column(JSON, nullable=True)
@@ -64,7 +61,8 @@ class Query(Base):
     terminology = Column(JSON, nullable=True)
     
     # Additional context (temporal, geographic, source_types, other)
-    response_metadata = Column(JSON, nullable=True)
+    # SQLAlchemy declarative reserves the Python attribute name `metadata`.
+    synthesis_metadata = Column("metadata", JSON, nullable=True)
     
     # Processing log (preserved, normalized, integrated, expanded)
     processing_log = Column(JSON, nullable=True)

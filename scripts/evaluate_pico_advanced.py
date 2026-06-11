@@ -4,7 +4,7 @@
 Tests the complete refinement + synthesis pipeline:
   1. Dimension refinement — all 6 pico_advanced dims in dependency order,
      each receiving the real completed_context from prior dims.
-  2. Synthesis — all completed dims passed to build_synthesis_messages(),
+    2. Synthesis — all completed dims passed through the canonical split-synthesis pipeline,
      response validated for structural correctness and key-term coverage.
 
 Run:
@@ -533,8 +533,7 @@ def run_scenario(
 
     try:
         # Build a RefinementSession from completed_context so we exercise the
-        # same _run_split_synthesis path that production uses — NOT the legacy
-        # monolithic build_synthesis_messages path.
+        # same split-synthesis path that production uses.
         dim_objects = framework
         dim_by_id = {d.id: d for d in dim_objects}
 

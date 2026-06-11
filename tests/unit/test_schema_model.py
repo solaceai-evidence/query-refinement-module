@@ -3,6 +3,7 @@ import json
 import pytest
 
 from query_refinement_module.schema import RefinementAspect
+from query_refinement_module.schema.prompt_builder import PromptBuilder
 
 
 def make_aspect(**overrides) -> RefinementAspect:
@@ -16,40 +17,54 @@ def make_aspect(**overrides) -> RefinementAspect:
     return RefinementAspect(**base_kwargs)
 
 
-def test_refinement_aspect_injects_query_when_no_placeholder():
-    """Test that query is injected at the beginning if {query} placeholder is missing."""
+@pytest.fixture
+def prompt_builder() -> PromptBuilder:
+    return PromptBuilder()
+
+
+def test_refinement_messages_keep_query_as_user_message_when_no_placeholder(prompt_builder):
+    """The canonical runtime path keeps the query as a separate user message."""
     aspect = RefinementAspect(
         id="demo",
         name="Missing Placeholder",
         description="No placeholder in prompt",
         specifications="Evaluate the demographic characteristics.",
     )
-    
-    user_prompt = aspect.get_evaluation_instructions_prompt("What is the effect of exercise?")
-    
-    # Should include the user statement
-    assert "What is the effect of exercise?" in user_prompt
-    # Should still include the analysis prompt
-    assert "Evaluate the demographic characteristics" in user_prompt
+
+    messages = prompt_builder.build_refinement_messages(
+        dimension=aspect,
+        query="What is the effect of exercise?",
+        conversation_history=[],
+    )
+
+    assert messages[-1]["role"] == "user"
+    assert messages[-1]["content"] == "What is the effect of exercise?"
+    assert any("Evaluate the demographic characteristics" in message["content"] for message in messages)
 
 
-def test_refinement_aspect_uses_placeholder_when_present():
-    """Test that query placeholder is properly substituted when present in analysis_prompt."""
+def test_build_refinement_messages_substitutes_documented_placeholders(prompt_builder):
+    """Placeholder forms should be substituted on the canonical runtime path."""
     aspect = RefinementAspect(
         id="demo",
         name="With Placeholder",
         description="Has placeholder in prompt",
         specifications="Analyze this query: {query}\n\nConsider all aspects.",
     )
-    
-    user_prompt = aspect.get_evaluation_instructions_prompt("What is the effect of exercise?")
-    
-    # Should have the query substituted in the analysis prompt
-    assert "Analyze this query: What is the effect of exercise?" in user_prompt
-    # Should include the rest of the prompt
-    assert "Consider all aspects" in user_prompt
-    # Should NOT have the "Review this query:" prefix since it's already in analysis_prompt
-    assert not user_prompt.startswith("Review this query:")
+
+    messages = prompt_builder.build_refinement_messages(
+        dimension=aspect,
+        query="What is the effect of exercise?",
+        conversation_history=[],
+    )
+
+    rendered = next(
+        message["content"]
+        for message in messages
+        if message["role"] == "system" and "DIMENSION SPECIFICATION" in message["content"]
+    )
+
+    assert "Analyze this query: What is the effect of exercise?" in rendered
+    assert "Consider all aspects" in rendered
 
 
 def test_response_format_validates_allowed_types():
@@ -98,9 +113,9 @@ def test_examples_accepts_mixed_field_types():
     assert len(aspect.examples.clear) == 1
 
 
-def test_default_system_prompt_uses_name_and_description():
+def test_default_system_prompt_uses_name_and_description(prompt_builder):
     aspect = make_aspect()
-    prompt = aspect.get_system_role()
+    prompt = prompt_builder.get_global_system_prompt()
 
     # The global system prompt should contain core directives
     assert "refinement specialist" in prompt or "Research Query Refinement" in prompt
@@ -108,7 +123,7 @@ def test_default_system_prompt_uses_name_and_description():
     assert "complete" in prompt.lower()  # Quality gates mention completeness
 
 
-def test_get_evaluation_instructions_prompt_includes_examples_and_format():
+def test_render_dimension_prompt_includes_examples_and_format(prompt_builder):
     aspect = make_aspect(
         examples={
             "needs_refinement": [
@@ -121,15 +136,14 @@ def test_get_evaluation_instructions_prompt_includes_examples_and_format():
         },
     )
 
-    prompt = aspect.get_evaluation_instructions_prompt("Sample query")
+    prompt = prompt_builder.render_dimension_prompt(aspect)
 
-    assert "Sample query" in prompt
-    assert "NEEDS CLARIFICATION:" in prompt or "Too broad" in prompt
-    # Should include base schema fields
-    assert "complete" in prompt
+    assert "Does exercise help?" in prompt
+    assert "Needs Refinement:" in prompt or "Too broad" in prompt
+    assert '"complete": <boolean>' in prompt
 
 
-def test_format_examples_omits_missing_categories():
+def test_render_dimension_prompt_omits_missing_categories(prompt_builder):
     aspect = make_aspect(
         examples={
             "clear": [
@@ -149,24 +163,23 @@ def test_format_examples_omits_missing_categories():
         }
     )
 
-    formatted = aspect._format_examples()
+    formatted = prompt_builder.render_dimension_prompt(aspect)
 
-    assert "CLEAR SPECIFICATIONS:" in formatted
-    assert "NEEDS REFINEMENT:" not in formatted
+    assert "Clear Specifications:" in formatted
+    assert "Needs Refinement:" not in formatted
     assert "Has: Age" in formatted
     assert "Example Q: \"For how long?\"" in formatted
 
 
-def test_format_response_instructions_lists_fields():
-    """Test that response instructions include base schema fields."""
+def test_render_dimension_prompt_lists_response_fields(prompt_builder):
+    """Canonical dimension rendering should include the base response fields."""
     aspect = make_aspect()
 
-    instructions = aspect._format_response_instructions()
+    instructions = prompt_builder.render_dimension_prompt(aspect)
 
-    # Should include base schema fields
-    assert "complete" in instructions
-    assert "current" in instructions
-    assert "question" in instructions
+    assert '"complete": <boolean>' in instructions
+    assert '"current": "<string>"' in instructions
+    assert '"question": "<string>"' in instructions
 
 
 def test_validate_response_missing_base_fields():

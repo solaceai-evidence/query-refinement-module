@@ -146,11 +146,10 @@ async def test_create_session(monkeypatch):
     manager = StubManager(session)
     storage = StubStorage()
 
-    monkeypatch.setattr(
-        service.QueryRefinementService,
-        "_build_next_prompt",
-        staticmethod(lambda _: "prompt"),
-    )
+    async def stub_build_next_prompt(self, session):
+        return "prompt"
+
+    monkeypatch.setattr(service.QueryRefinementService, "_build_next_prompt", stub_build_next_prompt)
 
     svc = service.QueryRefinementService(manager, storage, session_id_factory=lambda: "sid")
     req = SessionCreateRequest(original_query="query", refinement_framework=[make_aspect()], metadata={"source": "api"})
@@ -193,11 +192,10 @@ async def test_submit_user_message_command(monkeypatch):
     storage = StubStorage()
     storage.sessions["sid"] = session
 
-    monkeypatch.setattr(
-        service.QueryRefinementService,
-        "_build_next_prompt",
-        staticmethod(lambda _: "prompt"),
-    )
+    async def stub_build_next_prompt(self, session):
+        return "prompt"
+
+    monkeypatch.setattr(service.QueryRefinementService, "_build_next_prompt", stub_build_next_prompt)
 
     svc = service.QueryRefinementService(manager, storage)
     req = InteractionRequest(session_id="sid", message="/skip")
@@ -221,7 +219,6 @@ class ResponseStep:
             id="aspect", 
             description="desc",
             aspect_description="desc",
-            get_evaluation_instructions_prompt=lambda *, statement: f"Analyze {statement}"
         )
         self.analysis_reason = "reason"
         self.follow_up_history: List[Dict[str, str]] = []
@@ -262,11 +259,10 @@ async def test_submit_user_message_records_response(monkeypatch):
     storage = StubStorage()
     storage.sessions["sid"] = session
 
-    monkeypatch.setattr(
-        service.QueryRefinementService,
-        "_build_next_prompt",
-        staticmethod(lambda _: "prompt"),
-    )
+    async def stub_build_next_prompt(self, session):
+        return "prompt"
+
+    monkeypatch.setattr(service.QueryRefinementService, "_build_next_prompt", stub_build_next_prompt)
 
     svc = service.QueryRefinementService(manager, storage)
     req = InteractionRequest(session_id="sid", message="Answer")
@@ -293,11 +289,10 @@ async def test_submit_user_message_keeps_step_active_when_followup_needed(monkey
     storage = StubStorage()
     storage.sessions["sid"] = session
 
-    monkeypatch.setattr(
-        service.QueryRefinementService,
-        "_build_next_prompt",
-        staticmethod(lambda _: "prompt"),
-    )
+    async def stub_build_next_prompt(self, session):
+        return "prompt"
+
+    monkeypatch.setattr(service.QueryRefinementService, "_build_next_prompt", stub_build_next_prompt)
 
     svc = service.QueryRefinementService(manager, storage)
     req = InteractionRequest(session_id="sid", message="Answer")
@@ -318,11 +313,10 @@ async def test_get_session_status(monkeypatch):
     storage = StubStorage()
     storage.sessions["sid"] = session
 
-    monkeypatch.setattr(
-        service.QueryRefinementService,
-        "_build_next_prompt",
-        staticmethod(lambda _: "prompt"),
-    )
+    async def stub_build_next_prompt(self, session):
+        return "prompt"
+
+    monkeypatch.setattr(service.QueryRefinementService, "_build_next_prompt", stub_build_next_prompt)
 
     svc = service.QueryRefinementService(manager, storage)
     status = await svc.get_session_status("sid")
@@ -346,25 +340,26 @@ async def test_delete_session():
     assert "sid" not in storage.sessions
 
 
-def test_build_next_prompt_returns_none_when_no_step():
+@pytest.mark.asyncio
+async def test_build_next_prompt_returns_none_when_no_step():
     class EmptySession:
         def get_active_step(self):
             return None
 
-    assert service.QueryRefinementService._build_next_prompt(EmptySession()) is None
+    svc = service.QueryRefinementService(StubManager(EmptySession()), StubStorage())
+
+    assert await svc._build_next_prompt(EmptySession()) is None
 
 
-def test_build_next_prompt_prefers_suggested_question():
+@pytest.mark.asyncio
+async def test_build_next_prompt_prefers_suggested_question():
     class Aspect:
         def __init__(self):
             self.id = "a"
             self.name = "Aspect"
             self.aspect_name = "Aspect"
             self.aspect_description = "desc"
-            self.description = "desc"  # Legacy support
-
-        def get_evaluation_instructions_prompt(self, *, statement):
-            return "Prompt"
+            self.description = "desc"
 
     class Session:
         def __init__(self):
@@ -383,7 +378,8 @@ def test_build_next_prompt_prefers_suggested_question():
         def get_dependency_context(self, aspect_id):
             return {"dep": {"value": "V"}}
 
-    prompt = service.QueryRefinementService._build_next_prompt(Session())
+    svc = service.QueryRefinementService(StubManager(Session()), StubStorage())
+    prompt = await svc._build_next_prompt(Session())
     assert prompt.question == "Ask"
     assert prompt.name == "Aspect"
     assert prompt.description == "desc"
@@ -391,49 +387,112 @@ def test_build_next_prompt_prefers_suggested_question():
     assert prompt.reasoning == "why"
 
 
-def test_build_next_prompt_uses_prompt_and_description():
+@pytest.mark.asyncio
+async def test_build_next_prompt_runs_initial_analysis_and_falls_back_on_error():
     class Aspect:
         def __init__(self, raises=False):
             self.id = "a"
             self.name = "Aspect"
             self.aspect_name = "Aspect"
             self.aspect_description = "desc"
-            self.description = "desc"  # Legacy support
+            self.description = "desc"
             self.raises = raises
-
-        def get_evaluation_instructions_prompt(self, *, statement):
-            if self.raises:
-                raise RuntimeError("boom")
-            return f"Prompt for {statement}"
 
     class Session:
         def __init__(self):
             self.original_query = "query"
             self._first = True
+            self.steps = [object()]
 
-        def get_active_step(self):
+        def get_next_unrefined_aspect(self):
             if self._first:
                 self._first = False
                 aspect = Aspect()
             else:
                 aspect = Aspect(raises=True)
             step = types.SimpleNamespace(
-                follow_up_question=None,  # Required attribute
-                refinement_question=None,
+                follow_up_question=None,
                 refinement_aspect=aspect,
-                reasoning=None,  # Required attribute
-                needs_refinement_rationale=None,
+                reasoning=None,
             )
             return step
+
+        def get_active_step(self):
+            return self.get_next_unrefined_aspect()
 
         def get_dependency_context(self, aspect_id):
             return {}
 
     session = Session()
-    prompt = service.QueryRefinementService._build_next_prompt(session)
-    assert prompt.question == "Prompt for query"
+    manager = StubManager(session)
+    manager.analysis_result = types.SimpleNamespace(
+        complete=False,
+        current="partial",
+        question="Prompt from analysis",
+    )
+    svc = service.QueryRefinementService(manager, StubStorage())
+
+    prompt = await svc._build_next_prompt(session)
+    assert prompt.question == "Prompt from analysis"
+    assert prompt.description == "desc"
+    assert manager.analysis_calls == [{"session": session, "aspect_id": "a", "mode": "initial"}]
+
+    async def raising_analysis_prompts(*, session, aspect_id, mode):
+        raise RuntimeError("boom")
+
+    manager.get_analysis_prompts = raising_analysis_prompts
+
+    prompt = await svc._build_next_prompt(session)
+    assert prompt.question == "Please provide details about Aspect"
     assert prompt.description == "desc"
 
-    prompt = service.QueryRefinementService._build_next_prompt(session)
-    assert prompt.question == "desc"
-    assert prompt.description == "desc"
+
+@pytest.mark.asyncio
+async def test_build_next_prompt_skips_completed_initial_analysis():
+    class Aspect:
+        id = "a"
+        name = "Aspect"
+        description = "desc"
+
+    class Step:
+        def __init__(self, aspect):
+            self.refinement_aspect = aspect
+            self.follow_up_question = None
+            self.reasoning = None
+            self.is_complete = False
+
+    class Session:
+        def __init__(self):
+            self.original_query = "query"
+            self.steps = [object(), object()]
+            self._steps = [Step(Aspect()), Step(types.SimpleNamespace(id="b", name="Next", description="next desc"))]
+
+        def get_next_unrefined_aspect(self):
+            for step in self._steps:
+                if not step.is_complete:
+                    return step
+            return None
+
+        def get_active_step(self):
+            return self.get_next_unrefined_aspect()
+
+        def get_dependency_context(self, aspect_id):
+            return {}
+
+    session = Session()
+    manager = StubManager(session)
+    results = iter([
+        types.SimpleNamespace(complete=True, current="normalized", question=""),
+        types.SimpleNamespace(complete=False, current="", question="Question for next"),
+    ])
+
+    async def sequenced_analysis_prompts(*, session, aspect_id, mode):
+        return next(results)
+
+    manager.get_analysis_prompts = sequenced_analysis_prompts
+
+    svc = service.QueryRefinementService(manager, StubStorage())
+    prompt = await svc._build_next_prompt(session)
+
+    assert prompt.aspect_id == "b"
+    assert prompt.question == "Question for next"

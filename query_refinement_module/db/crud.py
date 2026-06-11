@@ -276,10 +276,7 @@ def save_query_refinement_response(
     Called when session is complete to persist all response fields
     for evaluation purposes.
     
-    Maps from API field names to database column names:
-        - integrated_statement (API) → synthesized_statement (DB)
-        - dimensions_specifications (API) → refined_dimensions (DB)
-        - search_optimized, search_filters, terminology (same in both)
+    Persists canonical QueryRefinementResponse fields.
     
     Args:
         db: Database session
@@ -296,26 +293,20 @@ def save_query_refinement_response(
         # Set completion timestamp
         query.completed_at = datetime.now(timezone.utc)
         
-        # Map API field to database column (integrated_statement → synthesized_statement)
-        if 'integrated_statement' in response:
-            query.synthesized_statement = response['integrated_statement']
+        integrated_statement = response.get('integrated_statement')
+        dimensions_specifications = response.get('dimensions_specifications')
+        metadata_payload = response.get('metadata')
+
+        processing_log = response.get('processing_log')
+
+        # Store canonical synthesis fields.
+        if integrated_statement is not None:
+            query.integrated_statement = integrated_statement
             # Also update legacy refined_query field
-            query.refined_query = response['integrated_statement']
-        elif 'synthesized_statement' in response:
-            # Backward compatibility: accept old field name
-            query.synthesized_statement = response['synthesized_statement']
-            query.refined_query = response['synthesized_statement']
+            query.refined_query = integrated_statement
         
-        # Map API field to database column (dimensions_specifications → refined_dimensions)
-        if 'dimensions_specifications' in response:
-            # API uses 'dimensions_specifications' as the key (LLM template name)
-            query.refined_dimensions = response['dimensions_specifications']
-        elif 'detail_values' in response:
-            # Backward compatibility: accept old field name
-            query.refined_dimensions = response['detail_values']
-        elif 'refined_dimensions' in response:
-            # Backward compatibility: accept old field name
-            query.refined_dimensions = response['refined_dimensions']
+        if dimensions_specifications is not None:
+            query.dimensions_specifications = dimensions_specifications
         
         # Store search optimization
         if 'search_optimized' in response:
@@ -328,6 +319,13 @@ def save_query_refinement_response(
         # Store terminology
         if 'terminology' in response:
             query.terminology = response['terminology']
+
+        # Store optional metadata and processing logs when present.
+        if metadata_payload is not None:
+            query.synthesis_metadata = metadata_payload
+
+        if processing_log is not None:
+            query.processing_log = processing_log
         
         db.commit()
         db.refresh(query)
