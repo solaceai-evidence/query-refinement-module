@@ -422,7 +422,7 @@ class QueryRefinementManager:
                     last_question = step.follow_up_question or step.refinement_aspect.name
                     step.add_follow_up(
                         question=last_question,
-                        response=f"[Complete: {result.current}]"
+                        response=result.current
                     )
                     break
                 else:

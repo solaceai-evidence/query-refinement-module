@@ -5,7 +5,6 @@ cocopop:
       tone: "pragmatic"
       complexity: "advanced"
       examples_from: "climate-health evidence retrieval"
-
   - id: condition
     name: Condition
     description: "The health condition, disease, symptom cluster, public-health problem, or social issue under study."
@@ -23,7 +22,6 @@ cocopop:
 
       **Output rule:** Keep only the condition in `current`.
       - Remove people-group, place, and service-setting wording unless it is part of the condition name.
-      - Example: "diabetes complications in pregnant women during heatwaves" -> "diabetes complications during heatwaves"
     examples:
       clear:
         - statement: "Waterborne diseases following flooding"
@@ -44,7 +42,6 @@ cocopop:
       other:
         - statement: "Diabetes complications in pregnant women during heatwaves"
           guidance: "Return `diabetes complications during heatwaves`. Do not copy `pregnant women` into the condition."
-
   - id: context
     name: Context
     description: "The geographic, environmental, emergency, or implementation setting in which the condition occurs."
