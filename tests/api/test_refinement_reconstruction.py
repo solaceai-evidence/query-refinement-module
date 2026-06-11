@@ -9,11 +9,14 @@ import query_refinement_module.schema.registry as registry
 from query_refinement_module.api.dependencies import get_refinement_manager, get_session_manager
 from query_refinement_module.api.main import app
 from query_refinement_module.db.crud import (
+    assign_user_framework_access,
     create_followup,
     create_query,
     create_query_session,
     create_refinement_step,
     create_user,
+    get_query,
+    get_query_refinement_steps,
     get_refinement_step_by_aspect,
     get_step_followups,
     update_refinement_step_generated_question,
@@ -174,6 +177,26 @@ class _SynthesisManager:
             "search_optimized": {"semantic": "pulmonary rehabilitation COPD adults"},
             "search_filters": {"publication_types": ["Systematic review"]},
             "terminology": {"synonyms": {"COPD": ["chronic obstructive pulmonary disease"]}},
+            "used_llm": True,
+        }
+
+
+class _SkipRefinementManager(_StubManager):
+    def __init__(self):
+        super().__init__()
+        self.synthesis_sessions = []
+
+    async def synthesize_refined_query(self, session):
+        self.synthesis_sessions.append(session)
+        assert session.synthesis_requested is True
+        assert all(step.is_complete and step.was_skipped for step in session.steps)
+        return {
+            "integrated_statement": "Adults with COPD receiving pulmonary rehabilitation.",
+            "dimensions_specifications": {"population": "Adults with COPD"},
+            "search_optimized": {"semantic": "pulmonary rehabilitation COPD adults"},
+            "search_filters": {"publication_types": ["Systematic review"]},
+            "terminology": {"synonyms": {"COPD": ["chronic obstructive pulmonary disease"]}},
+            "metadata": {"total_tokens": 321},
             "used_llm": True,
         }
 
@@ -350,6 +373,9 @@ def test_synthesize_route_acquires_session_lock(db: Session, auth_user_and_token
         return None
 
     class _Tracker:
+        async def create(self, **kwargs):
+            return None
+
         async def increment_llm_calls(self, query_id: str):
             return None
 
@@ -376,6 +402,81 @@ def test_synthesize_route_acquires_session_lock(db: Session, auth_user_and_token
         assert response.status_code == 200
         assert session_manager.locked_query_ids == [db_query.id]
         assert session_manager.deleted_sessions == [db_query.id]
+    finally:
+        app.dependency_overrides.pop(get_refinement_manager, None)
+        app.dependency_overrides.pop(get_session_manager, None)
+
+
+def test_start_skip_refinement_returns_embedded_synthesis_and_skips_steps(
+    db: Session,
+    auth_user_and_token,
+    registered_framework,
+    monkeypatch,
+):
+    user, client = auth_user_and_token
+    manager = _SkipRefinementManager()
+    session_manager = _LockTrackingSessionManager()
+    assign_user_framework_access(db, user.id, FRAMEWORK_NAME)
+
+    app.dependency_overrides[get_refinement_manager] = lambda: manager
+    app.dependency_overrides[get_session_manager] = lambda: session_manager
+
+    async def _track_progress(**kwargs):
+        return None
+
+    class _Tracker:
+        async def create(self, **kwargs):
+            return None
+
+        async def increment_llm_calls(self, query_id: str):
+            return None
+
+    monkeypatch.setattr("query_refinement_module.api.routes.refinement.track_progress", _track_progress)
+    monkeypatch.setattr("query_refinement_module.api.routes.refinement.get_progress_tracker", lambda: _Tracker())
+    monkeypatch.setattr(
+        "query_refinement_module.api.routes.refinement.get_settings",
+        lambda: SimpleNamespace(enforce_workflow_limit=False),
+    )
+    monkeypatch.setattr(
+        "query_refinement_module.services.webhook_service.dispatch_webhook_event_async",
+        lambda *args, **kwargs: None,
+    )
+
+    try:
+        response = client.post(
+            "/api/v1/refinement/start",
+            json={
+                "original_query": "effects of pulmonary rehabilitation in COPD",
+                "framework_name": FRAMEWORK_NAME,
+                "source": "api_integration",
+                "skip_refinement": True,
+            },
+        )
+
+        assert response.status_code == 201
+        payload = response.json()
+        assert payload["ready_for_synthesis"] is True
+        assert payload["next_prompt"] is None
+        assert payload["summary"]["aspects_needing_refinement"] == 0
+        assert payload["synthesis"]["integrated_statement"] == (
+            "Adults with COPD receiving pulmonary rehabilitation."
+        )
+        assert payload["synthesis"]["structured_output"]["dimensions_specifications"] == {
+            "population": "Adults with COPD"
+        }
+
+        assert len(manager.synthesis_sessions) == 1
+        assert payload["query_id"] in session_manager.saved_sessions
+        assert session_manager.deleted_sessions == [payload["query_id"]]
+
+        db_query = get_query(db, payload["query_id"])
+        assert db_query is not None
+        assert db_query.integrated_statement == "Adults with COPD receiving pulmonary rehabilitation."
+        assert db_query.synthesis_metadata == {"total_tokens": 321}
+
+        db_steps = get_query_refinement_steps(db, payload["query_id"])
+        assert len(db_steps) == 1
+        assert all(step.was_skipped for step in db_steps)
     finally:
         app.dependency_overrides.pop(get_refinement_manager, None)
         app.dependency_overrides.pop(get_session_manager, None)

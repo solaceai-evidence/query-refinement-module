@@ -6,7 +6,7 @@ Integrates all refined dimensions into optimized research specification.
 
 import json
 import re
-from typing import Any, Dict, List
+from typing import Any, Dict, List, Optional
 from jinja2 import Environment
 import logging
 
@@ -14,6 +14,23 @@ from .response import QueryRefinementResponse
 
 
 logger = logging.getLogger(__name__)
+
+
+def _using_open_llm_synthesis_variant() -> bool:
+    from .templates import using_open_llm_prompt_templates
+
+    return using_open_llm_prompt_templates()
+
+
+def _use_open_llm_synthesis_variant_for_model(model: Optional[str] = None) -> bool:
+    if model:
+        model_lower = model.strip().lower()
+        open_markers = ("ollama/", "qwen", "llama", "mistral", "gemma", "deepseek")
+        if any(marker in model_lower for marker in open_markers):
+            return True
+        if model_lower.startswith(("anthropic/", "claude-", "openai/", "gpt-", "o1", "o3", "o4", "gemini-", "google/")):
+            return False
+    return _using_open_llm_synthesis_variant()
 
 
 # ---------------------------------------------------------------------------
@@ -198,7 +215,7 @@ class SynthesisPromptBuilder:
         )
 
     @staticmethod
-    def get_keyword_support_system_prompt() -> str:
+    def get_keyword_support_system_prompt(model: Optional[str] = None) -> str:
         general_rules = _extract_general_rules()
         structured_rules = _extract_template_section("### search_optimized.keyword.structured")
         phrases_rules = _extract_template_section("### search_optimized.keyword.phrases")
@@ -219,6 +236,7 @@ class SynthesisPromptBuilder:
         integrated_statement: str,
         concept_inventory: List[str],
         terminology_synonyms: Dict[str, List[str]],
+        model: Optional[str] = None,
     ) -> str:
         inventory_text = "\n".join(f"- {c}" for c in concept_inventory)
         return (
@@ -228,7 +246,7 @@ class SynthesisPromptBuilder:
         )
 
     @staticmethod
-    def get_filter_resolution_system_prompt() -> str:
+    def get_filter_resolution_system_prompt(model: Optional[str] = None) -> str:
         general_rules = _extract_general_rules()
         years_rules = _extract_template_section("### search_filters.publication_years")
         venues_rules = _extract_template_section("### search_filters.venues")
@@ -252,8 +270,10 @@ class SynthesisPromptBuilder:
         original_input: str,
         accepted_dimensions: Dict[str, Any],
         permitted_values: List[str],
+        model: Optional[str] = None,
     ) -> str:
         from datetime import datetime
+
         current_year = datetime.now().year
         return (
             f"## Current Year\n\n{current_year}\n\n"

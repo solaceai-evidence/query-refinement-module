@@ -53,7 +53,7 @@ import logging
 import re
 from dataclasses import dataclass, field
 from enum import Enum
-from typing import Any, Callable, Dict, List, Literal, Optional, Union
+from typing import Any, Callable, Dict, List, Literal, Optional, Union, Tuple
 
 from .interfaces import (
     LLMProviderInterface,
@@ -71,6 +71,7 @@ from .schema import (
     KeywordSupportResponse,
     FilterSuggestionResponse,
 )
+from .schema.synthesis import validate_synthesis_response
 from .schema.response import (
     SearchFilters,
     SearchOptimized,
@@ -84,6 +85,27 @@ from .session_models import AspectRefinementState, RefinementSession
 
 # Module logger - use get_logger() in functions for request context
 logger = logging.getLogger(__name__)
+
+
+def _using_open_llm_synthesis_variant() -> bool:
+    from .schema.templates import using_open_llm_prompt_templates
+
+    return using_open_llm_prompt_templates()
+
+
+def _use_open_llm_synthesis_variant_for_model(model: Optional[str] = None) -> bool:
+    if model:
+        model_lower = model.strip().lower()
+        open_markers = ("ollama/", "qwen", "llama", "mistral", "gemma", "deepseek")
+        if any(marker in model_lower for marker in open_markers):
+            return True
+        if model_lower.startswith(("anthropic/", "claude-", "openai/", "gpt-", "o1", "o3", "o4", "gemini-", "google/")):
+            return False
+    return _using_open_llm_synthesis_variant()
+
+
+def _use_split_synthesis_for_model(model: Optional[str] = None) -> bool:
+    return _use_open_llm_synthesis_variant_for_model(model)
 
 
 PUBLICATION_TYPE_PATTERNS = [
@@ -1483,7 +1505,7 @@ class QueryRefinementManager:
         model: Optional[str] = None,
         temperature: float = 0.2,
         max_tokens: int = 512,
-    ):
+    ) -> Tuple[Optional[Any], Optional[Dict[str, Any]]]:
         """Single LLM round-trip + JSON extraction + Pydantic parse.
 
         Returns ``(parsed_model_or_None, metadata_dict)``.
@@ -1546,7 +1568,7 @@ class QueryRefinementManager:
 
         try:
             data = json.loads(raw)
-            parsed = response_model(**data)
+            parsed: Any = response_model(**data)
             return parsed, metadata
         except Exception as exc:
             logger.warning(
@@ -1561,13 +1583,12 @@ class QueryRefinementManager:
             return None, metadata
 
     @staticmethod
-    def _validate_split_result(call_name: str, result: Any) -> Optional[str]:
+    def _validate_split_result(call_name: str, result: Any, model: Optional[str] = None) -> Optional[str]:
         """Return an error string if ``result`` fails field-level constraints, else None.
 
-        For ``filter_resolution``, all five filter fields are validated:
-        - ``fields_of_study`` must be from FIELDS_OF_STUDY_PERMITTED
-        - ``publication_types`` must be from PUBLICATION_TYPES_PERMITTED
-        - ``publication_years`` must match YYYY-YYYY or YYYY- format
+        For ``filter_resolution``, private-model synthesis validates all filter
+        fields, while the open-LLM variant narrows validation to
+        ``fields_of_study`` only.
         """
         if call_name == "statement":
             val = getattr(result, "integrated_statement", None)
@@ -1630,7 +1651,13 @@ class QueryRefinementManager:
         return None  # valid
 
     @staticmethod
-    def _build_repair_prompt(user_prompt: str, call_name: str, error: str, previous_output: str = "") -> str:
+    def _build_repair_prompt(
+        user_prompt: str,
+        call_name: str,
+        error: str,
+        previous_output: str = "",
+        model: Optional[str] = None,
+    ) -> str:
         """Append a targeted repair instruction to an existing user prompt.
 
         If ``previous_output`` is provided it is shown to the model so the
@@ -1686,7 +1713,8 @@ class QueryRefinementManager:
         model: Optional[str] = None,
         temperature: float = 0.2,
         max_tokens: int = 512,
-    ):
+        timeline_origin: Optional[float] = None,
+    ) -> Tuple[Optional[Any], Optional[Dict[str, Any]]]:
         """Execute one narrow LLM call with field-level validation and one repair attempt.
 
         Returns ``(parsed_model, accumulated_metadata)`` on success, or
@@ -1695,15 +1723,44 @@ class QueryRefinementManager:
         """
         logger.info("Split synthesis call: %s", call_name)
         t0 = time.monotonic()
+
+        def _with_call_timing(
+            meta: Optional[Dict[str, Any]],
+            *,
+            status: str,
+            repair_attempted: bool = False,
+            repair_succeeded: bool = False,
+            validation_error: Optional[str] = None,
+            repair_validation_error: Optional[str] = None,
+        ) -> Dict[str, Any]:
+            end_time = time.monotonic()
+            enriched_meta: Dict[str, Any] = dict(meta or {})
+            call_timing: Dict[str, Any] = {
+                "call_name": call_name,
+                "status": status,
+                "duration_ms": round((end_time - t0) * 1000, 2),
+                "repair_attempted": repair_attempted,
+                "repair_succeeded": repair_succeeded,
+            }
+            if timeline_origin is not None:
+                call_timing["started_offset_ms"] = round((t0 - timeline_origin) * 1000, 2)
+                call_timing["ended_offset_ms"] = round((end_time - timeline_origin) * 1000, 2)
+            if validation_error:
+                call_timing["validation_error"] = validation_error
+            if repair_validation_error:
+                call_timing["repair_validation_error"] = repair_validation_error
+            enriched_meta["call_timing"] = call_timing
+            return enriched_meta
+
         parsed, metadata = await self._execute_split_call(
             system_prompt, user_prompt, response_model, call_name,
             model=model, temperature=temperature, max_tokens=max_tokens,
         )
 
         if parsed is None:
-            return None, metadata
+            return None, _with_call_timing(metadata, status="initial_failed")
 
-        error = self._validate_split_result(call_name, parsed)
+        error = self._validate_split_result(call_name, parsed, model=model)
         if error is None:
             duration_ms = round((time.monotonic() - t0) * 1000)
             self.trace_emitter.emit(
@@ -1726,7 +1783,7 @@ class QueryRefinementManager:
                 ((metadata or {}).get("prompt_metrics") or {}).get("prompt_char_count", 0),
                 ((metadata or {}).get("prompt_metrics") or {}).get("estimated_prompt_tokens", 0),
             )
-            return parsed, metadata
+            return parsed, _with_call_timing(metadata, status="succeeded")
 
         # --- Validation failed: one targeted repair attempt ---
         logger.warning(
@@ -1741,6 +1798,7 @@ class QueryRefinementManager:
         repair_prompt = self._build_repair_prompt(
             user_prompt, call_name, error,
             previous_output=parsed.model_dump_json(indent=2) if parsed is not None else "",
+            model=model,
         )
         repaired, repair_meta = await self._execute_split_call(
             system_prompt, repair_prompt, response_model, f"{call_name}_repair",
@@ -1752,16 +1810,23 @@ class QueryRefinementManager:
         if repair_meta:
             for key in ("prompt_tokens", "completion_tokens", "total_tokens"):
                 agg_meta[key] = agg_meta.get(key, 0) + repair_meta.get(key, 0)
+            agg_meta["repair_prompt_metrics"] = repair_meta.get("prompt_metrics") or {}
 
         if repaired is not None:
-            repair_error = self._validate_split_result(call_name, repaired)
+            repair_error = self._validate_split_result(call_name, repaired, model=model)
             if repair_error is None:
                 logger.info("Split call '%s' repair succeeded", call_name)
                 self.trace_emitter.emit(
                     f"split_call_{call_name}_repaired",
                     metadata={"tokens": (repair_meta or {}).get("completion_tokens", 0)},
                 )
-                return repaired, agg_meta
+                return repaired, _with_call_timing(
+                    agg_meta,
+                    status="repaired",
+                    repair_attempted=True,
+                    repair_succeeded=True,
+                    validation_error=error,
+                )
             logger.warning(
                 "Split call '%s' repair still invalid: %s — using safe default",
                 call_name, repair_error,
@@ -1772,7 +1837,14 @@ class QueryRefinementManager:
             level="warning",
             metadata={"original_error": error},
         )
-        return None, agg_meta
+        return None, _with_call_timing(
+            agg_meta,
+            status="repair_failed",
+            repair_attempted=True,
+            repair_succeeded=False,
+            validation_error=error,
+            repair_validation_error=repair_error if repaired is not None else None,
+        )
 
     async def _run_split_synthesis(
         self,
@@ -1805,6 +1877,7 @@ class QueryRefinementManager:
         """
         aspects = [step.refinement_aspect for step in session.steps]
         pb = SynthesisPromptBuilder()
+        resolved_model = model or getattr(self.llm_provider, "_default_model", None)
 
         agg: Dict[str, Any] = {
             "prompt_tokens": 0,
@@ -1813,7 +1886,10 @@ class QueryRefinementManager:
             "prompt_char_count": 0,
             "estimated_prompt_tokens": 0,
             "call_prompt_metrics": {},
+            "call_timings": {},
+            "parallel_timing": {},
         }
+        synthesis_t0 = time.monotonic()
 
         def _cap_tokens(budget: int) -> int:
             if max_tokens_ceiling is None:
@@ -1830,6 +1906,38 @@ class QueryRefinementManager:
             agg["prompt_char_count"] += prompt_metrics.get("prompt_char_count", 0)
             agg["estimated_prompt_tokens"] += prompt_metrics.get("estimated_prompt_tokens", 0)
 
+        def _record_call_metadata(call_key: str, meta: Optional[Dict[str, Any]]) -> None:
+            if not meta:
+                return
+            agg["call_prompt_metrics"][call_key] = meta.get("prompt_metrics") or {}
+            call_timing = meta.get("call_timing")
+            if call_timing:
+                agg["call_timings"][call_key] = call_timing
+
+        def _summarize_parallel_timing(group_name: str, call_names: List[str]) -> None:
+            timings = [agg["call_timings"].get(name) for name in call_names]
+            if not all(timings):
+                return
+            started = [timing.get("started_offset_ms") for timing in timings]
+            ended = [timing.get("ended_offset_ms") for timing in timings]
+            if any(value is None for value in started + ended):
+                return
+            earliest_start = min(started)
+            latest_start = max(started)
+            earliest_end = min(ended)
+            latest_end = max(ended)
+            overlap_window = max(0.0, earliest_end - latest_start)
+            agg["parallel_timing"][group_name] = {
+                "call_names": call_names,
+                "started_ms": round(earliest_start, 2),
+                "ended_ms": round(latest_end, 2),
+                "span_ms": round(latest_end - earliest_start, 2),
+                "latest_start_ms": round(latest_start, 2),
+                "earliest_end_ms": round(earliest_end, 2),
+                "overlap_window_ms": round(overlap_window, 2),
+                "fully_overlapped": overlap_window > 0,
+            }
+
         # --- Call 1: Statement -------------------------------------------
         stmt_user = pb.get_statement_prompt(
             session.original_query, canonical_dimensions, aspects
@@ -1845,9 +1953,9 @@ class QueryRefinementManager:
             model=model,
             temperature=temperature,
             max_tokens=_cap_tokens(512),
+            timeline_origin=synthesis_t0,
         )
-        if stmt_meta:
-            agg["call_prompt_metrics"]["statement"] = stmt_meta.get("prompt_metrics") or {}
+        _record_call_metadata("statement", stmt_meta)
         _accumulate(stmt_meta)
         integrated_statement: str = (
             stmt_result.integrated_statement if stmt_result else session.original_query
@@ -1866,6 +1974,7 @@ class QueryRefinementManager:
             model=model,
             temperature=temperature,
             max_tokens=_cap_tokens(256),
+            timeline_origin=synthesis_t0,
         )
         terminology_coro = self._run_split_call(
             pb.get_terminology_system_prompt(),
@@ -1875,51 +1984,56 @@ class QueryRefinementManager:
             model=model,
             temperature=temperature,
             max_tokens=_cap_tokens(1024),
+            timeline_origin=synthesis_t0,
         )
         filter_coro = self._run_split_call(
-            pb.get_filter_resolution_system_prompt(),
+            pb.get_filter_resolution_system_prompt(resolved_model),
             pb.get_filter_resolution_prompt(
                 session.original_query,
                 accepted_dimensions,
                 FIELDS_OF_STUDY_PERMITTED,
+                resolved_model,
             ),
             FilterSuggestionResponse,
             "filter_resolution",
             model=model,
             temperature=temperature,
             max_tokens=_cap_tokens(256),
+            timeline_origin=synthesis_t0,
         )
 
         (sem_result, sem_meta), (term_result, term_meta), (filt_result, filt_meta) = (
             await asyncio.gather(semantic_coro, terminology_coro, filter_coro)
         )
-        if sem_meta:
-            agg["call_prompt_metrics"]["semantic"] = sem_meta.get("prompt_metrics") or {}
-        if term_meta:
-            agg["call_prompt_metrics"]["terminology"] = term_meta.get("prompt_metrics") or {}
-        if filt_meta:
-            agg["call_prompt_metrics"]["filter_resolution"] = filt_meta.get("prompt_metrics") or {}
+        _record_call_metadata("semantic", sem_meta)
+        _record_call_metadata("terminology", term_meta)
+        _record_call_metadata("filter_resolution", filt_meta)
         for m in (sem_meta, term_meta, filt_meta):
             _accumulate(m)
+        _summarize_parallel_timing(
+            "post_statement",
+            ["semantic", "terminology", "filter_resolution"],
+        )
 
         # --- Call 4: Keyword support (depends on terminology) -------------
         terminology_synonyms: Dict[str, List[str]] = (
             term_result.synonyms if term_result else {}
         )
         kw_result, kw_meta = await self._run_split_call(
-            pb.get_keyword_support_system_prompt(),
+            pb.get_keyword_support_system_prompt(resolved_model),
             pb.get_keyword_support_prompt(
-                integrated_statement, concept_inventory, terminology_synonyms
+                integrated_statement, concept_inventory, terminology_synonyms, resolved_model
             ),
             KeywordSupportResponse,
             "keyword_support",
             model=model,
             temperature=temperature,
             max_tokens=_cap_tokens(512),
+            timeline_origin=synthesis_t0,
         )
-        if kw_meta:
-            agg["call_prompt_metrics"]["keyword_support"] = kw_meta.get("prompt_metrics") or {}
+        _record_call_metadata("keyword_support", kw_meta)
         _accumulate(kw_meta)
+        agg["duration_ms"] = round((time.monotonic() - synthesis_t0) * 1000, 2)
 
         # --- Assemble ---------------------------------------------------
         # Deterministic invariant: dimensions_specifications and the four
@@ -1973,6 +2087,68 @@ class QueryRefinementManager:
             ),
         )
         return response, agg
+
+    async def _run_monolithic_synthesis(
+        self,
+        session: "RefinementSession",
+        *,
+        model: Optional[str] = None,
+        temperature: float = 0.2,
+        max_tokens: Optional[int] = None,
+        additional_guidance: Optional[str] = None,
+    ) -> Tuple[QueryRefinementResponse, Dict[str, Any]]:
+        """Execute the canonical single-call synthesis path for non-open-LLM models."""
+        resolved_model = model or getattr(self.llm_provider, "_default_model", None)
+        if _use_split_synthesis_for_model(resolved_model):
+            raise RuntimeError(
+                f"Open-LLM model {resolved_model or '(default)'} incorrectly routed to monolithic synthesis"
+            )
+
+        aspects = [step.refinement_aspect for step in session.steps]
+        prompt_builder = SynthesisPromptBuilder()
+        assembled_dimensions = {
+            aspect_id: value
+            for aspect_id, value in (self._assemble_dimensions_specifications(session) or {}).items()
+            if value is not None
+        }
+        user_prompt = prompt_builder.get_synthesis_prompt(
+            original_input=session.original_query,
+            aspectID_value_mapping=assembled_dimensions,
+            aspect_list=aspects,
+        )
+        if additional_guidance:
+            user_prompt = f"{user_prompt}\n\nADDITIONAL GUIDANCE:\n{additional_guidance.strip()}"
+
+        completion = await self.llm_provider.complete_async(
+            system_prompt=prompt_builder.get_system_prompt(),
+            user_prompt=user_prompt,
+            model=model,
+            temperature=temperature,
+            max_tokens=max_tokens,
+            response_format=QueryRefinementResponse,
+            cache_system_prompt=False,
+        )
+
+        metadata = dict(completion.metadata or {})
+        parsed = completion.context
+        if isinstance(parsed, QueryRefinementResponse):
+            response = parsed
+        else:
+            raw = (parsed or "").strip()
+            if raw.startswith("```"):
+                lines = raw.splitlines()
+                body = lines[1:]
+                if body and body[-1].startswith("```"):
+                    body = body[:-1]
+                raw = "\n".join(body).strip()
+            if not raw.startswith("{"):
+                start = raw.find("{")
+                if start == -1:
+                    raise ValueError("Monolithic synthesis response did not contain a JSON object")
+                raw = raw[start:]
+            response = validate_synthesis_response(json.loads(raw))
+
+        return response, metadata
 
     async def synthesize_refined_query(
         self,
@@ -2064,18 +2240,28 @@ class QueryRefinementManager:
         )
 
         try:
-            synthesis_response, aggregated_metadata = await self._run_split_synthesis(
-                session,
-                canonical_dimensions=canonical_dimensions,
-                accepted_dimensions=accepted_dimensions,
-                deterministic_filters=deterministic_filters,
-                additional_guidance=additional_guidance,
-                model=model,
-                temperature=resolved_temperature,
-                max_tokens_ceiling=resolved_max_tokens,
-            )
+            resolved_model = model or getattr(self.llm_provider, "_default_model", None)
+            if _use_split_synthesis_for_model(resolved_model):
+                synthesis_response, aggregated_metadata = await self._run_split_synthesis(
+                    session,
+                    canonical_dimensions=canonical_dimensions,
+                    accepted_dimensions=accepted_dimensions,
+                    deterministic_filters=deterministic_filters,
+                    additional_guidance=additional_guidance,
+                    model=model,
+                    temperature=resolved_temperature,
+                    max_tokens_ceiling=resolved_max_tokens,
+                )
+            else:
+                synthesis_response, aggregated_metadata = await self._run_monolithic_synthesis(
+                    session,
+                    model=model,
+                    temperature=resolved_temperature,
+                    max_tokens=resolved_max_tokens,
+                    additional_guidance=additional_guidance,
+                )
         except Exception as exc:
-            logger.exception("Split synthesis failed: %s", exc)
+            logger.exception("Query synthesis failed: %s", exc)
             self.trace_emitter.emit(
                 "query_synthesis_error",
                 level="error",
@@ -2090,11 +2276,14 @@ class QueryRefinementManager:
                 "baseline_count": len(baseline_summaries),
                 "response_length": len(synthesis_response.integrated_statement),
                 "structured_response": True,
+                "duration_ms": aggregated_metadata.get("duration_ms", 0),
                 "prompt_tokens": aggregated_metadata.get("prompt_tokens", 0),
                 "completion_tokens": aggregated_metadata.get("completion_tokens", 0),
                 "total_tokens": aggregated_metadata.get("total_tokens", 0),
                 "prompt_char_count": aggregated_metadata.get("prompt_char_count", 0),
                 "estimated_prompt_tokens": aggregated_metadata.get("estimated_prompt_tokens", 0),
+                "call_timings": aggregated_metadata.get("call_timings", {}),
+                "parallel_timing": aggregated_metadata.get("parallel_timing", {}),
             },
         )
 
@@ -2110,10 +2299,13 @@ class QueryRefinementManager:
                 "baseline_count": len(baseline_summaries),
                 "response_length": len(synthesis_response.integrated_statement),
                 "structured_response": True,
+                "synthesis_duration_ms": aggregated_metadata.get("duration_ms", 0),
                 "prompt_tokens": aggregated_metadata.get("prompt_tokens", 0),
                 "completion_tokens": aggregated_metadata.get("completion_tokens", 0),
                 "prompt_char_count": aggregated_metadata.get("prompt_char_count", 0),
                 "estimated_prompt_tokens": aggregated_metadata.get("estimated_prompt_tokens", 0),
+                "call_timings": aggregated_metadata.get("call_timings", {}),
+                "parallel_timing": aggregated_metadata.get("parallel_timing", {}),
             },
         )
 

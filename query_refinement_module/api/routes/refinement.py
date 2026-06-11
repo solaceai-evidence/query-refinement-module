@@ -2005,12 +2005,19 @@ async def _run_synthesis(
             "processing_log": synthesis_result.get("processing_log"),
         },
     )
+    synthesis_metadata = synthesis_result.get("metadata") or {}
+    parallel_timing = synthesis_metadata.get("parallel_timing") or {}
+    post_statement_parallel = parallel_timing.get("post_statement") or {}
     logger.info(
         "Database updated with refined query",
         extra={
             "request_id": request_id,
             "query_id": query_id,
             "db_integrated_statement_length": len(db_query.refined_query) if db_query.refined_query else 0,
+            "synthesis_duration_ms": synthesis_metadata.get("duration_ms", 0),
+            "synthesis_call_count": len(synthesis_metadata.get("call_timings") or {}),
+            "post_statement_overlap_ms": post_statement_parallel.get("overlap_window_ms", 0),
+            "post_statement_fully_overlapped": post_statement_parallel.get("fully_overlapped"),
         },
     )
 

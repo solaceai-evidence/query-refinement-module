@@ -20,6 +20,10 @@ from typing import Dict, List
 
 import pytest
 
+
+PRIVATE_MODEL = "anthropic/claude-sonnet-4-6"
+OPEN_MODEL = "ollama/qwen2.5:72b"
+
 from query_refinement_module.core import (
     FIELDS_OF_STUDY_PERMITTED,
     PUBLICATION_TYPES_PERMITTED,
@@ -139,7 +143,7 @@ class TestSystemPrompts:
         assert "synonyms" in text
 
     def test_keyword_support_schema_marker(self):
-        text = SynthesisPromptBuilder.get_keyword_support_system_prompt()
+        text = SynthesisPromptBuilder.get_keyword_support_system_prompt(PRIVATE_MODEL)
         assert "KeywordSupportResponse" in text
         assert "phrases" in text
         assert "required" in text
@@ -147,32 +151,37 @@ class TestSystemPrompts:
 
     def test_keyword_support_structured_note(self):
         """Must tell the model that 'structured' is produced by a separate call."""
-        text = SynthesisPromptBuilder.get_keyword_support_system_prompt()
+        text = SynthesisPromptBuilder.get_keyword_support_system_prompt(PRIVATE_MODEL)
         assert "separate call" in text.lower()
 
     def test_filter_resolution_schema_marker(self):
-        text = SynthesisPromptBuilder.get_filter_resolution_system_prompt()
+        text = SynthesisPromptBuilder.get_filter_resolution_system_prompt(PRIVATE_MODEL)
         assert "FilterSuggestionResponse" in text
         assert "publication_years" in text
         assert "publication_types" in text
         assert "fields_of_study" in text
 
     def test_filter_resolution_contains_permitted_pub_types(self):
-        text = SynthesisPromptBuilder.get_filter_resolution_system_prompt()
+        text = SynthesisPromptBuilder.get_filter_resolution_system_prompt(PRIVATE_MODEL)
         assert "Randomized controlled trial" in text
         assert "Systematic review" in text
 
     def test_filter_resolution_contains_permitted_fields_of_study(self):
-        text = SynthesisPromptBuilder.get_filter_resolution_system_prompt()
+        text = SynthesisPromptBuilder.get_filter_resolution_system_prompt(PRIVATE_MODEL)
         assert "Medicine" in text
         assert "Agricultural and Food Sciences" in text
 
     def test_filter_resolution_contains_year_resolution_rules(self):
-        """Recent, last decade, and since-YYYY rules must be present."""
-        text = SynthesisPromptBuilder.get_filter_resolution_system_prompt()
-        assert "2020" in text   # health/medicine recent lower bound
+        text = SynthesisPromptBuilder.get_filter_resolution_system_prompt(PRIVATE_MODEL)
+        assert "2020" in text
         assert "decade" in text.lower()
         assert "Since YYYY" in text or "since yyyy" in text.lower()
+
+    def test_open_llm_filter_resolution_system_prompt_matches_full_contract(self):
+        text = SynthesisPromptBuilder.get_filter_resolution_system_prompt(OPEN_MODEL)
+        assert "publication_years" in text
+        assert "publication_types" in text
+        assert "fields_of_study" in text
 
     @pytest.mark.parametrize("call", [
         "statement", "semantic", "terminology", "keyword_support", "filter_resolution"
@@ -182,8 +191,8 @@ class TestSystemPrompts:
             "statement": SynthesisPromptBuilder.get_statement_system_prompt,
             "semantic": SynthesisPromptBuilder.get_semantic_query_system_prompt,
             "terminology": SynthesisPromptBuilder.get_terminology_system_prompt,
-            "keyword_support": SynthesisPromptBuilder.get_keyword_support_system_prompt,
-            "filter_resolution": SynthesisPromptBuilder.get_filter_resolution_system_prompt,
+            "keyword_support": lambda: SynthesisPromptBuilder.get_keyword_support_system_prompt(PRIVATE_MODEL),
+            "filter_resolution": lambda: SynthesisPromptBuilder.get_filter_resolution_system_prompt(PRIVATE_MODEL),
         }
         text = fn_map[call]()
         assert len(text) >= 300, f"{call} system prompt is suspiciously short ({len(text)} chars)"
@@ -198,18 +207,22 @@ class TestUserPrompts:
 
     def test_filter_resolution_prompt_includes_current_year(self):
         from datetime import datetime
-        text = SynthesisPromptBuilder.get_filter_resolution_prompt("query", {}, [])
+        text = SynthesisPromptBuilder.get_filter_resolution_prompt("query", {}, [], PRIVATE_MODEL)
         assert str(datetime.now().year) in text
 
     def test_filter_resolution_prompt_includes_original_input(self):
-        text = SynthesisPromptBuilder.get_filter_resolution_prompt("my test query", {}, [])
+        text = SynthesisPromptBuilder.get_filter_resolution_prompt("my test query", {}, [], PRIVATE_MODEL)
         assert "my test query" in text
 
     def test_filter_resolution_prompt_includes_permitted_values(self):
         permitted = ["Medicine", "Biology"]
-        text = SynthesisPromptBuilder.get_filter_resolution_prompt("q", {}, permitted)
+        text = SynthesisPromptBuilder.get_filter_resolution_prompt("q", {}, permitted, PRIVATE_MODEL)
         assert "Medicine" in text
         assert "Biology" in text
+
+    def test_open_llm_filter_resolution_prompt_includes_current_year(self):
+        text = SynthesisPromptBuilder.get_filter_resolution_prompt("query", {}, [], OPEN_MODEL)
+        assert "Current Year" in text
 
     def test_terminology_prompt_lists_concepts(self):
         concepts = ["cognitive behavioural therapy (CBT)", "young adults"]
@@ -220,7 +233,7 @@ class TestUserPrompts:
     def test_keyword_support_prompt_includes_synonyms(self):
         synonyms = {"CBT": ["cognitive behavioural therapy", "cognitive therapy"]}
         text = SynthesisPromptBuilder.get_keyword_support_prompt(
-            "some statement", ["CBT"], synonyms
+            "some statement", ["CBT"], synonyms, PRIVATE_MODEL
         )
         assert "CBT" in text
         assert "cognitive behavioural therapy" in text
