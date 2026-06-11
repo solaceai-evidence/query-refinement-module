@@ -368,7 +368,17 @@ poetry run python scripts/make_superuser.py alice
 
 # Bulk import users from a credentials CSV
 poetry run python scripts/import_credentials.py scripts/credentials.csv
+
+# Grant an existing user access to additional frameworks
+poetry run python scripts/create_user.py --username alice --framework pico_advanced --framework cocopop
 ```
+
+### Framework access
+
+Non-superuser accounts can only start a refinement workflow for frameworks they've been explicitly granted access to (`POST /api/v1/refinement/start` returns `403 You are not authorized to use framework '<name>'` otherwise). Grant access with the `--framework` flag above, or via the admin API (`POST /api/admin/frameworks/users/{user_id}/access`).
+
+This also applies to the built-in `api_integration_service` account used for direct API/integration calls — it is created automatically on first use but starts with **no** framework access and must be granted access the same way.
+
 ## Testing
 
 ```bash
