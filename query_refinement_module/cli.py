@@ -140,7 +140,7 @@ def _accepted_dimensions_from_session(session, fallback_dimensions: Optional[Dic
 
 def _build_search_expansion_input_from_synthesis(
     synthesis: Dict[str, Any],
-    eligible_dimensions: Dict[str, Any],
+    advisory_dimensions: Dict[str, Any],
 ) -> SearchExpansionInput:
     missing = [
         field_name
@@ -155,7 +155,7 @@ def _build_search_expansion_input_from_synthesis(
 
     return SearchExpansionInput(
         anchor_query=synthesis["integrated_statement"],
-        eligible_dimensions=eligible_dimensions,
+        advisory_dimensions=advisory_dimensions,
         search_context=SearchExpansionContext(
             filters=search_filters.model_dump(exclude_none=True),
             synonyms=terminology.synonyms or {},
@@ -175,12 +175,13 @@ def _print_search_expansion_levels(levels) -> None:
     print("SEARCH EXPANSION LEVELS")
     print("─"*80)
     for level in levels:
-        print(f"Level {level.level} — {level.label}")
+        strategy = getattr(level.strategy, "value", level.strategy)
+        print(f"Level {level.level} — {level.label} [{strategy}]")
         print(f"  {level.search_query}")
-        if level.relaxed_dimensions:
+        if level.relaxed_aspects:
             relaxed = ", ".join(
-                f"{dimension}: {value}"
-                for dimension, value in level.relaxed_dimensions.items()
+                f"{aspect}: {value}"
+                for aspect, value in level.relaxed_aspects.items()
             )
             print(f"  Relaxed: {relaxed}")
         print(f"  Rationale: {level.rationale}\n")

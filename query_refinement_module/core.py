@@ -74,6 +74,13 @@ from .schema import (
     SearchExpansionResponse,
     SearchExpansionLevel,
     SearchExpansionInput,
+    SearchAspect,
+    AspectSafety,
+    DEFAULT_ASPECT_SAFETY,
+    ExpansionStrategy,
+    SearchAspectAssessment,
+    SearchAspectAssessmentResponse,
+    SearchAspectAssessmentSummary,
 )
 from .schema.synthesis import validate_synthesis_response
 from .schema.response import (
@@ -1864,17 +1871,56 @@ class QueryRefinementManager:
         )
 
     @staticmethod
+    def _apply_aspect_safety_policy(
+        assessments: List[SearchAspectAssessment],
+    ) -> List[SearchAspectAssessment]:
+        """Assign deterministic safety labels from the fixed policy.
+
+        The LLM never controls safety classification; undetected aspects are
+        marked AVOID so they can never be broadened.
+        """
+        classified: List[SearchAspectAssessment] = []
+        seen: set[SearchAspect] = set()
+        for assessment in assessments:
+            if assessment.aspect in seen:
+                continue
+            seen.add(assessment.aspect)
+            safety = (
+                DEFAULT_ASPECT_SAFETY.get(assessment.aspect, AspectSafety.AVOID)
+                if assessment.detected
+                else AspectSafety.AVOID
+            )
+            classified.append(assessment.model_copy(update={"safety": safety}))
+        # Ensure every fixed aspect has an assessment entry.
+        for aspect in SearchAspect:
+            if aspect not in seen:
+                classified.append(
+                    SearchAspectAssessment(aspect=aspect, detected=False, safety=AspectSafety.AVOID)
+                )
+        return classified
+
+    @staticmethod
+    def _build_assessment_summary(
+        assessments: List[SearchAspectAssessment],
+    ) -> SearchAspectAssessmentSummary:
+        return SearchAspectAssessmentSummary(
+            assessed_aspects=assessments,
+            safe_aspects=[a.aspect for a in assessments if a.safety == AspectSafety.SAFE],
+            conditional_aspects=[a.aspect for a in assessments if a.safety == AspectSafety.CONDITIONAL],
+            avoided_aspects=[a.aspect for a in assessments if a.safety == AspectSafety.AVOID],
+        )
+
+    @staticmethod
     def _validate_search_expansion_result(
         result: SearchExpansionResponse,
-        accepted_dimensions: Dict[str, Any],
+        allowed_aspects: Dict[str, AspectSafety],
     ) -> Optional[str]:
-        """Validate generated Levels 1-N against accepted dimension context."""
+        """Validate generated Levels 1-N against the allowed aspect policy."""
         if not isinstance(result.levels, list):
             return "levels must be a list"
         if len(result.levels) > 4:
             return "levels must contain at most four generated levels"
 
-        accepted_ids = set(accepted_dimensions.keys())
         seen_levels: set[int] = set()
         previous_level = 0
         for item in result.levels:
@@ -1893,13 +1939,21 @@ class QueryRefinementManager:
                 return f"level {item.level} label is empty"
             if not item.rationale.strip():
                 return f"level {item.level} rationale is empty"
+            if item.strategy == ExpansionStrategy.ANCHOR:
+                return f"level {item.level} must not use the anchor strategy"
 
-            relaxed_dimensions = item.relaxed_dimensions or {}
-            if len(relaxed_dimensions) > 2:
-                return f"level {item.level} relaxes more than two dimensions"
-            invalid_keys = sorted(k for k in relaxed_dimensions if k not in accepted_ids)
+            relaxed_aspects = item.relaxed_aspects or {}
+            if len(relaxed_aspects) > 2:
+                return f"level {item.level} relaxes more than two aspects"
+            invalid_keys = sorted(k for k in relaxed_aspects if k not in allowed_aspects)
             if invalid_keys:
-                return f"level {item.level} relaxed_dimensions contain invalid keys: {invalid_keys}"
+                return f"level {item.level} relaxed_aspects contain disallowed aspects: {invalid_keys}"
+            conditional_count = sum(
+                1 for k in relaxed_aspects
+                if allowed_aspects.get(k) == AspectSafety.CONDITIONAL
+            )
+            if len(relaxed_aspects) == 2 and conditional_count > 1:
+                return f"level {item.level} relaxes two conditional aspects; at most one may be conditional"
 
         return None
 
@@ -1915,8 +1969,8 @@ class QueryRefinementManager:
         parts.append(
             "REPAIR: The previous search expansion response was rejected. "
             "Return one JSON object with a `levels` array containing only Levels 1-N. "
-            "Use only accepted dimension IDs in relaxed_dimensions, keep levels sorted and unique, "
-            "and relax no more than two dimensions per level. "
+            "Use only allowed aspect ids in relaxed_aspects, keep levels sorted and unique, "
+            "relax no more than two aspects per level, and include at most one CONDITIONAL aspect per level. "
             f"Validation error detail: {error}"
         )
         return "\n\n".join(parts)
@@ -1933,11 +1987,57 @@ class QueryRefinementManager:
             combined[key] = combined.get(key, 0) + extra.get(key, 0)
         return combined
 
+    async def _run_search_aspect_assessment_call(
+        self,
+        search_input: SearchExpansionInput,
+        *,
+        model: Optional[str] = None,
+        temperature: float = 0.2,
+        max_tokens: int = 1536,
+    ) -> tuple[Optional[List[SearchAspectAssessment]], Dict[str, Any]]:
+        """Run the fixed-aspect assessment call and apply the safety policy."""
+        prompt_builder = SearchExpansionPromptBuilder()
+        parsed, metadata = await self._execute_split_call(
+            prompt_builder.get_assessment_system_prompt(),
+            prompt_builder.get_assessment_user_prompt(search_input),
+            SearchAspectAssessmentResponse,
+            "search_aspect_assessment",
+            model=model,
+            temperature=temperature,
+            max_tokens=max_tokens,
+        )
+        if parsed is None or not isinstance(parsed, SearchAspectAssessmentResponse):
+            logger.warning(
+                "Search aspect assessment returned no usable response (type=%s)",
+                type(parsed).__name__,
+            )
+            return None, metadata or {}
+
+        classified = self._apply_aspect_safety_policy(parsed.assessments)
+        detected_count = sum(1 for a in classified if a.detected)
+        logger.info(
+            "Search aspect assessment completed",
+            extra={
+                "detected_aspect_count": detected_count,
+                "total_tokens": (metadata or {}).get("total_tokens", 0),
+            },
+        )
+        self.trace_emitter.emit(
+            "search_aspect_assessment_complete",
+            metadata={
+                "detected_aspect_count": detected_count,
+                "prompt_tokens": (metadata or {}).get("prompt_tokens", 0),
+                "completion_tokens": (metadata or {}).get("completion_tokens", 0),
+                "total_tokens": (metadata or {}).get("total_tokens", 0),
+            },
+        )
+        return classified, metadata or {}
+
     async def _run_search_expansion_call(
         self,
         system_prompt: str,
         user_prompt: str,
-        accepted_dimensions: Dict[str, Any],
+        allowed_aspects: Dict[str, AspectSafety],
         *,
         model: Optional[str] = None,
         temperature: float = 0.2,
@@ -1946,7 +2046,7 @@ class QueryRefinementManager:
         """Run search expansion with contextual validation and one repair attempt."""
         logger.info(
             "Search expansion call started",
-            extra={"accepted_dimension_count": len(accepted_dimensions), "max_tokens": max_tokens},
+            extra={"allowed_aspect_count": len(allowed_aspects), "max_tokens": max_tokens},
         )
         t0 = time.monotonic()
         parsed, metadata = await self._execute_split_call(
@@ -1969,7 +2069,7 @@ class QueryRefinementManager:
             )
             return None, metadata or {}
 
-        error = self._validate_search_expansion_result(parsed, accepted_dimensions)
+        error = self._validate_search_expansion_result(parsed, allowed_aspects)
         if error is None:
             duration_ms = round((time.monotonic() - t0) * 1000)
             logger.info(
@@ -2025,7 +2125,7 @@ class QueryRefinementManager:
             )
             return None, combined_meta
 
-        repair_error = self._validate_search_expansion_result(repaired, accepted_dimensions)
+        repair_error = self._validate_search_expansion_result(repaired, allowed_aspects)
         if repair_error is None:
             logger.info(
                 "Search expansion repair succeeded",
@@ -2053,26 +2153,31 @@ class QueryRefinementManager:
         temperature: float = 0.2,
         max_tokens: int = 1536,
     ) -> tuple[List[SearchExpansionLevel], Dict[str, Any]]:
-        """Generate retrieval expansion levels from a standalone expansion input."""
+        """Generate retrieval expansion levels from a standalone expansion input.
+
+        Pipeline: fixed aspect assessment (LLM) -> deterministic safety policy
+        -> allowed-aspect derivation -> expansion generation (LLM) ->
+        validation -> deterministic Level 0 injection. Soft-fails to Level 0.
+        """
         start_time = time.monotonic()
         level_0 = SearchExpansionLevel(
             level=0,
             label="Exact clarified question",
+            strategy=ExpansionStrategy.ANCHOR,
             search_query=search_input.anchor_query,
-            relaxed_dimensions={},
+            relaxed_aspects={},
             rationale="Exact clarified query preserved as the review anchor.",
         )
         metadata: Dict[str, Any] = {
             "used_llm": False,
             "generated_level_count": 0,
-            "accepted_dimension_count": len(search_input.eligible_dimensions),
         }
 
         logger.info(
             "Search expansion generation started",
             extra={
-                "accepted_dimension_count": len(search_input.eligible_dimensions),
                 "anchor_query_length": len(search_input.anchor_query),
+                "advisory_dimension_count": len(search_input.advisory_dimensions),
                 "model": model or "(default)",
                 "temperature": temperature,
                 "max_tokens": max_tokens,
@@ -2081,29 +2186,57 @@ class QueryRefinementManager:
         self.trace_emitter.emit(
             "search_expansion_start",
             metadata={
-                "accepted_dimension_count": len(search_input.eligible_dimensions),
+                "advisory_dimension_count": len(search_input.advisory_dimensions),
                 "model": model or "(default)",
                 "temperature": temperature,
                 "max_tokens": max_tokens,
             },
         )
 
-        if not search_input.eligible_dimensions:
-            metadata["status"] = "skipped_no_accepted_dimensions"
+        assessments, assessment_meta = await self._run_search_aspect_assessment_call(
+            search_input,
+            model=model,
+            temperature=temperature,
+            max_tokens=min(max_tokens, 1536),
+        )
+        metadata = self._accumulate_metadata(metadata, assessment_meta)
+
+        if assessments is None:
+            metadata["status"] = "failed_level_0_only"
+            metadata["warning"] = "Aspect assessment failed; returned Level 0 only."
             metadata["duration_ms"] = round((time.monotonic() - start_time) * 1000)
-            logger.info("Search expansion skipped: no accepted dimensions")
+            logger.warning("Search expansion returned Level 0 only: assessment failed")
+            return [level_0], metadata
+
+        metadata["used_llm"] = True
+        summary = self._build_assessment_summary(assessments)
+        metadata["aspect_assessment"] = summary.model_dump(mode="json")
+
+        allowed_aspects: Dict[str, AspectSafety] = {
+            a.aspect.value: a.safety
+            for a in assessments
+            if a.detected
+            and a.safety is not None
+            and a.safety != AspectSafety.AVOID
+        }
+        metadata["allowed_aspect_count"] = len(allowed_aspects)
+
+        if not allowed_aspects:
+            metadata["status"] = "skipped_no_assessable_aspects"
+            metadata["duration_ms"] = round((time.monotonic() - start_time) * 1000)
+            logger.info("Search expansion skipped: no detected non-avoided aspects")
             return [level_0], metadata
 
         prompt_builder = SearchExpansionPromptBuilder()
         result, call_metadata = await self._run_search_expansion_call(
             prompt_builder.get_system_prompt(),
-            prompt_builder.get_user_prompt(search_input=search_input),
-            search_input.eligible_dimensions,
+            prompt_builder.get_user_prompt(search_input, assessments),
+            allowed_aspects,
             model=model,
             temperature=temperature,
             max_tokens=min(max_tokens, 1536),
         )
-        metadata.update(call_metadata or {})
+        metadata = self._accumulate_metadata(metadata, call_metadata)
         metadata["duration_ms"] = round((time.monotonic() - start_time) * 1000)
 
         if result is None:
@@ -2116,7 +2249,6 @@ class QueryRefinementManager:
             return [level_0], metadata
 
         generated_levels = result.levels[:4]
-        metadata["used_llm"] = True
         metadata["status"] = "completed"
         metadata["generated_level_count"] = len(generated_levels)
         levels = [level_0] + generated_levels

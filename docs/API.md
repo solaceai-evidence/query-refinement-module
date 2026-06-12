@@ -171,14 +171,19 @@ The detailed `structured_output` contract is described below.
 
 #### `POST /api/v1/refinement/search-expand`
 
-Generates optional search expansion levels from a standalone request payload. The endpoint does not depend on a persisted query or a completed synthesis result. Callers provide the exact Level 0 anchor query, the dimensions eligible for search-only relaxation, and optional search context with filters and synonyms.
+Generates optional search expansion levels from a standalone request payload. The endpoint does not depend on a persisted query or a completed synthesis result. Callers provide the exact Level 0 anchor query, optional advisory dimension values, and optional search context with filters and synonyms.
+
+The service runs a two-stage pipeline:
+
+1. **Aspect assessment** — the anchor query is assessed against a fixed internal ontology of six search aspects: `topic_or_condition`, `population_or_entity`, `intervention_or_exposure_or_phenomenon`, `setting_or_context`, `geography`, and `time_scope`. For each detected aspect, the assessment records the value as expressed in the anchor and an ordered list of strict-superset broadening candidates.
+2. **Expansion generation** — a deterministic safety policy classifies each detected aspect as `safe`, `conditional` (`intervention_or_exposure_or_phenomenon` only), or `avoid` (undetected aspects). Expansion levels may relax only safe or conditional aspects, at most two per level, and at most one conditional aspect per level.
 
 Request body:
 
 ```json
 {
 	"anchor_query": "In adults over 65, compare aspirin versus placebo for stroke prevention.",
-	"eligible_dimensions": {
+	"advisory_dimensions": {
 		"population": "adults over 65",
 		"intervention": "aspirin",
 		"comparator": "placebo",
@@ -197,10 +202,14 @@ Request body:
 }
 ```
 
+`advisory_dimensions` is optional and non-authoritative: framework dimension values (any framework's ids) may be supplied as hints to help the assessment resolve ambiguity, but the anchor query is always the source of truth.
+
 Returns `SearchExpandResponse` with these fields:
 
-- `search_expansion_levels`: Level 0 plus optional broader retrieval levels
-- `metadata`: token and generation metadata for the search expansion call
+- `search_expansion_levels`: Level 0 plus up to four optional broader retrieval levels
+- `metadata`: token and generation metadata, including the aspect assessment summary
+
+Each level includes a `strategy` field describing how it broadens retrieval: `anchor` (Level 0 only), `lexical` (synonym/phrasing variants, no conceptual broadening), `conceptual_single_aspect`, `conceptual_multi_aspect`, or `indexing_variant`.
 
 Level 0 is deterministic and always preserves the supplied anchor query:
 
@@ -208,13 +217,14 @@ Level 0 is deterministic and always preserves the supplied anchor query:
 {
 	"level": 0,
 	"label": "Exact clarified question",
+	"strategy": "anchor",
 	"search_query": "...same as anchor_query...",
-	"relaxed_dimensions": {},
+	"relaxed_aspects": {},
 	"rationale": "Exact clarified query preserved as the review anchor."
 }
 ```
 
-The LLM generates only Levels 1-N. If generation, parsing, or validation fails, the endpoint returns Level 0 only rather than failing the request.
+The LLM generates only Levels 1-N. The `metadata.status` field reports the outcome: `completed`, `skipped_no_assessable_aspects` (no safe or conditional aspects detected — Level 0 only), or `failed_level_0_only` (generation, parsing, or validation failed — Level 0 only rather than failing the request).
 
 ### Generic external integration snippet
 
@@ -477,16 +487,26 @@ Notes:
 		{
 			"level": 0,
 			"label": "Exact clarified question",
+			"strategy": "anchor",
 			"search_query": "In adults over 65, compare aspirin versus placebo for stroke prevention.",
-			"relaxed_dimensions": {},
+			"relaxed_aspects": {},
 			"rationale": "Exact clarified query preserved as the review anchor."
 		},
 		{
 			"level": 1,
+			"label": "Lexical variants",
+			"strategy": "lexical",
+			"search_query": "In adults over 65, compare aspirin or acetylsalicylic acid versus placebo for stroke prevention.",
+			"relaxed_aspects": {},
+			"rationale": "Adds synonym variants without conceptual broadening."
+		},
+		{
+			"level": 2,
 			"label": "Broader older adult population",
+			"strategy": "conceptual_single_aspect",
 			"search_query": "Studies comparing aspirin and placebo for stroke prevention in older adult populations.",
-			"relaxed_dimensions": {
-				"population": "older adult populations"
+			"relaxed_aspects": {
+				"population_or_entity": "older adult populations"
 			},
 			"rationale": "Broadens the exact age threshold to improve recall while preserving the intervention, comparator, and outcome."
 		}
@@ -494,8 +514,14 @@ Notes:
 	"metadata": {
 		"used_llm": true,
 		"status": "completed",
-		"generated_level_count": 1,
-		"accepted_dimension_count": 4,
+		"generated_level_count": 2,
+		"allowed_aspect_count": 3,
+		"aspect_assessment": {
+			"assessed_aspects": ["..."],
+			"safe_aspects": ["topic_or_condition", "population_or_entity"],
+			"conditional_aspects": ["intervention_or_exposure_or_phenomenon"],
+			"avoided_aspects": ["setting_or_context", "geography", "time_scope"]
+		},
 		"prompt_tokens": 500,
 		"completion_tokens": 120,
 		"total_tokens": 620
@@ -507,7 +533,8 @@ Notes:
 
 - `search_expansion_levels[0].search_query` always equals the supplied `anchor_query` exactly.
 - Levels 1-N are optional search-only broadening variants. They do not update `integrated_statement` or redefine the review scope.
-- If expansion generation fails validation, the response still returns Level 0 with warning metadata.
+- `relaxed_aspects` keys are always drawn from the fixed six-aspect ontology, never from framework dimension ids.
+- `metadata.status` is one of `completed`, `skipped_no_assessable_aspects`, or `failed_level_0_only`; the latter two return Level 0 only with warning metadata.
 
 #### `POST /api/v1/refinement/queries/{query_id}/forward-to-qa` (200)
 

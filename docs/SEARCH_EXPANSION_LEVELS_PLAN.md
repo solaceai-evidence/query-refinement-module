@@ -1,6 +1,6 @@
 # Search Expansion Levels Plan
 
-Status: Draft for review
+Status: Superseded — implemented with a fixed six-aspect ontology and two-stage pipeline (aspect assessment + expansion generation). See docs/API.md (`POST /api/v1/refinement/search-expand`) for the current contract: `advisory_dimensions` replaced `eligible_dimensions`, levels use `relaxed_aspects` and a `strategy` field, and a deterministic safety policy governs which aspects may be broadened. The notes below are retained for historical context.
 
 ## Scope
 

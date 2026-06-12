@@ -222,9 +222,9 @@ class SynthesizeQueryResponse(BaseModel):
 class SearchExpandRequest(BaseModel):
     """Standalone request payload for search expansion."""
     anchor_query: str = Field(..., description="Exact Level 0 query to preserve during broadening")
-    eligible_dimensions: Dict[str, Any] = Field(
+    advisory_dimensions: Dict[str, Any] = Field(
         default_factory=dict,
-        description="Dimension values eligible for search-only relaxation",
+        description="Optional non-authoritative dimension hints used only to disambiguate the anchor query",
     )
     search_context: Optional[SearchExpansionContext] = Field(
         None,
@@ -2130,7 +2130,7 @@ async def search_expand_query(
             "request_id": request_id_val,
             "user_id": current_user.id,
             "model_override": request.model,
-            "accepted_dimension_count": len(request.eligible_dimensions),
+            "advisory_dimension_count": len(request.advisory_dimensions),
             "anchor_query_length": len(request.anchor_query),
         },
     )
@@ -2139,7 +2139,7 @@ async def search_expand_query(
         levels, metadata = await manager.generate_search_expansion_levels(
             search_input=SearchExpansionInput(
                 anchor_query=request.anchor_query,
-                eligible_dimensions=request.eligible_dimensions,
+                advisory_dimensions=request.advisory_dimensions,
                 search_context=request.search_context,
             ),
             model=request.model,
