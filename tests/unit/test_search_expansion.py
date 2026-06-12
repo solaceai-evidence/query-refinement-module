@@ -115,7 +115,9 @@ def _allowed_aspects() -> dict:
 # ---------------------------------------------------------------------------
 
 def test_prompt_builder_system_prompts_non_empty():
-    assert SearchExpansionPromptBuilder.get_system_prompt()
+    system_prompt = SearchExpansionPromptBuilder.get_system_prompt()
+    assert system_prompt
+    assert "concise, readable" in system_prompt
     assert SearchExpansionPromptBuilder.get_assessment_system_prompt()
 
 
@@ -306,6 +308,7 @@ def test_validate_rejects_two_conditional_aspects_in_one_level():
             {
                 "level": 1,
                 "label": "Two conditional",
+                "strategy": "conceptual_multi_aspect",
                 "search_query": "query",
                 "relaxed_aspects": {"geography": "UK", "setting_or_context": "any setting"},
                 "rationale": "reason",
@@ -316,6 +319,28 @@ def test_validate_rejects_two_conditional_aspects_in_one_level():
     error = QueryRefinementManager._validate_search_expansion_result(result, allowed)
 
     assert "conditional" in error
+
+
+def test_validate_rejects_two_relaxed_aspects_with_single_aspect_strategy():
+    result = SearchExpansionResponse(
+        levels=[
+            {
+                "level": 3,
+                "label": "Mislabeled multi-aspect broadening",
+                "strategy": "conceptual_single_aspect",
+                "search_query": "query",
+                "relaxed_aspects": {"geography": "Pakistan", "setting_or_context": "outpatient care"},
+                "rationale": "reason",
+            }
+        ]
+    )
+
+    error = QueryRefinementManager._validate_search_expansion_result(result, {
+        SearchAspect.GEOGRAPHY.value: AspectSafety.SAFE,
+        SearchAspect.SETTING_OR_CONTEXT.value: AspectSafety.SAFE,
+    })
+
+    assert "single-aspect strategy" in error
 
 
 def test_validate_rejects_anchor_strategy_in_generated_levels():

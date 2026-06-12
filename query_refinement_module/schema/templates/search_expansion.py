@@ -64,8 +64,15 @@ Strategy ladder (apply in this order; skip steps that add no value):
 Rules:
 - Generate Levels 1 through N only. Never generate Level 0. The supplied Level 0 anchor is fixed; do not restate, rewrite, or replace it.
 - Broaden only for search recall; never change the intent, scope, or core meaning of the anchor query.
+- Keep each search_query concise, readable, and directly usable as a retrieval query.
+- Prefer one short natural-language retrieval string or one compact keyword query, not a long synonym dump.
+- Do not concatenate every available synonym. Use only the highest-value lexical variants needed for recall.
+- Avoid telegraphic keyword soup. Preserve recognizable phrase structure whenever possible.
+- Unless the input already requires dense Boolean syntax, keep each level to the smallest query that expresses the intended broadening.
 - relaxed_aspects keys must come from the allowed aspects listed in the input. Never use an aspect marked AVOID or an aspect that was not detected.
 - Conceptual broadened values must come from (or be consistent with) the allowed broadening candidates given per aspect.
+- If relaxed_aspects contains exactly two keys, use strategy "conceptual_multi_aspect".
+- If strategy is "conceptual_single_aspect", relax exactly one aspect.
 - Relax at most two aspects per level, and avoid Cartesian combinations.
 - Prefer lexical expansion before any conceptual broadening.
 - Treat filters as retrieval constraints to respect during broadening; do not contradict them or force them into the query text unless they naturally belong there.

@@ -1950,6 +1950,8 @@ class QueryRefinementManager:
             relaxed_aspects = item.relaxed_aspects or {}
             if len(relaxed_aspects) > 2:
                 return f"level {item.level} relaxes more than two aspects"
+            if len(relaxed_aspects) == 2 and item.strategy == ExpansionStrategy.CONCEPTUAL_SINGLE_ASPECT:
+                return f"level {item.level} relaxes two aspects but uses the single-aspect strategy"
             invalid_keys = sorted(k for k in relaxed_aspects if k not in allowed_aspects)
             if invalid_keys:
                 return f"level {item.level} relaxed_aspects contain disallowed aspects: {invalid_keys}"
@@ -1975,6 +1977,7 @@ class QueryRefinementManager:
             "REPAIR: The previous search expansion response was rejected. "
             "Return one JSON object with a `levels` array containing only Levels 1-N. "
             "Use only allowed aspect ids in relaxed_aspects, keep levels sorted and unique, "
+            "if you relax two aspects use strategy `conceptual_multi_aspect`, "
             "relax no more than two aspects per level, and include at most one CONDITIONAL aspect per level. "
             f"Validation error detail: {error}"
         )
