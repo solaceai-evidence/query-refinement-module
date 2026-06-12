@@ -991,11 +991,16 @@ class QueryRefinementManager:
                 )
             
             # Check if response metadata indicates cache hit (Anthropic-specific)
-            if hasattr(result, 'usage') and result.usage:
-                usage = result.usage if hasattr(result.usage, '__dict__') else {}
-                cache_hit = getattr(usage, 'cache_read_input_tokens', 0) > 0 if hasattr(usage, '__dict__') else False
+            usage = getattr(result, 'usage', None)
+            if usage is not None:
+                cache_read_input_tokens = (
+                    usage.get('cache_read_input_tokens', 0)
+                    if isinstance(usage, dict)
+                    else getattr(usage, 'cache_read_input_tokens', 0)
+                )
+                cache_hit = cache_read_input_tokens > 0
                 if cache_hit:
-                    logger.info(f"  -> Cache HIT: {getattr(usage, 'cache_read_input_tokens', 0)} tokens read from cache")
+                    logger.info(f"  -> Cache HIT: {cache_read_input_tokens} tokens read from cache")
                 else:
                     logger.info(f"  -> Cache MISS: System prompt cached for future requests")
             

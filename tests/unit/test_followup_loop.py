@@ -5,7 +5,7 @@ from query_refinement_module.core import (
     AspectRefinementState,
 )
 from query_refinement_module.schema import RefinementAspect
-from query_refinement_module.interfaces import LLMProviderInterface
+from query_refinement_module.interfaces import LLMCompletionResult, LLMProviderInterface
 
 class DummyLLMProvider(LLMProviderInterface):
     def __init__(self, responses):
@@ -14,8 +14,7 @@ class DummyLLMProvider(LLMProviderInterface):
     def complete(self, user_prompt="", system_prompt=None, messages=None, response_format=None, **kwargs):
         self.calls.append((user_prompt, system_prompt, messages))
         response = self.responses.pop(0)
-        # Return the raw JSON string, not a parsed dict
-        return type('LLMCompletionResult', (), {"context": response})()
+        return LLMCompletionResult(context=response, model="test", metadata={})
     async def complete_async(self, user_prompt="", system_prompt=None, messages=None, response_format=None, **kwargs):
         """Async version that delegates to sync complete()"""
         return self.complete(user_prompt, system_prompt, messages, response_format, **kwargs)

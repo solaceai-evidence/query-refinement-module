@@ -221,7 +221,7 @@ async def test_synthesis_prompt_includes_quality_requirements():
     step.add_follow_up("Q", "Well, probably 18-65 years old")
     step.is_complete = True
 
-    result = await manager.synthesize_refined_query(session)
+    result = await manager.synthesize_refined_query(session, model="ollama/qwen2.5:72b")
 
     # 5 split calls are made
     assert len(llm.calls) == 5
@@ -237,7 +237,13 @@ async def test_synthesis_uses_refinement_aspect_value_when_available():
     aspect1 = make_aspect(aspect_id="a1", name="Aspect 1")
     aspect2 = make_aspect(aspect_id="a2", name="Aspect 2")
     
-    llm = StubLLMProvider(responses=["Final refined query"])
+    llm = StubLLMProvider(responses=[
+        json.dumps({"integrated_statement": "Final refined query"}),
+        json.dumps({"semantic": "Final refined query"}),
+        json.dumps({"synonyms": {"Adults aged 18-65": ["adults 18 to 65"]}}),
+        json.dumps({"fields_of_study": []}),
+        json.dumps({"phrases": [], "required": ["Adults aged 18-65"], "optional": [], "excluded": []}),
+    ])
     manager = QueryRefinementManager(llm_provider=llm)
     
     session = RefinementSession(original_query="test")
@@ -254,7 +260,9 @@ async def test_synthesis_uses_refinement_aspect_value_when_available():
     step2.normalized_value = "Already clear in query"
     step2.is_complete = True
     
-    result = await manager.synthesize_refined_query(session)
+    result = await manager.synthesize_refined_query(session, model="ollama/qwen2.5:72b")
+    assert result["integrated_statement"] == "Final refined query"
+    assert len(llm.calls) == 5
     
     # Gather what was sent to LLM
     clarifications, summaries = manager._gather_refinement_details(session)
