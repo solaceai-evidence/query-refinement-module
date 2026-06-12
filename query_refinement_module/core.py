@@ -2674,13 +2674,37 @@ class QueryRefinementManager:
                     max_tokens_ceiling=resolved_max_tokens,
                 )
             else:
-                synthesis_response, aggregated_metadata = await self._run_monolithic_synthesis(
-                    session,
-                    model=model,
-                    temperature=resolved_temperature,
-                    max_tokens=resolved_max_tokens,
-                    additional_guidance=additional_guidance,
-                )
+                try:
+                    synthesis_response, aggregated_metadata = await self._run_monolithic_synthesis(
+                        session,
+                        model=model,
+                        temperature=resolved_temperature,
+                        max_tokens=resolved_max_tokens,
+                        additional_guidance=additional_guidance,
+                    )
+                except ValueError as exc:
+                    logger.warning(
+                        "Monolithic synthesis returned invalid or partial output; falling back to split synthesis: %s",
+                        exc,
+                    )
+                    self.trace_emitter.emit(
+                        "query_synthesis_monolithic_fallback",
+                        level="warning",
+                        metadata={
+                            "error": str(exc),
+                            "model": resolved_model or "(default)",
+                        },
+                    )
+                    synthesis_response, aggregated_metadata = await self._run_split_synthesis(
+                        session,
+                        canonical_dimensions=canonical_dimensions,
+                        accepted_dimensions=accepted_dimensions,
+                        deterministic_filters=deterministic_filters,
+                        additional_guidance=additional_guidance,
+                        model=model,
+                        temperature=resolved_temperature,
+                        max_tokens_ceiling=resolved_max_tokens,
+                    )
         except Exception as exc:
             logger.exception("Query synthesis failed: %s", exc)
             self.trace_emitter.emit(

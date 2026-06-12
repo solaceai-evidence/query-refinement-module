@@ -583,6 +583,35 @@ async def test_private_models_use_single_monolithic_synthesis_call():
 
 
 @pytest.mark.asyncio
+async def test_private_models_fall_back_to_split_synthesis_when_monolithic_output_is_partial():
+    manager = QueryRefinementManager(
+        llm_provider=StubLLMProvider([
+            json.dumps({"integrated_statement": "Refined question"}),
+            *make_split_responses(
+                integrated_statement="Refined question",
+                semantic="semantic query",
+                synonyms={"diarrhoea": ["diarrhea"]},
+                fields_of_study=["Medicine"],
+                phrases=["acute diarrhoeal disease"],
+                required=["diarrhoea"],
+                optional=["flooding"],
+            ),
+        ]),
+        tracing_provider=StubTracingProvider(),
+    )
+    session = RefinementSession(original_query="q")
+
+    result = await manager.synthesize_refined_query(session, model=PRIVATE_MODEL)
+
+    assert result["integrated_statement"] == "Refined question"
+    assert result["search_optimized"].semantic == "semantic query"
+    assert result["search_filters"].fields_of_study == ["Medicine"]
+    assert len(manager.llm_provider.calls) == 6
+    assert manager.llm_provider.calls[0]["response_format"] is QueryRefinementResponse
+    assert manager.llm_provider.calls[1]["response_format"] is StatementResponse
+
+
+@pytest.mark.asyncio
 async def test_open_models_continue_to_use_split_synthesis_calls():
     manager = QueryRefinementManager(
         llm_provider=StubLLMProvider(make_split_responses(integrated_statement="stmt")),
