@@ -5,6 +5,8 @@ This module defines the unified response structure used for both initial
 and follow-up analysis of refinement aspects.
 """
 
+from enum import Enum
+
 from pydantic import BaseModel, ConfigDict, Field, field_validator, validator
 from typing import List, Optional, Literal, Dict, Any
 
@@ -150,6 +152,149 @@ class FilterSuggestionResponse(BaseModel):
     fields_of_study: List[str] = Field(default_factory=list)
 
 
+# ============================================================================
+# Search Expansion: fixed aspect ontology, policy, and models
+# ============================================================================
+
+class SearchAspect(str, Enum):
+    """Fixed internal ontology of search-expansion aspect classes.
+
+    This ontology is internal to the search expansion stage and is the only
+    authoritative set of axes along which a query may be broadened. It is not
+    derived from framework dimensions.
+    """
+    TOPIC_OR_CONDITION = "topic_or_condition"
+    POPULATION_OR_ENTITY = "population_or_entity"
+    INTERVENTION_OR_EXPOSURE_OR_PHENOMENON = "intervention_or_exposure_or_phenomenon"
+    SETTING_OR_CONTEXT = "setting_or_context"
+    GEOGRAPHY = "geography"
+    TIME_SCOPE = "time_scope"
+
+
+class AspectSafety(str, Enum):
+    """Deterministic safety classification for broadening a given aspect."""
+    SAFE = "safe"
+    CONDITIONAL = "conditional"
+    AVOID = "avoid"
+
+
+#: Evidence-backed default safety policy. Geography, setting, population
+#: grouping, time scope, and broader condition families are recall-safe;
+#: intervention/exposure/phenomenon broadening risks scope drift and is
+#: conditional. Comparators, outcomes, and methodological constraints are
+#: outside the ontology and never broadened.
+DEFAULT_ASPECT_SAFETY: Dict["SearchAspect", "AspectSafety"] = {
+    SearchAspect.TOPIC_OR_CONDITION: AspectSafety.SAFE,
+    SearchAspect.POPULATION_OR_ENTITY: AspectSafety.SAFE,
+    SearchAspect.INTERVENTION_OR_EXPOSURE_OR_PHENOMENON: AspectSafety.CONDITIONAL,
+    SearchAspect.SETTING_OR_CONTEXT: AspectSafety.SAFE,
+    SearchAspect.GEOGRAPHY: AspectSafety.SAFE,
+    SearchAspect.TIME_SCOPE: AspectSafety.SAFE,
+}
+
+
+class ExpansionStrategy(str, Enum):
+    """Methodological strategy type of one expansion level."""
+    ANCHOR = "anchor"
+    LEXICAL = "lexical"
+    CONCEPTUAL_SINGLE_ASPECT = "conceptual_single_aspect"
+    CONCEPTUAL_MULTI_ASPECT = "conceptual_multi_aspect"
+    INDEXING_VARIANT = "indexing_variant"
+
+
+class SearchAspectAssessment(BaseModel):
+    """Assessment of one fixed aspect against the anchor query.
+
+    ``safety`` is assigned deterministically by the policy layer after the
+    LLM detection call; the LLM never controls safety classification.
+    """
+    aspect: SearchAspect
+    detected: bool = False
+    detected_value: str = ""
+    broadening_candidates: List[str] = Field(default_factory=list)
+    reasoning: str = ""
+    safety: Optional[AspectSafety] = None
+
+    @field_validator("detected_value")
+    @classmethod
+    def validate_detected_value(cls, v: str, info) -> str:
+        if info.data.get("detected") and not (v or "").strip():
+            raise ValueError("detected_value is required when detected=True")
+        return (v or "").strip()
+
+
+class SearchAspectAssessmentResponse(BaseModel):
+    """LLM response for the aspect-detection call."""
+    assessments: List[SearchAspectAssessment] = Field(default_factory=list)
+
+
+class SearchExpansionLevel(BaseModel):
+    """One retrieval broadening level. Level 0 is the deterministic anchor."""
+    level: int
+    label: str
+    strategy: ExpansionStrategy = ExpansionStrategy.CONCEPTUAL_SINGLE_ASPECT
+    search_query: str
+    relaxed_aspects: Dict[str, str] = Field(
+        default_factory=dict,
+        description="Fixed aspect id -> search-only broadened value",
+    )
+    rationale: str
+
+    @field_validator("label", "search_query", "rationale")
+    @classmethod
+    def validate_non_empty_text(cls, v: str) -> str:
+        if not v or not v.strip():
+            raise ValueError("field must be non-empty")
+        return v.strip()
+
+
+class SearchExpansionResponse(BaseModel):
+    """LLM response containing only generated Levels 1-N."""
+    levels: List[SearchExpansionLevel] = Field(default_factory=list)
+
+    @field_validator("levels")
+    @classmethod
+    def validate_llm_levels_start_at_one(cls, v: List[SearchExpansionLevel]) -> List[SearchExpansionLevel]:
+        bad = [level.level for level in v if level.level < 1]
+        if bad:
+            raise ValueError(f"LLM-generated expansion levels must be >= 1: {bad}")
+        return v
+
+
+class SearchExpansionContext(BaseModel):
+    """Optional retrieval context that can inform search broadening."""
+    filters: Dict[str, Any] = Field(default_factory=dict)
+    synonyms: Dict[str, List[str]] = Field(default_factory=dict)
+
+
+class SearchExpansionInput(BaseModel):
+    """Standalone input contract for the fixed-core search expansion stage."""
+    anchor_query: str = Field(description="Exact Level 0 query preserved as the retrieval anchor")
+    search_context: Optional[SearchExpansionContext] = None
+    advisory_dimensions: Dict[str, Any] = Field(
+        default_factory=dict,
+        description=(
+            "Non-authoritative dimension values (e.g. from synthesis) that may "
+            "help aspect detection. They do not define expansion axes."
+        ),
+    )
+
+    @field_validator("anchor_query")
+    @classmethod
+    def validate_anchor_query(cls, v: str) -> str:
+        if not v or not v.strip():
+            raise ValueError("anchor_query must be non-empty")
+        return v.strip()
+
+
+class SearchAspectAssessmentSummary(BaseModel):
+    """Transparent assessment metadata exposed alongside expansion levels."""
+    assessed_aspects: List[SearchAspectAssessment] = Field(default_factory=list)
+    safe_aspects: List[SearchAspect] = Field(default_factory=list)
+    conditional_aspects: List[SearchAspect] = Field(default_factory=list)
+    avoided_aspects: List[SearchAspect] = Field(default_factory=list)
+
+
 
 
 
@@ -175,7 +320,7 @@ class QueryRefinementResponse(BaseModel):
     integrated_statement: str = Field(
         description="Integrated research specification preserving user's voice",
     )
-    dimensions_specifications: Dict[str, Optional[str]] = Field(
+    dimensions_specifications: Dict[str, Any] = Field(
         description="Normalized value for each dimension (dimension_id -> value)",
     )
     search_optimized: SearchOptimized
@@ -198,4 +343,15 @@ __all__ = [
     "TerminologyResponse",
     "KeywordSupportResponse",
     "FilterSuggestionResponse",
+    "SearchAspect",
+    "AspectSafety",
+    "DEFAULT_ASPECT_SAFETY",
+    "ExpansionStrategy",
+    "SearchAspectAssessment",
+    "SearchAspectAssessmentResponse",
+    "SearchAspectAssessmentSummary",
+    "SearchExpansionLevel",
+    "SearchExpansionResponse",
+    "SearchExpansionContext",
+    "SearchExpansionInput",
 ]

@@ -25,7 +25,20 @@ from .response import (
     TerminologyResponse,
     KeywordSupportResponse,
     FilterSuggestionResponse,
+    SearchAspect,
+    AspectSafety,
+    DEFAULT_ASPECT_SAFETY,
+    ExpansionStrategy,
+    SearchAspectAssessment,
+    SearchAspectAssessmentResponse,
+    SearchAspectAssessmentSummary,
+    SearchExpansionLevel,
+    SearchExpansionResponse,
+    SearchExpansionContext,
+    SearchExpansionInput,
 )
+
+from .search_expansion import SearchExpansionPromptBuilder
 
 # Registry
 from .registry import (
@@ -89,6 +102,18 @@ __all__ = [
     "TerminologyResponse",
     "KeywordSupportResponse",
     "FilterSuggestionResponse",
+    "SearchAspect",
+    "AspectSafety",
+    "DEFAULT_ASPECT_SAFETY",
+    "ExpansionStrategy",
+    "SearchAspectAssessment",
+    "SearchAspectAssessmentResponse",
+    "SearchAspectAssessmentSummary",
+    "SearchExpansionLevel",
+    "SearchExpansionResponse",
+    "SearchExpansionContext",
+    "SearchExpansionInput",
+    "SearchExpansionPromptBuilder",
     
     # Registry
     "list_frameworks",

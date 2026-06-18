@@ -16,7 +16,7 @@ import asyncio
 import json
 import logging
 import time
-from fastapi import APIRouter, Depends, HTTPException, status, Request
+from fastapi import APIRouter, Body, Depends, HTTPException, status, Request
 from sqlalchemy.orm import Session
 from typing import Dict, Any, Optional, Union, List
 
@@ -58,7 +58,12 @@ from query_refinement_module.core import (
 from query_refinement_module.tracing import generate_request_id, get_logger, set_request_id
 from query_refinement_module.services.progress_tracker import get_progress_tracker, track_progress
 from query_refinement_module.models.progress import ProgressStage
-from query_refinement_module.schema import DimensionEvaluationResponse
+from query_refinement_module.schema import (
+    DimensionEvaluationResponse,
+    QueryRefinementResponse,
+    SearchExpansionContext,
+    SearchExpansionInput,
+)
 
 from pydantic import BaseModel, Field, field_validator, AnyHttpUrl
 
@@ -212,6 +217,33 @@ class SynthesizeQueryResponse(BaseModel):
     integrated_statement: str
     used_llm: bool
     structured_output: Optional[Dict[str, Any]] = None
+
+
+class SearchExpandRequest(BaseModel):
+    """Standalone request payload for search expansion."""
+    anchor_query: str = Field(..., description="Exact Level 0 query to preserve during broadening")
+    advisory_dimensions: Dict[str, Any] = Field(
+        default_factory=dict,
+        description="Optional non-authoritative dimension hints used only to disambiguate the anchor query",
+    )
+    search_context: Optional[SearchExpansionContext] = Field(
+        None,
+        description="Optional retrieval hints such as filters and synonyms",
+    )
+    model: Optional[str] = Field(None, description="Optional LLM model override")
+
+    @field_validator("anchor_query")
+    @classmethod
+    def validate_anchor_query(cls, v: str) -> str:
+        if not v or not v.strip():
+            raise ValueError("anchor_query cannot be empty or just whitespace")
+        return v.strip()
+
+
+class SearchExpandResponse(BaseModel):
+    """Response with generated search expansion levels."""
+    search_expansion_levels: List[Dict[str, Any]]
+    metadata: Optional[Dict[str, Any]] = None
 
 
 class ForwardToQARequest(BaseModel):
@@ -2070,6 +2102,74 @@ async def _run_synthesis(
         integrated_statement=integrated_statement,
         used_llm=synthesis_result.get("used_llm", False),
         structured_output=structured_output,
+    )
+
+
+def _dimension_value_is_accepted(value: Any) -> bool:
+    if value is None:
+        return False
+    if isinstance(value, str):
+        return value.strip() not in {"", "[SKIPPED]", "null"}
+    return True
+
+
+@router.post("/search-expand", response_model=SearchExpandResponse)
+async def search_expand_query(
+    request: SearchExpandRequest,
+    manager: QueryRefinementManager = Depends(get_refinement_manager),
+    current_user = Depends(get_current_user_or_integration),
+):
+    """Generate search expansion levels from a standalone request payload."""
+    request_id_val = generate_request_id()
+    set_request_id(request_id_val)
+    start_time = time.time()
+
+    logger.info(
+        "API: Generating search expansion levels",
+        extra={
+            "request_id": request_id_val,
+            "user_id": current_user.id,
+            "model_override": request.model,
+            "advisory_dimension_count": len(request.advisory_dimensions),
+            "anchor_query_length": len(request.anchor_query),
+        },
+    )
+
+    try:
+        levels, metadata = await manager.generate_search_expansion_levels(
+            search_input=SearchExpansionInput(
+                anchor_query=request.anchor_query,
+                advisory_dimensions=request.advisory_dimensions,
+                search_context=request.search_context,
+            ),
+            model=request.model,
+        )
+    except Exception as exc:
+        logger.exception(
+            "API: Search expansion generation failed unexpectedly",
+            extra={"request_id": request_id_val, "error": str(exc)},
+        )
+        raise HTTPException(
+            status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
+            detail=f"Failed to generate search expansion levels: {str(exc)}",
+        )
+
+    levels_payload = [level.model_dump() for level in levels]
+
+    duration_ms = (time.time() - start_time) * 1000
+    logger.info(
+        "API: Search expansion completed",
+        extra={
+            "request_id": request_id_val,
+            "duration_ms": round(duration_ms, 2),
+            "returned_level_count": len(levels_payload),
+            "generated_level_count": metadata.get("generated_level_count", 0),
+            "status": metadata.get("status"),
+        },
+    )
+    return SearchExpandResponse(
+        search_expansion_levels=levels_payload,
+        metadata=metadata,
     )
 
 

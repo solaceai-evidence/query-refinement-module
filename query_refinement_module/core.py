@@ -70,6 +70,17 @@ from .schema import (
     TerminologyResponse,
     KeywordSupportResponse,
     FilterSuggestionResponse,
+    SearchExpansionPromptBuilder,
+    SearchExpansionResponse,
+    SearchExpansionLevel,
+    SearchExpansionInput,
+    SearchAspect,
+    AspectSafety,
+    DEFAULT_ASPECT_SAFETY,
+    ExpansionStrategy,
+    SearchAspectAssessment,
+    SearchAspectAssessmentResponse,
+    SearchAspectAssessmentSummary,
 )
 from .schema.synthesis import validate_synthesis_response
 from .schema.response import (
@@ -980,11 +991,16 @@ class QueryRefinementManager:
                 )
             
             # Check if response metadata indicates cache hit (Anthropic-specific)
-            if hasattr(result, 'usage') and result.usage:
-                usage = result.usage if hasattr(result.usage, '__dict__') else {}
-                cache_hit = getattr(usage, 'cache_read_input_tokens', 0) > 0 if hasattr(usage, '__dict__') else False
+            usage = getattr(result, 'usage', None)
+            if usage is not None:
+                cache_read_input_tokens = (
+                    usage.get('cache_read_input_tokens', 0)
+                    if isinstance(usage, dict)
+                    else getattr(usage, 'cache_read_input_tokens', 0)
+                )
+                cache_hit = cache_read_input_tokens > 0
                 if cache_hit:
-                    logger.info(f"  -> Cache HIT: {getattr(usage, 'cache_read_input_tokens', 0)} tokens read from cache")
+                    logger.info(f"  -> Cache HIT: {cache_read_input_tokens} tokens read from cache")
                 else:
                     logger.info(f"  -> Cache MISS: System prompt cached for future requests")
             
@@ -1859,6 +1875,401 @@ class QueryRefinementManager:
             repair_validation_error=repair_error if repaired is not None else None,
         )
 
+    @staticmethod
+    def _apply_aspect_safety_policy(
+        assessments: List[SearchAspectAssessment],
+    ) -> List[SearchAspectAssessment]:
+        """Assign deterministic safety labels from the fixed policy.
+
+        The LLM never controls safety classification; undetected aspects are
+        marked AVOID so they can never be broadened.
+        """
+        classified: List[SearchAspectAssessment] = []
+        seen: set[SearchAspect] = set()
+        for assessment in assessments:
+            if assessment.aspect in seen:
+                continue
+            seen.add(assessment.aspect)
+            safety = (
+                DEFAULT_ASPECT_SAFETY.get(assessment.aspect, AspectSafety.AVOID)
+                if assessment.detected
+                else AspectSafety.AVOID
+            )
+            classified.append(assessment.model_copy(update={"safety": safety}))
+        # Ensure every fixed aspect has an assessment entry.
+        for aspect in SearchAspect:
+            if aspect not in seen:
+                classified.append(
+                    SearchAspectAssessment(aspect=aspect, detected=False, safety=AspectSafety.AVOID)
+                )
+        return classified
+
+    @staticmethod
+    def _build_assessment_summary(
+        assessments: List[SearchAspectAssessment],
+    ) -> SearchAspectAssessmentSummary:
+        return SearchAspectAssessmentSummary(
+            assessed_aspects=assessments,
+            safe_aspects=[a.aspect for a in assessments if a.safety == AspectSafety.SAFE],
+            conditional_aspects=[a.aspect for a in assessments if a.safety == AspectSafety.CONDITIONAL],
+            avoided_aspects=[a.aspect for a in assessments if a.safety == AspectSafety.AVOID],
+        )
+
+    @staticmethod
+    def _validate_search_expansion_result(
+        result: SearchExpansionResponse,
+        allowed_aspects: Dict[str, AspectSafety],
+    ) -> Optional[str]:
+        """Validate generated Levels 1-N against the allowed aspect policy."""
+        if not isinstance(result.levels, list):
+            return "levels must be a list"
+        if len(result.levels) > 4:
+            return "levels must contain at most four generated levels"
+
+        seen_levels: set[int] = set()
+        previous_level = 0
+        for item in result.levels:
+            if item.level < 1:
+                return f"LLM-generated level must be >= 1: {item.level}"
+            if item.level in seen_levels:
+                return f"duplicate level number: {item.level}"
+            if item.level <= previous_level:
+                return "level numbers must be sorted ascending"
+            seen_levels.add(item.level)
+            previous_level = item.level
+
+            if not item.search_query.strip():
+                return f"level {item.level} search_query is empty"
+            if not item.label.strip():
+                return f"level {item.level} label is empty"
+            if not item.rationale.strip():
+                return f"level {item.level} rationale is empty"
+            if item.strategy == ExpansionStrategy.ANCHOR:
+                return f"level {item.level} must not use the anchor strategy"
+
+            relaxed_aspects = item.relaxed_aspects or {}
+            if len(relaxed_aspects) > 2:
+                return f"level {item.level} relaxes more than two aspects"
+            if len(relaxed_aspects) == 2 and item.strategy == ExpansionStrategy.CONCEPTUAL_SINGLE_ASPECT:
+                return f"level {item.level} relaxes two aspects but uses the single-aspect strategy"
+            invalid_keys = sorted(k for k in relaxed_aspects if k not in allowed_aspects)
+            if invalid_keys:
+                return f"level {item.level} relaxed_aspects contain disallowed aspects: {invalid_keys}"
+            conditional_count = sum(
+                1 for k in relaxed_aspects
+                if allowed_aspects.get(k) == AspectSafety.CONDITIONAL
+            )
+            if len(relaxed_aspects) == 2 and conditional_count > 1:
+                return f"level {item.level} relaxes two conditional aspects; at most one may be conditional"
+
+        return None
+
+    @staticmethod
+    def _build_search_expansion_repair_prompt(
+        user_prompt: str,
+        error: str,
+        previous_output: str = "",
+    ) -> str:
+        parts = [user_prompt]
+        if previous_output:
+            parts.append(f"## Your previous output (invalid)\n\n{previous_output[:900]}")
+        parts.append(
+            "REPAIR: The previous search expansion response was rejected. "
+            "Return one JSON object with a `levels` array containing only Levels 1-N. "
+            "Use only allowed aspect ids in relaxed_aspects, keep levels sorted and unique, "
+            "if you relax two aspects use strategy `conceptual_multi_aspect`, "
+            "relax no more than two aspects per level, and include at most one CONDITIONAL aspect per level. "
+            f"Validation error detail: {error}"
+        )
+        return "\n\n".join(parts)
+
+    @staticmethod
+    def _accumulate_metadata(
+        base: Optional[Dict[str, Any]],
+        extra: Optional[Dict[str, Any]],
+    ) -> Dict[str, Any]:
+        combined: Dict[str, Any] = dict(base or {})
+        if not extra:
+            return combined
+        for key in ("prompt_tokens", "completion_tokens", "total_tokens"):
+            combined[key] = combined.get(key, 0) + extra.get(key, 0)
+        return combined
+
+    async def _run_search_aspect_assessment_call(
+        self,
+        search_input: SearchExpansionInput,
+        *,
+        model: Optional[str] = None,
+        temperature: float = 0.2,
+        max_tokens: int = 1536,
+    ) -> tuple[Optional[List[SearchAspectAssessment]], Dict[str, Any]]:
+        """Run the fixed-aspect assessment call and apply the safety policy."""
+        prompt_builder = SearchExpansionPromptBuilder()
+        parsed, metadata = await self._execute_split_call(
+            prompt_builder.get_assessment_system_prompt(),
+            prompt_builder.get_assessment_user_prompt(search_input),
+            SearchAspectAssessmentResponse,
+            "search_aspect_assessment",
+            model=model,
+            temperature=temperature,
+            max_tokens=max_tokens,
+        )
+        if parsed is None or not isinstance(parsed, SearchAspectAssessmentResponse):
+            logger.warning(
+                "Search aspect assessment returned no usable response (type=%s)",
+                type(parsed).__name__,
+            )
+            return None, metadata or {}
+
+        classified = self._apply_aspect_safety_policy(parsed.assessments)
+        detected_count = sum(1 for a in classified if a.detected)
+        logger.info(
+            "Search aspect assessment completed",
+            extra={
+                "detected_aspect_count": detected_count,
+                "total_tokens": (metadata or {}).get("total_tokens", 0),
+            },
+        )
+        self.trace_emitter.emit(
+            "search_aspect_assessment_complete",
+            metadata={
+                "detected_aspect_count": detected_count,
+                "prompt_tokens": (metadata or {}).get("prompt_tokens", 0),
+                "completion_tokens": (metadata or {}).get("completion_tokens", 0),
+                "total_tokens": (metadata or {}).get("total_tokens", 0),
+            },
+        )
+        return classified, metadata or {}
+
+    async def _run_search_expansion_call(
+        self,
+        system_prompt: str,
+        user_prompt: str,
+        allowed_aspects: Dict[str, AspectSafety],
+        *,
+        model: Optional[str] = None,
+        temperature: float = 0.2,
+        max_tokens: int = 1536,
+    ) -> tuple[Optional[SearchExpansionResponse], Dict[str, Any]]:
+        """Run search expansion with contextual validation and one repair attempt."""
+        logger.info(
+            "Search expansion call started",
+            extra={"allowed_aspect_count": len(allowed_aspects), "max_tokens": max_tokens},
+        )
+        t0 = time.monotonic()
+        parsed, metadata = await self._execute_split_call(
+            system_prompt,
+            user_prompt,
+            SearchExpansionResponse,
+            "search_expansion",
+            model=model,
+            temperature=temperature,
+            max_tokens=max_tokens,
+        )
+
+        if parsed is None:
+            logger.warning("Search expansion call returned no parseable response")
+            return None, metadata or {}
+        if not isinstance(parsed, SearchExpansionResponse):
+            logger.warning(
+                "Search expansion call returned unexpected response type: %s",
+                type(parsed).__name__,
+            )
+            return None, metadata or {}
+
+        error = self._validate_search_expansion_result(parsed, allowed_aspects)
+        if error is None:
+            duration_ms = round((time.monotonic() - t0) * 1000)
+            logger.info(
+                "Search expansion call completed",
+                extra={
+                    "duration_ms": duration_ms,
+                    "generated_level_count": len(parsed.levels),
+                    "prompt_tokens": (metadata or {}).get("prompt_tokens", 0),
+                    "completion_tokens": (metadata or {}).get("completion_tokens", 0),
+                    "total_tokens": (metadata or {}).get("total_tokens", 0),
+                },
+            )
+            self.trace_emitter.emit(
+                "search_expansion_complete",
+                metadata={
+                    "duration_ms": duration_ms,
+                    "generated_level_count": len(parsed.levels),
+                    "prompt_tokens": (metadata or {}).get("prompt_tokens", 0),
+                    "completion_tokens": (metadata or {}).get("completion_tokens", 0),
+                    "total_tokens": (metadata or {}).get("total_tokens", 0),
+                },
+            )
+            return parsed, metadata or {}
+
+        logger.warning("Search expansion validation failed: %s", error)
+        self.trace_emitter.emit(
+            "search_expansion_validation_failed",
+            level="warning",
+            metadata={"error": error},
+        )
+        repair_prompt = self._build_search_expansion_repair_prompt(
+            user_prompt,
+            error,
+            parsed.model_dump_json(indent=2),
+        )
+        repaired, repair_meta = await self._execute_split_call(
+            system_prompt,
+            repair_prompt,
+            SearchExpansionResponse,
+            "search_expansion_repair",
+            model=model,
+            temperature=temperature,
+            max_tokens=max_tokens,
+        )
+        combined_meta = self._accumulate_metadata(metadata, repair_meta)
+        if repaired is None:
+            logger.warning("Search expansion repair returned no parseable response")
+            return None, combined_meta
+        if not isinstance(repaired, SearchExpansionResponse):
+            logger.warning(
+                "Search expansion repair returned unexpected response type: %s",
+                type(repaired).__name__,
+            )
+            return None, combined_meta
+
+        repair_error = self._validate_search_expansion_result(repaired, allowed_aspects)
+        if repair_error is None:
+            logger.info(
+                "Search expansion repair succeeded",
+                extra={"generated_level_count": len(repaired.levels)},
+            )
+            self.trace_emitter.emit(
+                "search_expansion_repaired",
+                metadata={"generated_level_count": len(repaired.levels)},
+            )
+            return repaired, combined_meta
+
+        logger.warning("Search expansion repair still invalid: %s", repair_error)
+        self.trace_emitter.emit(
+            "search_expansion_repair_failed",
+            level="warning",
+            metadata={"original_error": error, "repair_error": repair_error},
+        )
+        return None, combined_meta
+
+    async def generate_search_expansion_levels(
+        self,
+        *,
+        search_input: SearchExpansionInput,
+        model: Optional[str] = None,
+        temperature: float = 0.2,
+        max_tokens: int = 1536,
+    ) -> tuple[List[SearchExpansionLevel], Dict[str, Any]]:
+        """Generate retrieval expansion levels from a standalone expansion input.
+
+        Pipeline: fixed aspect assessment (LLM) -> deterministic safety policy
+        -> allowed-aspect derivation -> expansion generation (LLM) ->
+        validation -> deterministic Level 0 injection. Soft-fails to Level 0.
+        """
+        start_time = time.monotonic()
+        level_0 = SearchExpansionLevel(
+            level=0,
+            label="Exact clarified question",
+            strategy=ExpansionStrategy.ANCHOR,
+            search_query=search_input.anchor_query,
+            relaxed_aspects={},
+            rationale="Exact clarified query preserved as the review anchor.",
+        )
+        metadata: Dict[str, Any] = {
+            "used_llm": False,
+            "generated_level_count": 0,
+        }
+
+        logger.info(
+            "Search expansion generation started",
+            extra={
+                "anchor_query_length": len(search_input.anchor_query),
+                "advisory_dimension_count": len(search_input.advisory_dimensions),
+                "model": model or "(default)",
+                "temperature": temperature,
+                "max_tokens": max_tokens,
+            },
+        )
+        self.trace_emitter.emit(
+            "search_expansion_start",
+            metadata={
+                "advisory_dimension_count": len(search_input.advisory_dimensions),
+                "model": model or "(default)",
+                "temperature": temperature,
+                "max_tokens": max_tokens,
+            },
+        )
+
+        assessments, assessment_meta = await self._run_search_aspect_assessment_call(
+            search_input,
+            model=model,
+            temperature=temperature,
+            max_tokens=min(max_tokens, 1536),
+        )
+        metadata = self._accumulate_metadata(metadata, assessment_meta)
+
+        if assessments is None:
+            metadata["status"] = "failed_level_0_only"
+            metadata["warning"] = "Aspect assessment failed; returned Level 0 only."
+            metadata["duration_ms"] = round((time.monotonic() - start_time) * 1000)
+            logger.warning("Search expansion returned Level 0 only: assessment failed")
+            return [level_0], metadata
+
+        metadata["used_llm"] = True
+        summary = self._build_assessment_summary(assessments)
+        metadata["aspect_assessment"] = summary.model_dump(mode="json")
+
+        allowed_aspects: Dict[str, AspectSafety] = {
+            a.aspect.value: a.safety
+            for a in assessments
+            if a.detected
+            and a.safety is not None
+            and a.safety != AspectSafety.AVOID
+        }
+        metadata["allowed_aspect_count"] = len(allowed_aspects)
+
+        if not allowed_aspects:
+            metadata["status"] = "skipped_no_assessable_aspects"
+            metadata["duration_ms"] = round((time.monotonic() - start_time) * 1000)
+            logger.info("Search expansion skipped: no detected non-avoided aspects")
+            return [level_0], metadata
+
+        prompt_builder = SearchExpansionPromptBuilder()
+        result, call_metadata = await self._run_search_expansion_call(
+            prompt_builder.get_system_prompt(),
+            prompt_builder.get_user_prompt(search_input, assessments),
+            allowed_aspects,
+            model=model,
+            temperature=temperature,
+            max_tokens=min(max_tokens, 1536),
+        )
+        metadata = self._accumulate_metadata(metadata, call_metadata)
+        metadata["duration_ms"] = round((time.monotonic() - start_time) * 1000)
+
+        if result is None:
+            metadata["status"] = "failed_level_0_only"
+            metadata["warning"] = "Search expansion failed validation or parsing; returned Level 0 only."
+            logger.warning(
+                "Search expansion returned Level 0 only after failure",
+                extra={"duration_ms": metadata["duration_ms"]},
+            )
+            return [level_0], metadata
+
+        generated_levels = result.levels[:4]
+        metadata["status"] = "completed"
+        metadata["generated_level_count"] = len(generated_levels)
+        levels = [level_0] + generated_levels
+        logger.info(
+            "Search expansion generation completed",
+            extra={
+                "duration_ms": metadata["duration_ms"],
+                "returned_level_count": len(levels),
+                "generated_level_count": len(generated_levels),
+            },
+        )
+        return levels, metadata
+
     async def _run_split_synthesis(
         self,
         session: "RefinementSession",
@@ -2266,13 +2677,37 @@ class QueryRefinementManager:
                     max_tokens_ceiling=resolved_max_tokens,
                 )
             else:
-                synthesis_response, aggregated_metadata = await self._run_monolithic_synthesis(
-                    session,
-                    model=model,
-                    temperature=resolved_temperature,
-                    max_tokens=resolved_max_tokens,
-                    additional_guidance=additional_guidance,
-                )
+                try:
+                    synthesis_response, aggregated_metadata = await self._run_monolithic_synthesis(
+                        session,
+                        model=model,
+                        temperature=resolved_temperature,
+                        max_tokens=resolved_max_tokens,
+                        additional_guidance=additional_guidance,
+                    )
+                except ValueError as exc:
+                    logger.warning(
+                        "Monolithic synthesis returned invalid or partial output; falling back to split synthesis: %s",
+                        exc,
+                    )
+                    self.trace_emitter.emit(
+                        "query_synthesis_monolithic_fallback",
+                        level="warning",
+                        metadata={
+                            "error": str(exc),
+                            "model": resolved_model or "(default)",
+                        },
+                    )
+                    synthesis_response, aggregated_metadata = await self._run_split_synthesis(
+                        session,
+                        canonical_dimensions=canonical_dimensions,
+                        accepted_dimensions=accepted_dimensions,
+                        deterministic_filters=deterministic_filters,
+                        additional_guidance=additional_guidance,
+                        model=model,
+                        temperature=resolved_temperature,
+                        max_tokens_ceiling=resolved_max_tokens,
+                    )
         except Exception as exc:
             logger.exception("Query synthesis failed: %s", exc)
             self.trace_emitter.emit(

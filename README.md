@@ -115,6 +115,10 @@ poetry run query-refine --list-frameworks
 poetry run query-refine --framework pico_advanced
 ```
 
+After the final refined query is generated, the CLI asks whether to generate optional search expansion levels. Press Enter to skip, or answer `y` / `yes` to produce Level 0 plus broader retrieval variants. Level 0 is always the exact refined statement; broader levels are search-only variants for recall and do not change the canonical refined question.
+
+For API integrations, search expansion is available as a standalone endpoint via `POST /api/v1/refinement/search-expand`. It accepts an explicit anchor query, optional advisory dimension values, and optional search context with filters and synonyms. The anchor query is assessed against a fixed internal ontology of six search aspects (topic/condition, population/entity, intervention/exposure/phenomenon, setting/context, geography, time scope), and a deterministic safety policy controls which aspects may be broadened for search-only recall. It is not bundled into `/api/v1/refinement/synthesize`, and the web application does not expose it yet.
+
 ## How frameworks are loaded and selected
 
 Framework definitions are loaded from the YAML file pointed to by `REFINEMENT_FRAMEWORK_PATH`. In the provided environment templates this points to `./refinement_frameworks/frameworks.yaml` for local development and `/app/refinement_frameworks/frameworks.yaml` in Docker.
@@ -412,6 +416,7 @@ docs/                      # Technical documentation
 
 - [docs/DEPLOYMENT.md](docs/DEPLOYMENT.md) — Production deployment, infrastructure, and backups
 - [docs/API.md](docs/API.md) — Full API reference for external integrations
+- [docs/SEARCH_EXPANSION_LEVELS_PLAN.md](docs/SEARCH_EXPANSION_LEVELS_PLAN.md) — Design notes for post-synthesis search expansion levels
 - [docs/FRAMEWORKS.md](docs/FRAMEWORKS.md) — How to define custom refinement frameworks
 - [docs/OPERATIONS.md](docs/OPERATIONS.md) — Migrations, backups, and rollback procedures
 - [docs/DATA_RECOVERY.md](docs/DATA_RECOVERY.md) — Database and cache export/recovery procedures for hosted deployments

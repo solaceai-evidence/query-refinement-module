@@ -320,6 +320,10 @@ def save_query_refinement_response(
         if 'terminology' in response:
             query.terminology = response['terminology']
 
+        # Store optional post-synthesis search expansion levels.
+        if 'search_expansion_levels' in response:
+            query.search_expansion_levels = response['search_expansion_levels']
+
         # Store optional metadata and processing logs when present.
         if metadata_payload is not None:
             query.synthesis_metadata = metadata_payload
