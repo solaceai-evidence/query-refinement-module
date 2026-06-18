@@ -119,10 +119,6 @@ class LLMSettings(BaseSettings):
         default=True,
         validation_alias="LLM_ENABLE_CIRCUIT_BREAKER",
     )
-    constrained_decoding: bool = Field(
-        default=False,
-        validation_alias="LLM_CONSTRAINED_DECODING",
-    )
     circuit_breaker_failure_threshold: int = Field(
         default=5,
         validation_alias="LLM_CIRCUIT_BREAKER_FAILURE_THRESHOLD",
@@ -192,7 +188,6 @@ class LLMSettings(BaseSettings):
     @field_validator(
         "enable_prompt_caching",
         "enable_circuit_breaker",
-        "constrained_decoding",
         "adaptive_rate_limit",
         mode="before",
     )
@@ -312,7 +307,6 @@ class LLMSettings(BaseSettings):
             "default_completion_kwargs": copy.deepcopy(self.completion_kwargs),
             "enable_prompt_caching": self.enable_prompt_caching,
             "enable_circuit_breaker": self.enable_circuit_breaker,
-            "constrained_decoding": self.constrained_decoding,
             "circuit_breaker_config": circuit_breaker_config,
             "rate_limit_config": rate_limit_config,
             "max_concurrent_requests": self.max_concurrent_requests,

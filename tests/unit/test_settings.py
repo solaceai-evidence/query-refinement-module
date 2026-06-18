@@ -224,29 +224,6 @@ def test_analyzer_kwargs_returns_copy(monkeypatch):
     assert settings.completion_kwargs["presence_penalty"] == 1
 
 
-def test_constrained_decoding_env_var(monkeypatch):
-    _clear_env(monkeypatch)
-    monkeypatch.delenv("LLM_CONSTRAINED_DECODING", raising=False)
-    monkeypatch.setenv("LLM_MODEL", "openai/gpt-4o-mini")
-
-    # Default is False when env var is absent
-    settings = LLMSettings.from_env()
-    assert settings.constrained_decoding is False
-    assert settings.as_provider_kwargs()["constrained_decoding"] is False
-
-    # Explicit true
-    monkeypatch.setenv("LLM_CONSTRAINED_DECODING", "true")
-    settings = LLMSettings.from_env()
-    assert settings.constrained_decoding is True
-    assert settings.as_provider_kwargs()["constrained_decoding"] is True
-
-    # Explicit false
-    monkeypatch.setenv("LLM_CONSTRAINED_DECODING", "false")
-    settings = LLMSettings.from_env()
-    assert settings.constrained_decoding is False
-    assert settings.as_provider_kwargs()["constrained_decoding"] is False
-
-
 # ---------------------------------------------------------------------------
 # Rate-limit env vars
 # ---------------------------------------------------------------------------

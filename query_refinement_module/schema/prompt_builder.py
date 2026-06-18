@@ -21,7 +21,6 @@ from .templates import (
     DIMENSION_REFINEMENT_TEMPLATE,
     USER_CONTEXT_PROFILE_TEMPLATE,
     DIMENSIONS_CLARIFIED_AND_DEPENDENCIES_TEMPLATE,
-    using_open_llm_prompt_templates,
 )
 
 
@@ -119,18 +118,12 @@ class PromptBuilder(_PromptBuilderBase):
             f"Tone: {tone_hint}\n"
             f"Complexity: {complexity_hint}"
         )
-        if using_open_llm_prompt_templates():
-            cue += (
-                "\nQuestion gating: examples are illustrative only; ask a follow-up only when the "
-                "current dimension's explicit trigger is present. If the case is already retrieval-usable "
-                "or closer to a clear example than a partial example, prefer complete=true."
-            )
         return cue
 
     # =========================================================================
     # Global System Prompt
     # =========================================================================
-    
+
     def get_global_system_prompt(self) -> str:
         """
         Get the global system prompt.
@@ -495,10 +488,7 @@ class PromptBuilder(_PromptBuilderBase):
             # Build reinforcement from cached components
             reinforcement_parts = [GLOBAL_SYSTEM_PROMPT]
             if dimension.user_context:
-                if using_open_llm_prompt_templates():
-                    reinforcement_parts.append(self.render_style_cue(dimension.user_context))
-                else:
-                    reinforcement_parts.append(self.render_user_context(dimension.user_context))
+                reinforcement_parts.append(self.render_user_context(dimension.user_context))
             reinforcement_parts.append(
                 self.render_dimension_prompt(
                     dimension=dimension,

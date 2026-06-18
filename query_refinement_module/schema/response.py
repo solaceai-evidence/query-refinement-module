@@ -116,42 +116,6 @@ class Terminology(BaseModel):
     colloquial: List[str] = Field(default_factory=list)
 
 
-class StatementResponse(BaseModel):
-    """Structured output for the statement synthesis call."""
-    integrated_statement: str = Field(
-        description="Integrated research specification preserving accepted constraints"
-    )
-
-
-class SemanticQueryResponse(BaseModel):
-    """Structured output for the semantic retrieval phrasing call."""
-    semantic: str = Field(
-        description="Natural language retrieval query for semantic or embedding search"
-    )
-
-
-class TerminologyResponse(BaseModel):
-    """Structured output for the terminology expansion call."""
-    synonyms: Dict[str, List[str]] = Field(default_factory=dict)
-
-
-class KeywordSupportResponse(BaseModel):
-    """Structured output for keyword-support generation."""
-    phrases: List[str] = Field(default_factory=list)
-    required: List[str] = Field(default_factory=list)
-    optional: List[str] = Field(default_factory=list)
-    excluded: List[str] = Field(default_factory=list)
-
-
-class FilterSuggestionResponse(BaseModel):
-    """Structured output for constrained filter suggestions."""
-    publication_years: str = Field(default="", description="Year range in YYYY-YYYY or YYYY- format, empty if not stated")
-    venues: List[str] = Field(default_factory=list, description="Journal or conference names, empty if not stated")
-    authors: List[str] = Field(default_factory=list, description="Author names, empty if not stated")
-    publication_types: List[str] = Field(default_factory=list, description="Publication types e.g. randomised controlled trial, systematic review")
-    fields_of_study: List[str] = Field(default_factory=list)
-
-
 # ============================================================================
 # Search Expansion: fixed aspect ontology, policy, and models
 # ============================================================================
@@ -334,15 +298,10 @@ class QueryRefinementResponse(BaseModel):
 
 __all__ = [
     "DimensionEvaluationResponse",
-    "QueryRefinementResponse",  # Alias for backward compatibility
+    "QueryRefinementResponse",
     "SearchOptimized",
     "SearchFilters",
     "Terminology",
-    "StatementResponse",
-    "SemanticQueryResponse",
-    "TerminologyResponse",
-    "KeywordSupportResponse",
-    "FilterSuggestionResponse",
     "SearchAspect",
     "AspectSafety",
     "DEFAULT_ASPECT_SAFETY",

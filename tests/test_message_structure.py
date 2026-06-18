@@ -260,30 +260,6 @@ def _build_dimension_with_user_context():
     )
 
 
-def test_open_llm_terminal_reinforcement_uses_compact_style_cue(monkeypatch):
-    prompt_builder = _reload_prompt_modules(
-        monkeypatch,
-        prompt_variant="open_llm",
-        llm_model="ollama/qwen2.5:72b",
-    )
-    builder = prompt_builder.PromptBuilder()
-    dimension = _build_dimension_with_user_context()
-
-    messages = builder.build_refinement_messages(
-        dimension=dimension,
-        query="population effects of heat exposure",
-        conversation_history=[
-            {"question": "Q1?", "response": "A1"},
-            {"question": "Q2?", "response": "A2"},
-            {"question": "Q3?", "response": "A3"},
-        ],
-        terminal_reinforcement_threshold=3,
-    )
-
-    assert "Style cue" in messages[-1]["content"]
-    assert "## USER CONTEXT" not in messages[-1]["content"]
-
-
 def test_open_llm_completed_context_reminder_preserves_question_gating(monkeypatch):
     prompt_builder = _reload_prompt_modules(
         monkeypatch,

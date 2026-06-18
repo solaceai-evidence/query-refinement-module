@@ -10,45 +10,11 @@ Split into separate modules for maintainability:
 
 from __future__ import annotations
 
-import os
-
-_PROMPT_VARIANT_ENV = "PROMPT_VARIANT"
-_LLM_MODEL_ENV = "LLM_MODEL"
-_OPEN_MODEL_MARKERS = ("ollama/", "qwen", "llama", "mistral", "gemma", "deepseek")
-
-
-def _infer_open_llm_from_model() -> bool:
-    model = os.getenv(_LLM_MODEL_ENV, "").strip().lower()
-    return any(marker in model for marker in _OPEN_MODEL_MARKERS)
-
-
-def _use_open_llm_templates() -> bool:
-    raw_variant = os.getenv(_PROMPT_VARIANT_ENV)
-    if raw_variant is None or raw_variant.strip() == "":
-        return _infer_open_llm_from_model()
-
-    variant = raw_variant.strip().lower()
-    return variant in {"open_llm", "open-llm", "open", "qwen", "ollama"}
-
-
-def using_open_llm_prompt_templates() -> bool:
-    """Return whether the current prompt variant resolves to the open-LLM branch."""
-    return _use_open_llm_templates()
-
-
-if _use_open_llm_templates():
-    from .global_system_open_llm import GLOBAL_SYSTEM_PROMPT
-    from .user_context_open_llm import (
-        USER_CONTEXT_PROFILE_TEMPLATE,
-        DIMENSIONS_CLARIFIED_AND_DEPENDENCIES_TEMPLATE,
-    )
-else:
-    from .global_system import GLOBAL_SYSTEM_PROMPT
-    from .user_context import (
-        USER_CONTEXT_PROFILE_TEMPLATE,
-        DIMENSIONS_CLARIFIED_AND_DEPENDENCIES_TEMPLATE,
-    )
-
+from .global_system import GLOBAL_SYSTEM_PROMPT
+from .user_context import (
+    USER_CONTEXT_PROFILE_TEMPLATE,
+    DIMENSIONS_CLARIFIED_AND_DEPENDENCIES_TEMPLATE,
+)
 from .synthesis import SYNTHESIS_TEMPLATE
 from .dimension import DIMENSION_REFINEMENT_TEMPLATE
 from .search_expansion import SEARCH_EXPANSION_TEMPLATE
@@ -60,5 +26,4 @@ __all__ = [
     "DIMENSION_REFINEMENT_TEMPLATE",
     "USER_CONTEXT_PROFILE_TEMPLATE",
     "DIMENSIONS_CLARIFIED_AND_DEPENDENCIES_TEMPLATE",
-    "using_open_llm_prompt_templates",
 ]
