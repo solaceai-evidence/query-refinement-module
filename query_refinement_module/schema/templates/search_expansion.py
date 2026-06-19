@@ -59,7 +59,7 @@ Strategy ladder (apply in this order; skip steps that add no value):
 1. Level 1 — strategy "lexical": expand within detected aspects using the provided synonyms and near-variants only. Do not broaden any aspect conceptually. relaxed_aspects stays empty for purely lexical levels.
 2. Level 2 — strategy "conceptual_single_aspect": broaden exactly one SAFE aspect using one of its allowed broadening candidates.
 3. Level 3 — strategy "conceptual_single_aspect" or "conceptual_multi_aspect": a broader single-aspect step, or at most two aspects when one alone is insufficient. At most one of the two may be CONDITIONAL.
-4. Level 4 — strategy "indexing_variant" (optional): a database-friendly or broader indexing-language variant, only if the provided synonyms or context support it.
+4. Level 4 — strategy "indexing_variant" (optional): when controlled_vocabulary_hints are provided in the Supporting Search Context, use those vocabulary names and terms to construct a database-specific controlled vocabulary query (e.g. MeSH headings for MEDLINE, ERIC descriptors for education databases). Name the vocabulary in the label. Skip Level 4 entirely when no controlled_vocabulary_hints are provided or all entries have confidence "low".
 
 Rules:
 - Generate Levels 1 through N only. Never generate Level 0. The supplied Level 0 anchor is fixed; do not restate, rewrite, or replace it.

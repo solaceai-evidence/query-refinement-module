@@ -229,6 +229,10 @@ class SearchExpansionContext(BaseModel):
     """Optional retrieval context that can inform search broadening."""
     filters: Dict[str, Any] = Field(default_factory=dict)
     synonyms: Dict[str, List[str]] = Field(default_factory=dict)
+    concept_graph: Optional[Dict[str, Any]] = Field(
+        default=None,
+        description="Structured concept graph from Agent B; when present, takes precedence over synonyms for lexical context and provides controlled_vocabulary_hints for Level 4.",
+    )
 
 
 class SearchExpansionInput(BaseModel):
@@ -294,6 +298,51 @@ class QueryRefinementResponse(BaseModel):
     processing_log: Optional[Dict[str, Any]] = None
 
 
+# ============================================================================
+# Multi-agent synthesis pipeline models (Agents A, B, D)
+# ============================================================================
+
+class VocabularyHint(BaseModel):
+    """One controlled vocabulary entry inferred by Agent B for a concept."""
+    vocabulary_name: str = Field(description="e.g. 'MeSH', 'PsycINFO Thesaurus', 'ERIC Thesaurus', 'ACM CCS'")
+    terms: List[str] = Field(default_factory=list)
+    confidence: str = Field(default="medium", description="'high' | 'medium' | 'low'")
+
+
+class ConceptEntry(BaseModel):
+    """Structured retrieval representation of one canonical concept (Agent B output)."""
+    query_role: Optional[str] = Field(
+        default=None,
+        description="SearchAspect value, 'comparator', 'outcome', 'other', or null",
+    )
+    true_synonyms: List[str] = Field(default_factory=list)
+    abbreviations: List[str] = Field(default_factory=list)
+    spelling_variants: List[str] = Field(default_factory=list)
+    lexical_variants: List[str] = Field(default_factory=list)
+    domain_terms: List[str] = Field(default_factory=list)
+    colloquial: List[str] = Field(default_factory=list)
+    controlled_vocabulary_hints: List[VocabularyHint] = Field(default_factory=list)
+
+
+class ResearchStatementResponse(BaseModel):
+    """Agent A output: normalized research statement + dimension passthrough."""
+    research_statement: str
+    dimensions_specifications: Dict[str, Any] = Field(default_factory=dict)
+
+
+class SemanticRepresentationResponse(BaseModel):
+    """Agent B output: embedding query + structured concept graph."""
+    semantic_statement: str
+    concept_graph: Dict[str, ConceptEntry] = Field(default_factory=dict)
+
+
+class SearchConstructionResponse(BaseModel):
+    """Agent D output: anchor keyword search + grey literature + filters."""
+    keyword: KeywordSearch
+    grey_literature: Optional[GreyLiteratureSearch] = None
+    search_filters: SearchFilters
+
+
 # Backward compatibility alias
 
 __all__ = [
@@ -313,4 +362,9 @@ __all__ = [
     "SearchExpansionResponse",
     "SearchExpansionContext",
     "SearchExpansionInput",
+    "VocabularyHint",
+    "ConceptEntry",
+    "ResearchStatementResponse",
+    "SemanticRepresentationResponse",
+    "SearchConstructionResponse",
 ]

@@ -26,7 +26,13 @@ from query_refinement_module.interfaces import (
 from query_refinement_module.schema import RefinementAspect
 from query_refinement_module.schema.response import (
     DimensionEvaluationResponse,
+    KeywordSearch,
     QueryRefinementResponse,
+    ResearchStatementResponse,
+    SearchConstructionResponse,
+    SearchFilters,
+    SearchTerms,
+    SemanticRepresentationResponse,
 )
 
 
@@ -434,29 +440,23 @@ def build_manager(responses: Iterable[Any]) -> QueryRefinementManager:
 
 
 @pytest.mark.asyncio
-async def test_private_models_use_single_monolithic_synthesis_call():
-    response = QueryRefinementResponse(
-        integrated_statement="Refined question",
-        dimensions_specifications={},
-        search_optimized={
-            "semantic": "semantic query",
-            "keyword": {
-                "structured": "query",
-                "phrases": [],
-                "terms": {"required": [], "optional": [], "excluded": []},
-            },
-        },
-        search_filters={
-            "publication_years": "",
-            "venues": [],
-            "authors": [],
-            "publication_types": [],
-            "fields_of_study": [],
-        },
-        terminology={"synonyms": {}, "colloquial": []},
+async def test_synthesis_uses_three_agent_pipeline():
+    """synthesize_refined_query chains Agents A → B → D (3 LLM calls)."""
+    _keyword = KeywordSearch(
+        structured="query",
+        phrases=[],
+        terms=SearchTerms(required=[], optional=[], excluded=[]),
     )
+    _filters = SearchFilters(
+        publication_years="", venues=[], authors=[], publication_types=[], fields_of_study=[]
+    )
+    responses = [
+        ResearchStatementResponse(research_statement="Refined question", dimensions_specifications={}),
+        SemanticRepresentationResponse(semantic_statement="semantic query", concept_graph={}),
+        SearchConstructionResponse(keyword=_keyword, grey_literature=None, search_filters=_filters),
+    ]
     manager = QueryRefinementManager(
-        llm_provider=StubLLMProvider([response]),
+        llm_provider=StubLLMProvider(responses),
         tracing_provider=StubTracingProvider(),
     )
     session = RefinementSession(original_query="q")
@@ -464,75 +464,64 @@ async def test_private_models_use_single_monolithic_synthesis_call():
     result = await manager.synthesize_refined_query(session, model="anthropic/claude-sonnet-4-6")
 
     assert result["integrated_statement"] == "Refined question"
-    assert len(manager.llm_provider.calls) == 1
-    assert manager.llm_provider.calls[0]["response_format"] is QueryRefinementResponse
+    calls = manager.llm_provider.calls
+    assert len(calls) == 3
+    assert calls[0]["response_format"] is ResearchStatementResponse
+    assert calls[1]["response_format"] is SemanticRepresentationResponse
+    assert calls[2]["response_format"] is SearchConstructionResponse
 
 
 @pytest.mark.asyncio
-async def test_private_wrapper_models_still_use_single_monolithic_synthesis_call():
-    response = QueryRefinementResponse(
-        integrated_statement="Refined question",
-        dimensions_specifications={},
-        search_optimized={
-            "semantic": "semantic query",
-            "keyword": {
-                "structured": "query",
-                "phrases": [],
-                "terms": {"required": [], "optional": [], "excluded": []},
-            },
-        },
-        search_filters={
-            "publication_years": "",
-            "venues": [],
-            "authors": [],
-            "publication_types": [],
-            "fields_of_study": [],
-        },
-        terminology={"synonyms": {}, "colloquial": []},
+async def test_synthesis_pipeline_with_bedrock_model():
+    _keyword = KeywordSearch(
+        structured="query",
+        phrases=[],
+        terms=SearchTerms(required=[], optional=[], excluded=[]),
     )
+    _filters = SearchFilters(
+        publication_years="", venues=[], authors=[], publication_types=[], fields_of_study=[]
+    )
+    responses = [
+        ResearchStatementResponse(research_statement="Refined question", dimensions_specifications={}),
+        SemanticRepresentationResponse(semantic_statement="semantic query", concept_graph={}),
+        SearchConstructionResponse(keyword=_keyword, grey_literature=None, search_filters=_filters),
+    ]
     manager = QueryRefinementManager(
-        llm_provider=StubLLMProvider([response]),
+        llm_provider=StubLLMProvider(responses),
         tracing_provider=StubTracingProvider(),
     )
     session = RefinementSession(original_query="q")
 
     await manager.synthesize_refined_query(session, model="bedrock/anthropic.claude-3-7-sonnet")
 
-    assert len(manager.llm_provider.calls) == 1
-    assert manager.llm_provider.calls[0]["response_format"] is QueryRefinementResponse
+    assert len(manager.llm_provider.calls) == 3
+    assert manager.llm_provider.calls[0]["response_format"] is ResearchStatementResponse
 
 
 @pytest.mark.asyncio
-async def test_private_wrapper_provider_default_uses_monolithic_synthesis_call():
-    response = QueryRefinementResponse(
-        integrated_statement="Refined question",
-        dimensions_specifications={},
-        search_optimized={
-            "semantic": "semantic query",
-            "keyword": {
-                "structured": "query",
-                "phrases": [],
-                "terms": {"required": [], "optional": [], "excluded": []},
-            },
-        },
-        search_filters={
-            "publication_years": "",
-            "venues": [],
-            "authors": [],
-            "publication_types": [],
-            "fields_of_study": [],
-        },
-        terminology={"synonyms": {}, "colloquial": []},
+async def test_synthesis_pipeline_uses_provider_default_model():
+    _keyword = KeywordSearch(
+        structured="query",
+        phrases=[],
+        terms=SearchTerms(required=[], optional=[], excluded=[]),
     )
-    provider = StubLLMProvider([response])
+    _filters = SearchFilters(
+        publication_years="", venues=[], authors=[], publication_types=[], fields_of_study=[]
+    )
+    responses = [
+        ResearchStatementResponse(research_statement="Refined question", dimensions_specifications={}),
+        SemanticRepresentationResponse(semantic_statement="semantic query", concept_graph={}),
+        SearchConstructionResponse(keyword=_keyword, grey_literature=None, search_filters=_filters),
+    ]
+    provider = StubLLMProvider(responses)
     provider._default_model = "bedrock/anthropic.claude-3-7-sonnet"
     manager = QueryRefinementManager(llm_provider=provider, tracing_provider=StubTracingProvider())
     session = RefinementSession(original_query="q")
 
     await manager.synthesize_refined_query(session)
 
-    assert len(provider.calls) == 1
-    assert provider.calls[0]["response_format"] is QueryRefinementResponse
+    assert len(provider.calls) == 3
+    assert provider.calls[2]["response_format"] is SearchConstructionResponse
 
 
 def test_skipped_aspects_excluded_from_dependency_context():
