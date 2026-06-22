@@ -4,9 +4,9 @@ SEMANTIC_REPRESENTATION_TEMPLATE = """
 # SEMANTIC REPRESENTATION
 
 ## Role
-Extract retrieval-oriented semantic representations from a normalized research statement.
+Extract retrieval-oriented semantic representations from a research statement.
 Produce a natural-language embedding query and a structured concept graph.
-Do not assume any domain — derive all vocabulary and structure from the research statement and dimensions.
+Do not assume any domain — derive all vocabulary and structure from the research statement.
 
 Return exactly one valid JSON object and no other text.
 
@@ -35,7 +35,7 @@ Return exactly one valid JSON object and no other text.
 ## semantic_statement
 
 One natural-language retrieval query for embedding or semantic search.
-- 50–90 words; target 60–75 words.
+- 50-75 words.
 - Describe the core subject, phenomenon, and scope.
 - Include domain abbreviations when they function as primary retrieval signals in the field.
 - Exclude venues, authors, publication types, and years (unless the year range is intrinsic to the research question itself).
@@ -46,7 +46,7 @@ One natural-language retrieval query for embedding or semantic search.
 
 ## concept_graph
 
-Extract 6–8 core concepts from the research statement. Prioritize in order: primary subject or topic, key entities or groups, primary phenomena or interventions, contextual factors, then remaining concepts by centrality.
+Extract 6-8 core concepts from the research statement. Prioritize in order: primary subject or topic, key entities or groups, primary phenomena or interventions, contextual factors, then remaining concepts by centrality.
 
 The key for each entry is the canonical form of the concept as it appears in the research statement.
 
@@ -109,6 +109,97 @@ Each entry:
 Prefer an empty terms list over a hallucinated heading. These are hints for a specialist to verify, not authoritative lookups.
 Include only vocabularies that are plausibly in use for the inferred domain.
 If no controlled vocabulary applies or is known for the domain, return an empty list.
+
+---
+
+## Example — Medicine
+
+Input:
+
+Research Statement: "Recent studies about venous thromboembolism prophylaxis in patients undergoing major orthopedic surgery (total hip replacement, knee replacement, hip fracture surgery), comparing thromboprophylaxis interventions including antithrombotic medications and mechanical interventions such as compression stockings within and across classes."
+
+Dimension Specifications:
+{
+  "Population": "Patients undergoing major orthopedic surgery (total hip replacement, knee replacement, hip fracture surgery)",
+  "Intervention": "Thromboprophylaxis interventions including antithrombotic medications and mechanical interventions such as compression stockings",
+  "Comparison": "Within and across classes",
+  "Outcomes": null
+}
+
+Output:
+
+{
+  "semantic_statement": "Studies comparing venous thromboembolism prophylaxis interventions in patients undergoing major orthopedic surgery, including total hip replacement, total knee replacement, and hip fracture surgery, with emphasis on antithrombotic medications and mechanical prophylaxis such as compression stockings and intermittent pneumatic compression devices, comparing approaches within and across intervention classes.",
+  "concept_graph": {
+    "venous thromboembolism": {
+      "query_role": "topic_or_condition",
+      "true_synonyms": ["venous thrombosis", "thromboembolism"],
+      "abbreviations": ["VTE"],
+      "spelling_variants": [],
+      "lexical_variants": ["thromboembolic"],
+      "domain_terms": ["deep vein thrombosis", "pulmonary embolism"],
+      "colloquial": ["blood clot"],
+      "controlled_vocabulary_hints": [
+        {"vocabulary_name": "MeSH", "terms": ["Venous Thromboembolism", "Venous Thrombosis", "Pulmonary Embolism"], "confidence": "high"}
+      ]
+    },
+    "major orthopedic surgery": {
+      "query_role": "population_or_entity",
+      "true_synonyms": ["major orthopedic procedures", "major orthopaedic procedures"],
+      "abbreviations": [],
+      "spelling_variants": ["major orthopaedic surgery"],
+      "lexical_variants": [],
+      "domain_terms": ["total hip replacement", "total knee replacement", "hip fracture surgery"],
+      "colloquial": ["joint replacement surgery"],
+      "controlled_vocabulary_hints": [
+        {"vocabulary_name": "MeSH", "terms": ["Arthroplasty, Replacement, Hip", "Arthroplasty, Replacement, Knee", "Hip Fractures"], "confidence": "high"}
+      ]
+    },
+    "thromboprophylaxis": {
+      "query_role": "intervention_or_exposure_or_phenomenon",
+      "true_synonyms": ["VTE prophylaxis", "VTE prevention", "venous thromboembolism prevention"],
+      "abbreviations": [],
+      "spelling_variants": [],
+      "lexical_variants": ["thromboprophylactic"],
+      "domain_terms": ["anticoagulation", "antithrombotic therapy", "mechanical compression"],
+      "colloquial": ["clot prevention"],
+      "controlled_vocabulary_hints": [
+        {"vocabulary_name": "MeSH", "terms": ["Anticoagulants", "Compression Bandages"], "confidence": "high"}
+      ]
+    },
+    "antithrombotic medications": {
+      "query_role": "intervention_or_exposure_or_phenomenon",
+      "true_synonyms": ["antithrombotic agents", "antithrombotic therapy", "antithrombotic drugs"],
+      "abbreviations": ["DOAC", "LMWH"],
+      "spelling_variants": [],
+      "lexical_variants": [],
+      "domain_terms": ["aspirin", "heparin", "warfarin", "rivaroxaban", "apixaban", "enoxaparin"],
+      "colloquial": ["blood thinners"],
+      "controlled_vocabulary_hints": [
+        {"vocabulary_name": "MeSH", "terms": ["Anticoagulants", "Platelet Aggregation Inhibitors"], "confidence": "high"}
+      ]
+    },
+    "mechanical interventions": {
+      "query_role": "intervention_or_exposure_or_phenomenon",
+      "true_synonyms": ["mechanical prophylaxis", "physical prophylaxis", "mechanical preventive measures"],
+      "abbreviations": ["GCS", "IPC"],
+      "spelling_variants": [],
+      "lexical_variants": [],
+      "domain_terms": ["compression stockings", "intermittent pneumatic compression", "venous foot pump"],
+      "colloquial": ["compression socks"],
+      "controlled_vocabulary_hints": [
+        {"vocabulary_name": "MeSH", "terms": ["Intermittent Pneumatic Compression Devices", "Stockings, Compression"], "confidence": "high"}
+      ]
+    }
+  }
+}
+
+Key distinctions demonstrated:
+- "deep vein thrombosis" and "pulmonary embolism" are domain_terms (narrower types of VTE), not true_synonyms — substituting either would narrow the query scope.
+- "total hip replacement" and "total knee replacement" are domain_terms (specific procedures), not true_synonyms of "major orthopedic surgery".
+- Specific drugs (aspirin, heparin, warfarin) are domain_terms for "antithrombotic medications" — they are instances, not equivalents.
+- "blood clot", "joint replacement surgery", "blood thinners", "compression socks" are colloquial — they belong in grey literature search, not the anchor Boolean query.
+- MeSH is used throughout because the domain is medicine; in other domains a different vocabulary would be inferred.
 
 ---
 

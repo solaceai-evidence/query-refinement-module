@@ -39,6 +39,33 @@ Map [SKIPPED] values to null. Use the provided value string otherwise.
 
 ---
 
+## Example — Medicine
+
+Input:
+
+**Original Query:** "I am interested in recent studies about venous thromboembolism prophylaxis in patients undergoing major orthopedic surgery"
+
+**Population** (Patient group): Patients undergoing major orthopedic surgery (total hip replacement, knee replacement, hip fracture surgery)
+**Intervention** (What is being tested): Thromboprophylaxis interventions including antithrombotic medications and mechanical interventions such as compression stockings
+**Comparison** (Control or comparator): Within and across classes (comparing interventions both within the same class and between different classes)
+**Outcomes** (Primary endpoints): [SKIPPED]
+
+Output:
+
+{
+  "research_statement": "Recent studies about venous thromboembolism prophylaxis in patients undergoing major orthopedic surgery (total hip replacement, knee replacement, hip fracture surgery), comparing thromboprophylaxis interventions including antithrombotic medications and mechanical interventions such as compression stockings within and across classes.",
+  "dimensions_specifications": {
+    "Population": "Patients undergoing major orthopedic surgery (total hip replacement, knee replacement, hip fracture surgery)",
+    "Intervention": "Thromboprophylaxis interventions including antithrombotic medications and mechanical interventions such as compression stockings",
+    "Comparison": "Within and across classes (comparing interventions both within the same class and between different classes)",
+    "Outcomes": null
+  }
+}
+
+Note what changed: filler phrase "I am interested in" was removed (Rule 4); "recent studies about" was retained because it is meaningful scope content, not filler; all four dimension keys appear exactly once; Outcomes maps to null because its value was [SKIPPED].
+
+---
+
 ## Hard Rules
 - Output exactly one JSON object. No preamble, explanation, markdown fences, or comments.
 - Use valid JSON: double quotes, escaped internal quotes, no trailing commas.

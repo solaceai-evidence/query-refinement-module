@@ -112,6 +112,97 @@ Use 1 field by default. Use 2–3 only when each is independently indispensable.
 
 ---
 
+## Example — Medicine
+
+Input:
+
+Research Statement: "Recent studies about venous thromboembolism prophylaxis in patients undergoing major orthopedic surgery (total hip replacement, knee replacement, hip fracture surgery), comparing thromboprophylaxis interventions including antithrombotic medications and mechanical interventions such as compression stockings within and across classes."
+
+Concept Graph (excerpt — all five concepts shown with their retrieval fields):
+{
+  "venous thromboembolism": {
+    "query_role": "topic_or_condition",
+    "true_synonyms": ["venous thrombosis", "thromboembolism"],
+    "abbreviations": ["VTE"],
+    "spelling_variants": [],
+    "lexical_variants": ["thromboembolic"],
+    "domain_terms": ["deep vein thrombosis", "pulmonary embolism"],
+    "colloquial": ["blood clot"]
+  },
+  "major orthopedic surgery": {
+    "query_role": "population_or_entity",
+    "true_synonyms": ["major orthopedic procedures", "major orthopaedic procedures"],
+    "abbreviations": [],
+    "spelling_variants": ["major orthopaedic surgery"],
+    "lexical_variants": [],
+    "domain_terms": ["total hip replacement", "total knee replacement", "hip fracture surgery"],
+    "colloquial": ["joint replacement surgery"]
+  },
+  "thromboprophylaxis": {
+    "query_role": "intervention_or_exposure_or_phenomenon",
+    "true_synonyms": ["VTE prophylaxis", "VTE prevention", "venous thromboembolism prevention"],
+    "abbreviations": [],
+    "lexical_variants": ["thromboprophylactic"],
+    "domain_terms": ["anticoagulation", "antithrombotic therapy", "mechanical compression"],
+    "colloquial": ["clot prevention"]
+  },
+  "antithrombotic medications": {
+    "query_role": "intervention_or_exposure_or_phenomenon",
+    "true_synonyms": ["antithrombotic agents", "antithrombotic therapy", "antithrombotic drugs"],
+    "abbreviations": ["DOAC", "LMWH"],
+    "domain_terms": ["aspirin", "heparin", "warfarin", "rivaroxaban", "apixaban"],
+    "colloquial": ["blood thinners"]
+  },
+  "mechanical interventions": {
+    "query_role": "intervention_or_exposure_or_phenomenon",
+    "true_synonyms": ["mechanical prophylaxis", "physical prophylaxis", "mechanical preventive measures"],
+    "abbreviations": ["GCS", "IPC"],
+    "domain_terms": ["compression stockings", "intermittent pneumatic compression", "venous foot pump"],
+    "colloquial": ["compression socks"]
+  }
+}
+
+Output:
+
+{
+  "keyword": {
+    "structured": "("venous thromboembolism" OR "venous thrombosis" OR thromboembolism OR VTE OR thromboembolic) AND ("major orthopedic surgery" OR "major orthopaedic surgery" OR "major orthopedic procedures" OR "major orthopaedic procedures") AND (thromboprophylaxis OR "VTE prophylaxis" OR "VTE prevention" OR "venous thromboembolism prevention" OR thromboprophylactic OR "antithrombotic medications" OR "antithrombotic agents" OR "antithrombotic therapy" OR DOAC OR LMWH OR "mechanical prophylaxis" OR "physical prophylaxis" OR GCS OR IPC)",
+    "phrases": [
+      "venous thromboembolism prophylaxis",
+      "major orthopedic surgery",
+      "thromboprophylaxis interventions",
+      "antithrombotic medications",
+      "mechanical interventions",
+      "compression stockings"
+    ],
+    "terms": {
+      "required": ["venous thromboembolism", "thromboprophylaxis", "orthopedic surgery"],
+      "optional": ["VTE", "LMWH", "DOAC", "mechanical prophylaxis", "antithrombotic"],
+      "excluded": ["pediatric", "upper extremity", "spine surgery"]
+    }
+  },
+  "grey_literature": {
+    "broad_concepts": ["blood clot", "clot prevention", "blood thinners", "compression socks", "joint replacement surgery"],
+    "organizational_terms": [],
+    "geographic_variants": []
+  },
+  "search_filters": {
+    "publication_years": "2020-2026",
+    "venues": [],
+    "authors": [],
+    "publication_types": [],
+    "fields_of_study": ["Medicine"]
+  }
+}
+
+Key distinctions demonstrated:
+- keyword.structured contains ONLY true_synonyms + abbreviations + spelling_variants + lexical_variants. Specific drugs (aspirin, heparin, warfarin, rivaroxaban) and devices (compression stockings, intermittent pneumatic compression) are domain_terms — they do NOT appear in the anchor Boolean query.
+- grey_literature.broad_concepts is populated from colloquial fields across all concepts ("blood clot", "clot prevention", "blood thinners", "compression socks", "joint replacement surgery").
+- Three AND-blocks are used (not four) because the comparison ("within and across classes") is a methodological specification with no distinct keyword representation.
+- publication_years "2020-2026" derives from "recent studies" in medicine (rule: recent in medicine → 2020-CURRENTYEAR).
+
+---
+
 ## Hard Rules
 - Output exactly one JSON object. No preamble, explanation, markdown fences, or comments.
 - domain_terms and colloquial must NOT appear in keyword.structured.

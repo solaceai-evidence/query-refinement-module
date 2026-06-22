@@ -32,6 +32,60 @@ Rules:
 - Do not propose candidates that change the meaning or intent of the query.
 - Never broaden comparators, outcomes, or methodological constraints; they are not part of the fixed aspect set.
 - Use the optional advisory dimension values and synonyms only to resolve ambiguity about what the anchor query means; the anchor query itself is the source of truth.
+
+## Example — Medicine
+
+Anchor Query (the normalized research statement):
+"Recent studies about venous thromboembolism prophylaxis in patients undergoing major orthopedic surgery (total hip replacement, knee replacement, hip fracture surgery), comparing thromboprophylaxis interventions including antithrombotic medications and mechanical interventions such as compression stockings within and across classes."
+
+Output:
+
+{
+  "assessments": [
+    {
+      "aspect": "topic_or_condition",
+      "detected": true,
+      "detected_value": "venous thromboembolism",
+      "broadening_candidates": ["thrombosis", "vascular events"],
+      "reasoning": "The anchor specifies venous thromboembolism as the primary condition; removing 'venous' broadens to all thrombosis types; 'vascular events' is a further superset."
+    },
+    {
+      "aspect": "population_or_entity",
+      "detected": true,
+      "detected_value": "patients undergoing major orthopedic surgery",
+      "broadening_candidates": ["orthopedic surgery patients", "surgical patients"],
+      "reasoning": "The anchor constrains to major orthopedic surgery; removing 'major' captures all orthopedic procedures; 'surgical patients' is the broadest meaningful superset."
+    },
+    {
+      "aspect": "intervention_or_exposure_or_phenomenon",
+      "detected": true,
+      "detected_value": "thromboprophylaxis interventions",
+      "broadening_candidates": ["prophylaxis", "surgical prophylaxis"],
+      "reasoning": "The anchor states thromboprophylaxis as the intervention class; 'prophylaxis' broadens to all preventive measures; 'surgical prophylaxis' widens the scope without changing the surgical context."
+    },
+    {
+      "aspect": "setting_or_context",
+      "detected": false,
+      "detected_value": "",
+      "broadening_candidates": [],
+      "reasoning": "No specific clinical setting (e.g. ICU, inpatient, outpatient) appears in the anchor."
+    },
+    {
+      "aspect": "geography",
+      "detected": false,
+      "detected_value": "",
+      "broadening_candidates": [],
+      "reasoning": "No geographic constraint is present in the anchor."
+    },
+    {
+      "aspect": "time_scope",
+      "detected": false,
+      "detected_value": "",
+      "broadening_candidates": [],
+      "reasoning": "No temporal constraint appears in the anchor. The word 'recent' describes the intended literature vintage but is not a searchable constraint that can be broadened."
+    }
+  ]
+}
 """.strip()
 
 
@@ -81,6 +135,67 @@ Rules:
 - Return at most four additional levels.
 - Keep search_query non-empty and directly usable by a retrieval system.
 - Explain in each rationale what changed and why it broadens recall without scope drift.
+
+## Example — Medicine
+
+Level 0 Anchor (given — the normalized research statement; do not regenerate):
+"Recent studies about venous thromboembolism prophylaxis in patients undergoing major orthopedic surgery (total hip replacement, knee replacement, hip fracture surgery), comparing thromboprophylaxis interventions including antithrombotic medications and mechanical interventions such as compression stockings within and across classes."
+
+Allowed Aspects For Search-Only Broadening:
+[{"aspect": "topic_or_condition", "safety": "safe", "detected_value": "venous thromboembolism", "broadening_candidates": ["thrombosis", "vascular events"]},
+ {"aspect": "population_or_entity", "safety": "safe", "detected_value": "patients undergoing major orthopedic surgery", "broadening_candidates": ["orthopedic surgery patients", "surgical patients"]},
+ {"aspect": "intervention_or_exposure_or_phenomenon", "safety": "conditional", "detected_value": "thromboprophylaxis interventions", "broadening_candidates": ["prophylaxis", "surgical prophylaxis"]}]
+
+Supporting Search Context (controlled_vocabulary_hints from concept_graph):
+[{"vocabulary_name": "MeSH", "terms": ["Venous Thromboembolism", "Venous Thrombosis", "Pulmonary Embolism"]},
+ {"vocabulary_name": "MeSH", "terms": ["Arthroplasty, Replacement, Hip", "Arthroplasty, Replacement, Knee", "Hip Fractures"]},
+ {"vocabulary_name": "MeSH", "terms": ["Anticoagulants", "Compression Bandages", "Intermittent Pneumatic Compression Devices"]}]
+
+Output:
+
+{
+  "levels": [
+    {
+      "level": 1,
+      "label": "Lexical variants",
+      "strategy": "lexical",
+      "search_query": "Recent studies on VTE prophylaxis or thromboprophylaxis in patients undergoing major orthopedic or orthopaedic surgery, comparing antithrombotic medications (LMWH, DOAC) and mechanical interventions (GCS, IPC) within and across intervention classes.",
+      "relaxed_aspects": {},
+      "rationale": "Introduces established abbreviations (VTE, LMWH, DOAC, GCS, IPC) and the British spelling 'orthopaedic'; no conceptual broadening — the population, topic, and intervention scope are unchanged."
+    },
+    {
+      "level": 2,
+      "label": "Broadened population — orthopedic surgery",
+      "strategy": "conceptual_single_aspect",
+      "search_query": "Studies on VTE prophylaxis or thromboprophylaxis in patients undergoing orthopedic surgery, comparing antithrombotic medications and mechanical interventions within and across intervention classes.",
+      "relaxed_aspects": {"population_or_entity": "orthopedic surgery patients"},
+      "rationale": "Removes the 'major' qualifier to include all orthopedic procedures; widens population recall without changing the condition or intervention scope."
+    },
+    {
+      "level": 3,
+      "label": "Broadened condition — thrombosis",
+      "strategy": "conceptual_single_aspect",
+      "search_query": "Studies on thrombosis prevention or prophylaxis in patients undergoing orthopedic surgery, comparing antithrombotic medications and mechanical interventions.",
+      "relaxed_aspects": {"topic_or_condition": "thrombosis"},
+      "rationale": "Broadens from venous thromboembolism to thrombosis to capture studies on mixed or general thrombotic complications in orthopedic settings; increases recall at the cost of some topic precision."
+    },
+    {
+      "level": 4,
+      "label": "Controlled vocabulary — MEDLINE MeSH",
+      "strategy": "indexing_variant",
+      "search_query": "("Venous Thromboembolism"[MeSH] OR "Venous Thrombosis"[MeSH] OR "Pulmonary Embolism"[MeSH]) AND ("Arthroplasty, Replacement, Hip"[MeSH] OR "Arthroplasty, Replacement, Knee"[MeSH] OR "Hip Fractures"[MeSH]) AND ("Anticoagulants"[MeSH] OR "Compression Bandages"[MeSH] OR "Intermittent Pneumatic Compression Devices"[MeSH])",
+      "relaxed_aspects": {},
+      "rationale": "Parallel controlled vocabulary track using MeSH headings for MEDLINE; complements free-text Levels 1-3 by retrieving records indexed under standardized headings regardless of author terminology."
+    }
+  ]
+}
+
+Key distinctions demonstrated:
+- Level 0 is the normalized research statement — it is never included in the output.
+- Level 1 adds only lexical and abbreviation variants; relaxed_aspects is empty.
+- Levels 2 and 3 each relax exactly one SAFE aspect (population_or_entity, then topic_or_condition).
+- Level 4 uses terms directly from controlled_vocabulary_hints; it constructs a database-specific query and leaves relaxed_aspects empty because broadening here comes from vocabulary coverage, not aspect relaxation.
+- The CONDITIONAL aspect (intervention) is not broadened because the query already covers both antithrombotic and mechanical approaches.
 """.strip()
 
 
