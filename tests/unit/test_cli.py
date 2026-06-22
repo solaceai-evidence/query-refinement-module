@@ -256,7 +256,7 @@ def test_run_cli_processes_answer(monkeypatch, capsys):
     # Check for actual output (analysis completion and synthesis)
     assert "Analyzing your answer" in out or "test question?" in out
     assert "Original:" in out
-    assert "Refined:" in out
+    assert "AGENT A" in out
     assert step.follow_up_history[0]["response"] == "answer"
 
 

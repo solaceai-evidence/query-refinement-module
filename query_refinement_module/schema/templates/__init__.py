@@ -18,6 +18,9 @@ from .user_context import (
 from .synthesis import SYNTHESIS_TEMPLATE
 from .dimension import DIMENSION_REFINEMENT_TEMPLATE
 from .search_expansion import SEARCH_EXPANSION_TEMPLATE
+from .normalization import NORMALIZATION_TEMPLATE
+from .semantic_representation import SEMANTIC_REPRESENTATION_TEMPLATE
+from .search_construction import SEARCH_CONSTRUCTION_TEMPLATE
 
 __all__ = [
     "GLOBAL_SYSTEM_PROMPT",
@@ -26,4 +29,7 @@ __all__ = [
     "DIMENSION_REFINEMENT_TEMPLATE",
     "USER_CONTEXT_PROFILE_TEMPLATE",
     "DIMENSIONS_CLARIFIED_AND_DEPENDENCIES_TEMPLATE",
+    "NORMALIZATION_TEMPLATE",
+    "SEMANTIC_REPRESENTATION_TEMPLATE",
+    "SEARCH_CONSTRUCTION_TEMPLATE",
 ]

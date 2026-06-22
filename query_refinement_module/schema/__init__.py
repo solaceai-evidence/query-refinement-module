@@ -31,6 +31,11 @@ from .response import (
     SearchExpansionResponse,
     SearchExpansionContext,
     SearchExpansionInput,
+    VocabularyHint,
+    ConceptEntry,
+    ResearchStatementResponse,
+    SemanticRepresentationResponse,
+    SearchConstructionResponse,
 )
 
 from .search_expansion import SearchExpansionPromptBuilder
@@ -54,6 +59,9 @@ from .dependencies import (
 # Synthesis
 from .synthesis import (
     SynthesisPromptBuilder,
+    NormalizationPromptBuilder,
+    SemanticRepresentationPromptBuilder,
+    SearchConstructionPromptBuilder,
     validate_synthesis_response,
 )
 

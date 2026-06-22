@@ -176,7 +176,7 @@ Generates optional search expansion levels from a standalone request payload. Th
 The service runs a two-stage pipeline:
 
 1. **Aspect assessment** — the anchor query is assessed against a fixed internal ontology of six search aspects: `topic_or_condition`, `population_or_entity`, `intervention_or_exposure_or_phenomenon`, `setting_or_context`, `geography`, and `time_scope`. For each detected aspect, the assessment records the value as expressed in the anchor and an ordered list of strict-superset broadening candidates.
-2. **Expansion generation** — a deterministic safety policy classifies each detected aspect as `safe`, `conditional` (`intervention_or_exposure_or_phenomenon` only), or `avoid` (undetected aspects). Expansion levels may relax only safe or conditional aspects, at most two per level, and at most one conditional aspect per level.
+2. **Expansion generation** — a deterministic safety policy classifies each detected aspect as `safe`, `conditional` (`topic_or_condition` and `intervention_or_exposure_or_phenomenon`), or `avoid` (undetected aspects). Expansion levels may relax only safe or conditional aspects, at most two per level, and at most one conditional aspect per level.
 
 Request body:
 
@@ -193,23 +193,22 @@ Request body:
 		"filters": {
 			"publication_types": ["randomized controlled trial"]
 		},
-		"synonyms": {
-			"aspirin": ["acetylsalicylic acid"],
-			"older adults": ["elderly"]
-		}
+		"concept_graph": {"...": "structured_output.concept_graph from POST /synthesize"}
 	},
 	"model": "optional-model-override"
 }
 ```
 
-`advisory_dimensions` is optional and non-authoritative: framework dimension values (any framework's ids) may be supplied as hints to help the assessment resolve ambiguity, but the anchor query is always the source of truth.
+`advisory_dimensions` is optional and non-authoritative: framework dimension values may be supplied as hints to help aspect detection, but the anchor query is always the source of truth.
+
+`search_context.concept_graph` should be set to `structured_output["concept_graph"]` from a prior `/synthesize` call. It provides the full lexical context (synonyms, domain terms, controlled vocabulary hints) for each concept, enabling more accurate broadening candidates. Without it, Agent D falls back to aspect detection from the anchor query text alone.
 
 Returns `SearchExpandResponse` with these fields:
 
-- `search_expansion_levels`: Level 0 plus up to four optional broader retrieval levels
+- `search_expansion_levels`: Level 0 plus up to three broader retrieval levels (Levels 1-3)
 - `metadata`: token and generation metadata, including the aspect assessment summary
 
-Each level includes a `strategy` field describing how it broadens retrieval: `anchor` (Level 0 only), `lexical` (synonym/phrasing variants, no conceptual broadening), `conceptual_single_aspect`, `conceptual_multi_aspect`, or `indexing_variant`.
+Each level includes a `strategy` field describing how it broadens retrieval: `anchor` (Level 0 only), `lexical` (spelling/morphological variants, no conceptual broadening), `conceptual_single_aspect`, or `conceptual_multi_aspect`. The `strategy` field is authoritative — do not infer broadening type from the level number alone.
 
 Level 0 is deterministic and always preserves the supplied anchor query:
 
@@ -440,13 +439,79 @@ Returns the same JSON envelope as `GET /api/v1/refinement/queries/{query_id}/sta
 		"search_optimized": {
 			"semantic": "Studies of aspirin compared with placebo for stroke prevention in adults over 65.",
 			"keyword": {
-				"structured": "(aspirin OR acetylsalicylic acid) AND (placebo OR control) AND (stroke prevention OR cerebrovascular accident prevention)",
+				"structured": "(aspirin OR acetylsalicylic acid OR ASA) AND (placebo OR control OR sham) AND (stroke prevention OR cerebrovascular accident prevention OR stroke prophylaxis)",
 				"phrases": ["stroke prevention", "older adults", "aspirin trial"],
 				"terms": {
 					"required": ["aspirin", "stroke", "placebo"],
 					"optional": ["acetylsalicylic acid", "cerebrovascular", "older adults"],
 					"excluded": []
-				}
+				},
+				"combined_blocks": [
+					{
+						"role": "topic_or_condition",
+						"free_text": ["stroke prevention", "cerebrovascular accident prevention", "stroke prophylaxis"],
+						"controlled_vocabulary": {
+							"MeSH": ["Stroke", "Brain Ischemia", "Cerebrovascular Disorders"]
+						}
+					},
+					{
+						"role": "population_or_entity",
+						"free_text": ["adults over 65", "older adults", "elderly"],
+						"controlled_vocabulary": {
+							"MeSH": ["Aged", "Aged, 80 and over"]
+						}
+					},
+					{
+						"role": "intervention_or_exposure_or_phenomenon",
+						"free_text": ["aspirin", "acetylsalicylic acid", "ASA"],
+						"controlled_vocabulary": {
+							"MeSH": ["Aspirin", "Platelet Aggregation Inhibitors"]
+						}
+					}
+				]
+			},
+			"grey_literature": {
+				"broad_concepts": ["blood thinner", "clot prevention"],
+				"organizational_terms": [],
+				"geographic_variants": []
+			}
+		},
+		"concept_graph": {
+			"aspirin": {
+				"query_role": "intervention_or_exposure_or_phenomenon",
+				"true_synonyms": ["acetylsalicylic acid"],
+				"abbreviations": ["ASA"],
+				"spelling_variants": [],
+				"lexical_variants": [],
+				"domain_terms": ["antiplatelet agent", "salicylate"],
+				"colloquial": ["blood thinner"],
+				"controlled_vocabulary_hints": [
+					{"vocabulary_name": "MeSH", "terms": ["Aspirin", "Platelet Aggregation Inhibitors"], "confidence": "high"}
+				]
+			},
+			"stroke prevention": {
+				"query_role": "topic_or_condition",
+				"true_synonyms": ["cerebrovascular accident prevention", "stroke prophylaxis"],
+				"abbreviations": [],
+				"spelling_variants": [],
+				"lexical_variants": [],
+				"domain_terms": ["ischaemic stroke prevention", "TIA prevention"],
+				"colloquial": ["clot prevention"],
+				"controlled_vocabulary_hints": [
+					{"vocabulary_name": "MeSH", "terms": ["Stroke", "Brain Ischemia"], "confidence": "high"}
+				]
+			},
+			"adults over 65": {
+				"query_role": "population_or_entity",
+				"true_synonyms": ["older adults", "elderly"],
+				"abbreviations": [],
+				"spelling_variants": [],
+				"lexical_variants": [],
+				"domain_terms": ["geriatric population", "senior adults"],
+				"colloquial": ["elderly people"],
+				"controlled_vocabulary_hints": [
+					{"vocabulary_name": "MeSH", "terms": ["Aged", "Aged, 80 and over"], "confidence": "high"}
+				]
 			}
 		},
 		"search_filters": {
@@ -470,11 +535,16 @@ Returns the same JSON envelope as `GET /api/v1/refinement/queries/{query_id}/sta
 Notes:
 
 - `structured_output` can be `null` when the service cannot derive a structured payload from the synthesis result.
-- When present, `structured_output` is a JSON object with four sections:
+- When present, `structured_output` has five sections:
   - `dimensions_specifications`: the refined value for each dimension, keyed by dimension id — assembled deterministically from session state, never from the LLM
-  - `search_optimized`: retrieval-ready search text, including `semantic`, `keyword`, and optional `grey_literature`
+  - `search_optimized`: retrieval-ready search artifacts:
+    - `semantic`: dense embedding query for vector search (Agent B)
+    - `keyword.structured`: Boolean anchor query for sparse/keyword search (Agent C)
+    - `keyword.combined_blocks`: **primary RAG artifact** — one entry per AND-block with `role`, `free_text` terms, and `controlled_vocabulary` (vocabulary name → headings). Source connectors: OR `free_text` with `controlled_vocabulary` within each block, then AND all blocks. Use `controlled_vocabulary` only for indexed databases (PubMed → MeSH, WHO IRIS → DeCS); use `free_text` alone for unindexed sources.
+    - `grey_literature`: colloquial and organizational terms for grey literature search
+  - `concept_graph`: Agent B's per-concept retrieval metadata — pass as `search_context.concept_graph` to `/search-expand` for Agent D broadening levels. Each concept entry has: `query_role`, `true_synonyms`, `abbreviations`, `spelling_variants`, `lexical_variants`, `domain_terms`, `colloquial`, `controlled_vocabulary_hints`.
   - `search_filters`: optional narrowing filters — `publication_years`, `venues`, `authors`, and `publication_types` are extracted deterministically from the query text; `fields_of_study` is LLM-generated and constrained to a permitted-values list
-  - `terminology`: synonym mappings used to expand recall during search construction — LLM-generated
+  - `terminology`: synonym mappings — LLM-generated; use `concept_graph` in preference to this for structured retrieval
 - `search_optimized.keyword.terms.required` contains the smallest set of anchors that should remain in the query.
 - `search_optimized.keyword.terms.optional` contains precision-raising terms.
 - `search_optimized.keyword.terms.excluded` contains only true confounders, not close variants of the target concept.
@@ -518,8 +588,8 @@ Notes:
 		"allowed_aspect_count": 3,
 		"aspect_assessment": {
 			"assessed_aspects": ["..."],
-			"safe_aspects": ["topic_or_condition", "population_or_entity"],
-			"conditional_aspects": ["intervention_or_exposure_or_phenomenon"],
+			"safe_aspects": ["population_or_entity"],
+			"conditional_aspects": ["topic_or_condition", "intervention_or_exposure_or_phenomenon"],
 			"avoided_aspects": ["setting_or_context", "geography", "time_scope"]
 		},
 		"prompt_tokens": 500,

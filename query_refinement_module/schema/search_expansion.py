@@ -24,10 +24,23 @@ def _to_jsonable(value: Any) -> Any:
 
 def _support_context(search_input: SearchExpansionInput) -> dict:
     search_context = search_input.search_context
-    return {
-        "filters": _to_jsonable(getattr(search_context, "filters", {}) or {}),
-        "synonyms": _to_jsonable(getattr(search_context, "synonyms", {}) or {}),
-    }
+    filters = _to_jsonable(getattr(search_context, "filters", {}) or {})
+
+    # Start with any explicitly provided flat synonyms (backward compat).
+    synonyms: dict = dict(_to_jsonable(getattr(search_context, "synonyms", {}) or {}))
+
+    # When a structured concept_graph is present, derive richer synonym context
+    # (true_synonyms + abbreviations) for lexical expansion.
+    concept_graph = getattr(search_context, "concept_graph", None)
+    if concept_graph:
+        for concept, entry in concept_graph.items():
+            if not isinstance(entry, dict):
+                continue
+            merged = list(entry.get("true_synonyms") or []) + list(entry.get("abbreviations") or [])
+            if merged:
+                synonyms.setdefault(concept, merged)
+
+    return {"filters": filters, "synonyms": synonyms}
 
 
 class SearchExpansionPromptBuilder:
