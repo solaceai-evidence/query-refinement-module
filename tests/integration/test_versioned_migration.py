@@ -20,7 +20,6 @@ class TestVersionedMigration:
             "/api/auth/register",
             "/api/refinement/start",
             "/api/queries/sessions",
-            "/api/webhooks",
             "/api/feedback",
         ]
         
@@ -36,7 +35,6 @@ class TestVersionedMigration:
             "/api/v1/auth/register",
             "/api/v1/refinement/start",
             "/api/v1/queries/sessions",
-            "/api/v1/webhooks",
             "/api/v1/feedback",
         ]
         

@@ -191,9 +191,12 @@ def test_safety_policy_fills_missing_aspects_as_avoid():
     assert all(a.safety is not None for a in classified)
 
 
-def test_default_policy_marks_intervention_conditional_only():
-    conditional = [a for a, s in DEFAULT_ASPECT_SAFETY.items() if s == AspectSafety.CONDITIONAL]
-    assert conditional == [SearchAspect.INTERVENTION_OR_EXPOSURE_OR_PHENOMENON]
+def test_default_policy_conditional_aspects():
+    conditional = {a for a, s in DEFAULT_ASPECT_SAFETY.items() if s == AspectSafety.CONDITIONAL}
+    assert conditional == {
+        SearchAspect.TOPIC_OR_CONDITION,
+        SearchAspect.INTERVENTION_OR_EXPOSURE_OR_PHENOMENON,
+    }
 
 
 # ---------------------------------------------------------------------------

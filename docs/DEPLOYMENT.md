@@ -382,7 +382,6 @@ docker compose -f docker-compose.yml -f docker-compose.prod.yml logs -f nginx
 - CORS origins in `ALLOWED_ORIGINS` include all browser-based callers
 - Forwarding target for `/forward-to-qa` is reachable from the API container
 - Timeout expectations are aligned (`timeout_seconds` allowed range: `5..120`)
-- Webhook endpoints are reachable from API container egress (if enabled)
 
 ## Local Development
 

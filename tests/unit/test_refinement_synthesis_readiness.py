@@ -128,12 +128,6 @@ async def test_run_synthesis_persists_full_response_payload(test_db_session, mon
         lambda: SimpleNamespace(enforce_workflow_limit=True),
     )
 
-    import query_refinement_module.services.webhook_service as webhook_service
-
-    monkeypatch.setattr(webhook_service, "dispatch_webhook_event_async", lambda *args, **kwargs: None)
-    monkeypatch.setattr(webhook_service, "build_synthesis_started_payload", lambda **kwargs: {})
-    monkeypatch.setattr(webhook_service, "build_synthesis_complete_payload", lambda **kwargs: {})
-
     user = create_user(
         test_db_session,
         username="synth_user",
@@ -168,6 +162,7 @@ async def test_run_synthesis_persists_full_response_payload(test_db_session, mon
         "search_optimized": {"semantic": "pulmonary rehabilitation for COPD adults"},
         "search_filters": {"publication_types": ["Systematic review"]},
         "terminology": {"synonyms": {"COPD": ["chronic obstructive pulmonary disease"]}},
+        "concept_graph": None,
     }
     assert db_query.refined_query == "Adults with COPD receiving pulmonary rehab."
     assert db_query.integrated_statement == "Adults with COPD receiving pulmonary rehab."

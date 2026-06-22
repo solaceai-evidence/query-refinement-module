@@ -80,11 +80,25 @@ class SearchTerms(BaseModel):
     excluded: List[str] = Field(default_factory=list)
 
 
+class CombinedBlock(BaseModel):
+    """One AND-block with free-text terms and controlled vocabulary merged, for source connectors."""
+    role: str = Field(description="query_role of the dominant concept in this block")
+    free_text: List[str] = Field(default_factory=list, description="OR-group terms: true_synonyms + abbreviations + spelling_variants + lexical_variants")
+    controlled_vocabulary: Dict[str, List[str]] = Field(
+        default_factory=dict,
+        description="vocabulary_name → deduplicated terms from controlled_vocabulary_hints of all concepts in this block",
+    )
+
+
 class KeywordSearch(BaseModel):
     """Keyword search optimization."""
     structured: str = Field(description="Boolean query with operators")
     phrases: List[str] = Field(default_factory=list, description="Exact phrases")
     terms: SearchTerms
+    combined_blocks: Optional[List[CombinedBlock]] = Field(
+        default=None,
+        description="Structured blocks for source-specific query construction; mirrors AND-blocks in keyword.structured",
+    )
 
 
 class GreyLiteratureSearch(BaseModel):
@@ -123,9 +137,7 @@ class Terminology(BaseModel):
 class SearchAspect(str, Enum):
     """Fixed internal ontology of search-expansion aspect classes.
 
-    This ontology is internal to the search expansion stage and is the only
-    authoritative set of axes along which a query may be broadened. It is not
-    derived from framework dimensions.
+    This ontology is internal to the search expansion stage and is the only authoritative set of axes along which a query may be broadened. It is not derived from framework dimensions.
     """
     TOPIC_OR_CONDITION = "topic_or_condition"
     POPULATION_OR_ENTITY = "population_or_entity"
@@ -142,13 +154,26 @@ class AspectSafety(str, Enum):
     AVOID = "avoid"
 
 
-#: Evidence-backed default safety policy. Geography, setting, population
-#: grouping, time scope, and broader condition families are recall-safe;
-#: intervention/exposure/phenomenon broadening risks scope drift and is
-#: conditional. Comparators, outcomes, and methodological constraints are
-#: outside the ontology and never broadened.
+#: Evidence-backed default safety policy aligned with Cochrane/Campbell/JBI standards.
+#:
+#: CONDITIONAL aspects change the research question scope when broadened and must
+#: only be used at Level 3 with explicit rationale:
+#:   - TOPIC_OR_CONDITION: the condition defines what is being reviewed; broadening
+#:     it (e.g. "VTE" → "thrombosis") crosses into a different research question.
+#:   - INTERVENTION_OR_EXPOSURE_OR_PHENOMENON: broadening risks scope drift into
+#:     different mechanisms or exposure classes.
+#:
+#: SAFE aspects are search-strategy constraints that do not define the research
+#: question and can be relaxed for recall without changing review scope:
+#:   - POPULATION_OR_ENTITY: widening to a broader but still coherent population class.
+#:   - SETTING_OR_CONTEXT: removing a setting restriction to capture analogous contexts.
+#:   - GEOGRAPHY: geographic restrictions are search artifacts; broaden or remove first.
+#:     Includes contextual analogy (replacing a location with its context characteristic).
+#:   - TIME_SCOPE: widening an existing date range only; never adding a new restriction.
+#:
+#: Comparators, outcomes, and methodological constraints are outside the ontology.
 DEFAULT_ASPECT_SAFETY: Dict["SearchAspect", "AspectSafety"] = {
-    SearchAspect.TOPIC_OR_CONDITION: AspectSafety.SAFE,
+    SearchAspect.TOPIC_OR_CONDITION: AspectSafety.CONDITIONAL,
     SearchAspect.POPULATION_OR_ENTITY: AspectSafety.SAFE,
     SearchAspect.INTERVENTION_OR_EXPOSURE_OR_PHENOMENON: AspectSafety.CONDITIONAL,
     SearchAspect.SETTING_OR_CONTEXT: AspectSafety.SAFE,
@@ -163,7 +188,6 @@ class ExpansionStrategy(str, Enum):
     LEXICAL = "lexical"
     CONCEPTUAL_SINGLE_ASPECT = "conceptual_single_aspect"
     CONCEPTUAL_MULTI_ASPECT = "conceptual_multi_aspect"
-    INDEXING_VARIANT = "indexing_variant"
 
 
 class SearchAspectAssessment(BaseModel):
@@ -229,6 +253,10 @@ class SearchExpansionContext(BaseModel):
     """Optional retrieval context that can inform search broadening."""
     filters: Dict[str, Any] = Field(default_factory=dict)
     synonyms: Dict[str, List[str]] = Field(default_factory=dict)
+    concept_graph: Optional[Dict[str, Any]] = Field(
+        default=None,
+        description="Structured concept graph from Agent B; when present, takes precedence over synonyms for lexical context.",
+    )
 
 
 class SearchExpansionInput(BaseModel):
@@ -294,6 +322,51 @@ class QueryRefinementResponse(BaseModel):
     processing_log: Optional[Dict[str, Any]] = None
 
 
+# ============================================================================
+# Multi-agent synthesis pipeline models (Agents A, B, C)
+# ============================================================================
+
+class VocabularyHint(BaseModel):
+    """One controlled vocabulary entry inferred by Agent B for a concept."""
+    vocabulary_name: str = Field(description="e.g. 'MeSH', 'PsycINFO Thesaurus', 'ERIC Thesaurus', 'ACM CCS'")
+    terms: List[str] = Field(default_factory=list)
+    confidence: str = Field(default="medium", description="'high' | 'medium' | 'low'")
+
+
+class ConceptEntry(BaseModel):
+    """Structured retrieval representation of one canonical concept (Agent B output)."""
+    query_role: Optional[str] = Field(
+        default=None,
+        description="SearchAspect value, 'comparator', 'outcome', 'other', or null",
+    )
+    true_synonyms: List[str] = Field(default_factory=list)
+    abbreviations: List[str] = Field(default_factory=list)
+    spelling_variants: List[str] = Field(default_factory=list)
+    lexical_variants: List[str] = Field(default_factory=list)
+    domain_terms: List[str] = Field(default_factory=list)
+    colloquial: List[str] = Field(default_factory=list)
+    controlled_vocabulary_hints: List[VocabularyHint] = Field(default_factory=list)
+
+
+class ResearchStatementResponse(BaseModel):
+    """Agent A output: normalized research statement + dimension passthrough."""
+    normalized_statement: str
+    dimensions_specifications: Dict[str, Any] = Field(default_factory=dict)
+
+
+class SemanticRepresentationResponse(BaseModel):
+    """Agent B output: embedding query + structured concept graph."""
+    semantic_statement: str
+    concept_graph: Dict[str, ConceptEntry] = Field(default_factory=dict)
+
+
+class SearchConstructionResponse(BaseModel):
+    """Agent C output: anchor keyword search + grey literature + filters."""
+    keyword: KeywordSearch
+    grey_literature: Optional[GreyLiteratureSearch] = None
+    search_filters: SearchFilters
+
+
 # Backward compatibility alias
 
 __all__ = [
@@ -313,4 +386,10 @@ __all__ = [
     "SearchExpansionResponse",
     "SearchExpansionContext",
     "SearchExpansionInput",
+    "CombinedBlock",
+    "VocabularyHint",
+    "ConceptEntry",
+    "ResearchStatementResponse",
+    "SemanticRepresentationResponse",
+    "SearchConstructionResponse",
 ]

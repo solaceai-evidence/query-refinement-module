@@ -22,7 +22,7 @@ DIMENSION_REFINEMENT_TEMPLATE = """
 
 ---
 
-### MANDATORY PRE-CHECK — Read before processing the query
+### MANDATORY PRE-CHECK — Read before processing the input or asking any question
 
 Before reading the user query or asking any question:
 

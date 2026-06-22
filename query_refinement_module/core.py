@@ -77,7 +77,20 @@ from .schema import (
     SearchAspectAssessmentResponse,
     SearchAspectAssessmentSummary,
 )
-from .schema.synthesis import validate_synthesis_response
+from .schema.response import (
+    ConceptEntry,
+    ResearchStatementResponse,
+    SemanticRepresentationResponse,
+    SearchConstructionResponse,
+    SearchOptimized,
+    Terminology,
+)
+from .schema.synthesis import (
+    validate_synthesis_response,
+    NormalizationPromptBuilder,
+    SemanticRepresentationPromptBuilder,
+    SearchConstructionPromptBuilder,
+)
 from .schema.response import (
     SearchFilters,
     SearchOptimized,
@@ -1889,6 +1902,127 @@ class QueryRefinementManager:
         return levels, metadata
 
 
+    @staticmethod
+    def _concept_graph_to_terminology(concept_graph: Dict[str, Any]) -> Terminology:
+        synonyms: Dict[str, List[str]] = {}
+        domain_specific: List[str] = []
+        colloquial: List[str] = []
+        for concept, entry in concept_graph.items():
+            if hasattr(entry, "true_synonyms"):
+                syns = list(entry.true_synonyms) + list(entry.abbreviations)
+                if syns:
+                    synonyms[concept] = syns
+                domain_specific.extend(entry.domain_terms)
+                colloquial.extend(entry.colloquial)
+        return Terminology(
+            synonyms=synonyms,
+            domain_specific=list(dict.fromkeys(domain_specific)) or None,
+            colloquial=list(dict.fromkeys(colloquial)),
+        )
+
+    def _parse_agent_response(self, raw: str, model_cls):
+        """Strip markdown fences and parse JSON into model_cls."""
+        raw = raw.strip()
+        if raw.startswith("```"):
+            lines = raw.splitlines()
+            body = lines[1:]
+            if body and body[-1].startswith("```"):
+                body = body[:-1]
+            raw = "\n".join(body).strip()
+        start = raw.find("{")
+        if start == -1:
+            raise ValueError(f"{model_cls.__name__}: response contained no JSON object")
+        return model_cls(**json.loads(raw[start:]))
+
+    async def _run_normalization(
+        self,
+        session: "RefinementSession",
+        *,
+        model: Optional[str] = None,
+        temperature: float = 0.2,
+    ) -> Tuple[ResearchStatementResponse, Dict[str, Any]]:
+        """Agent A: normalize research statement from session query + dimensions."""
+        aspects = [step.refinement_aspect for step in session.steps]
+        assembled = self._assemble_dimensions_specifications(session) or {}
+        builder = NormalizationPromptBuilder()
+        completion = await self.llm_provider.complete_async(
+            system_prompt=builder.get_system_prompt(),
+            user_prompt=builder.get_user_prompt(
+                original_input=session.original_query,
+                aspectID_value_mapping=assembled,
+                aspect_list=aspects,
+            ),
+            model=model,
+            temperature=temperature,
+            max_tokens=1024,
+            response_format=ResearchStatementResponse,
+            cache_system_prompt=False,
+        )
+        metadata = dict(completion.metadata or {})
+        parsed = completion.context
+        if isinstance(parsed, ResearchStatementResponse):
+            return parsed, metadata
+        return self._parse_agent_response(parsed or "", ResearchStatementResponse), metadata
+
+    async def _run_semantic_representation(
+        self,
+        research_statement: str,
+        *,
+        model: Optional[str] = None,
+        temperature: float = 0.2,
+    ) -> Tuple[SemanticRepresentationResponse, Dict[str, Any]]:
+        """Agent B: produce semantic_statement + concept_graph from research_statement."""
+        builder = SemanticRepresentationPromptBuilder()
+        completion = await self.llm_provider.complete_async(
+            system_prompt=builder.get_system_prompt(),
+            user_prompt=builder.get_user_prompt(research_statement),
+            model=model,
+            temperature=temperature,
+            max_tokens=2048,
+            response_format=SemanticRepresentationResponse,
+            cache_system_prompt=False,
+        )
+        metadata = dict(completion.metadata or {})
+        parsed = completion.context
+        if isinstance(parsed, SemanticRepresentationResponse):
+            return parsed, metadata
+        return self._parse_agent_response(parsed or "", SemanticRepresentationResponse), metadata
+
+    async def _run_search_construction(
+        self,
+        research_statement: str,
+        concept_graph: Dict[str, Any],
+        *,
+        model: Optional[str] = None,
+        temperature: float = 0.2,
+        max_tokens: Optional[int] = None,
+        additional_guidance: Optional[str] = None,
+    ) -> Tuple[SearchConstructionResponse, Dict[str, Any]]:
+        """Agent C: build anchor keyword search + filters from research_statement and concept_graph."""
+        builder = SearchConstructionPromptBuilder()
+        concept_graph_dict = {
+            k: (v.model_dump() if hasattr(v, "model_dump") else v)
+            for k, v in concept_graph.items()
+        }
+        completion = await self.llm_provider.complete_async(
+            system_prompt=builder.get_system_prompt(),
+            user_prompt=builder.get_user_prompt(
+                research_statement=research_statement,
+                concept_graph=concept_graph_dict,
+                additional_guidance=additional_guidance or "",
+            ),
+            model=model,
+            temperature=temperature,
+            max_tokens=max_tokens or 2048,
+            response_format=SearchConstructionResponse,
+            cache_system_prompt=False,
+        )
+        metadata = dict(completion.metadata or {})
+        parsed = completion.context
+        if isinstance(parsed, SearchConstructionResponse):
+            return parsed, metadata
+        return self._parse_agent_response(parsed or "", SearchConstructionResponse), metadata
+
     async def _run_monolithic_synthesis(
         self,
         session: "RefinementSession",
@@ -2037,12 +2171,37 @@ class QueryRefinementManager:
         )
 
         try:
-            synthesis_response, aggregated_metadata = await self._run_monolithic_synthesis(
+            norm, meta_a = await self._run_normalization(
                 session,
+                model=model,
+                temperature=resolved_temperature,
+            )
+            sem, meta_b = await self._run_semantic_representation(
+                norm.normalized_statement,
+                model=model,
+                temperature=resolved_temperature,
+            )
+            construction, meta_d = await self._run_search_construction(
+                research_statement=norm.normalized_statement,
+                concept_graph=sem.concept_graph,
                 model=model,
                 temperature=resolved_temperature,
                 max_tokens=resolved_max_tokens,
                 additional_guidance=additional_guidance,
+            )
+            aggregated_metadata = self._accumulate_metadata(
+                self._accumulate_metadata(meta_a, meta_b), meta_d
+            )
+            synthesis_response = QueryRefinementResponse(
+                integrated_statement=norm.normalized_statement,
+                dimensions_specifications=norm.dimensions_specifications,
+                search_optimized=SearchOptimized(
+                    semantic=sem.semantic_statement,
+                    keyword=construction.keyword,
+                    grey_literature=construction.grey_literature,
+                ),
+                search_filters=construction.search_filters,
+                terminology=self._concept_graph_to_terminology(sem.concept_graph),
             )
         except Exception as exc:
             logger.exception("Query synthesis failed: %s", exc)
@@ -2103,6 +2262,10 @@ class QueryRefinementManager:
             "search_optimized": synthesis_response.search_optimized,
             "search_filters": synthesis_response.search_filters,
             "terminology": synthesis_response.terminology,
+            "concept_graph": {
+                k: (v.model_dump() if hasattr(v, "model_dump") else v)
+                for k, v in sem.concept_graph.items()
+            },
         }
 
         return result_dict

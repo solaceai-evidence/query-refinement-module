@@ -159,6 +159,7 @@ def _build_search_expansion_input_from_synthesis(
         search_context=SearchExpansionContext(
             filters=search_filters.model_dump(exclude_none=True),
             synonyms=terminology.synonyms or {},
+            concept_graph=synthesis.get("concept_graph") or None,
         ),
     )
 
@@ -377,68 +378,95 @@ async def run_cli(manager: QueryRefinementManager, framework_name: str, query: s
             except Exception as exc:
                 print(f"Error: {exc}")
             else:
-                refined_query = synthesis.get("refined_query", "").strip()
                 integrated_statement = synthesis.get("integrated_statement", "").strip()
-                
-                # Display synthesized statement (or fallback to refined_query)
-                if integrated_statement:
-                    print(f"Refined:  {integrated_statement}\n")
-                elif refined_query:
-                    print(f"Refined:  {refined_query}\n")
-                else:
-                    print(f"Refined:  {session.original_query}\n")
-                
-                # Show refined dimensions from the canonical synthesis field.
+                if not integrated_statement:
+                    integrated_statement = synthesis.get("refined_query", "").strip() or session.original_query
+
+                # ── AGENT A — NORMALIZED RESEARCH STATEMENT ──────────────────
+                print("\n" + "─"*80)
+                print("AGENT A — NORMALIZED RESEARCH STATEMENT")
+                print("─"*80)
+                print(f"  {integrated_statement}\n")
+
                 dimension_values = synthesis.get("dimensions_specifications")
                 if dimension_values:
-                    print("─"*80)
-                    print("REFINED DIMENSIONS")
-                    print("─"*80)
+                    print("Refined Dimensions:")
                     for aspect_id, value in dimension_values.items():
-                        aspect = next((s.refinement_aspect for s in session.steps if s.refinement_aspect.id == aspect_id), None)
+                        aspect = next(
+                            (s.refinement_aspect for s in session.steps if s.refinement_aspect.id == aspect_id),
+                            None,
+                        )
                         aspect_name = aspect.name if aspect else aspect_id
                         if value is not None and value != "" and value != "[SKIPPED]" and value != "null":
-                            print(f"• {aspect_name}: {value}")
+                            print(f"  • {aspect_name}: {value}")
                     print()
-                
-                # Show search optimized queries (SearchOptimized Pydantic model)
+
+                # ── AGENT B — SEMANTIC REPRESENTATION ────────────────────────
                 search_optimized = synthesis.get("search_optimized")
+                concept_graph = synthesis.get("concept_graph") or {}
+
+                print("─"*80)
+                print("AGENT B — SEMANTIC REPRESENTATION")
+                print("─"*80)
+
                 if search_optimized:
-                    print("─"*80)
-                    print("SEARCH-OPTIMIZED QUERIES")
-                    print("─"*80)
-                    
                     semantic = search_optimized.semantic or ""
                     if semantic:
-                        print(f"\nSemantic Query (for vector search):")
+                        print(f"\nSemantic Query (dense / vector search):")
                         print(f"  {semantic}")
-                    
+
+                if concept_graph:
+                    print(f"\nConcept Graph ({len(concept_graph)} concept(s) extracted):")
+                    for concept_name, entry in concept_graph.items():
+                        role = entry.get("query_role") or "other" if isinstance(entry, dict) else "other"
+                        print(f"  [{role:<42}]  {concept_name}")
+                print()
+
+                # ── AGENT C — SEARCH CONSTRUCTION ────────────────────────────
+                print("─"*80)
+                print("AGENT C — SEARCH CONSTRUCTION")
+                print("─"*80)
+
+                if search_optimized:
                     keyword = search_optimized.keyword
                     if keyword:
                         structured = keyword.structured or ""
                         if structured:
-                            print(f"\nBoolean Query:")
+                            print(f"\nBoolean Query (anchor — sparse / keyword search):")
                             print(f"  {structured}")
-                        
+
                         phrases = keyword.phrases or []
                         if phrases:
                             print(f"\nKey Phrases:")
                             for phrase in phrases:
                                 print(f"  • \"{phrase}\"")
-                        
+
                         terms = keyword.terms
                         if terms:
                             required = terms.required or []
                             optional = terms.optional or []
                             excluded = terms.excluded or []
-                            
                             if required:
                                 print(f"\nRequired Terms: {', '.join(required)}")
                             if optional:
-                                print(f"Optional Terms: {', '.join(optional)}")
+                                print(f"Optional Terms:  {', '.join(optional)}")
                             if excluded:
-                                print(f"Excluded Terms: {', '.join(excluded)}")
-                    
+                                print(f"Excluded Terms:  {', '.join(excluded)}")
+
+                        combined_blocks = keyword.combined_blocks or []
+                        if combined_blocks:
+                            print(f"\nCombined Blocks (source-specific query construction):")
+                            for i, block in enumerate(combined_blocks, 1):
+                                role = getattr(block, "role", "")
+                                free_text = getattr(block, "free_text", []) or []
+                                cv = getattr(block, "controlled_vocabulary", {}) or {}
+                                print(f"\n  Block {i} [{role}]")
+                                if free_text:
+                                    print(f"    Free-text:  {', '.join(free_text)}")
+                                for vocab_name, vocab_terms in cv.items():
+                                    if vocab_terms:
+                                        print(f"    {vocab_name + ':':<12}{', '.join(vocab_terms)}")
+
                     grey_lit = search_optimized.grey_literature
                     if grey_lit:
                         broad = grey_lit.broad_concepts or []
@@ -447,68 +475,28 @@ async def run_cli(manager: QueryRefinementManager, framework_name: str, query: s
                         if broad or org or geo:
                             print(f"\nGrey Literature Search:")
                             if broad:
-                                print(f"  Concepts: {', '.join(broad)}")
+                                print(f"  Concepts:      {', '.join(broad)}")
                             if org:
                                 print(f"  Organizations: {', '.join(org)}")
                             if geo:
-                                print(f"  Geographic: {', '.join(geo)}")
-                    print()
-                
-                # Show search filters (SearchFilters Pydantic model)
+                                print(f"  Geographic:    {', '.join(geo)}")
+
                 search_filters = synthesis.get("search_filters")
                 if search_filters:
-                    print("─"*80)
-                    print("SEARCH FILTERS")
-                    print("─"*80)
-                    
-                    pub_years = search_filters.publication_years or ""
-                    if pub_years:
-                        print(f"Publication Years: {pub_years}")
-                    
-                    venues = search_filters.venues or []
-                    if venues:
-                        print(f"Venues: {', '.join(venues)}")
-                    
-                    authors = search_filters.authors or []
-                    if authors:
-                        print(f"Authors: {', '.join(authors)}")
-                    
-                    pub_types = search_filters.publication_types or []
-                    if pub_types:
-                        print(f"Publication Types: {', '.join(pub_types)}")
-                    
-                    fields = search_filters.fields_of_study or []
-                    if fields:
-                        print(f"Fields of Study: {', '.join(fields)}")
-                    print()
-                
-                # Show terminology (Terminology Pydantic model)
-                terminology = synthesis.get("terminology")
-                if terminology:
-                    print("─"*80)
-                    print("TERMINOLOGY")
-                    print("─"*80)
-                    
-                    primary = terminology.primary_terms or []
-                    if primary:
-                        print(f"Primary Terms: {', '.join(primary)}")
-                    
-                    synonyms = terminology.synonyms or {}
-                    if synonyms:
-                        print(f"\nSynonyms:")
-                        for term, syn_list in synonyms.items():
-                            if syn_list:
-                                print(f"  {term}: {', '.join(syn_list)}")
-                    
-                    domain = terminology.domain_specific or []
-                    if domain:
-                        print(f"\nDomain-Specific: {', '.join(domain)}")
-                    
-                    colloq = terminology.colloquial or []
-                    if colloq:
-                        print(f"Colloquial: {', '.join(colloq)}")
-                    print()
+                    filter_parts = []
+                    if search_filters.publication_years:
+                        filter_parts.append(f"Years: {search_filters.publication_years}")
+                    if search_filters.publication_types:
+                        filter_parts.append(f"Types: {', '.join(search_filters.publication_types)}")
+                    if search_filters.fields_of_study:
+                        filter_parts.append(f"Fields: {', '.join(search_filters.fields_of_study)}")
+                    if search_filters.venues:
+                        filter_parts.append(f"Venues: {', '.join(search_filters.venues)}")
+                    if filter_parts:
+                        print(f"\nSearch Filters:  {' | '.join(filter_parts)}")
+                print()
 
+                # ── AGENT D — SEARCH EXPANSION (optional) ────────────────────
                 expand_answer = (
                     await asyncio.to_thread(
                         _read_optional_input,
@@ -541,6 +529,9 @@ async def run_cli(manager: QueryRefinementManager, framework_name: str, query: s
                                 "status": metadata.get("status"),
                             },
                         )
+                        print("─"*80)
+                        print("AGENT D — SEARCH EXPANSION LEVELS")
+                        print("─"*80)
                         _print_search_expansion_levels(levels)
                 else:
                     logger.info("CLI: user skipped search expansion")
