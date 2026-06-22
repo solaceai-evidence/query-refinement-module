@@ -154,13 +154,26 @@ class AspectSafety(str, Enum):
     AVOID = "avoid"
 
 
-#: Evidence-backed default safety policy. Geography, setting, population
-#: grouping, time scope, and broader condition families are recall-safe;
-#: intervention/exposure/phenomenon broadening risks scope drift and is
-#: conditional. Comparators, outcomes, and methodological constraints are
-#: outside the ontology and never broadened.
+#: Evidence-backed default safety policy aligned with Cochrane/Campbell/JBI standards.
+#:
+#: CONDITIONAL aspects change the research question scope when broadened and must
+#: only be used at Level 3 with explicit rationale:
+#:   - TOPIC_OR_CONDITION: the condition defines what is being reviewed; broadening
+#:     it (e.g. "VTE" → "thrombosis") crosses into a different research question.
+#:   - INTERVENTION_OR_EXPOSURE_OR_PHENOMENON: broadening risks scope drift into
+#:     different mechanisms or exposure classes.
+#:
+#: SAFE aspects are search-strategy constraints that do not define the research
+#: question and can be relaxed for recall without changing review scope:
+#:   - POPULATION_OR_ENTITY: widening to a broader but still coherent population class.
+#:   - SETTING_OR_CONTEXT: removing a setting restriction to capture analogous contexts.
+#:   - GEOGRAPHY: geographic restrictions are search artifacts; broaden or remove first.
+#:     Includes contextual analogy (replacing a location with its context characteristic).
+#:   - TIME_SCOPE: widening an existing date range only; never adding a new restriction.
+#:
+#: Comparators, outcomes, and methodological constraints are outside the ontology.
 DEFAULT_ASPECT_SAFETY: Dict["SearchAspect", "AspectSafety"] = {
-    SearchAspect.TOPIC_OR_CONDITION: AspectSafety.SAFE,
+    SearchAspect.TOPIC_OR_CONDITION: AspectSafety.CONDITIONAL,
     SearchAspect.POPULATION_OR_ENTITY: AspectSafety.SAFE,
     SearchAspect.INTERVENTION_OR_EXPOSURE_OR_PHENOMENON: AspectSafety.CONDITIONAL,
     SearchAspect.SETTING_OR_CONTEXT: AspectSafety.SAFE,
