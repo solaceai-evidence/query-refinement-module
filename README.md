@@ -8,7 +8,7 @@ A web-based tool that helps people turn a rough research idea into a clearer que
 1. Log in at the application URL provided to you.
 2. Select a refinement framework.
 3. Enter your initial research question or topic.
-4. Answer the clarifying questions the tool asks. You can skip, go back, or finish early at any time.
+4. Answer the clarifying questions the tool asks. Each question comes with a set of example answers you can click to select directly, or type your own. You can skip, go back, or finish early at any time.
 5. Review the integrated research statement produced at the end.
 6. Complete the feedback survey.
 
@@ -330,6 +330,8 @@ Each call receives:
 | 7   | System         | Terminal reinforcement (only after ≥3 follow-up turns) | No — static repeat                   |
 
 The full dialogue from prior dimensions is **not** carried forward — only its assembled output value. This keeps the token budget flat and eliminates cross-dimension noise.
+
+Each LLM response for an incomplete dimension now returns two parallel fields: `question` (plain prose, no embedded examples) and `examples` (a list of 2–4 concrete quick-reply strings that span the clarification space). The `examples` list is surfaced in every `next_prompt` payload and persisted to the database alongside the generated question so that both survive server restarts. External UIs can render `examples` as clickable buttons; the CLI prints them as numbered options.
 
 ### Context window budget
 

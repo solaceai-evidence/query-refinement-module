@@ -132,7 +132,14 @@ class StartRefinementResponse(BaseModel):
     session_id: int = Field(..., description="Database session ID")
     query_id: int = Field(..., description="Database query ID")
     summary: Dict[str, Any] = Field(..., description="Initialization analysis summary")
-    next_prompt: Optional[Dict[str, Any]] = Field(None, description="Next question for the user")
+    next_prompt: Optional[Dict[str, Any]] = Field(
+        None,
+        description=(
+            "Next question for the user. Shape: {aspect_id, name, aspect_name, question, description, examples}. "
+            "`question` is plain prose. `examples` is a list of 0–4 concrete quick-reply strings "
+            "that span the clarification space and can be rendered as clickable buttons."
+        ),
+    )
     ready_for_synthesis: bool = Field(False, description="True if all aspects are complete and ready for synthesis")
     source: str = Field(..., description="Request origin channel")
     synthesis: Optional["SynthesizeQueryResponse"] = Field(
@@ -169,7 +176,10 @@ class SubmitAnswerResponse(BaseModel):
     refinement_step_id: int = Field(..., description="ID of the refinement step")
     followup_id: int = Field(..., description="ID of the follow-up entry")
     is_complete: bool = Field(..., description="Whether the aspect is complete")
-    next_prompt: Optional[Dict[str, Any]] = Field(None, description="Next question if follow-up needed")
+    next_prompt: Optional[Dict[str, Any]] = Field(
+        None,
+        description="Next question if follow-up needed. Includes `examples` list for quick-reply buttons.",
+    )
     ready_for_synthesis: bool = Field(False, description="True if all aspects are complete and ready for synthesis")
 
 
@@ -178,7 +188,10 @@ class CommandResponse(BaseModel):
     command_type: str = Field(..., description="Type of command executed (status, back, skip, etc.)")
     success: bool = Field(..., description="Whether command executed successfully")
     message: str = Field(..., description="Human-readable feedback message")
-    next_prompt: Optional[Dict[str, Any]] = Field(None, description="Next question after command execution")
+    next_prompt: Optional[Dict[str, Any]] = Field(
+        None,
+        description="Next question after command execution. Includes `examples` list for quick-reply buttons.",
+    )
     
     # Optional fields for specific commands
     invalidated_aspects: Optional[List[str]] = Field(None, description="Aspects marked for review (/back, /restart)")
@@ -196,7 +209,10 @@ class GetRefinementStatusResponse(BaseModel):
     is_complete: bool
     current_aspect: Optional[str]
     aspects_summary: Dict[str, Any]
-    next_prompt: Optional[Dict[str, Any]] = Field(None, description="Next question for the user")
+    next_prompt: Optional[Dict[str, Any]] = Field(
+        None,
+        description="Next question for the user. Includes `examples` list for quick-reply buttons.",
+    )
     ready_for_synthesis: bool = Field(False, description="True if all aspects are complete and ready for synthesis")
     aspects: List[Dict[str, Any]] = Field(default_factory=list, description="List of aspect summaries")
     conversation_history: List[Dict[str, Any]] = Field(default_factory=list, description="Full conversation history for UI restoration")

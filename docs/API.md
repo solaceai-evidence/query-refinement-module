@@ -78,10 +78,19 @@ Returns `StartRefinementResponse` with these fields:
 {
 	"aspect_id": "population",
 	"name": "Population",
-	"question": "Which population are you focusing on?",
-	"description": "Target population characteristics"
+	"question": "Which population does your query target?",
+	"description": "Target population characteristics",
+	"examples": [
+		"elderly patients (65+)",
+		"working-age adults (18–64)",
+		"children under 12",
+		"all ages"
+	]
 }
 ```
+
+- `question` — plain prose clarifying question, no embedded examples.
+- `examples` — 0–4 concrete quick-reply strings that **span the clarification space**. Each string is a complete, standalone answer the user can select as-is. Intended to be rendered as clickable buttons. Empty when the question does not apply (e.g. the aspect was already clear) or when `complete=true`.
 
 #### `POST /api/v1/refinement/queries/{query_id}/answer`
 
@@ -266,8 +275,9 @@ The following are the expected response envelopes for external integrations.
 	"next_prompt": {
 		"aspect_id": "population",
 		"name": "Population",
-		"question": "Which population are you focusing on?",
-		"description": "Target population characteristics"
+		"question": "Which population does your query target?",
+		"description": "Target population characteristics",
+		"examples": ["elderly patients (65+)", "working-age adults (18–64)", "children under 12"]
 	},
 	"ready_for_synthesis": false,
 	"source": "api_integration",
@@ -338,7 +348,8 @@ This endpoint has two response types.
 		"aspect_id": "population",
 		"name": "Population",
 		"question": "Any age range constraints?",
-		"description": "Target population characteristics"
+		"description": "Target population characteristics",
+		"examples": ["all ages", "adults only (18+)", "elderly (65+)"]
 	},
 	"ready_for_synthesis": false
 }
@@ -354,8 +365,9 @@ This endpoint has two response types.
 	"next_prompt": {
 		"aspect_id": "intervention",
 		"name": "Intervention",
-		"question": "Which intervention are you comparing?",
-		"description": "Intervention details"
+		"question": "Which intervention does your query examine?",
+		"description": "Intervention details",
+		"examples": ["drug therapy", "surgical procedure", "behavioural intervention"]
 	},
 	"invalidated_aspects": null,
 	"synthesis_ready": null,
@@ -401,7 +413,8 @@ Returns the same JSON envelope as `GET /api/v1/refinement/queries/{query_id}/sta
 		"aspect_id": "population",
 		"name": "Population",
 		"question": "Any age range constraints?",
-		"description": "Target population characteristics"
+		"description": "Target population characteristics",
+		"examples": ["all ages", "adults only (18+)", "elderly (65+)"]
 	},
 	"ready_for_synthesis": false,
 	"aspects": [

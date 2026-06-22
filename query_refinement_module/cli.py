@@ -275,7 +275,11 @@ async def run_cli(manager: QueryRefinementManager, framework_name: str, query: s
                 continue
             
             print(f"{question}\n")
-            
+            if result.examples:
+                for i, opt in enumerate(result.examples, 1):
+                    print(f"  {i}. {opt}")
+                print()
+
             # Interactive loop for this aspect
             while not step.is_complete:
                 # Get user input
@@ -355,6 +359,10 @@ async def run_cli(manager: QueryRefinementManager, framework_name: str, query: s
                         # Need more clarification
                         question = step.follow_up_question or f"Can you provide more details about {header}?"
                         print(f"\n{question}\n")
+                        if step.quick_replies:
+                            for i, opt in enumerate(step.quick_replies, 1):
+                                print(f"  {i}. {opt}")
+                            print()
                         
                 except Exception as e:
                     print(f" Error during analysis: {e}")
