@@ -426,7 +426,6 @@ def run_scenario(
         sem, meta_b = asyncio.run(
             manager._run_semantic_representation(
                 norm.normalized_statement,
-                norm.dimensions_specifications,
                 model=model,
                 temperature=0.0,
             )
@@ -473,8 +472,6 @@ def run_scenario(
         construction, meta_d = asyncio.run(
             manager._run_search_construction(
                 research_statement=norm.normalized_statement,
-                dimensions_specifications=norm.dimensions_specifications,
-                semantic_statement=sem.semantic_statement,
                 concept_graph=concept_graph_for_d,
                 model=model,
                 temperature=0.0,

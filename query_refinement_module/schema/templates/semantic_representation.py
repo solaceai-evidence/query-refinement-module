@@ -4,9 +4,9 @@ SEMANTIC_REPRESENTATION_TEMPLATE = """
 # SEMANTIC REPRESENTATION
 
 ## Role
-Extract retrieval-oriented semantic representations from a research statement.
-Produce a natural-language embedding query and a structured concept graph.
-Do not assume any domain — derive all vocabulary and structure from the research statement.
+Extract retrieval-oriented semantic representations from the input.
+Produce a natural-language embedding statement and a structured concept graph.
+Do not assume any domain — derive all vocabulary and structure from the input.
 
 Return exactly one valid JSON object and no other text.
 
@@ -34,11 +34,11 @@ Return exactly one valid JSON object and no other text.
 
 ## semantic_statement
 
-One natural-language retrieval query for embedding or semantic search.
+One natural-language retrieval statement for embedding or semantic search.
 - 50-75 words.
 - Describe the core subject, phenomenon, and scope.
 - Include domain abbreviations when they function as primary retrieval signals in the field.
-- Exclude venues, authors, publication types, and years (unless the year range is intrinsic to the research question itself).
+- Exclude venues, authors, publication types, and years (unless the year range is intrinsic to the statement itself).
 - Do not include spelling variants or morphological forms — embedding models handle these internally.
 - One sentence only.
 
@@ -46,9 +46,9 @@ One natural-language retrieval query for embedding or semantic search.
 
 ## concept_graph
 
-Extract 6-8 core concepts from the research statement. Prioritize in order: primary subject or topic, key entities or groups, primary phenomena or interventions, contextual factors, then remaining concepts by centrality.
+Extract 6-8 core concepts from the input. Prioritize in order: primary subject or topic, key entities or groups, primary phenomena or interventions, contextual factors, then remaining concepts by centrality.
 
-The key for each entry is the canonical form of the concept as it appears in the research statement.
+The key for each entry is the canonical form of the concept as it appears in the input.
 
 ### query_role
 
@@ -117,14 +117,6 @@ If no controlled vocabulary applies or is known for the domain, return an empty 
 Input:
 
 Research Statement: "Recent studies about venous thromboembolism prophylaxis in patients undergoing major orthopedic surgery (total hip replacement, knee replacement, hip fracture surgery), comparing thromboprophylaxis interventions including antithrombotic medications and mechanical interventions such as compression stockings within and across classes."
-
-Dimension Specifications:
-{
-  "Population": "Patients undergoing major orthopedic surgery (total hip replacement, knee replacement, hip fracture surgery)",
-  "Intervention": "Thromboprophylaxis interventions including antithrombotic medications and mechanical interventions such as compression stockings",
-  "Comparison": "Within and across classes",
-  "Outcomes": null
-}
 
 Output:
 

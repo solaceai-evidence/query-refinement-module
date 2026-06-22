@@ -1967,7 +1967,6 @@ class QueryRefinementManager:
     async def _run_semantic_representation(
         self,
         research_statement: str,
-        dimensions_specifications: Dict[str, Any],
         *,
         model: Optional[str] = None,
         temperature: float = 0.2,
@@ -1976,7 +1975,7 @@ class QueryRefinementManager:
         builder = SemanticRepresentationPromptBuilder()
         completion = await self.llm_provider.complete_async(
             system_prompt=builder.get_system_prompt(),
-            user_prompt=builder.get_user_prompt(research_statement, dimensions_specifications),
+            user_prompt=builder.get_user_prompt(research_statement),
             model=model,
             temperature=temperature,
             max_tokens=2048,
@@ -1992,8 +1991,6 @@ class QueryRefinementManager:
     async def _run_search_construction(
         self,
         research_statement: str,
-        dimensions_specifications: Dict[str, Any],
-        semantic_statement: str,
         concept_graph: Dict[str, Any],
         *,
         model: Optional[str] = None,
@@ -2011,8 +2008,6 @@ class QueryRefinementManager:
             system_prompt=builder.get_system_prompt(),
             user_prompt=builder.get_user_prompt(
                 research_statement=research_statement,
-                dimensions_specifications=dimensions_specifications,
-                semantic_statement=semantic_statement,
                 concept_graph=concept_graph_dict,
                 additional_guidance=additional_guidance or "",
             ),
@@ -2183,14 +2178,11 @@ class QueryRefinementManager:
             )
             sem, meta_b = await self._run_semantic_representation(
                 norm.normalized_statement,
-                norm.dimensions_specifications,
                 model=model,
                 temperature=resolved_temperature,
             )
             construction, meta_d = await self._run_search_construction(
                 research_statement=norm.normalized_statement,
-                dimensions_specifications=norm.dimensions_specifications,
-                semantic_statement=sem.semantic_statement,
                 concept_graph=sem.concept_graph,
                 model=model,
                 temperature=resolved_temperature,

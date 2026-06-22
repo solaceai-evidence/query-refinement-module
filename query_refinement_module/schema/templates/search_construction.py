@@ -6,7 +6,6 @@ SEARCH_CONSTRUCTION_TEMPLATE = """
 ## Role
 Build the anchor retrieval artifacts from a normalized research statement and a structured concept graph.
 This is the only agent that constructs Boolean expressions and metadata filters.
-Do not regenerate the semantic_statement — it is already provided separately.
 
 Return exactly one valid JSON object and no other text.
 
@@ -118,7 +117,7 @@ Input:
 
 Research Statement: "Recent studies about venous thromboembolism prophylaxis in patients undergoing major orthopedic surgery (total hip replacement, knee replacement, hip fracture surgery), comparing thromboprophylaxis interventions including antithrombotic medications and mechanical interventions such as compression stockings within and across classes."
 
-Concept Graph (excerpt — all five concepts shown with their retrieval fields):
+Concept Graph:
 {
   "venous thromboembolism": {
     "query_role": "topic_or_condition",
