@@ -14,6 +14,169 @@ Browser logins set an httpOnly auth cookie by default. For non-browser clients, 
 
 For server-to-server integrations, refinement workflow endpoints also support `X-API-Key: <integration-api-key>` when `INTEGRATION_API_KEY` is configured on the API service.
 
+## Agent integration guide
+
+This section is the primary reference for building agents or automated integrations. It describes the state machine, decision logic, quick-reply handling, and RAG field mapping needed to drive the full workflow programmatically.
+
+### The three-phase pipeline
+
+```
+Phase 1 — Discover          GET  /frameworks
+Phase 2 — Refine (loop)     POST /start  →  loop: POST /answer
+Phase 3 — Synthesize        POST /synthesize  →  POST /search-expand (optional)
+```
+
+### Authentication for agents
+
+Use the `X-API-Key` header for all requests:
+
+```
+X-API-Key: <value of INTEGRATION_API_KEY env var>
+```
+
+The integration service user must have explicit framework access. Grant it once on the server:
+
+```bash
+poetry run python scripts/create_user.py \
+  --username api_integration_service \
+  --framework <framework_name>
+```
+
+### State machine
+
+```
+POST /start
+  │
+  ├─ ready_for_synthesis = true  ──────────────────────────────────► POST /synthesize
+  │
+  └─ next_prompt ≠ null
+       │
+       ▼
+   ┌──────────────────────────────────────────────────┐
+   │  REFINEMENT LOOP                                  │
+   │                                                   │
+   │  1. Present next_prompt.question to user          │
+   │  2. Optionally render next_prompt.examples        │
+   │     as clickable buttons                          │
+   │  3. Collect answer (free text or clicked example) │
+   │  4. POST /answer  { "answer": "<string>" }        │
+   │                                                   │
+   │  Response branch:                                 │
+   │  ├─ ready_for_synthesis = true ──────────────────►│── POST /synthesize
+   │  ├─ next_prompt ≠ null  (loop continues) ────────►│── back to step 1
+   │  └─ next_prompt = null && !ready_for_synthesis    │
+   │       (no more questions, force synthesize) ─────►│── POST /synthesize
+   └──────────────────────────────────────────────────┘
+
+POST /synthesize
+  │
+  └─ structured_output ──► RAG retrieval (see field mapping below)
+                      └──► POST /search-expand  (optional broadening levels)
+```
+
+### Minimal integration loop (pseudocode)
+
+```python
+BASE = "http://localhost:8001/api/v1"
+HEADERS = {"X-API-Key": API_KEY, "Content-Type": "application/json"}
+
+# Phase 1 — pick a framework
+frameworks = GET(f"{BASE}/refinement/frameworks")["frameworks"]
+framework_name = frameworks[0]   # or let the user choose
+
+# Phase 2 — start and refine
+r = POST(f"{BASE}/refinement/start", {
+    "original_query": user_query,
+    "framework_name": framework_name,
+    "source": "api_integration",
+})
+query_id = r["query_id"]
+
+while not r.get("ready_for_synthesis"):
+    prompt = r.get("next_prompt")
+    if not prompt:
+        break  # no more questions
+
+    question  = prompt["question"]       # plain prose question
+    examples  = prompt["examples"]       # list[str] — quick-reply options (may be empty)
+    aspect_id = prompt["aspect_id"]
+
+    # Present question + examples to user (or have agent select)
+    answer = agent_or_user_select(question, examples)
+
+    r = POST(f"{BASE}/refinement/queries/{query_id}/answer", {"answer": answer})
+
+# Phase 3 — synthesize
+synthesis = POST(f"{BASE}/refinement/synthesize", {"query_id": query_id})
+```
+
+### Quick-reply / examples field
+
+Every `next_prompt` includes an `examples` list:
+
+```json
+"examples": ["elderly patients (65+)", "working-age adults (18–64)", "children under 12"]
+```
+
+- Each string is a **complete, standalone answer** — submit it verbatim as `answer`.
+- Examples span the clarification range; they are not biased toward the LLM's guess.
+- Empty list `[]` is valid — it means the question is open-ended or the aspect was auto-completed.
+- A clicked example is submitted identically to a free-text answer:
+  ```json
+  POST /refinement/queries/{query_id}/answer
+  { "answer": "elderly patients (65+)" }
+  ```
+
+### RAG field mapping
+
+After `POST /synthesize`, `structured_output` contains all retrieval artifacts:
+
+| Use case | Field path |
+|---|---|
+| Dense / vector retrieval | `structured_output.search_optimized.semantic` |
+| **Primary RAG keyword search** | `structured_output.search_optimized.keyword.combined_blocks` |
+| Boolean anchor query (fallback) | `structured_output.search_optimized.keyword.structured` |
+| Exact key phrases | `structured_output.search_optimized.keyword.phrases` |
+| Grey / organizational literature | `structured_output.search_optimized.grey_literature` |
+| Controlled vocabulary (MeSH, DeCS) | `combined_blocks[i].controlled_vocabulary` |
+| Metadata narrowing filters | `structured_output.search_filters` |
+| Synonym expansion per concept | `structured_output.concept_graph.<concept>` |
+| Terminology / synonym map | `structured_output.terminology` |
+| Broadening fallback levels | `POST /search-expand` with `integrated_statement` + `concept_graph` |
+
+**`combined_blocks` connector rules:**
+
+```
+OR  free_text terms  within each block
+OR  controlled_vocabulary terms  within each block
+AND all blocks together
+```
+
+Use `controlled_vocabulary` only for indexed sources (PubMed → MeSH, WHO IRIS → DeCS).  
+Use `free_text` alone for unindexed sources (OpenAlex, CORE, ReliefWeb).
+
+### Error handling for agents
+
+| HTTP code | Meaning | Action |
+|---|---|---|
+| 401 | Missing or invalid auth | Check `X-API-Key` or `Authorization` header |
+| 403 | Framework access denied | Grant the integration user access to the framework |
+| 404 | Query/session not found | Session may have expired — restart with `/start` |
+| 409 | Already synthesized | Call `/status` to retrieve the existing result |
+| 422 | Validation error | Check request body — see error envelope below |
+| 503 | Session lock held | Retry after 1–2 s; concurrent request on same session |
+
+Retry pattern for 503 (session contention):
+```python
+for attempt in range(3):
+    r = POST(url, body)
+    if r.status_code != 503:
+        break
+    time.sleep(1.5 ** attempt)
+```
+
+---
+
 ## Refinement Workflow
 
 - `GET /api/v1/refinement/frameworks`
@@ -335,6 +498,28 @@ Notes:
 
 #### `POST /api/v1/refinement/queries/{query_id}/answer` (200)
 
+Request body (for both regular answers and slash commands):
+
+```json
+{ "answer": "elderly patients aged 65 and over" }
+```
+
+To submit a quick-reply example, send its string verbatim:
+
+```json
+{ "answer": "elderly patients (65+)" }
+```
+
+Slash commands use the same field:
+
+```json
+{ "answer": "/skip" }
+{ "answer": "/back" }
+{ "answer": "/status" }
+{ "answer": "/done" }
+{ "answer": "/submit" }
+```
+
 This endpoint has two response types.
 
 **A) Regular answer (`SubmitAnswerResponse`)**
@@ -436,6 +621,14 @@ Returns the same JSON envelope as `GET /api/v1/refinement/queries/{query_id}/sta
 ```
 
 #### `POST /api/v1/refinement/synthesize` (200)
+
+Request body:
+
+```json
+{ "query_id": 123 }
+```
+
+Response:
 
 ```json
 {
@@ -620,6 +813,24 @@ Notes:
 - `metadata.status` is one of `completed`, `skipped_no_assessable_aspects`, or `failed_level_0_only`; the latter two return Level 0 only with warning metadata.
 
 #### `POST /api/v1/refinement/queries/{query_id}/forward-to-qa` (200)
+
+Request body:
+
+```json
+{
+	"qa_system_url": "https://qa.example.com/api/query",
+	"qa_system_auth": { "Authorization": "Bearer <token>" },
+	"timeout_seconds": 30,
+	"include_refinement_metadata": true,
+	"forward_original_query": false
+}
+```
+
+- `qa_system_url` must be a public HTTPS URL — private/loopback IPs and RFC-1918 addresses are rejected.
+- `qa_system_auth` accepts any custom HTTP headers except hop-by-hop headers (`host`, `connection`, etc.).
+- `forward_original_query`: when `true`, the original unrefined query is also sent alongside the refined query.
+
+Response:
 
 ```json
 {
