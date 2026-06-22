@@ -328,9 +328,45 @@ class SearchExpandRequest(BaseModel):
 
 
 class SearchExpandResponse(BaseModel):
-    """Response with generated search expansion levels."""
-    search_expansion_levels: List[Dict[str, Any]]
-    metadata: Optional[Dict[str, Any]] = None
+    """Agent D — Search Expansion response.
+
+    search_expansion_levels is a list of level objects in ascending order.
+    Level 0 (anchor) is always first; Levels 1-3 follow if generated.
+
+    Each level object has:
+      level           int     0 = anchor, 1 = lexical, 2-3 = conceptual broadening
+      label           str     Human-readable label (e.g. "Spelling and abbreviation variants")
+      strategy        str     One of: anchor | lexical | conceptual_single_aspect |
+                              conceptual_multi_aspect
+      search_query    str     The query string at this broadening level. For RAG: use as
+                              the retrieval query for dense (embedding) and sparse (keyword)
+                              connectors at this level.
+      relaxed_aspects dict    Aspect id → broadened value. Empty for Level 0 and Level 1.
+                              Keys are SearchAspect values: topic_or_condition,
+                              population_or_entity, intervention_or_exposure_or_phenomenon,
+                              setting_or_context, geography, time_scope.
+                              Special value "(no restriction)" for geography means the
+                              geographic constraint was removed entirely.
+      rationale       str     Explanation of why this broadening decision was made.
+
+    Apply levels in sequence: start with Level 0 (most precise), fall back to higher
+    levels when result count is insufficient.
+    """
+    search_expansion_levels: List[Dict[str, Any]] = Field(
+        ...,
+        description=(
+            "Ordered list of expansion levels (Level 0 first). "
+            "Each entry: {level, label, strategy, search_query, relaxed_aspects, rationale}. "
+            "Use search_query as the retrieval string for each fallback step."
+        ),
+    )
+    metadata: Optional[Dict[str, Any]] = Field(
+        None,
+        description=(
+            "Generation metadata: status, generated_level_count, used_llm, total_tokens, "
+            "aspect_assessment (safe_aspects, conditional_aspects, avoided_aspects)."
+        ),
+    )
 
 
 class ForwardToQARequest(BaseModel):
@@ -2214,20 +2250,29 @@ async def search_expand_query(
     Call this after POST /synthesize to obtain a recall ladder for fallback retrieval.
 
     Input:
-      anchor_query              Exact Level 0 query (unchanged). Use POST /synthesize →
-                                integrated_statement, or keyword.structured for sparse connectors.
+      anchor_query                  Exact Level 0 query (unchanged). Use POST /synthesize →
+                                    integrated_statement, or keyword.structured for keyword connectors.
       search_context.concept_graph  Agent B concept graph from POST /synthesize →
-                                structured_output["concept_graph"]. Provides broadening candidates.
-      advisory_dimensions       Optional dimension values from structured_output["dimensions_specifications"].
+                                    structured_output["concept_graph"]. Provides broadening candidates.
+      advisory_dimensions           Optional dimension values from structured_output["dimensions_specifications"].
 
     Output levels:
-      Level 0  anchor                   Deterministic — the anchor_query unchanged.
-      Level 1  lexical                  Morphological + spelling variants of anchor terms.
-      Level 2  conceptual_single_aspect One concept class broadened via domain_terms.
-      Level 3  conceptual_multi_aspect  Two or more concept classes broadened simultaneously.
+      Level 0  anchor                   Deterministic — the anchor_query unchanged, relaxed_aspects={}.
+      Level 1  lexical                  Spelling variants, abbreviations, morphological forms only.
+                                        strategy=lexical, relaxed_aspects={}.
+      Level 2  conceptual_single_aspect One SAFE aspect broadened (geography first, then setting,
+                                        then population). strategy=conceptual_single_aspect.
+      Level 3  conceptual_single_aspect OR conceptual_multi_aspect
+                                        When evidence is sparse at Level 2:
+                                        - "(no restriction)" geography drop: removes the geographic
+                                          constraint entirely; relaxed_aspects={"geography": "(no restriction)"}.
+                                        - CONDITIONAL aspect broadening (topic or intervention):
+                                          scope-expanding; rationale required; strategy=conceptual_single_aspect.
+                                        - Two aspects broadened simultaneously:
+                                          strategy=conceptual_multi_aspect.
 
-    Each level has: level, label, strategy, search_query, relaxed_aspects, rationale.
-    Apply levels in order: start with Level 0, fall back to higher levels when recall is insufficient.
+    The strategy field in each level is authoritative — do not infer broadening type from level number.
+    Apply levels in order: start with Level 0 (most precise), fall back when recall is insufficient.
     """
     request_id_val = generate_request_id()
     set_request_id(request_id_val)
