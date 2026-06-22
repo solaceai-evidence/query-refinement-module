@@ -385,11 +385,6 @@ def test_synthesize_route_acquires_session_lock(db: Session, auth_user_and_token
         "query_refinement_module.api.routes.refinement.get_settings",
         lambda: SimpleNamespace(enforce_workflow_limit=False),
     )
-    monkeypatch.setattr(
-        "query_refinement_module.services.webhook_service.dispatch_webhook_event_async",
-        lambda *args, **kwargs: None,
-    )
-
     try:
         db_session = create_query_session(db, user_id=user.id, framework_name=FRAMEWORK_NAME)
         db_query = create_query(db, session_id=db_session.id, original_query="COPD therapy question")
@@ -437,11 +432,6 @@ def test_start_skip_refinement_returns_embedded_synthesis_and_skips_steps(
         "query_refinement_module.api.routes.refinement.get_settings",
         lambda: SimpleNamespace(enforce_workflow_limit=False),
     )
-    monkeypatch.setattr(
-        "query_refinement_module.services.webhook_service.dispatch_webhook_event_async",
-        lambda *args, **kwargs: None,
-    )
-
     try:
         response = client.post(
             "/api/v1/refinement/start",

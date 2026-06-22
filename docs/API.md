@@ -701,19 +701,6 @@ When a query has already been synthesized, `QueryResponse` exposes the canonical
 - `GET /api/v1/feedback/my-feedback`
 - `GET /api/v1/feedback/query/{query_id}`
 
-## Webhooks
-
-- `GET /api/v1/webhooks/event-types`
-- `POST /api/v1/webhooks`
-- `GET /api/v1/webhooks`
-- `GET /api/v1/webhooks/{webhook_id}`
-- `PUT /api/v1/webhooks/{webhook_id}`
-- `DELETE /api/v1/webhooks/{webhook_id}`
-- `POST /api/v1/webhooks/{webhook_id}/regenerate-secret`
-- `POST /api/v1/webhooks/{webhook_id}/test`
-- `GET /api/v1/webhooks/{webhook_id}/deliveries`
-- `GET /api/v1/webhooks/deliveries/recent`
-
 ## Audit Logs
 
 Audit log endpoints require a superuser account.

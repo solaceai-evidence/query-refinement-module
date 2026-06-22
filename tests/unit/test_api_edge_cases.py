@@ -2,7 +2,6 @@
 Regression tests for critical API integration edge cases.
 
 Covers:
-- Webhook failure must not roll back committed DB writes
 - /ready endpoint is exempt from rate limiting
 - Synthesis guard (409) blocks premature /synthesize
 - ForwardToQA URL validation
@@ -18,48 +17,7 @@ ROOT = Path(__file__).resolve().parents[2]
 
 
 # ---------------------------------------------------------------------------
-# 1. Backend: ensure db.rollback() was removed from webhook exception handlers
-# ---------------------------------------------------------------------------
-
-REFINEMENT_ROUTE_FILE = ROOT / "query_refinement_module" / "api" / "routes" / "refinement.py"
-
-
-def _load_refinement_source() -> str:
-    return REFINEMENT_ROUTE_FILE.read_text(encoding="utf-8")
-
-
-def test_no_rollback_after_step_completed_webhook():
-    """db.rollback() must not appear inside the refinement.step_completed webhook handler."""
-    source = _load_refinement_source()
-
-    # Find the step_completed webhook block
-    step_completed_idx = source.find("refinement.step_completed")
-    assert step_completed_idx != -1, "refinement.step_completed block not found"
-
-    # Look at the 500 chars after the webhook dispatch for a rollback call
-    block_under_test = source[step_completed_idx : step_completed_idx + 500]
-    assert "db.rollback()" not in block_under_test, (
-        "db.rollback() must not be called after refinement.step_completed webhook "
-        "failure – it would undo already-committed step final_value writes."
-    )
-
-
-def test_no_rollback_after_refinement_complete_webhook():
-    """db.rollback() must not appear inside the refinement.complete webhook handler."""
-    source = _load_refinement_source()
-
-    refinement_complete_idx = source.find('"refinement.complete"')
-    assert refinement_complete_idx != -1, "refinement.complete webhook block not found"
-
-    block_under_test = source[refinement_complete_idx : refinement_complete_idx + 500]
-    assert "db.rollback()" not in block_under_test, (
-        "db.rollback() must not be called after refinement.complete webhook "
-        "failure – it would undo already-committed cascade step writes."
-    )
-
-
-# ---------------------------------------------------------------------------
-# 2. Backend: /ready endpoint is exempt from the rate limiter
+# 1. Backend: /ready endpoint is exempt from the rate limiter
 # ---------------------------------------------------------------------------
 
 MAIN_FILE = ROOT / "query_refinement_module" / "api" / "main.py"

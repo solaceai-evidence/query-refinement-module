@@ -29,8 +29,6 @@ class User(Base):
     is_superuser = Column(Boolean, default=False, nullable=False)
     has_completed_workflow = Column(Boolean, default=False, nullable=False)
     
-    # Relationships (defined via backref in other models, explicit here for webhooks)
-    webhooks = relationship("Webhook", back_populates="user", cascade="all, delete-orphan", lazy="dynamic")
     framework_access = relationship(
         "UserFrameworkAccess",
         back_populates="user",

@@ -10,7 +10,6 @@ Key Features:
 - Database metadata persistence
 - Performance monitoring
 - Error handling with detailed context
-- Webhook event notifications for external integrations
 """
 import asyncio
 import json
@@ -1164,21 +1163,6 @@ async def start_refinement(
         },
     )
     
-    # Trigger webhook: refinement.started
-    try:
-        from query_refinement_module.services.webhook_service import (
-            dispatch_webhook_event_async,
-            build_refinement_started_payload
-        )
-        payload = build_refinement_started_payload(
-            query_id=db_query.id,
-            user_id=current_user.id,
-            framework=request.framework_name
-        )
-        dispatch_webhook_event_async("refinement.started", payload, user_id=current_user.id)
-    except Exception as e:
-        logger.error(f"Failed to trigger refinement.started webhook: {e}", exc_info=True)
-    
     return StartRefinementResponse(
         session_id=db_session.id,
         query_id=db_query.id,
@@ -1627,23 +1611,6 @@ async def _submit_answer_locked(
             extra={"query_id": query_id, "dimension": active_step.refinement_aspect.name}
         )
         
-        # Trigger webhook: refinement.step_completed
-        try:
-            from query_refinement_module.services.webhook_service import (
-                dispatch_webhook_event_async,
-                build_refinement_step_completed_payload
-            )
-            payload = build_refinement_step_completed_payload(
-                query_id=query_id,
-                dimension=active_step.refinement_aspect.name,
-                aspect=active_step.refinement_aspect.name,
-                answer=active_step.normalized_value_as_str
-            )
-            dispatch_webhook_event_async("refinement.step_completed", payload, user_id=current_user.id)
-        except Exception as e:
-            logger.error(f"Failed to trigger refinement.step_completed webhook: {e}", exc_info=True)
-            # Webhook failure is non-critical; do not rollback already-committed DB writes.
-    
     # Get next prompt
     next_prompt = None
     if not is_complete:
@@ -1666,22 +1633,6 @@ async def _submit_answer_locked(
     
     # Check if all aspects are complete (ready for synthesis)
     ready_for_synthesis = next_prompt is None and session.is_complete()
-    
-    # Trigger webhook: refinement.complete (if all dimensions done)
-    if ready_for_synthesis:
-        try:
-            from query_refinement_module.services.webhook_service import (
-                dispatch_webhook_event_async,
-                build_refinement_complete_payload
-            )
-            payload = build_refinement_complete_payload(
-                query_id=query_id,
-                total_steps=len(session.steps)
-            )
-            dispatch_webhook_event_async("refinement.complete", payload, user_id=current_user.id)
-        except Exception as e:
-            logger.error(f"Failed to trigger refinement.complete webhook: {e}", exc_info=True)
-            # Webhook failure is non-critical; do not rollback already-committed DB writes.
     
     duration_ms = (time.time() - start_time) * 1000
     logger.info(
@@ -1899,23 +1850,6 @@ async def _run_synthesis(
         details={"framework": db_query.session.framework_name},
     )
 
-    # Webhook: synthesis.started
-    try:
-        from query_refinement_module.services.webhook_service import (
-            dispatch_webhook_event_async,
-            build_synthesis_started_payload,
-        )
-        dispatch_webhook_event_async(
-            "synthesis.started",
-            build_synthesis_started_payload(
-                query_id=query_id,
-                initial_query=db_query.original_query,
-            ),
-            user_id=current_user.id,
-        )
-    except Exception as _e:
-        logger.error(f"Failed to trigger synthesis.started webhook: {_e}", exc_info=True)
-
     # LLM synthesis call
     try:
         await tracker.increment_llm_calls(str(query_id))
@@ -2058,24 +1992,6 @@ async def _run_synthesis(
         stage=ProgressStage.SYNTHESIS_COMPLETE,
         message="Synthesis completed successfully",
     )
-
-    # Webhook: synthesis.complete
-    try:
-        from query_refinement_module.services.webhook_service import (
-            dispatch_webhook_event_async,
-            build_synthesis_complete_payload,
-        )
-        dispatch_webhook_event_async(
-            "synthesis.complete",
-            build_synthesis_complete_payload(
-                query_id=query_id,
-                refined_query=integrated_statement,
-                initial_query=db_query.original_query,
-            ),
-            user_id=current_user.id,
-        )
-    except Exception as _e:
-        logger.error(f"Failed to trigger synthesis.complete webhook: {_e}", exc_info=True)
 
     # Clean up Redis session (workflow complete)
     session_manager.delete_session(query_id)
@@ -2294,8 +2210,6 @@ async def forward_to_qa_system(
     2. Retrieves the refined query
     3. Forwards it to the specified QA system
     4. Returns both the refined query and QA system response
-    5. Triggers webhook event for monitoring
-    
     Security:
     - User authentication required
     - Query ownership validated
@@ -2423,22 +2337,6 @@ async def forward_to_qa_system(
                     "response_time_ms": qa_response_time_ms,
                 }
             )
-            
-            # Trigger webhook: query.forwarded (if webhook system supports it)
-            try:
-                from query_refinement_module.services.webhook_service import dispatch_webhook_event_async
-                webhook_payload = {
-                    "query_id": query_id,
-                    "refined_query": db_query.refined_query,
-                    "qa_system_url": request.qa_system_url,
-                    "qa_status_code": response.status_code,
-                    "response_time_ms": qa_response_time_ms,
-                }
-                # Note: This event type might not exist yet in WebhookEventType
-                # It will be silently skipped if no webhooks are subscribed
-                dispatch_webhook_event_async("query.forwarded", webhook_payload, user_id=current_user.id)
-            except Exception as e:
-                request_logger.warning(f"Failed to trigger webhook for QA forwarding: {e}")
             
             # Prepare response
             result = ForwardToQAResponse(
