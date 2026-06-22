@@ -168,6 +168,7 @@ async def test_run_synthesis_persists_full_response_payload(test_db_session, mon
         "search_optimized": {"semantic": "pulmonary rehabilitation for COPD adults"},
         "search_filters": {"publication_types": ["Systematic review"]},
         "terminology": {"synonyms": {"COPD": ["chronic obstructive pulmonary disease"]}},
+        "concept_graph": None,
     }
     assert db_query.refined_query == "Adults with COPD receiving pulmonary rehab."
     assert db_query.integrated_statement == "Adults with COPD receiving pulmonary rehab."

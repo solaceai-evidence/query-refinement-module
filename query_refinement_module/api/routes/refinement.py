@@ -212,23 +212,110 @@ class SynthesizeQueryRequest(BaseModel):
 
 
 class SynthesizeQueryResponse(BaseModel):
-    """Response with synthesized refined query."""
-    query_id: int
-    integrated_statement: str
-    used_llm: bool
-    structured_output: Optional[Dict[str, Any]] = None
+    """
+    Full output of the A→B→C synthesis pipeline.
+
+    Pipeline stages and field mapping
+    ----------------------------------
+    Agent A — Normalization
+      integrated_statement
+          Normalized research statement.
+      structured_output["dimensions_specifications"]
+          Per-dimension id → value map.
+
+    Agent B — Semantic Representation
+      structured_output["search_optimized"]["semantic"]
+          Dense embedding query (50-75 words) for vector search.
+      structured_output["concept_graph"]
+          Per-concept retrieval metadata: true_synonyms, abbreviations,
+          spelling_variants, lexical_variants, domain_terms, colloquial,
+          controlled_vocabulary_hints (vocabulary_name, terms, confidence).
+      structured_output["terminology"]
+          Primary terms, synonyms, domain-specific, colloquial variants.
+
+    Agent C — Search Construction
+      structured_output["search_optimized"]["keyword"]["structured"]
+          Boolean anchor query (AND-connected OR-blocks).
+      structured_output["search_optimized"]["keyword"]["phrases"]
+          Exact key phrases (2-4 words each).
+      structured_output["search_optimized"]["keyword"]["terms"]
+          required / optional / excluded single-word or compound terms.
+      structured_output["search_optimized"]["keyword"]["combined_blocks"]  ← PRIMARY RAG ARTIFACT
+          One entry per AND-block. Each entry has:
+            role: query_role of the dominant concept in this block
+            free_text: all OR-group terms for this block
+            controlled_vocabulary: vocabulary_name → list of thesaurus headings
+          Source connectors: OR free_text with controlled_vocabulary within each block,
+          then AND all blocks together.
+          Use controlled_vocabulary only for indexed databases (PubMed → MeSH, WHO IRIS → DeCS).
+          Use free_text alone for unindexed sources (OpenAlex, ReliefWeb, CORE).
+      structured_output["search_optimized"]["grey_literature"]
+          Colloquial + organizational terms for grey literature search.
+      structured_output["search_filters"]
+          Metadata filters: publication_years, venues, publication_types, fields_of_study.
+
+    Agent D — Search Expansion (separate endpoint)
+      Call POST /search-expand with:
+        anchor_query = integrated_statement
+        search_context.concept_graph = structured_output["concept_graph"]
+    """
+    query_id: int = Field(..., description="Database ID of the synthesized query")
+    integrated_statement: str = Field(
+        ...,
+        description=(
+            "Agent A output. Normalized research statement integrating all user-provided "
+            "dimension values. Pass as anchor_query to /search-expand for Agent D broadening levels."
+        ),
+    )
+    used_llm: bool = Field(..., description="Always True; LLM was invoked for synthesis")
+    structured_output: Optional[Dict[str, Any]] = Field(
+        None,
+        description=(
+            "Structured pipeline output. See class docstring for full field mapping. "
+            "RAG connectors: primary artifact is "
+            "structured_output['search_optimized']['keyword']['combined_blocks']."
+        ),
+    )
 
 
 class SearchExpandRequest(BaseModel):
-    """Standalone request payload for search expansion."""
-    anchor_query: str = Field(..., description="Exact Level 0 query to preserve during broadening")
+    """
+    Agent D — Search Expansion request.
+
+    Generates up to 3 broadening levels (Levels 1-3) beyond the anchor query (Level 0).
+
+    Typical flow after POST /synthesize:
+      anchor_query = synthesize_response.integrated_statement
+      search_context.concept_graph = synthesize_response.structured_output["concept_graph"]
+
+    Expansion levels produced:
+      Level 0  anchor                   (deterministic — the anchor_query unchanged)
+      Level 1  lexical                  (morphological + spelling variants)
+      Level 2  conceptual_single_aspect (one concept class broadened via domain_terms)
+      Level 3  conceptual_multi_aspect  (two or more concept classes broadened)
+    """
+    anchor_query: str = Field(
+        ...,
+        description=(
+            "Exact Level 0 query to preserve unchanged. "
+            "Typically: POST /synthesize → integrated_statement, or "
+            "keyword.structured for keyword-mode connectors."
+        ),
+    )
     advisory_dimensions: Dict[str, Any] = Field(
         default_factory=dict,
-        description="Optional non-authoritative dimension hints used only to disambiguate the anchor query",
+        description=(
+            "Optional non-authoritative dimension values to assist concept detection. "
+            "Use POST /synthesize → structured_output['dimensions_specifications']."
+        ),
     )
     search_context: Optional[SearchExpansionContext] = Field(
         None,
-        description="Optional retrieval hints such as filters and synonyms",
+        description=(
+            "Optional retrieval context. Set search_context.concept_graph to "
+            "POST /synthesize → structured_output['concept_graph'] for best results. "
+            "Provides lexical broadening candidates and vocabulary hints for Agent D."
+        ),
     )
     model: Optional[str] = Field(None, description="Optional LLM model override")
 
@@ -1942,6 +2029,7 @@ async def _run_synthesis(
             "search_optimized": synthesis_result.get("search_optimized"),
             "search_filters": synthesis_result.get("search_filters"),
             "terminology": synthesis_result.get("terminology"),
+            "concept_graph": synthesis_result.get("concept_graph"),
         }
     elif integrated_statement and (
         integrated_statement.startswith("{") or integrated_statement.startswith("`")
@@ -1975,6 +2063,7 @@ async def _run_synthesis(
                 "search_optimized": _parsed.get("search_optimized"),
                 "search_filters": _parsed.get("search_filters"),
                 "terminology": _parsed.get("terminology"),
+                "concept_graph": _parsed.get("concept_graph"),
             }
             if _parsed.get("integrated_statement"):
                 integrated_statement = _parsed["integrated_statement"]
@@ -2119,7 +2208,27 @@ async def search_expand_query(
     manager: QueryRefinementManager = Depends(get_refinement_manager),
     current_user = Depends(get_current_user_or_integration),
 ):
-    """Generate search expansion levels from a standalone request payload."""
+    """
+    Agent D — Search Expansion. Generate progressive broadening levels beyond the anchor query.
+
+    Call this after POST /synthesize to obtain a recall ladder for fallback retrieval.
+
+    Input:
+      anchor_query              Exact Level 0 query (unchanged). Use POST /synthesize →
+                                integrated_statement, or keyword.structured for sparse connectors.
+      search_context.concept_graph  Agent B concept graph from POST /synthesize →
+                                structured_output["concept_graph"]. Provides broadening candidates.
+      advisory_dimensions       Optional dimension values from structured_output["dimensions_specifications"].
+
+    Output levels:
+      Level 0  anchor                   Deterministic — the anchor_query unchanged.
+      Level 1  lexical                  Morphological + spelling variants of anchor terms.
+      Level 2  conceptual_single_aspect One concept class broadened via domain_terms.
+      Level 3  conceptual_multi_aspect  Two or more concept classes broadened simultaneously.
+
+    Each level has: level, label, strategy, search_query, relaxed_aspects, rationale.
+    Apply levels in order: start with Level 0, fall back to higher levels when recall is insufficient.
+    """
     request_id_val = generate_request_id()
     set_request_id(request_id_val)
     start_time = time.time()
@@ -2182,10 +2291,29 @@ async def synthesize_refined_query(
     session_manager: SessionManager = Depends(get_session_manager)
 ):
     """
-    Synthesize the final refined query from all collected answers.
+    Run the A→B→C synthesis pipeline and return all retrieval artifacts.
 
-    This combines the original query with all refinement clarifications
-    into a well-formed refined query.
+    Pipeline executed sequentially:
+      Agent A — Normalization: integrates dimension values into a normalized research statement.
+      Agent B — Semantic Representation: extracts concept graph and dense embedding query.
+      Agent C — Search Construction: builds Boolean query, combined_blocks, and metadata filters.
+
+    Primary fields for RAG integration:
+      structured_output["search_optimized"]["keyword"]["combined_blocks"]
+          Structured AND-blocks pairing free-text terms with controlled vocabulary.
+          Use to build source-specific queries: OR terms within each block, AND blocks together.
+          Applies to indexed databases (PubMed/MeSH, WHO IRIS/DeCS) and free-text sources.
+      structured_output["search_optimized"]["semantic"]
+          Dense embedding query for vector / semantic search.
+      structured_output["search_optimized"]["keyword"]["structured"]
+          Boolean query for keyword / sparse search.
+      structured_output["concept_graph"]
+          Agent B concept graph. Pass as search_context.concept_graph to /search-expand.
+      structured_output["search_filters"]
+          Metadata filters ready for database filter parameters.
+
+    Agent D (search expansion) is a separate step — call POST /search-expand after this.
+    Session must be ready for synthesis: all dimensions answered or /submit issued.
     """
     from query_refinement_module.tracing import generate_request_id, set_request_id
 

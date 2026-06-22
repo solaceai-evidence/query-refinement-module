@@ -1998,7 +1998,7 @@ class QueryRefinementManager:
         max_tokens: Optional[int] = None,
         additional_guidance: Optional[str] = None,
     ) -> Tuple[SearchConstructionResponse, Dict[str, Any]]:
-        """Agent D: build anchor keyword search + filters from research_statement and concept_graph."""
+        """Agent C: build anchor keyword search + filters from research_statement and concept_graph."""
         builder = SearchConstructionPromptBuilder()
         concept_graph_dict = {
             k: (v.model_dump() if hasattr(v, "model_dump") else v)

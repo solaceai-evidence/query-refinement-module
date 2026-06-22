@@ -348,7 +348,7 @@ class SemanticRepresentationResponse(BaseModel):
 
 
 class SearchConstructionResponse(BaseModel):
-    """Agent D output: anchor keyword search + grey literature + filters."""
+    """Agent C output: anchor keyword search + grey literature + filters."""
     keyword: KeywordSearch
     grey_literature: Optional[GreyLiteratureSearch] = None
     search_filters: SearchFilters

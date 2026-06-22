@@ -131,7 +131,7 @@ class SemanticRepresentationPromptBuilder:
 
 
 class SearchConstructionPromptBuilder:
-    """Builds prompts for Agent D (anchor search construction)."""
+    """Builds prompts for Agent C (anchor search construction)."""
 
     @staticmethod
     def get_system_prompt() -> str:

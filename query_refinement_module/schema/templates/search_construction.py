@@ -1,4 +1,4 @@
-"""Agent D: Search Construction prompt template."""
+"""Agent C: Search Construction prompt template."""
 
 SEARCH_CONSTRUCTION_TEMPLATE = """
 # SEARCH CONSTRUCTION

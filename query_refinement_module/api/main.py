@@ -85,7 +85,15 @@ async def lifespan(app: FastAPI):
 app = FastAPI(
     title=settings.app_name,
     version=settings.app_version,
-    description="AI-powered query refinement API for scientific literature search",
+    description=(
+        "Query refinement and search construction pipeline. "
+        "Runs an interactive dimension-refinement dialogue, then executes the A→B→D synthesis "
+        "pipeline (Normalization → Semantic Representation → Search Construction) to produce "
+        "structured search artifacts: combined_blocks (free-text + controlled vocabulary per AND-block), "
+        "semantic embedding queries, Boolean keyword queries, and metadata filters. "
+        "Use POST /api/v1/refinement/synthesize to get all retrieval artifacts, "
+        "then POST /api/v1/refinement/search-expand for Agent D broadening levels."
+    ),
     docs_url="/docs",
     redoc_url="/redoc",
     lifespan=lifespan,

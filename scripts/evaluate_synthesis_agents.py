@@ -80,8 +80,8 @@ class Scenario:
     # Agent B checks
     b_required_concept_roles: list[str] = field(default_factory=list)   # at least one concept with this query_role
     b_min_concepts: int = 4
-    # Agent D checks
-    d_required_terms_in_boolean: list[str] = field(default_factory=list)  # case-insensitive
+    # Agent C checks
+    c_required_terms_in_boolean: list[str] = field(default_factory=list)  # case-insensitive
 
 
 def build_scenarios() -> list[Scenario]:
@@ -115,7 +115,7 @@ def build_scenarios() -> list[Scenario]:
             a_required_terms_in_statement=["antimicrobial stewardship", "antibiotic"],
             b_required_concept_roles=["population_or_entity", "topic_or_condition"],
             b_min_concepts=4,
-            d_required_terms_in_boolean=["stewardship", "antibiotic"],
+            c_required_terms_in_boolean=["stewardship", "antibiotic"],
         ),
         # ------------------------------------------------------------------
         # Scenario 2: Education — digital technology in rural primary schools
@@ -146,7 +146,7 @@ def build_scenarios() -> list[Scenario]:
             a_required_terms_in_statement=["digital technology", "rural", "learning outcomes"],
             b_required_concept_roles=["population_or_entity", "intervention_or_exposure_or_phenomenon"],
             b_min_concepts=4,
-            d_required_terms_in_boolean=["digital", "rural"],
+            c_required_terms_in_boolean=["digital", "rural"],
         ),
         # ------------------------------------------------------------------
         # Scenario 3: Environmental / energy policy — renewable energy adoption
@@ -177,7 +177,7 @@ def build_scenarios() -> list[Scenario]:
             a_required_terms_in_statement=["solar photovoltaic", "rural"],
             b_required_concept_roles=["population_or_entity", "intervention_or_exposure_or_phenomenon"],
             b_min_concepts=4,
-            d_required_terms_in_boolean=["solar", "photovoltaic"],
+            c_required_terms_in_boolean=["solar", "photovoltaic"],
         ),
     ]
 
@@ -300,7 +300,7 @@ def check_agent_b(
     return (not failures), failures
 
 
-def check_agent_c(
+def check_agent_d(
     levels: list[dict[str, Any]],
 ) -> tuple[bool, list[str]]:
     failures: list[str] = []
@@ -336,7 +336,7 @@ def check_agent_c(
     return (not failures), failures
 
 
-def check_agent_d(
+def check_agent_c(
     result: dict[str, Any],
     scenario: Scenario,
 ) -> tuple[bool, list[str]]:
@@ -353,7 +353,7 @@ def check_agent_d(
         has_bool = any(op in structured.upper() for op in [" AND ", " OR ", " NOT "])
         if not has_bool:
             failures.append("keyword.structured contains no Boolean operators (AND/OR/NOT)")
-        for term in scenario.d_required_terms_in_boolean:
+        for term in scenario.c_required_terms_in_boolean:
             if term.lower() not in structured.lower():
                 failures.append(f"keyword.structured missing required term {term!r}")
 
@@ -461,8 +461,8 @@ def run_scenario(
         results["passed"] = False
         return results
 
-    # ── Agent D ──────────────────────────────────────────────────────────
-    print("    [Agent D] Search Construction ...", file=sys.stderr, flush=True)
+    # ── Agent C ──────────────────────────────────────────────────────────
+    print("    [Agent C] Search Construction ...", file=sys.stderr, flush=True)
     construction = None
     try:
         concept_graph_for_d = {
@@ -479,10 +479,10 @@ def run_scenario(
             )
         )
         construction_dict = construction.model_dump()
-        passed_d, failures_d = check_agent_d(construction_dict, scenario)
+        passed_d, failures_d = check_agent_c(construction_dict, scenario)
         status = "PASS" if passed_d else "FAIL"
         print(f"      -> {status}: {failures_d if not passed_d else []}", file=sys.stderr)
-        results["agents"]["D"] = {
+        results["agents"]["C"] = {
             "passed": passed_d,
             "failures": failures_d,
             "output": construction_dict if verbose else {
@@ -495,18 +495,18 @@ def run_scenario(
     except Exception as exc:
         msg = f"{type(exc).__name__}: {exc}"
         print(f"      -> ERROR: {msg}", file=sys.stderr)
-        results["agents"]["D"] = {"passed": False, "failures": [f"execution error: {msg}"], "output": None}
+        results["agents"]["C"] = {"passed": False, "failures": [f"execution error: {msg}"], "output": None}
 
-    # ── Agent C ──────────────────────────────────────────────────────────
-    # Uses Agent D's structured query as the anchor; falls back to research_statement.
-    print("    [Agent C] Search Expansion ...", file=sys.stderr, flush=True)
+    # ── Agent D ──────────────────────────────────────────────────────────
+    # Uses Agent C's structured query as anchor; falls back to research_statement.
+    print("    [Agent D] Search Expansion ...", file=sys.stderr, flush=True)
     try:
         concept_graph_for_c = {
             c: (e.model_dump() if hasattr(e, "model_dump") else e)
             for c, e in sem.concept_graph.items()
         }
         # Level 0 anchor is the normalized research statement (the "Exact clarified question"),
-        # not Agent D's Boolean query. Both Agent C and Agent D are independent downstream
+        # not Agent C's Boolean query. Both Agent C and Agent D are independent downstream
         # consumers of Agent B's concept_graph.
         anchor_query = norm.normalized_statement
         search_input = SearchExpansionInput(
@@ -525,10 +525,10 @@ def run_scenario(
             )
         )
         levels_dicts = [lv.model_dump() if hasattr(lv, "model_dump") else lv for lv in levels]
-        passed_c, failures_c = check_agent_c(levels_dicts)
+        passed_c, failures_c = check_agent_d(levels_dicts)
         status = "PASS" if passed_c else "FAIL"
         print(f"      -> {status}: {failures_c if not passed_c else []} ({len(levels_dicts)} levels)", file=sys.stderr)
-        results["agents"]["C"] = {
+        results["agents"]["D"] = {
             "passed": passed_c,
             "failures": failures_c,
             "output": levels_dicts if verbose else [
@@ -540,7 +540,7 @@ def run_scenario(
     except Exception as exc:
         msg = f"{type(exc).__name__}: {exc}"
         print(f"      -> ERROR: {msg}", file=sys.stderr)
-        results["agents"]["C"] = {"passed": False, "failures": [f"execution error: {msg}"], "output": None}
+        results["agents"]["D"] = {"passed": False, "failures": [f"execution error: {msg}"], "output": None}
 
     agent_passes = [v.get("passed", False) for v in results["agents"].values()]
     results["passed"] = all(agent_passes)
