@@ -107,13 +107,12 @@ Return exactly one JSON object matching this schema:
   ]
 }
 
-Valid strategy values: "lexical", "conceptual_single_aspect", "conceptual_multi_aspect", "indexing_variant".
+Valid strategy values: "lexical", "conceptual_single_aspect", "conceptual_multi_aspect".
 
 Strategy ladder (apply in this order; skip steps that add no value):
 1. Level 1 — strategy "lexical": expand within detected aspects using the provided synonyms and near-variants only. Do not broaden any aspect conceptually. relaxed_aspects stays empty for purely lexical levels.
 2. Level 2 — strategy "conceptual_single_aspect": broaden exactly one SAFE aspect using one of its allowed broadening candidates.
 3. Level 3 — strategy "conceptual_single_aspect" or "conceptual_multi_aspect": a broader single-aspect step, or at most two aspects when one alone is insufficient. At most one of the two may be CONDITIONAL.
-4. Level 4 — strategy "indexing_variant" (optional): when controlled_vocabulary_hints are provided in the Supporting Search Context, use those vocabulary names and terms to construct a database-specific controlled vocabulary query (e.g. MeSH headings for MEDLINE, ERIC descriptors for education databases). Name the vocabulary in the label. Skip Level 4 entirely when no controlled_vocabulary_hints are provided or all entries have confidence "low".
 
 Rules:
 - Generate Levels 1 through N only. Never generate Level 0. The supplied Level 0 anchor is fixed; do not restate, rewrite, or replace it.
@@ -132,7 +131,7 @@ Rules:
 - Treat filters as retrieval constraints to respect during broadening; do not contradict them or force them into the query text unless they naturally belong there.
 - Use provided synonyms selectively, only when they improve recall without changing scope.
 - Return zero additional levels if the anchor query is already broad or no useful safe broadening exists.
-- Return at most four additional levels.
+- Return at most three additional levels.
 - Keep search_query non-empty and directly usable by a retrieval system.
 - Explain in each rationale what changed and why it broadens recall without scope drift.
 
@@ -145,11 +144,6 @@ Allowed Aspects For Search-Only Broadening:
 [{"aspect": "topic_or_condition", "safety": "safe", "detected_value": "venous thromboembolism", "broadening_candidates": ["thrombosis", "vascular events"]},
  {"aspect": "population_or_entity", "safety": "safe", "detected_value": "patients undergoing major orthopedic surgery", "broadening_candidates": ["orthopedic surgery patients", "surgical patients"]},
  {"aspect": "intervention_or_exposure_or_phenomenon", "safety": "conditional", "detected_value": "thromboprophylaxis interventions", "broadening_candidates": ["prophylaxis", "surgical prophylaxis"]}]
-
-Supporting Search Context (controlled_vocabulary_hints from concept_graph):
-[{"vocabulary_name": "MeSH", "terms": ["Venous Thromboembolism", "Venous Thrombosis", "Pulmonary Embolism"]},
- {"vocabulary_name": "MeSH", "terms": ["Arthroplasty, Replacement, Hip", "Arthroplasty, Replacement, Knee", "Hip Fractures"]},
- {"vocabulary_name": "MeSH", "terms": ["Anticoagulants", "Compression Bandages", "Intermittent Pneumatic Compression Devices"]}]
 
 Output:
 
@@ -179,23 +173,15 @@ Output:
       "relaxed_aspects": {"topic_or_condition": "thrombosis"},
       "rationale": "Broadens from venous thromboembolism to thrombosis to capture studies on mixed or general thrombotic complications in orthopedic settings; increases recall at the cost of some topic precision."
     },
-    {
-      "level": 4,
-      "label": "Controlled vocabulary — MEDLINE MeSH",
-      "strategy": "indexing_variant",
-      "search_query": "("Venous Thromboembolism"[MeSH] OR "Venous Thrombosis"[MeSH] OR "Pulmonary Embolism"[MeSH]) AND ("Arthroplasty, Replacement, Hip"[MeSH] OR "Arthroplasty, Replacement, Knee"[MeSH] OR "Hip Fractures"[MeSH]) AND ("Anticoagulants"[MeSH] OR "Compression Bandages"[MeSH] OR "Intermittent Pneumatic Compression Devices"[MeSH])",
-      "relaxed_aspects": {},
-      "rationale": "Parallel controlled vocabulary track using MeSH headings for MEDLINE; complements free-text Levels 1-3 by retrieving records indexed under standardized headings regardless of author terminology."
-    }
   ]
 }
 
 Key distinctions demonstrated:
-- Level 0 is the normalized research statement — it is never included in the output.
+- Level 0 is the anchor query — it is never included in the output.
 - Level 1 adds only lexical and abbreviation variants; relaxed_aspects is empty.
 - Levels 2 and 3 each relax exactly one SAFE aspect (population_or_entity, then topic_or_condition).
-- Level 4 uses terms directly from controlled_vocabulary_hints; it constructs a database-specific query and leaves relaxed_aspects empty because broadening here comes from vocabulary coverage, not aspect relaxation.
 - The CONDITIONAL aspect (intervention) is not broadened because the query already covers both antithrombotic and mechanical approaches.
+- Controlled vocabulary is not part of the expansion levels — it is embedded in the anchor via combined_blocks and applied by source connectors.
 """.strip()
 
 

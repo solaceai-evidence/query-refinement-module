@@ -80,11 +80,25 @@ class SearchTerms(BaseModel):
     excluded: List[str] = Field(default_factory=list)
 
 
+class CombinedBlock(BaseModel):
+    """One AND-block with free-text terms and controlled vocabulary merged, for source connectors."""
+    role: str = Field(description="query_role of the dominant concept in this block")
+    free_text: List[str] = Field(default_factory=list, description="OR-group terms: true_synonyms + abbreviations + spelling_variants + lexical_variants")
+    controlled_vocabulary: Dict[str, List[str]] = Field(
+        default_factory=dict,
+        description="vocabulary_name → deduplicated terms from controlled_vocabulary_hints of all concepts in this block",
+    )
+
+
 class KeywordSearch(BaseModel):
     """Keyword search optimization."""
     structured: str = Field(description="Boolean query with operators")
     phrases: List[str] = Field(default_factory=list, description="Exact phrases")
     terms: SearchTerms
+    combined_blocks: Optional[List[CombinedBlock]] = Field(
+        default=None,
+        description="Structured blocks for source-specific query construction; mirrors AND-blocks in keyword.structured",
+    )
 
 
 class GreyLiteratureSearch(BaseModel):
@@ -161,7 +175,6 @@ class ExpansionStrategy(str, Enum):
     LEXICAL = "lexical"
     CONCEPTUAL_SINGLE_ASPECT = "conceptual_single_aspect"
     CONCEPTUAL_MULTI_ASPECT = "conceptual_multi_aspect"
-    INDEXING_VARIANT = "indexing_variant"
 
 
 class SearchAspectAssessment(BaseModel):
@@ -229,7 +242,7 @@ class SearchExpansionContext(BaseModel):
     synonyms: Dict[str, List[str]] = Field(default_factory=dict)
     concept_graph: Optional[Dict[str, Any]] = Field(
         default=None,
-        description="Structured concept graph from Agent B; when present, takes precedence over synonyms for lexical context and provides controlled_vocabulary_hints for Level 4.",
+        description="Structured concept graph from Agent B; when present, takes precedence over synonyms for lexical context.",
     )
 
 
@@ -360,6 +373,7 @@ __all__ = [
     "SearchExpansionResponse",
     "SearchExpansionContext",
     "SearchExpansionInput",
+    "CombinedBlock",
     "VocabularyHint",
     "ConceptEntry",
     "ResearchStatementResponse",

@@ -329,7 +329,7 @@ def check_agent_c(
         if not (lv.get("rationale") or "").strip():
             failures.append(f"Level {lv_num} has empty rationale")
         strategy = lv.get("strategy") or ""
-        valid_strategies = {"anchor", "lexical", "conceptual_single_aspect", "conceptual_multi_aspect", "indexing_variant"}
+        valid_strategies = {"anchor", "lexical", "conceptual_single_aspect", "conceptual_multi_aspect"}
         if strategy and strategy not in valid_strategies:
             failures.append(f"Level {lv_num} has unknown strategy {strategy!r}")
 

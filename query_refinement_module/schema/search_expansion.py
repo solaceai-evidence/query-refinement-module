@@ -30,9 +30,8 @@ def _support_context(search_input: SearchExpansionInput) -> dict:
     synonyms: dict = dict(_to_jsonable(getattr(search_context, "synonyms", {}) or {}))
 
     # When a structured concept_graph is present, derive richer synonym context
-    # (true_synonyms + abbreviations) and surface controlled_vocabulary_hints for Level 4.
+    # (true_synonyms + abbreviations) for lexical expansion.
     concept_graph = getattr(search_context, "concept_graph", None)
-    vocab_hints: list = []
     if concept_graph:
         for concept, entry in concept_graph.items():
             if not isinstance(entry, dict):
@@ -40,13 +39,8 @@ def _support_context(search_input: SearchExpansionInput) -> dict:
             merged = list(entry.get("true_synonyms") or []) + list(entry.get("abbreviations") or [])
             if merged:
                 synonyms.setdefault(concept, merged)
-            hints = entry.get("controlled_vocabulary_hints") or []
-            vocab_hints.extend(h for h in hints if isinstance(h, dict))
 
-    ctx: dict = {"filters": filters, "synonyms": synonyms}
-    if vocab_hints:
-        ctx["controlled_vocabulary_hints"] = vocab_hints
-    return ctx
+    return {"filters": filters, "synonyms": synonyms}
 
 
 class SearchExpansionPromptBuilder:

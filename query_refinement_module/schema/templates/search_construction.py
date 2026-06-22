@@ -15,7 +15,14 @@ Return exactly one valid JSON object and no other text.
   "keyword": {
     "structured": "",
     "phrases": [],
-    "terms": {"required": [], "optional": [], "excluded": []}
+    "terms": {"required": [], "optional": [], "excluded": []},
+    "combined_blocks": [
+      {
+        "role": "topic_or_condition",
+        "free_text": [],
+        "controlled_vocabulary": {}
+      }
+    ]
   },
   "grey_literature": {
     "broad_concepts": [],
@@ -69,6 +76,21 @@ Use 5 phrases by default; add more only when each additional phrase adds distinc
 Each term must be a single word or two-word compound.
 Do not include venues, authors, years, publication type labels, or generic academic words.
 Do not repeat the same concept across required and optional with trivial wording changes.
+
+## keyword.combined_blocks
+
+One entry per AND-block in keyword.structured, in the same order.
+
+- role: the query_role of the dominant concept in this block (e.g. "topic_or_condition", "population_or_entity").
+- free_text: every term in this block's OR-group — the same set used in keyword.structured for this block.
+- controlled_vocabulary: a dict of vocabulary_name → deduplicated list of terms, merged from
+  controlled_vocabulary_hints of every concept whose free-text terms appear in this block.
+  Include only entries with confidence "high" or "medium". Use {} when no controlled vocabulary applies.
+
+Source connectors use combined_blocks to build source-specific queries by ORing free_text terms with
+controlled vocabulary terms within each block, then ANDing blocks together.
+
+---
 
 ## grey_literature
 
@@ -178,7 +200,30 @@ Output:
       "required": ["venous thromboembolism", "thromboprophylaxis", "orthopedic surgery"],
       "optional": ["VTE", "LMWH", "DOAC", "mechanical prophylaxis", "antithrombotic"],
       "excluded": ["pediatric", "upper extremity", "spine surgery"]
-    }
+    },
+    "combined_blocks": [
+      {
+        "role": "topic_or_condition",
+        "free_text": ["venous thromboembolism", "venous thrombosis", "thromboembolism", "VTE", "thromboembolic"],
+        "controlled_vocabulary": {
+          "MeSH": ["Venous Thromboembolism", "Venous Thrombosis", "Pulmonary Embolism"]
+        }
+      },
+      {
+        "role": "population_or_entity",
+        "free_text": ["major orthopedic surgery", "major orthopaedic surgery", "major orthopedic procedures", "major orthopaedic procedures"],
+        "controlled_vocabulary": {
+          "MeSH": ["Arthroplasty, Replacement, Hip", "Arthroplasty, Replacement, Knee", "Hip Fractures"]
+        }
+      },
+      {
+        "role": "intervention_or_exposure_or_phenomenon",
+        "free_text": ["thromboprophylaxis", "VTE prophylaxis", "VTE prevention", "venous thromboembolism prevention", "thromboprophylactic", "antithrombotic medications", "antithrombotic agents", "antithrombotic therapy", "DOAC", "LMWH", "mechanical prophylaxis", "physical prophylaxis", "GCS", "IPC"],
+        "controlled_vocabulary": {
+          "MeSH": ["Anticoagulants", "Platelet Aggregation Inhibitors", "Compression Bandages", "Intermittent Pneumatic Compression Devices"]
+        }
+      }
+    ]
   },
   "grey_literature": {
     "broad_concepts": ["blood clot", "clot prevention", "blood thinners", "compression socks", "joint replacement surgery"],
@@ -199,6 +244,7 @@ Key distinctions demonstrated:
 - grey_literature.broad_concepts is populated from colloquial fields across all concepts ("blood clot", "clot prevention", "blood thinners", "compression socks", "joint replacement surgery").
 - Three AND-blocks are used (not four) because the comparison ("within and across classes") is a methodological specification with no distinct keyword representation.
 - publication_years "2020-2026" derives from "recent studies" in medicine (rule: recent in medicine → 2020-CURRENTYEAR).
+- combined_blocks mirrors the three AND-blocks exactly. The intervention block merges controlled vocabulary from three concepts (thromboprophylaxis, antithrombotic medications, mechanical interventions), deduplicating "Anticoagulants" which appeared in both. Source connectors use combined_blocks to build (free_text[0] OR free_text[1] OR ... OR MeSH_term[MeSH] OR ...) AND (...) queries for indexed databases.
 
 ---
 

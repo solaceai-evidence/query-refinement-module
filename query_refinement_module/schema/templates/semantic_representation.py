@@ -57,6 +57,7 @@ The concept's function in retrieval. One of:
   setting_or_context | geography | time_scope | comparator | outcome | other
 
 Assign based on retrieval function, not on the user's framework label.
+Tiebreaker: when a concept is both the primary subject of the research AND a measured outcome (e.g. "antibiotic-resistant infections" in a study of stewardship programmes), assign topic_or_condition — retrieval scope takes precedence over measurement role.
 Use null when genuinely ambiguous.
 
 ### true_synonyms
