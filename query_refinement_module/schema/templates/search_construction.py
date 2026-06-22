@@ -57,7 +57,7 @@ Do NOT use domain_terms or colloquial in keyword.structured — they cause scope
 
 Use uppercase Boolean operators: AND, OR, NOT.
 Use parentheses only where they change scope or grouping.
-Prefer exact phrases over free terms when equally precise.
+Do NOT use double quotes inside keyword.structured — they break JSON encoding. Write multi-word terms as bare phrases (e.g. venous thromboembolism, not "venous thromboembolism"). Exact phrase matching is handled by keyword.phrases.
 Use truncation (word*) for morphological variants when appropriate.
 
 ## keyword.phrases
@@ -187,7 +187,7 @@ Output:
 
 {
   "keyword": {
-    "structured": "("venous thromboembolism" OR "venous thrombosis" OR thromboembolism OR VTE OR thromboembolic) AND ("major orthopedic surgery" OR "major orthopaedic surgery" OR "major orthopedic procedures" OR "major orthopaedic procedures") AND (thromboprophylaxis OR "VTE prophylaxis" OR "VTE prevention" OR "venous thromboembolism prevention" OR thromboprophylactic OR "antithrombotic medications" OR "antithrombotic agents" OR "antithrombotic therapy" OR DOAC OR LMWH OR "mechanical prophylaxis" OR "physical prophylaxis" OR GCS OR IPC)",
+    "structured": "(venous thromboembolism OR venous thrombosis OR thromboembolism OR VTE OR thromboembolic) AND (major orthopedic surgery OR major orthopaedic surgery OR major orthopedic procedures OR major orthopaedic procedures) AND (thromboprophylaxis OR VTE prophylaxis OR VTE prevention OR venous thromboembolism prevention OR thromboprophylactic OR antithrombotic medications OR antithrombotic agents OR antithrombotic therapy OR DOAC OR LMWH OR mechanical prophylaxis OR physical prophylaxis OR GCS OR IPC)",
     "phrases": [
       "venous thromboembolism prophylaxis",
       "major orthopedic surgery",
@@ -250,6 +250,7 @@ Key distinctions demonstrated:
 
 ## Hard Rules
 - Output exactly one JSON object. No preamble, explanation, markdown fences, or comments.
+- Do NOT use double quotes inside the keyword.structured string — they break JSON encoding. Use bare terms only.
 - domain_terms and colloquial must NOT appear in keyword.structured.
 - Do not invent venues, authors, years, or publication types not stated in the inputs.
 - Use empty values ("", [], null) when evidence is insufficient — do not infer.

@@ -247,7 +247,8 @@ Strategy ladder (apply in this order; skip steps that add no value):
    with limited research output). At most one of the two aspects may be CONDITIONAL.
    "No geographic restriction" is a valid Level 3 option: if Level 2 broadened geography to a
    larger region or contextual class, Level 3 may remove the geographic constraint entirely. Use
-   relaxed_aspects value "(no restriction)" and omit the geographic term from search_query.
+   exactly the string "(no restriction)" as the relaxed_aspects value for geography (no other
+   phrasing), and omit the geographic term from search_query entirely.
 
 Rules:
 - Generate Levels 1 through N only. Never generate Level 0. The supplied Level 0 anchor is fixed;

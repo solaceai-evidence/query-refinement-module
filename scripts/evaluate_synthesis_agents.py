@@ -82,6 +82,15 @@ class Scenario:
     b_min_concepts: int = 4
     # Agent C checks
     c_required_terms_in_boolean: list[str] = field(default_factory=list)  # case-insensitive
+    # Agent D checks (Search Expansion)
+    # d_level2_relaxes_aspect: which aspect should be broadened at Level 2 (empty = no check)
+    d_level2_relaxes_aspect: str = ""
+    # d_geography_broadening: "contextual" = expect contextual analogy (LMIC/crisis/humanitarian);
+    #                          "hierarchical" = expect geographic containment (region/continent);
+    #                          "" = no check
+    d_geography_broadening: str = ""
+    # d_no_restriction_expected: at least one level must use exactly "(no restriction)" for geography
+    d_no_restriction_expected: bool = False
 
 
 def build_scenarios() -> list[Scenario]:
@@ -178,6 +187,110 @@ def build_scenarios() -> list[Scenario]:
             b_required_concept_roles=["population_or_entity", "intervention_or_exposure_or_phenomenon"],
             b_min_concepts=4,
             c_required_terms_in_boolean=["solar", "photovoltaic"],
+        ),
+        # ------------------------------------------------------------------
+        # Scenario 4: Agent D — geographic hierarchy
+        # Geography IS the variable under study: European countries are being
+        # compared, so broadening should climb the containment hierarchy
+        # (e.g. European region → OECD → global), not use contextual analogy.
+        # ------------------------------------------------------------------
+        Scenario(
+            identifier="4",
+            name="Childhood vaccination policy effectiveness across European countries",
+            domain="public_health",
+            query=(
+                "How do national childhood vaccination policies compare in their "
+                "effectiveness across European countries?"
+            ),
+            dimensions=[
+                Dimension("population", "Population", "Who the study targets",
+                          "children under 5 years of age across European countries"),
+                Dimension("phenomenon", "Phenomenon", "The policy under study",
+                          "national childhood vaccination programmes and immunisation schedules"),
+                Dimension("context", "Geographic context", "Study geography",
+                          "European Union and EEA member states"),
+                Dimension("outcome", "Outcome", "What is measured",
+                          "vaccination coverage rates and vaccine-preventable disease incidence"),
+                Dimension("study_design", "Study design", "Research methodology",
+                          "[SKIPPED]"),
+            ],
+            a_required_terms_in_statement=["vaccination", "European"],
+            b_required_concept_roles=["intervention_or_exposure_or_phenomenon"],
+            b_min_concepts=4,
+            c_required_terms_in_boolean=["vaccin", "Europe"],
+            d_level2_relaxes_aspect="geography",
+            d_geography_broadening="hierarchical",
+            d_no_restriction_expected=False,
+        ),
+        # ------------------------------------------------------------------
+        # Scenario 5: Agent D — contextual analogy + no-restriction Level 3
+        # Geography is a context proxy: Ethiopia appears because of the
+        # displacement crisis, not because Ethiopia itself is the variable.
+        # Level 2 should use contextual analogy (conflict-affected LMICs or
+        # humanitarian settings); Level 3 should drop geography entirely with
+        # relaxed_aspects value exactly "(no restriction)".
+        # ------------------------------------------------------------------
+        Scenario(
+            identifier="5",
+            name="Mental health outcomes for displaced persons in Ethiopia",
+            domain="humanitarian",
+            query=(
+                "What are the mental health outcomes among internally displaced "
+                "persons in Ethiopia?"
+            ),
+            dimensions=[
+                Dimension("population", "Population", "Who the study targets",
+                          "internally displaced persons (IDPs)"),
+                Dimension("topic", "Topic / condition", "The health domain",
+                          "mental health outcomes (depression, anxiety, PTSD, psychological distress)"),
+                Dimension("context", "Geographic context", "Where the study is set",
+                          "Ethiopia — displacement crisis context"),
+                Dimension("study_design", "Study design", "Research methodology",
+                          "observational studies, surveys, mixed-methods research"),
+            ],
+            a_required_terms_in_statement=["displaced", "Ethiopia"],
+            b_required_concept_roles=["population_or_entity", "topic_or_condition"],
+            b_min_concepts=3,
+            c_required_terms_in_boolean=["displaced", "mental"],
+            d_level2_relaxes_aspect="geography",
+            d_geography_broadening="contextual",
+            d_no_restriction_expected=True,
+        ),
+        # ------------------------------------------------------------------
+        # Scenario 6: Agent D — CONDITIONAL topic broadening at Level 3
+        # No geography is present, so Level 2 should broaden the SAFE aspect
+        # (population: combat veterans → veterans / military personnel).
+        # Level 3 should broaden the CONDITIONAL topic (PTSD → trauma-related
+        # disorders) or CONDITIONAL intervention (CBT → psychotherapy), since
+        # that is the only remaining broadening axis.
+        # ------------------------------------------------------------------
+        Scenario(
+            identifier="6",
+            name="CBT effectiveness for PTSD in combat veterans",
+            domain="mental_health",
+            query=(
+                "What is the effectiveness of cognitive behavioural therapy for "
+                "post-traumatic stress disorder in combat veterans?"
+            ),
+            dimensions=[
+                Dimension("population", "Population", "Who the study targets",
+                          "combat veterans and military service personnel"),
+                Dimension("intervention", "Intervention", "What is being tested",
+                          "cognitive behavioural therapy (CBT)"),
+                Dimension("topic", "Topic / condition", "The condition studied",
+                          "post-traumatic stress disorder (PTSD)"),
+                Dimension("outcome", "Outcome", "What is measured",
+                          "PTSD symptom reduction, quality of life, treatment response rates"),
+                Dimension("study_design", "Study design", "Research methodology",
+                          "randomised controlled trials and systematic reviews"),
+            ],
+            a_required_terms_in_statement=["cognitive behavioural therapy", "PTSD"],
+            b_required_concept_roles=["population_or_entity", "intervention_or_exposure_or_phenomenon"],
+            b_min_concepts=4,
+            c_required_terms_in_boolean=["cognitive", "PTSD"],
+            d_level2_relaxes_aspect="population_or_entity",
+            d_geography_broadening="",
+            d_no_restriction_expected=False,
         ),
     ]
 
@@ -302,6 +415,7 @@ def check_agent_b(
 
 def check_agent_d(
     levels: list[dict[str, Any]],
+    scenario: "Scenario | None" = None,
 ) -> tuple[bool, list[str]]:
     failures: list[str] = []
     if not levels:
@@ -332,6 +446,73 @@ def check_agent_d(
         valid_strategies = {"anchor", "lexical", "conceptual_single_aspect", "conceptual_multi_aspect"}
         if strategy and strategy not in valid_strategies:
             failures.append(f"Level {lv_num} has unknown strategy {strategy!r}")
+
+    # Level 1 must be lexical only: relaxed_aspects empty, strategy "lexical"
+    level1 = next((lv for lv in levels if lv.get("level") == 1), None)
+    if level1:
+        if (level1.get("strategy") or "") != "lexical":
+            failures.append(
+                f"Level 1 strategy should be 'lexical', got {level1.get('strategy')!r}"
+            )
+        if level1.get("relaxed_aspects"):
+            failures.append(
+                f"Level 1 relaxed_aspects should be empty for a lexical level, "
+                f"got {level1['relaxed_aspects']}"
+            )
+
+    # Scenario-specific checks
+    if scenario is not None:
+        # Words that indicate contextual analogy (not geographic containment)
+        CONTEXT_MARKERS = {
+            "conflict", "humanitarian", "low-income", "lmic", "crisis",
+            "developing", "fragile", "middle-income",
+        }
+
+        level2 = next((lv for lv in levels if lv.get("level") == 2), None)
+
+        if scenario.d_level2_relaxes_aspect:
+            if not level2:
+                failures.append(
+                    f"Level 2 missing — expected it to broaden {scenario.d_level2_relaxes_aspect!r}"
+                )
+            else:
+                relaxed2 = level2.get("relaxed_aspects") or {}
+                if scenario.d_level2_relaxes_aspect not in relaxed2:
+                    failures.append(
+                        f"Level 2 does not relax {scenario.d_level2_relaxes_aspect!r}; "
+                        f"got relaxed_aspects={relaxed2}"
+                    )
+
+        if scenario.d_geography_broadening in ("contextual", "hierarchical") and level2:
+            geo_val = ((level2.get("relaxed_aspects") or {}).get("geography") or "").lower()
+            if scenario.d_geography_broadening == "contextual":
+                if not any(m in geo_val for m in CONTEXT_MARKERS):
+                    failures.append(
+                        f"Level 2 geography broadening should use contextual analogy "
+                        f"(conflict-affected / humanitarian / LMIC), but got: {geo_val!r}. "
+                        f"Geographic containment hierarchy is not appropriate when geography "
+                        f"is a context proxy."
+                    )
+            elif scenario.d_geography_broadening == "hierarchical":
+                if any(m in geo_val for m in CONTEXT_MARKERS):
+                    failures.append(
+                        f"Level 2 geography uses contextual analogy when hierarchical "
+                        f"containment was expected (geography is the study variable): {geo_val!r}"
+                    )
+
+        if scenario.d_no_restriction_expected:
+            no_restriction_found = any(
+                "(no restriction)" in str(
+                    (lv.get("relaxed_aspects") or {}).get("geography", "")
+                ).lower()
+                for lv in generated
+            )
+            if not no_restriction_found:
+                failures.append(
+                    "Expected a level with geography relaxed to exactly '(no restriction)' — "
+                    "not found. Level 3 should remove the geographic constraint entirely "
+                    "when evidence from the Level 2 contextual scope remains sparse."
+                )
 
     return (not failures), failures
 
@@ -404,6 +585,9 @@ def run_scenario(
         passed_a, failures_a = check_agent_a(norm_dict, scenario)
         status = "PASS" if passed_a else "FAIL"
         print(f"      -> {status}: {failures_a if not passed_a else []}", file=sys.stderr)
+        print(f"         Statement : {norm.normalized_statement[:120]}", file=sys.stderr)
+        for dim_id, dim_val in list((norm.dimensions_specifications or {}).items())[:6]:
+            print(f"           {dim_id:<22s} {str(dim_val)[:80]}", file=sys.stderr)
         results["agents"]["A"] = {
             "passed": passed_a,
             "failures": failures_a,
@@ -441,6 +625,11 @@ def run_scenario(
         )
         status = "PASS" if passed_b else "FAIL"
         print(f"      -> {status}: {failures_b if not passed_b else []}", file=sys.stderr)
+        print(f"         Semantic  : {sem.semantic_statement[:120]}", file=sys.stderr)
+        for concept, entry in sem.concept_graph.items():
+            role = (entry.query_role if hasattr(entry, "query_role")
+                    else (entry.get("query_role") if isinstance(entry, dict) else None)) or "?"
+            print(f"           [{role:<42s}] {concept}", file=sys.stderr)
         results["agents"]["B"] = {
             "passed": passed_b,
             "failures": failures_b,
@@ -475,13 +664,22 @@ def run_scenario(
                 concept_graph=concept_graph_for_d,
                 model=model,
                 temperature=0.0,
-                max_tokens=2048,
+                max_tokens=4096,
             )
         )
         construction_dict = construction.model_dump()
         passed_d, failures_d = check_agent_c(construction_dict, scenario)
         status = "PASS" if passed_d else "FAIL"
         print(f"      -> {status}: {failures_d if not passed_d else []}", file=sys.stderr)
+        print(f"         Boolean   : {(construction.keyword.structured or '')[:120]}", file=sys.stderr)
+        phrases_preview = ", ".join(f'"{p}"' for p in (construction.keyword.phrases or [])[:4])
+        print(f"         Phrases   : {phrases_preview}", file=sys.stderr)
+        blocks = construction.keyword.combined_blocks or []
+        for blk in blocks:
+            ft = ", ".join((blk.free_text or [])[:4])
+            cv_keys = list((blk.controlled_vocabulary or {}).keys())
+            cv_str = f" | CV: {', '.join(cv_keys)}" if cv_keys else ""
+            print(f"           [{blk.role:<42s}] {ft[:60]}{cv_str}", file=sys.stderr)
         results["agents"]["C"] = {
             "passed": passed_d,
             "failures": failures_d,
@@ -521,13 +719,20 @@ def run_scenario(
                 search_input=search_input,
                 model=model,
                 temperature=0.0,
-                max_tokens=2048,
+                max_tokens=4096,
             )
         )
         levels_dicts = [lv.model_dump() if hasattr(lv, "model_dump") else lv for lv in levels]
-        passed_c, failures_c = check_agent_d(levels_dicts)
+        passed_c, failures_c = check_agent_d(levels_dicts, scenario)
         status = "PASS" if passed_c else "FAIL"
         print(f"      -> {status}: {failures_c if not passed_c else []} ({len(levels_dicts)} levels)", file=sys.stderr)
+        for lv in levels_dicts:
+            lvnum = lv.get("level", "?")
+            strategy = lv.get("strategy", "?")
+            query_preview = (lv.get("search_query") or "")[:100]
+            relaxed = lv.get("relaxed_aspects") or {}
+            relaxed_str = f"  << {relaxed}" if relaxed else ""
+            print(f"         L{lvnum} [{strategy:<28s}] {query_preview}{relaxed_str}", file=sys.stderr)
         results["agents"]["D"] = {
             "passed": passed_c,
             "failures": failures_c,
