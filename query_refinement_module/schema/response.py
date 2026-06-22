@@ -310,7 +310,7 @@ class QueryRefinementResponse(BaseModel):
 
 
 # ============================================================================
-# Multi-agent synthesis pipeline models (Agents A, B, D)
+# Multi-agent synthesis pipeline models (Agents A, B, C)
 # ============================================================================
 
 class VocabularyHint(BaseModel):

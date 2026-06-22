@@ -87,7 +87,7 @@ app = FastAPI(
     version=settings.app_version,
     description=(
         "Query refinement and search construction pipeline. "
-        "Runs an interactive dimension-refinement dialogue, then executes the A→B→D synthesis "
+        "Runs an interactive dimension-refinement dialogue, then executes the A→B→C synthesis "
         "pipeline (Normalization → Semantic Representation → Search Construction) to produce "
         "structured search artifacts: combined_blocks (free-text + controlled vocabulary per AND-block), "
         "semantic embedding queries, Boolean keyword queries, and metadata filters. "

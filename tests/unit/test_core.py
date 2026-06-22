@@ -441,7 +441,7 @@ def build_manager(responses: Iterable[Any]) -> QueryRefinementManager:
 
 @pytest.mark.asyncio
 async def test_synthesis_uses_three_agent_pipeline():
-    """synthesize_refined_query chains Agents A → B → D (3 LLM calls)."""
+    """synthesize_refined_query chains Agents A → B → C (3 LLM calls)."""
     _keyword = KeywordSearch(
         structured="query",
         phrases=[],
@@ -451,7 +451,7 @@ async def test_synthesis_uses_three_agent_pipeline():
         publication_years="", venues=[], authors=[], publication_types=[], fields_of_study=[]
     )
     responses = [
-        ResearchStatementResponse(research_statement="Refined question", dimensions_specifications={}),
+        ResearchStatementResponse(normalized_statement="Refined question", dimensions_specifications={}),
         SemanticRepresentationResponse(semantic_statement="semantic query", concept_graph={}),
         SearchConstructionResponse(keyword=_keyword, grey_literature=None, search_filters=_filters),
     ]
@@ -482,7 +482,7 @@ async def test_synthesis_pipeline_with_bedrock_model():
         publication_years="", venues=[], authors=[], publication_types=[], fields_of_study=[]
     )
     responses = [
-        ResearchStatementResponse(research_statement="Refined question", dimensions_specifications={}),
+        ResearchStatementResponse(normalized_statement="Refined question", dimensions_specifications={}),
         SemanticRepresentationResponse(semantic_statement="semantic query", concept_graph={}),
         SearchConstructionResponse(keyword=_keyword, grey_literature=None, search_filters=_filters),
     ]
@@ -509,7 +509,7 @@ async def test_synthesis_pipeline_uses_provider_default_model():
         publication_years="", venues=[], authors=[], publication_types=[], fields_of_study=[]
     )
     responses = [
-        ResearchStatementResponse(research_statement="Refined question", dimensions_specifications={}),
+        ResearchStatementResponse(normalized_statement="Refined question", dimensions_specifications={}),
         SemanticRepresentationResponse(semantic_statement="semantic query", concept_graph={}),
         SearchConstructionResponse(keyword=_keyword, grey_literature=None, search_filters=_filters),
     ]
