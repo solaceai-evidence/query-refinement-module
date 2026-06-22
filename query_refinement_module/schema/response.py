@@ -123,9 +123,7 @@ class Terminology(BaseModel):
 class SearchAspect(str, Enum):
     """Fixed internal ontology of search-expansion aspect classes.
 
-    This ontology is internal to the search expansion stage and is the only
-    authoritative set of axes along which a query may be broadened. It is not
-    derived from framework dimensions.
+    This ontology is internal to the search expansion stage and is the only authoritative set of axes along which a query may be broadened. It is not derived from framework dimensions.
     """
     TOPIC_OR_CONDITION = "topic_or_condition"
     POPULATION_OR_ENTITY = "population_or_entity"
@@ -326,7 +324,7 @@ class ConceptEntry(BaseModel):
 
 class ResearchStatementResponse(BaseModel):
     """Agent A output: normalized research statement + dimension passthrough."""
-    research_statement: str
+    normalized_statement: str
     dimensions_specifications: Dict[str, Any] = Field(default_factory=dict)
 
 

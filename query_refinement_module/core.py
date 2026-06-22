@@ -2182,13 +2182,13 @@ class QueryRefinementManager:
                 temperature=resolved_temperature,
             )
             sem, meta_b = await self._run_semantic_representation(
-                norm.research_statement,
+                norm.normalized_statement,
                 norm.dimensions_specifications,
                 model=model,
                 temperature=resolved_temperature,
             )
             construction, meta_d = await self._run_search_construction(
-                research_statement=norm.research_statement,
+                research_statement=norm.normalized_statement,
                 dimensions_specifications=norm.dimensions_specifications,
                 semantic_statement=sem.semantic_statement,
                 concept_graph=sem.concept_graph,
@@ -2201,7 +2201,7 @@ class QueryRefinementManager:
                 self._accumulate_metadata(meta_a, meta_b), meta_d
             )
             synthesis_response = QueryRefinementResponse(
-                integrated_statement=norm.research_statement,
+                integrated_statement=norm.normalized_statement,
                 dimensions_specifications=norm.dimensions_specifications,
                 search_optimized=SearchOptimized(
                     semantic=sem.semantic_statement,

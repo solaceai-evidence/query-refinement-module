@@ -221,15 +221,15 @@ def check_agent_a(
     scenario: Scenario,
 ) -> tuple[bool, list[str]]:
     failures: list[str] = []
-    stmt = result.get("research_statement") or ""
+    stmt = result.get("normalized_statement") or ""
     dim_specs = result.get("dimensions_specifications") or {}
 
     if not stmt.strip():
-        failures.append("research_statement is empty")
+        failures.append("normalized_statement is empty")
     else:
         for term in scenario.a_required_terms_in_statement:
             if term.lower() not in stmt.lower():
-                failures.append(f"research_statement missing required term {term!r}")
+                failures.append(f"normalized_statement missing required term {term!r}")
 
     # The LLM receives dimension names (e.g., "Population") not IDs (e.g., "population"),
     # so dimension_specifications keys use names. We check count instead of exact IDs.
@@ -408,7 +408,7 @@ def run_scenario(
             "passed": passed_a,
             "failures": failures_a,
             "output": norm_dict if verbose else {
-                "research_statement": norm.research_statement,
+                "research_statement": norm.normalized_statement,
                 "dimension_count": len(norm.dimensions_specifications),
             },
             "metadata": meta_a,
@@ -425,7 +425,7 @@ def run_scenario(
     try:
         sem, meta_b = asyncio.run(
             manager._run_semantic_representation(
-                norm.research_statement,
+                norm.normalized_statement,
                 norm.dimensions_specifications,
                 model=model,
                 temperature=0.0,
@@ -472,7 +472,7 @@ def run_scenario(
         }
         construction, meta_d = asyncio.run(
             manager._run_search_construction(
-                research_statement=norm.research_statement,
+                research_statement=norm.normalized_statement,
                 dimensions_specifications=norm.dimensions_specifications,
                 semantic_statement=sem.semantic_statement,
                 concept_graph=concept_graph_for_d,
@@ -511,7 +511,7 @@ def run_scenario(
         # Level 0 anchor is the normalized research statement (the "Exact clarified question"),
         # not Agent D's Boolean query. Both Agent C and Agent D are independent downstream
         # consumers of Agent B's concept_graph.
-        anchor_query = norm.research_statement
+        anchor_query = norm.normalized_statement
         search_input = SearchExpansionInput(
             anchor_query=anchor_query,
             search_context=SearchExpansionContext(
