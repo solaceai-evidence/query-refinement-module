@@ -56,6 +56,9 @@ class AspectRefinementState:
     # Contains: needs_refinement_rationale (why refinement needed/not), follow_up_question (what to ask)
     reasoning: Optional[str] = None
     follow_up_question: Optional[str] = None
+    # Structured quick-reply options generated alongside the question (parallel to follow_up_question).
+    # Each string is a concrete, selectable answer spanning the clarification space.
+    quick_replies: List[str] = field(default_factory=list)
     
     # Stores the aspect specification as refined by user interaction 
     normalized_value: Optional[str] = None

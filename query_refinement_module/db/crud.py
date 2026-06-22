@@ -474,6 +474,25 @@ def update_refinement_step_generated_question(
     return step
 
 
+def update_refinement_step_generated_examples(
+    db: Session,
+    step_id: int,
+    examples: list,
+) -> Optional[RefinementStep]:
+    """
+    Persist the LLM-generated quick-reply examples for a refinement step.
+
+    Allows the structured button options to survive server restarts alongside
+    the generated_question, so sessions can be fully restored without a new LLM call.
+    """
+    step = get_refinement_step(db, step_id)
+    if step:
+        step.generated_examples = examples
+        db.commit()
+        db.refresh(step)
+    return step
+
+
 def delete_refinement_steps_by_aspects(
     db: Session,
     query_id: int,

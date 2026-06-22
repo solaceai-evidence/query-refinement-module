@@ -132,14 +132,23 @@ Only proceed to the query and conversation history after this check is complete.
 
 ## OUTPUT FORMAT
 ```json
-{"complete": <boolean>, "current": "<string>", "question": "<string>"}
+{"complete": <boolean>, "current": "<string>", "question": "<string>", "examples": [<string>, ...]}
 ```
 
-- `complete`: boolean (not quoted) - false if gaps remain, true if requirements met
+- `complete`: boolean (not quoted) — false if gaps remain, true if requirements met
 - `current`: FULL cumulative specification, user's exact words + minimal connectors
-- `question`: clarifying question if incomplete, empty string "" if complete
+- `question`: plain prose clarifying question — **do NOT embed inline examples here**
+- `examples`: array of 2–4 concrete quick-reply options when `complete=false`; empty array `[]` when `complete=true`
 - Expand references to actual content (not "first one", "combination", "both")
-- ONLY these 3 fields
+- ONLY these 4 fields
+
+### Rules for `examples`
+- Each string must be a **standalone, complete answer** a user could select and submit as-is
+- Options must **span the clarification range** — cover different ends of the possibility space, not cluster around one interpretation
+- Keep each option short (≤ 10 words) — these are button labels, not sentences
+- Order from most specific/narrow to most broad, or most common to least common
+- Good diversity example for Population: `["elderly patients (65+)", "working-age adults (18–64)", "children under 12"]`
+- Bad clustering (avoid): `["adults", "adult patients", "adult population"]`
 
 ---
 

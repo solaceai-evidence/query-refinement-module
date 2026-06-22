@@ -7,7 +7,7 @@ from pathlib import Path
 
 REPO_ROOT = Path(__file__).resolve().parents[2]
 PRE_ASPECT_ID_REVISION = "d4e1f2a3b5c6"
-HEAD_REVISION = "8f3c1b2d4a6e"
+HEAD_REVISION = "f6e5d4c3b2a1"
 
 
 def _run_alembic(db_path: Path, revision: str) -> None:

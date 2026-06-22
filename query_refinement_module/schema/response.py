@@ -35,9 +35,14 @@ class DimensionEvaluationResponse(BaseModel):
     
     question: str = Field(
         default="",
-        description="Focused question with 2-4 inline examples (REQUIRED if complete=False, empty string otherwise)"
+        description="Focused clarifying question — plain prose, no embedded examples (REQUIRED if complete=False, empty string otherwise)"
     )
-    
+
+    examples: List[str] = Field(
+        default_factory=list,
+        description="2-4 concrete quick-reply options that span the clarification space. Each string is a standalone answer the user can select as-is. Empty list when complete=True."
+    )
+
     model_config = ConfigDict(
         frozen=False,
         validate_assignment=True

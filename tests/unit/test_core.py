@@ -704,6 +704,70 @@ def test_process_analysis_result_keeps_existing_value_when_current_empty():
     assert step.normalized_value_as_str == "adults with COPD"
 
 
+def test_process_analysis_result_stores_examples_on_step():
+    """quick_replies are stored on the step when the LLM returns examples."""
+    manager = build_manager(responses=[])
+    aspect = make_aspect(aspect_id="population", name="Population")
+    session = RefinementSession(original_query="query")
+    step = session.add_step(aspect)
+
+    options = ["elderly patients (65+)", "working-age adults (18-64)", "children under 12"]
+    result = DimensionEvaluationResponse(
+        complete=False,
+        current="",
+        question="Which population does your query target?",
+        examples=options,
+    )
+
+    status = manager.process_analysis_result(session, "population", result)
+
+    assert status["examples"] == options
+    assert step.quick_replies == options
+
+
+def test_process_analysis_result_examples_empty_when_complete():
+    """When complete=True, examples is empty and quick_replies is not overwritten."""
+    manager = build_manager(responses=[])
+    aspect = make_aspect(aspect_id="population", name="Population")
+    session = RefinementSession(original_query="query")
+    step = session.add_step(aspect)
+
+    result = DimensionEvaluationResponse(
+        complete=True,
+        current="adults with hypertension",
+        question="",
+        examples=[],
+    )
+
+    status = manager.process_analysis_result(session, "population", result)
+
+    assert status["complete"] is True
+    assert "examples" not in status
+    assert step.quick_replies == []
+
+
+def test_dimension_evaluation_response_defaults_examples_to_empty_list():
+    """examples defaults to [] when not provided — backward compat."""
+    result = DimensionEvaluationResponse(
+        complete=False,
+        current="",
+        question="What is the target population?",
+    )
+    assert result.examples == []
+
+
+def test_dimension_evaluation_response_accepts_examples_list():
+    """examples field accepts a list of strings."""
+    options = ["option A", "option B", "option C"]
+    result = DimensionEvaluationResponse(
+        complete=False,
+        current="",
+        question="What is the target population?",
+        examples=options,
+    )
+    assert result.examples == options
+
+
 @pytest.mark.asyncio
 async def test_run_full_refinement_processes_steps():
     aspect = make_aspect()

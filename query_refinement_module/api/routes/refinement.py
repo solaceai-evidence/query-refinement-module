@@ -37,6 +37,7 @@ from query_refinement_module.db.crud import (
     get_user_framework_names,
     user_has_framework_access,
     update_refinement_step_generated_question,
+    update_refinement_step_generated_examples,
     update_refinement_step_final_value,
 )
 from query_refinement_module.api.auth import get_current_user_or_integration
@@ -555,6 +556,10 @@ def _restore_session_from_db_state(session, db_steps: List[Any]) -> None:
             last_followup = db_step.followup_history[-1]
             session_step.follow_up_question = last_followup.question
 
+        generated_examples = getattr(db_step, "generated_examples", None)
+        if generated_examples:
+            session_step.quick_replies = list(generated_examples)
+
         # Restore persisted final value (supports /done with partial value and no follow-up rows)
         has_final_value = db_step.final_value is not None and str(db_step.final_value).strip() != ""
         if has_final_value:
@@ -590,6 +595,7 @@ async def _build_next_prompt(manager, session, db=None, db_steps=None) -> Option
             "aspect_name": step.refinement_aspect.name,
             "question": question,
             "description": step.refinement_aspect.description or "",
+            "examples": getattr(step, "quick_replies", []),
         }
 
     def _persist_auto_completion(step, status: Dict[str, Any]) -> None:
@@ -673,7 +679,7 @@ def _persist_generated_question(
     db_steps: List,
     next_prompt: Optional[Dict[str, Any]],
 ) -> None:
-    """Persist a generated question to DB so it survives server restarts."""
+    """Persist a generated question and its quick-reply examples to DB so they survive server restarts."""
     if not next_prompt or not db:
         return
     aspect_id = next_prompt.get("aspect_id")
@@ -694,6 +700,12 @@ def _persist_generated_question(
             update_refinement_step_generated_question(db, db_step.id, question)
         except Exception as e:
             logger.warning(f"Could not persist generated_question for '{aspect_id or aspect_name}': {e}")
+        examples = next_prompt.get("examples") or []
+        if examples:
+            try:
+                update_refinement_step_generated_examples(db, db_step.id, examples)
+            except Exception as e:
+                logger.warning(f"Could not persist generated_examples for '{aspect_id or aspect_name}': {e}")
 
 
 def _get_active_prompt(session) -> Optional[Dict[str, Any]]:
@@ -709,6 +721,7 @@ def _get_active_prompt(session) -> Optional[Dict[str, Any]]:
             "aspect_name": active_step.refinement_aspect.name,
             "question": active_step.follow_up_question,
             "description": active_step.refinement_aspect.description or "",
+            "examples": getattr(active_step, "quick_replies", []),
         }
 
     return None

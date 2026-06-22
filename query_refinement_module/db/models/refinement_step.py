@@ -4,7 +4,7 @@ RefinementStep model for storing each step in the query refinement pipeline.
 Stores only the final refined value for each dimension - NOT the full conversation.
 Conversation history is kept in-memory during session and discarded after completion.
 """
-from sqlalchemy import Column, Integer, Text, DateTime, ForeignKey, Boolean
+from sqlalchemy import Column, Integer, JSON, Text, DateTime, ForeignKey, Boolean
 from sqlalchemy.orm import relationship
 from .user import Base, _utcnow
 
@@ -42,6 +42,10 @@ class RefinementStep(Base):
     # Transient-but-persisted: the last question generated for this step.
     # Allows session restore after server restart without a costly LLM re-call.
     generated_question = Column(Text, nullable=True)
+
+    # Transient-but-persisted: quick-reply examples generated alongside the question.
+    # Stored as a JSON array of strings so UIs can render clickable buttons.
+    generated_examples = Column(JSON, nullable=True)
     
     # Evaluation-only: User used /skip command
     was_skipped = Column(Boolean, default=False, nullable=False)

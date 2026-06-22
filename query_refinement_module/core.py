@@ -583,13 +583,15 @@ class QueryRefinementManager:
             if result.current and result.current.strip():
                 step.normalized_value = result.current
             step.follow_up_question = result.question
+            step.quick_replies = result.examples
             step.is_complete = False
-            
+
             return {
                 'complete': False,
                 'aspect_id': aspect_id,
                 'name': step.refinement_aspect.name,
-                'next_question': result.question
+                'next_question': result.question,
+                'examples': result.examples,
             }
 
     def initialize_sequential(
