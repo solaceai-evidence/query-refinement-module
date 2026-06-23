@@ -169,6 +169,53 @@ def _read_optional_input(prompt: str) -> str:
         return ""
 
 
+def _resolve_numeric_examples(user_input: str, examples: Optional[list[str]]) -> tuple[str, bool]:
+    """
+    Resolve numeric input to example text.
+
+    If user enters number(s) referencing examples (e.g., "1" or "1, 2" or "1."),
+    convert to the actual example text(s). Otherwise return input as-is.
+
+    Returns:
+        (resolved_input, was_numeric): The resolved text and whether it was numeric input
+    """
+    if not examples:
+        return user_input, False
+
+    import re
+    # Extract just the numeric part from tokens, handling "1", "1.", "1..", etc.
+    numbers = re.findall(r'\d+', user_input.strip())
+
+    if not numbers:
+        return user_input, False
+
+    # Check if input looks like numeric selection: should be mostly digits/dots/spaces/commas
+    # This heuristic prevents misinterpreting "type 1 diabetes" as numeric reference
+    cleaned = re.sub(r'[\d\s,\.]+', '', user_input.strip())
+    if cleaned:  # If anything other than digits/spaces/dots/commas remains
+        return user_input, False
+
+    # Try to resolve each number to an example (1-indexed)
+    resolved = []
+    for num_str in numbers:
+        try:
+            idx = int(num_str) - 1  # Convert 1-indexed to 0-indexed
+            if 0 <= idx < len(examples):
+                resolved.append(examples[idx])
+            else:
+                # Out of range - treat original input as not numeric
+                return user_input, False
+        except (ValueError, IndexError):
+            return user_input, False
+
+    if resolved:
+        # Join multiple selections with a separator
+        result = " | ".join(resolved) if len(resolved) > 1 else resolved[0]
+        return result, True
+
+    return user_input, False
+
+
 def _print_search_expansion_levels(levels) -> None:
     print("─"*80)
     print("SEARCH EXPANSION LEVELS")
@@ -273,8 +320,10 @@ async def run_cli(manager: QueryRefinementManager, framework_name: str, query: s
                 continue
             
             print(f"{question}\n")
+            current_examples: Optional[list[str]] = None  # Track examples for numeric resolution
             if result.examples:
-                for i, opt in enumerate(result.examples, 1):
+                current_examples = result.examples
+                for i, opt in enumerate(current_examples, 1):
                     print(f"  {i}. {opt}")
                 print()
 
@@ -288,7 +337,7 @@ async def run_cli(manager: QueryRefinementManager, framework_name: str, query: s
                     print("\n\n Session interrupted. Exiting...")
                     interrupted = True
                     break
-                
+
                 if not user_input:
                     continue
 
@@ -311,44 +360,48 @@ async def run_cli(manager: QueryRefinementManager, framework_name: str, query: s
                             print("\n Regenerating question...")
                             # Use unified approach to regenerate
                             mode = 'followup' if step.conversation_history else 'initial'
-                            result = await manager.get_analysis_prompts(
+                            analysis_result = await manager.get_analysis_prompts(
                                 session=session,
                                 aspect_id=step.refinement_aspect.id,
                                 mode=mode
                             )
-                            
+
                             status = manager.process_analysis_result(
                                 session=session,
                                 aspect_id=step.refinement_aspect.id,
-                                result=result
+                                result=analysis_result
                             )
-                            
+
                             if status['complete']:
                                 print(f"✓ {header} is now complete")
                             else:
-                                question = result.question
+                                question = analysis_result.question
+                                current_examples = analysis_result.examples or []
                                 print(f"\n{question}\n")
                         except Exception as e:
                             print(f" Error regenerating question: {e}")
                     continue
 
-                # Record answer
+                # Record answer (resolve numeric references to examples)
                 if not question:
                     question = step.follow_up_question or f"Please provide details about {header}"
-                step.add_follow_up(question=question, response=user_input)
-                
+                resolved_input, was_numeric = _resolve_numeric_examples(user_input, current_examples)
+                if was_numeric:
+                    print(f"  → Selected: {resolved_input}")
+                step.add_follow_up(question=question, response=resolved_input)
+
                 # Run follow-up analysis
                 print("\n Analyzing your answer...")
                 try:
-                    result = await manager.run_followup_until_clear(
+                    followup_result = await manager.run_followup_until_clear(
                         session,
                         aspect_id=step.refinement_aspect.id,
                         max_rounds=5
                     )
-                    
-                    complete = result.get('is_complete', False)
-                    rounds = result.get('rounds', 0)
-                    
+
+                    complete = followup_result.get('is_complete', False)
+                    rounds = followup_result.get('rounds', 0)
+
                     if complete:
                         print(f"✓ {header} complete after {rounds} round(s)")
                         step.is_complete = True
@@ -357,11 +410,12 @@ async def run_cli(manager: QueryRefinementManager, framework_name: str, query: s
                         # Need more clarification
                         question = step.follow_up_question or f"Can you provide more details about {header}?"
                         print(f"\n{question}\n")
-                        if step.quick_replies:
-                            for i, opt in enumerate(step.quick_replies, 1):
+                        current_examples = step.quick_replies or []
+                        if current_examples:
+                            for i, opt in enumerate(current_examples, 1):
                                 print(f"  {i}. {opt}")
                             print()
-                        
+
                 except Exception as e:
                     print(f" Error during analysis: {e}")
                     print(f"Marking {header} as complete with current answer.")
