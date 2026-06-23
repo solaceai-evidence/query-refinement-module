@@ -45,7 +45,7 @@ Map [SKIPPED] values to null. Use the provided value string otherwise.
 
 Input:
 
-## Original Input:
+## Original Input
 
 "I am interested in recent studies about venous thromboembolism prophylaxis in patients undergoing major orthopedic surgery"
 

@@ -137,9 +137,14 @@ Use 1 field by default. Use 2–3 only when each is independently indispensable.
 
 Input:
 
-Research Statement: "Recent studies about venous thromboembolism prophylaxis in patients undergoing major orthopedic surgery (total hip replacement, knee replacement, hip fracture surgery), comparing thromboprophylaxis interventions including antithrombotic medications and mechanical interventions such as compression stockings within and across classes."
+## Research Statement
 
-Concept Graph:
+"Recent studies about venous thromboembolism prophylaxis in patients undergoing major orthopedic surgery (total hip replacement, knee replacement, hip fracture surgery), comparing thromboprophylaxis interventions including antithrombotic medications and mechanical interventions such as compression stockings within and across classes."
+
+---
+
+## Concept Graph
+
 {
   "venous thromboembolism": {
     "query_role": "topic_or_condition",
@@ -148,7 +153,10 @@ Concept Graph:
     "spelling_variants": [],
     "lexical_variants": ["thromboembolic"],
     "domain_terms": ["deep vein thrombosis", "pulmonary embolism"],
-    "colloquial": ["blood clot"]
+    "colloquial": ["blood clot"],
+    "controlled_vocabulary_hints": [
+      {"vocabulary_name": "MeSH", "terms": ["Venous Thromboembolism", "Venous Thrombosis", "Pulmonary Embolism"], "confidence": "high"}
+    ]
   },
   "major orthopedic surgery": {
     "query_role": "population_or_entity",
@@ -157,29 +165,46 @@ Concept Graph:
     "spelling_variants": ["major orthopaedic surgery"],
     "lexical_variants": [],
     "domain_terms": ["total hip replacement", "total knee replacement", "hip fracture surgery"],
-    "colloquial": ["joint replacement surgery"]
+    "colloquial": ["joint replacement surgery"],
+    "controlled_vocabulary_hints": [
+      {"vocabulary_name": "MeSH", "terms": ["Arthroplasty, Replacement, Hip", "Arthroplasty, Replacement, Knee", "Hip Fractures"], "confidence": "high"}
+    ]
   },
   "thromboprophylaxis": {
     "query_role": "intervention_or_exposure_or_phenomenon",
     "true_synonyms": ["VTE prophylaxis", "VTE prevention", "venous thromboembolism prevention"],
     "abbreviations": [],
+    "spelling_variants": [],
     "lexical_variants": ["thromboprophylactic"],
     "domain_terms": ["anticoagulation", "antithrombotic therapy", "mechanical compression"],
-    "colloquial": ["clot prevention"]
+    "colloquial": ["clot prevention"],
+    "controlled_vocabulary_hints": [
+      {"vocabulary_name": "MeSH", "terms": ["Anticoagulants", "Compression Bandages"], "confidence": "high"}
+    ]
   },
   "antithrombotic medications": {
     "query_role": "intervention_or_exposure_or_phenomenon",
     "true_synonyms": ["antithrombotic agents", "antithrombotic therapy", "antithrombotic drugs"],
     "abbreviations": ["DOAC", "LMWH"],
-    "domain_terms": ["aspirin", "heparin", "warfarin", "rivaroxaban", "apixaban"],
-    "colloquial": ["blood thinners"]
+    "spelling_variants": [],
+    "lexical_variants": [],
+    "domain_terms": ["aspirin", "heparin", "warfarin", "rivaroxaban", "apixaban", "enoxaparin"],
+    "colloquial": ["blood thinners"],
+    "controlled_vocabulary_hints": [
+      {"vocabulary_name": "MeSH", "terms": ["Anticoagulants", "Platelet Aggregation Inhibitors"], "confidence": "high"}
+    ]
   },
   "mechanical interventions": {
     "query_role": "intervention_or_exposure_or_phenomenon",
     "true_synonyms": ["mechanical prophylaxis", "physical prophylaxis", "mechanical preventive measures"],
     "abbreviations": ["GCS", "IPC"],
+    "spelling_variants": [],
+    "lexical_variants": [],
     "domain_terms": ["compression stockings", "intermittent pneumatic compression", "venous foot pump"],
-    "colloquial": ["compression socks"]
+    "colloquial": ["compression socks"],
+    "controlled_vocabulary_hints": [
+      {"vocabulary_name": "MeSH", "terms": ["Intermittent Pneumatic Compression Devices", "Stockings, Compression"], "confidence": "high"}
+    ]
   }
 }
 
