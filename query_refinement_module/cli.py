@@ -159,6 +159,7 @@ def _build_search_expansion_input_from_synthesis(
             synonyms=terminology.synonyms or {},
             concept_graph=synthesis.get("concept_graph") or None,
         ),
+        dimensions_specifications=synthesis.get("dimensions_specifications", {}),
     )
 
 

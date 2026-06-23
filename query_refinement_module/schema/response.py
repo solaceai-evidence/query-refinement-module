@@ -268,6 +268,10 @@ class SearchExpansionInput(BaseModel):
     """Standalone input contract for the fixed-core search expansion stage."""
     statement: str = Field(description="Exact Level 0 query preserved as the retrieval anchor")
     search_context: Optional[SearchExpansionContext] = None
+    dimensions_specifications: Dict[str, Any] = Field(
+        default_factory=dict,
+        description="Refined dimension values for context (e.g., population, intervention)"
+    )
 
     @field_validator("statement")
     @classmethod
