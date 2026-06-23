@@ -332,9 +332,8 @@ class ConstructSearchResponse(BaseModel):
     """
     Agent C — Search Construction response.
 
-    Produces Boolean keyword query constructions, grey literature terms,
-    and metadata search filters. Filters apply to both the semantic_statement
-    and keyword_statement from Agent B.
+    Produces Boolean keyword query constructions and metadata search filters.
+    Filters apply to both the semantic_statement and keyword_statement from Agent B.
     """
     keyword: Dict[str, Any] = Field(
         ...,
@@ -342,10 +341,6 @@ class ConstructSearchResponse(BaseModel):
             "Keyword query artifacts: structured (Boolean), phrases, terms (required/optional/excluded), "
             "combined_blocks (primary RAG artifact — AND-blocks with free_text and controlled_vocabulary)."
         ),
-    )
-    grey_literature: Optional[Dict[str, Any]] = Field(
-        None,
-        description="Colloquial and organizational terms for non-academic / grey literature search.",
     )
     search_filters: Dict[str, Any] = Field(
         ...,
@@ -395,8 +390,6 @@ class SynthesizeQueryResponse(BaseModel):
           then AND all blocks together.
           Use controlled_vocabulary only for indexed databases (PubMed → MeSH, WHO IRIS → DeCS).
           Use free_text alone for unindexed sources (OpenAlex, ReliefWeb, CORE).
-      structured_output["search_optimized"]["grey_literature"]
-          Colloquial + organizational terms for grey literature search.
       structured_output["search_filters"]
           Metadata filters: publication_years, venues, publication_types, fields_of_study.
 
@@ -404,6 +397,7 @@ class SynthesizeQueryResponse(BaseModel):
       Call POST /expand with:
         statement = clarified_query
         search_context.concept_graph = structured_output["concept_graph"]
+      Returns Levels 1–3 only; Level 0 (the anchor) is not echoed.
     """
     query_id: int = Field(..., description="Database ID of the synthesized query")
     clarified_query: str = Field(
@@ -428,17 +422,17 @@ class SearchExpandRequest(BaseModel):
     """
     Agent D — Search Expansion request.
 
-    Generates up to 3 broadening levels (Levels 1-3) beyond the anchor query (Level 0).
+    Generates up to 3 broadening levels (Levels 1-3) beyond the anchor query.
+    Level 0 (the anchor) is not echoed — the caller already has it as `statement`.
 
     Typical flow after POST /synthesize:
       statement = synthesize_response.clarified_query
       search_context.concept_graph = synthesize_response.structured_output["concept_graph"]
 
     Expansion levels produced:
-      Level 0  anchor                   (deterministic — the statement unchanged)
-      Level 1  lexical                  (morphological + spelling variants)
-      Level 2  conceptual_single_aspect (one concept class broadened via domain_terms)
-      Level 3  conceptual_multi_aspect  (two or more concept classes broadened)
+      Level 1  lexical                  Full boolean OR-ring per concept (all synonyms + hyponyms)
+      Level 2  conceptual_single_aspect One SAFE aspect broadened; Level 1 ring preserved
+      Level 3  conceptual_single_aspect/multi  Further broadening; Level 1 ring preserved
     """
     statement: str = Field(
         ...,
@@ -468,27 +462,28 @@ class SearchExpandRequest(BaseModel):
 class SearchExpandResponse(BaseModel):
     """Agent D — Search Expansion response.
 
-    search_expansion_levels is a list of level objects in ascending order.
-    Level 0 (anchor) is always first; Levels 1-3 follow if generated.
+    search_expansion_levels is a list of level objects starting at Level 1.
+    Level 0 (the anchor) is not included — it is the `statement` the caller passed in.
 
     Each level object has:
-      level           int     0 = anchor, 1 = lexical, 2-3 = conceptual broadening
-      label           str     Human-readable label (e.g. "Spelling and abbreviation variants")
-      strategy        str     One of: anchor | lexical | conceptual_single_aspect |
+      level           int     1 = lexical, 2-3 = conceptual broadening
+      label           str     Human-readable label (e.g. "Full synonym and hyponym ring")
+      strategy        str     One of: lexical | conceptual_single_aspect |
                               conceptual_multi_aspect
-      search_query    str     The query string at this broadening level. For RAG: use as
-                              the retrieval query for dense (embedding) and sparse (keyword)
-                              connectors at this level.
-      relaxed_aspects dict    Aspect id → broadened value. Empty for Level 0 and Level 1.
+      search_query    str     Boolean block query at this broadening level.
+                              Level 1: (concept OR syn OR hyp) AND (concept2 OR syn2) AND ...
+                              Levels 2-N: Level 1 ring with one aspect block replaced.
+                              For RAG: use as retrieval query for dense and sparse connectors.
+      relaxed_aspects dict    Aspect id → broadened value. Empty ({}) for Level 1.
                               Keys are SearchAspect values: topic_or_condition,
                               population_or_entity, intervention_or_exposure_or_phenomenon,
                               setting_or_context, geography, time_scope.
                               Special value "(no restriction)" for geography means the
                               geographic constraint was removed entirely.
-      rationale       str     Explanation of why this broadening decision was made.
+      rationale       str     Explanation of what changed and why it broadens recall.
 
-    Apply levels in sequence: start with Level 0 (most precise), fall back to higher
-    levels when result count is insufficient.
+    Apply levels in sequence: Level 1 is the full-recall baseline; fall back to Level 2
+    then Level 3 when precision at the current level is acceptable but recall is insufficient.
     """
     search_expansion_levels: List[Dict[str, Any]] = Field(
         ...,
@@ -2319,29 +2314,30 @@ async def expand_search(
     to obtain a recall ladder for fallback retrieval.
 
     Input:
-      statement                     Exact Level 0 query (unchanged). Use POST /normalize →
+      statement                     Exact anchor query (unchanged). Use POST /normalize →
                                     clarified_query or POST /synthesize → clarified_query.
       search_context.concept_graph  Agent B concept graph from POST /represent →
                                     concept_graph (or POST /synthesize →
-                                    structured_output["concept_graph"]). Provides broadening candidates.
+                                    structured_output["concept_graph"]). Provides the full
+                                    synonym and hyponym rings used to build Level 1.
 
-    Output levels:
-      Level 0  anchor                   Deterministic — the statement unchanged, relaxed_aspects={}.
-      Level 1  lexical                  Spelling variants, abbreviations, morphological forms only.
+    Output levels (Level 0 is NOT returned — caller already has it as `statement`):
+      Level 1  lexical                  Boolean ring: (anchor OR syn OR abbr OR hyp) AND ...
+                                        All synonyms, abbreviations, and hyponyms from the
+                                        concept_graph ORed within each concept block.
                                         strategy=lexical, relaxed_aspects={}.
-      Level 2  conceptual_single_aspect One SAFE aspect broadened (geography first, then setting,
-                                        then population). strategy=conceptual_single_aspect.
+      Level 2  conceptual_single_aspect Level 1 ring with one SAFE aspect block broadened
+                                        (geography first, then setting, then population).
+                                        strategy=conceptual_single_aspect.
       Level 3  conceptual_single_aspect OR conceptual_multi_aspect
-                                        When evidence is sparse at Level 2:
-                                        - "(no restriction)" geography drop: removes the geographic
-                                          constraint entirely; relaxed_aspects={"geography": "(no restriction)"}.
-                                        - CONDITIONAL aspect broadening (topic or intervention):
-                                          scope-expanding; rationale required; strategy=conceptual_single_aspect.
-                                        - Two aspects broadened simultaneously:
-                                          strategy=conceptual_multi_aspect.
+                                        Level 1 ring with further broadening:
+                                        - "(no restriction)" drops the geography block entirely.
+                                        - CONDITIONAL aspect (topic or intervention): scope-expanding.
+                                        - Two aspects broadened: strategy=conceptual_multi_aspect.
 
     The strategy field in each level is authoritative — do not infer broadening type from level number.
-    Apply levels in order: start with Level 0 (most precise), fall back when recall is insufficient.
+    Apply levels in order: Level 1 is the full-recall baseline; fall back to higher levels when
+    result count at the current level is insufficient.
     """
     request_id_val = generate_request_id()
     set_request_id(request_id_val)
@@ -2523,11 +2519,11 @@ async def construct_search(
     current_user = Depends(get_current_user_or_integration),
 ):
     """
-    Agent C — Search Construction. Builds Boolean query constructions, grey literature
-    terms, and metadata search filters from a clarified statement and concept graph.
+    Agent C — Search Construction. Builds Boolean query constructions and metadata
+    search filters from a clarified statement and concept graph.
 
     Input: clarified_query from POST /normalize, concept_graph from POST /represent.
-    Output: keyword (Boolean query + combined_blocks), grey_literature, search_filters.
+    Output: keyword (Boolean query + combined_blocks), search_filters.
 
     search_filters applies to both the semantic_statement and keyword_statement from Agent B.
     No session required — accepts raw text and concept graph.
@@ -2559,16 +2555,10 @@ async def construct_search(
         )
 
     keyword_dict = construction.keyword.model_dump() if hasattr(construction.keyword, "model_dump") else construction.keyword
-    grey_dict = (
-        construction.grey_literature.model_dump()
-        if construction.grey_literature and hasattr(construction.grey_literature, "model_dump")
-        else construction.grey_literature
-    )
     filters_dict = construction.search_filters.model_dump() if hasattr(construction.search_filters, "model_dump") else construction.search_filters
 
     return ConstructSearchResponse(
         keyword=keyword_dict,
-        grey_literature=grey_dict,
         search_filters=filters_dict,
         used_llm=True,
     )

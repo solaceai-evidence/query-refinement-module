@@ -24,11 +24,6 @@ Return exactly one valid JSON object and no other text.
       }
     ]
   },
-  "grey_literature": {
-    "broad_concepts": [],
-    "organizational_terms": [],
-    "geographic_variants": []
-  },
   "search_filters": {
     "publication_years": "",
     "venues": [],
@@ -50,10 +45,10 @@ Block count and ordering:
 - 5 blocks only when a location, context, or factor forms a distinct indispensable concept absent from all other blocks.
 - Order blocks by query_role: topic_or_condition first, then population_or_entity, then intervention_or_exposure_or_phenomenon, then setting_or_context or geography.
 
-Building each block: for every concept in the block, include ONLY:
+Building each block: for every concept assigned to that block, include ONLY:
   true_synonyms + abbreviations + spelling_variants + lexical_variants
 
-Do NOT use domain_terms or colloquial in keyword.structured — they cause scope creep.
+Do NOT include domain_terms or colloquial — they cause scope creep.
 
 Use uppercase Boolean operators: AND, OR, NOT.
 Use parentheses only where they change scope or grouping.
@@ -62,15 +57,15 @@ Use truncation (word*) for morphological variants when appropriate.
 
 ## keyword.phrases
 
-5-8 exact phrases, each 2-4 words.
+5–8 exact phrases, each 2–4 words.
 Prefer phrases taken directly from the statement.
 Otherwise use established equivalents from true_synonyms.
 Use 5 phrases by default; add more only when each additional phrase adds distinct retrieval value.
 
 ## keyword.terms
 
-- required: 2-4 core lexical anchors whose absence makes a result irrelevant.
-- optional: 5-8 precision-raising terms.
+- required: 2–4 core lexical anchors whose absence makes a result irrelevant.
+- optional: 5–8 precision-raising terms.
 - excluded: only genuine confounders; return [] when none are evident.
 
 Each term must be a single word or two-word compound.
@@ -81,25 +76,14 @@ Do not repeat the same concept across required and optional with trivial wording
 
 One entry per AND-block in keyword.structured, in the same order.
 
-- role: the query_role of the dominant concept in this block (e.g. "topic_or_condition", "population_or_entity").
-- free_text: every term in this block's OR-group — the same set used in keyword.structured for this block.
-- controlled_vocabulary: a dict of vocabulary_name → deduplicated list of terms, merged from
+- role: the query_role of the dominant concept in this block.
+- free_text: every term in this block's OR-group — the same terms used in keyword.structured for this block.
+- controlled_vocabulary: vocabulary_name → deduplicated list of terms, merged from
   controlled_vocabulary_hints of every concept whose free-text terms appear in this block.
   Include only entries with confidence "high" or "medium". Use {} when no controlled vocabulary applies.
 
 Source connectors use combined_blocks to build source-specific queries by ORing free_text terms with
 controlled vocabulary terms within each block, then ANDing blocks together.
-
----
-
-## grey_literature
-
-Populate using the concept_graph:
-- broad_concepts: colloquial terms from concept_graph entries for the primary subject and entity concepts.
-- organizational_terms: institutional or organizational names if explicitly present in the statement.
-- geographic_variants: colloquial or simplified geographic terms if present in concept_graph.colloquial.
-
-Return null for grey_literature when colloquial and domain_terms are empty across all concepts.
 
 ---
 
@@ -125,11 +109,11 @@ Permitted values only:
 Before and after study | Case control study | Case report | Case series | Clinical study | Clinical trial | Cohort study | Comparative study | Consensus conference | Cross-sectional study | Diagnostic test accuracy study | Evaluation study | Government document | Guideline | Living review | Meta-analysis | Narrative review | Observational study | Pilot study | Policy document | Quality improvement study | Randomized controlled trial | Rapid review | Review | Scoping review | Systematic review | Validation study
 
 ### fields_of_study
-1-3 values only when the field is directly and unambiguously entailed by the topic. Return [] when classification requires interpretation.
+1–3 values only when the field is directly and unambiguously entailed by the topic. Return [] when classification requires interpretation.
 Permitted values only:
 Agricultural and Food Sciences | Art | Biology | Business | Chemistry | Computer Science | Economics | Education | Engineering | Environmental Science | Geography | Geology | History | Law | Linguistics | Materials Science | Mathematics | Medicine | Philosophy | Physics | Political Science | Psychology | Public Health | Sociology
 
-Use 1 field by default. Use 2-3 only when each is independently indispensable.
+Use 1 field by default. Use 2–3 only when each is independently indispensable.
 
 ---
 
@@ -250,11 +234,6 @@ Output:
       }
     ]
   },
-  "grey_literature": {
-    "broad_concepts": ["blood clot", "clot prevention", "blood thinners", "compression socks", "joint replacement surgery"],
-    "organizational_terms": [],
-    "geographic_variants": []
-  },
   "search_filters": {
     "publication_years": "2020-2026",
     "venues": [],
@@ -265,20 +244,19 @@ Output:
 }
 
 Key distinctions demonstrated:
-- keyword.structured contains ONLY true_synonyms + abbreviations + spelling_variants + lexical_variants. Specific drugs (aspirin, heparin, warfarin, rivaroxaban) and devices (compression stockings, intermittent pneumatic compression) are domain_terms — they do NOT appear in the anchor Boolean query.
-- grey_literature.broad_concepts is populated from colloquial fields across all concepts ("blood clot", "clot prevention", "blood thinners", "compression socks", "joint replacement surgery").
+- keyword.structured contains ONLY true_synonyms + abbreviations + spelling_variants + lexical_variants. Specific drugs (aspirin, heparin, warfarin, rivaroxaban) and devices (compression stockings, intermittent pneumatic compression) are domain_terms — they do NOT appear in keyword.structured.
 - Three AND-blocks are used (not four) because the comparison ("within and across classes") is a methodological specification with no distinct keyword representation.
 - publication_years "2020-2026" derives from "recent studies" in medicine (rule: recent in medicine → 2020-CURRENTYEAR).
-- combined_blocks mirrors the three AND-blocks exactly. The intervention block merges controlled vocabulary from three concepts (thromboprophylaxis, antithrombotic medications, mechanical interventions), deduplicating "Anticoagulants" which appeared in both. Source connectors use combined_blocks to build (free_text[0] OR free_text[1] OR ... OR MeSH_term[MeSH] OR ...) AND (...) queries for indexed databases.
+- combined_blocks mirrors the three AND-blocks exactly. The intervention block merges controlled vocabulary from three concepts (thromboprophylaxis, antithrombotic medications, mechanical interventions), deduplicating "Anticoagulants" which appeared in two of them.
 
 ---
 
 ## Hard Rules
 - Output exactly one JSON object. No preamble, explanation, markdown fences, or comments.
-- Do NOT use double quotes inside the keyword.structured string — they break JSON encoding. Use bare terms only.
+- Do NOT use double quotes inside keyword.structured — they break JSON encoding. Use bare terms only.
 - domain_terms and colloquial must NOT appear in keyword.structured.
 - Do not invent venues, authors, years, or publication types not stated in the inputs.
-- Use empty values ("", [], null) when evidence is insufficient — do not infer.
+- Use empty values ("", [], {}) when evidence is insufficient — do not infer.
 """.strip()
 
 __all__ = ["SEARCH_CONSTRUCTION_TEMPLATE"]

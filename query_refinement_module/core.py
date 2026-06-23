@@ -1798,17 +1798,10 @@ class QueryRefinementManager:
 
         Pipeline: fixed aspect assessment (LLM) -> deterministic safety policy
         -> allowed-aspect derivation -> expansion generation (LLM) ->
-        validation -> deterministic Level 0 injection. Soft-fails to Level 0.
+        validation. Returns Levels 1–N only; Level 0 (the anchor) is the
+        caller's statement and is not echoed. Soft-fails to empty list.
         """
         start_time = time.monotonic()
-        level_0 = SearchExpansionLevel(
-            level=0,
-            label="Exact clarified question",
-            strategy=ExpansionStrategy.ANCHOR,
-            search_query=search_input.statement,
-            relaxed_aspects={},
-            rationale="Exact clarified query preserved as the review anchor.",
-        )
         metadata: Dict[str, Any] = {
             "used_llm": False,
             "generated_level_count": 0,
@@ -1842,11 +1835,11 @@ class QueryRefinementManager:
         metadata = self._accumulate_metadata(metadata, assessment_meta)
 
         if assessments is None:
-            metadata["status"] = "failed_level_0_only"
-            metadata["warning"] = "Aspect assessment failed; returned Level 0 only."
+            metadata["status"] = "failed"
+            metadata["warning"] = "Aspect assessment failed; no expansion levels generated."
             metadata["duration_ms"] = round((time.monotonic() - start_time) * 1000)
-            logger.warning("Search expansion returned Level 0 only: assessment failed")
-            return [level_0], metadata
+            logger.warning("Search expansion failed: aspect assessment returned no results")
+            return [], metadata
 
         metadata["used_llm"] = True
         summary = self._build_assessment_summary(assessments)
@@ -1865,7 +1858,7 @@ class QueryRefinementManager:
             metadata["status"] = "skipped_no_assessable_aspects"
             metadata["duration_ms"] = round((time.monotonic() - start_time) * 1000)
             logger.info("Search expansion skipped: no detected non-avoided aspects")
-            return [level_0], metadata
+            return [], metadata
 
         prompt_builder = SearchExpansionPromptBuilder()
         result, call_metadata = await self._run_search_expansion_call(
@@ -1880,18 +1873,18 @@ class QueryRefinementManager:
         metadata["duration_ms"] = round((time.monotonic() - start_time) * 1000)
 
         if result is None:
-            metadata["status"] = "failed_level_0_only"
-            metadata["warning"] = "Search expansion failed validation or parsing; returned Level 0 only."
+            metadata["status"] = "failed"
+            metadata["warning"] = "Search expansion failed validation or parsing; no levels generated."
             logger.warning(
-                "Search expansion returned Level 0 only after failure",
+                "Search expansion failed after LLM call; returning empty level list",
                 extra={"duration_ms": metadata["duration_ms"]},
             )
-            return [level_0], metadata
+            return [], metadata
 
         generated_levels = result.levels[:4]
         metadata["status"] = "completed"
         metadata["generated_level_count"] = len(generated_levels)
-        levels = [level_0] + generated_levels
+        levels = generated_levels
         logger.info(
             "Search expansion generation completed",
             extra={
@@ -2199,7 +2192,6 @@ class QueryRefinementManager:
                 search_optimized=SearchOptimized(
                     semantic=sem.semantic_statement,
                     keyword=construction.keyword,
-                    grey_literature=construction.grey_literature,
                 ),
                 search_filters=construction.search_filters,
                 terminology=self._concept_graph_to_terminology(sem.concept_graph),

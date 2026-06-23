@@ -28,11 +28,6 @@ class TestSynthesisResponse:
                         "excluded": [],
                     },
                 },
-                "grey_literature": {
-                    "broad_concepts": ["adult diabetes"],
-                    "organizational_terms": [],
-                    "geographic_variants": [],
-                },
             },
             "search_filters": {
                 "publication_years": "",
@@ -77,7 +72,6 @@ class TestSynthesisResponse:
                         "excluded": [],
                     },
                 },
-                # grey_literature is optional - omitted
             },
             "search_filters": {
                 "publication_years": "",
@@ -198,7 +192,7 @@ class TestSynthesisResponse:
         assert response.clarified_query == "updated"
     
     def test_optional_fields_can_be_omitted(self):
-        """Test that optional fields (grey_literature, primary_terms, domain_specific, metadata, processing_log) can be omitted."""
+        """Test that optional fields (primary_terms, domain_specific, metadata, processing_log) can be omitted."""
         payload = self._minimal_payload()
         response = QueryRefinementResponse(**payload)
         
@@ -209,7 +203,6 @@ class TestSynthesisResponse:
         assert response.search_optimized.keyword
         
         # Verify optional fields are None when omitted
-        assert response.search_optimized.grey_literature is None
         assert response.terminology.primary_terms is None
         assert response.terminology.domain_specific is None
         assert response.metadata is None

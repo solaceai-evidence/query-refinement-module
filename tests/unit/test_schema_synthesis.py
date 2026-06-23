@@ -154,11 +154,6 @@ class TestSynthesisResponseValidation:
                     "phrases": [],
                     "terms": {"required": [], "optional": [], "excluded": []},
                 },
-                "grey_literature": {
-                    "broad_concepts": [],
-                    "organizational_terms": [],
-                    "geographic_variants": [],
-                },
             },
             "search_filters": {
                 "publication_years": "",
@@ -204,7 +199,6 @@ class TestSynthesisResponseValidation:
                     "phrases": [],
                     "terms": {"required": [], "optional": [], "excluded": []},
                 },
-                # grey_literature omitted (optional)
             },
             "search_filters": {
                 "publication_years": "",
@@ -226,7 +220,6 @@ class TestSynthesisResponseValidation:
         # Should not raise
         result = validate_synthesis_response(response)
         assert result.clarified_query == "A refined research question"
-        assert result.search_optimized.grey_literature is None
         assert result.terminology.primary_terms is None
         assert result.terminology.domain_specific is None
         assert result.metadata is None

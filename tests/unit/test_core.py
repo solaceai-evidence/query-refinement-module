@@ -453,7 +453,7 @@ async def test_synthesis_uses_three_agent_pipeline():
     responses = [
         ResearchStatementResponse(clarified_query="Refined question", dimensions_specifications={}),
         SemanticRepresentationResponse(semantic_statement="semantic query", keyword_statement="semantic query keywords", concept_graph={}),
-        SearchConstructionResponse(keyword=_keyword, grey_literature=None, search_filters=_filters),
+        SearchConstructionResponse(keyword=_keyword, search_filters=_filters),
     ]
     manager = QueryRefinementManager(
         llm_provider=StubLLMProvider(responses),
@@ -484,7 +484,7 @@ async def test_synthesis_pipeline_with_bedrock_model():
     responses = [
         ResearchStatementResponse(clarified_query="Refined question", dimensions_specifications={}),
         SemanticRepresentationResponse(semantic_statement="semantic query", keyword_statement="semantic query keywords", concept_graph={}),
-        SearchConstructionResponse(keyword=_keyword, grey_literature=None, search_filters=_filters),
+        SearchConstructionResponse(keyword=_keyword, search_filters=_filters),
     ]
     manager = QueryRefinementManager(
         llm_provider=StubLLMProvider(responses),
@@ -511,7 +511,7 @@ async def test_synthesis_pipeline_uses_provider_default_model():
     responses = [
         ResearchStatementResponse(clarified_query="Refined question", dimensions_specifications={}),
         SemanticRepresentationResponse(semantic_statement="semantic query", keyword_statement="semantic query keywords", concept_graph={}),
-        SearchConstructionResponse(keyword=_keyword, grey_literature=None, search_filters=_filters),
+        SearchConstructionResponse(keyword=_keyword, search_filters=_filters),
     ]
     provider = StubLLMProvider(responses)
     provider._default_model = "bedrock/anthropic.claude-3-7-sonnet"

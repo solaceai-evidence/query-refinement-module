@@ -179,7 +179,7 @@ Each entry in `concept_graph`:
 }
 ```
 
-`domain_terms` are reserved for Agent D broadening (Levels 2–3) and are not included in the Agent C anchor Boolean query. `colloquial` terms appear only in `grey_literature`, not in formal database queries.
+`domain_terms` are reserved for Agent D broadening (Levels 2–3) and are not included in the Agent C anchor Boolean query. `colloquial` terms are not used in formal database queries.
 
 #### Agent C — Search Construction
 
@@ -195,7 +195,6 @@ Also invoked automatically by `POST /api/v1/refinement/synthesize`.
 | `keyword.combined_blocks` | **Primary RAG artifact** — one AND-block per concept with `role`, `free_text` terms, and `controlled_vocabulary` |
 | `keyword.structured` | Boolean anchor query (fallback) |
 | `keyword.phrases` | Exact key phrases |
-| `grey_literature` | Colloquial and organizational terms for grey literature search |
 | `search_filters` | Metadata narrowing filters (`publication_years`, `publication_types`, etc.) — applies to both `semantic_statement` and `keyword_statement` from Agent B |
 
 `combined_blocks` connector logic:
@@ -285,7 +284,6 @@ After `POST /synthesize`, `structured_output` contains all retrieval artifacts:
 | **Primary RAG keyword search** | `structured_output.search_optimized.keyword.combined_blocks` | Agent C |
 | Boolean anchor query (fallback) | `structured_output.search_optimized.keyword.structured` | Agent C |
 | Exact key phrases | `structured_output.search_optimized.keyword.phrases` | Agent C |
-| Grey / organizational literature | `structured_output.search_optimized.grey_literature` | Agent C |
 | Controlled vocabulary (MeSH, DeCS) | `combined_blocks[i].controlled_vocabulary` | Agent C |
 | Metadata narrowing filters | `structured_output.search_filters` | Agent C |
 | Synonym expansion per concept | `structured_output.concept_graph.<concept>` | Agent B |
@@ -826,11 +824,6 @@ Response:
 					}
 				]
 			},
-			"grey_literature": {
-				"broad_concepts": ["blood thinner", "clot prevention"],
-				"organizational_terms": [],
-				"geographic_variants": []
-			}
 		},
 		"concept_graph": {
 			"aspirin": {
@@ -898,7 +891,6 @@ Notes:
     - `semantic` (**Agent B**): dense embedding query for vector search
     - `keyword.structured` (**Agent C**): Boolean anchor query for sparse/keyword search
     - `keyword.combined_blocks` (**Agent C**): **primary RAG artifact** — one entry per AND-block with `role`, `free_text` terms, and `controlled_vocabulary` (vocabulary name → headings). Source connectors: OR `free_text` with `controlled_vocabulary` within each block, then AND all blocks. Use `controlled_vocabulary` only for indexed databases (PubMed → MeSH, WHO IRIS → DeCS); use `free_text` alone for unindexed sources.
-    - `grey_literature` (**Agent C**): colloquial and organizational terms for grey literature search
   - `concept_graph` (**Agent B**): per-concept retrieval metadata — pass as `search_context.concept_graph` to `/expand` for Agent D broadening levels. Each concept entry has: `query_role`, `true_synonyms`, `abbreviations`, `spelling_variants`, `lexical_variants`, `domain_terms`, `colloquial`, `controlled_vocabulary_hints`.
   - `search_filters` (**Agent C**): optional narrowing filters — `publication_years`, `venues`, `authors`, and `publication_types` are extracted deterministically from the query text; `fields_of_study` is LLM-generated and constrained to a permitted-values list
   - `terminology` (**Agent B**, legacy): synonym mappings — use `concept_graph` in preference to this for structured retrieval

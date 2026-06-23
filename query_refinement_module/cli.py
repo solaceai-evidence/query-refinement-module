@@ -533,20 +533,6 @@ async def run_cli(manager: QueryRefinementManager, framework_name: str, query: s
                                     if vocab_terms:
                                         print(f"    {vocab_name + ':':<12}{', '.join(vocab_terms)}")
 
-                    grey_lit = search_optimized.grey_literature
-                    if grey_lit:
-                        broad = grey_lit.broad_concepts or []
-                        org = grey_lit.organizational_terms or []
-                        geo = grey_lit.geographic_variants or []
-                        if broad or org or geo:
-                            print(f"\nGrey Literature Search:")
-                            if broad:
-                                print(f"  Concepts:      {', '.join(broad)}")
-                            if org:
-                                print(f"  Organizations: {', '.join(org)}")
-                            if geo:
-                                print(f"  Geographic:    {', '.join(geo)}")
-
                 search_filters = synthesis.get("search_filters")
                 if search_filters:
                     filter_parts = []

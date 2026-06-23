@@ -45,7 +45,17 @@ def _search_input() -> SearchExpansionInput:
         statement=ANCHOR,
         search_context=SearchExpansionContext(
             filters=SearchFilters(fields_of_study=["Medicine"]).model_dump(exclude_none=True),
-            synonyms={"heatwave": ["extreme heat"]},
+            concept_graph={
+                "heatwave": {
+                    "query_role": "topic_or_condition",
+                    "true_synonyms": ["extreme heat"],
+                    "abbreviations": [],
+                    "spelling_variants": [],
+                    "lexical_variants": [],
+                    "colloquial": [],
+                    "domain_terms": ["heat stress", "thermal stress"],
+                }
+            },
         ),
     )
 
@@ -112,7 +122,7 @@ def _allowed_aspects() -> dict:
 def test_prompt_builder_system_prompts_non_empty():
     system_prompt = SearchExpansionPromptBuilder.get_system_prompt()
     assert system_prompt
-    assert "concise, readable" in system_prompt
+    assert "concept_lexical_rings" in system_prompt
     assert SearchExpansionPromptBuilder.get_assessment_system_prompt()
 
 
@@ -377,7 +387,7 @@ def test_validate_rejects_more_than_four_generated_levels():
 # ---------------------------------------------------------------------------
 
 @pytest.mark.asyncio
-async def test_pipeline_injects_deterministic_level_0_and_runs_two_calls():
+async def test_pipeline_runs_two_llm_calls_and_returns_generated_levels():
     provider = StubProvider([_assessment_response(), _valid_expansion_response()])
     manager = QueryRefinementManager(provider)
 
@@ -386,11 +396,10 @@ async def test_pipeline_injects_deterministic_level_0_and_runs_two_calls():
     )
 
     assert len(provider.calls) == 2
-    assert levels[0].level == 0
-    assert levels[0].search_query == ANCHOR
-    assert levels[0].strategy == ExpansionStrategy.ANCHOR
-    assert levels[0].relaxed_aspects == {}
-    assert levels[1].strategy == ExpansionStrategy.LEXICAL
+    # Level 0 is not returned — caller already has the anchor statement
+    assert len(levels) == 2
+    assert levels[0].level == 1
+    assert levels[0].strategy == ExpansionStrategy.LEXICAL
     assert metadata["status"] == "completed"
     assert metadata["used_llm"] is True
     assert metadata["generated_level_count"] == 2
@@ -424,13 +433,12 @@ async def test_pipeline_skips_expansion_when_no_aspects_detected():
     )
 
     assert len(provider.calls) == 1  # assessment only, no expansion call
-    assert len(levels) == 1
-    assert levels[0].level == 0
+    assert len(levels) == 0
     assert metadata["status"] == "skipped_no_assessable_aspects"
 
 
 @pytest.mark.asyncio
-async def test_pipeline_soft_fails_to_level_0_when_assessment_fails():
+async def test_pipeline_returns_empty_when_assessment_fails():
     provider = StubProvider(["not json at all"])
     manager = QueryRefinementManager(provider)
 
@@ -438,13 +446,12 @@ async def test_pipeline_soft_fails_to_level_0_when_assessment_fails():
         search_input=_search_input(),
     )
 
-    assert len(levels) == 1
-    assert levels[0].search_query == ANCHOR
-    assert metadata["status"] == "failed_level_0_only"
+    assert len(levels) == 0
+    assert metadata["status"] == "failed"
 
 
 @pytest.mark.asyncio
-async def test_pipeline_soft_fails_to_level_0_when_expansion_invalid_after_repair():
+async def test_pipeline_returns_empty_when_expansion_invalid_after_repair():
     invalid = SearchExpansionResponse(
         levels=[
             SearchExpansionLevel(
@@ -464,8 +471,8 @@ async def test_pipeline_soft_fails_to_level_0_when_expansion_invalid_after_repai
     )
 
     assert len(provider.calls) == 3  # assessment + expansion + one repair
-    assert len(levels) == 1
-    assert metadata["status"] == "failed_level_0_only"
+    assert len(levels) == 0
+    assert metadata["status"] == "failed"
 
 
 @pytest.mark.asyncio
@@ -490,7 +497,8 @@ async def test_pipeline_repair_recovers_invalid_expansion():
 
     assert len(provider.calls) == 3
     assert metadata["status"] == "completed"
-    assert len(levels) == 3
+    # Level 0 is not returned; _valid_expansion_response() has Level 1 and Level 2
+    assert len(levels) == 2
 
 
 # ---------------------------------------------------------------------------

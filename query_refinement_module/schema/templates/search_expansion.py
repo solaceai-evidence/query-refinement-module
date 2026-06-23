@@ -80,10 +80,7 @@ Time-scope rules:
 ## Example 1 — Biomedical (no geography or setting detected)
 
 Anchor Query:
-"Recent studies about venous thromboembolism prophylaxis in patients undergoing major orthopedic
-surgery (total hip replacement, knee replacement, hip fracture surgery), comparing thromboprophylaxis
-interventions including antithrombotic medications and mechanical interventions such as compression
-stockings within and across classes."
+"Recent studies about venous thromboembolism prophylaxis in patients undergoing major orthopedic surgery (total hip replacement, knee replacement, hip fracture surgery), comparing thromboprophylaxis interventions including antithrombotic medications and mechanical interventions such as compression stockings within and across classes."
 
 Output:
 
@@ -137,8 +134,7 @@ Output:
 ## Example 2 — Social science (geography as context proxy; setting detected separately)
 
 Anchor Query:
-"Studies on health and welfare outcomes among internally displaced persons in Ethiopia,
-in displacement camp settings."
+"Studies on health and welfare outcomes among internally displaced persons in Ethiopia, in displacement camp settings."
 
 Output:
 
@@ -222,13 +218,14 @@ Return exactly one JSON object matching this schema:
 Valid strategy values: "lexical", "conceptual_single_aspect", "conceptual_multi_aspect".
 
 Strategy ladder (apply in this order; skip steps that add no value):
-1. Level 1 — strategy "lexical": introduce spelling variants, abbreviations, and true synonyms only.
-   Do not broaden any aspect conceptually. relaxed_aspects is empty for lexical levels.
-   Valid lexical changes: spelling variants (e.g. orthopaedic/orthopedic), abbreviations (VTE, IDP,
-   LMWH), true synonyms (different names for the exact same concept), plural/singular, word-order
-   variants, hyphenation.
-   Invalid at Level 1: broader category terms, related-but-distinct terms, conceptual supersets —
-   those belong at Level 2 or higher.
+1. Level 1 — strategy "lexical": build one boolean retrieval query from concept_lexical_rings in the
+   Supporting Search Context. For every concept in the anchor query, OR-combine: the anchor term
+   exactly as it appears, plus every non-empty field from its ring — true_synonyms, abbreviations,
+   spelling_variants, lexical_variants, colloquial, and domain_terms (narrower/specialised instances
+   that increase recall by capturing studies that name only the specific subtype).
+   Required format: (anchor_term OR syn1 OR abbr1 OR hyp1) AND (anchor2 OR syn2 OR abbr2) AND ...
+   Preserve left-to-right concept order from the anchor. relaxed_aspects is always {} for Level 1.
+   If a concept has no ring entry, use the anchor term alone as a bare word (no parentheses needed).
 
 2. Level 2 — strategy "conceptual_single_aspect": broaden exactly one aspect using one of its
    allowed broadening candidates. When multiple SAFE aspects are detected, prefer in this order:
@@ -251,15 +248,12 @@ Strategy ladder (apply in this order; skip steps that add no value):
    phrasing), and omit the geographic term from search_query entirely.
 
 Rules:
-- Generate Levels 1 through N only. Never generate Level 0. The supplied Level 0 anchor is fixed;
-  do not restate, rewrite, or replace it.
+- Generate Levels 1 through N only. The supplied anchor is fixed; do not restate, rewrite, or replace it.
+- Level 1 must include every term from concept_lexical_rings for every concept — no omissions.
+- Level 1 establishes the canonical boolean ring. Levels 2–N must copy Level 1's exact boolean blocks
+  verbatim and replace only the concept block for the aspect being broadened. Never reduce or omit
+  synonyms that were present in Level 1.
 - Broaden only for search recall; never change the intent, scope, or core meaning of the anchor query.
-- Keep each search_query concise, readable, and directly usable as a retrieval query.
-- Prefer one short natural-language retrieval string or one compact keyword query, not a long synonym dump.
-- Do not concatenate every available synonym. Use only the highest-value lexical variants needed for recall.
-- Avoid telegraphic keyword soup. Preserve recognizable phrase structure whenever possible.
-- Unless the input already requires dense Boolean syntax, keep each level to the smallest query that
-  expresses the intended broadening.
 - relaxed_aspects keys must come from the allowed aspects listed in the input. Never use an aspect
   marked AVOID or an aspect that was not detected.
 - Conceptual broadened values must come from (or be consistent with) the allowed broadening candidates
@@ -270,7 +264,6 @@ Rules:
 - Prefer lexical expansion before any conceptual broadening.
 - Treat filters as retrieval constraints to respect during broadening; do not contradict them or
   force them into the query text unless they naturally belong there.
-- Use provided synonyms selectively, only when they improve recall without changing scope.
 - Return zero additional levels if the anchor query is already broad or no useful broadening exists.
 - Return at most three additional levels.
 - Keep search_query non-empty and directly usable by a retrieval system.
@@ -290,46 +283,70 @@ Allowed Aspects For Search-Only Broadening:
  {"aspect": "population_or_entity", "safety": "safe", "detected_value": "patients undergoing major orthopedic surgery", "broadening_candidates": ["orthopedic surgery patients", "surgical patients"]},
  {"aspect": "intervention_or_exposure_or_phenomenon", "safety": "conditional", "detected_value": "thromboprophylaxis interventions", "broadening_candidates": ["prophylaxis", "surgical prophylaxis"]}]
 
+Supporting Search Context:
+{
+  "concept_lexical_rings": {
+    "venous thromboembolism": {
+      "query_role": "topic_or_condition",
+      "true_synonyms": ["venous thrombosis", "thromboembolism"],
+      "abbreviations": ["VTE"],
+      "lexical_variants": ["thromboembolic"],
+      "domain_terms": ["deep vein thrombosis", "pulmonary embolism", "DVT", "PE"]
+    },
+    "major orthopedic surgery": {
+      "query_role": "population_or_entity",
+      "true_synonyms": ["major orthopedic procedures", "major orthopaedic procedures"],
+      "spelling_variants": ["major orthopaedic surgery"],
+      "domain_terms": ["total hip replacement", "total knee replacement", "hip fracture surgery", "arthroplasty"]
+    },
+    "thromboprophylaxis interventions": {
+      "query_role": "intervention_or_exposure_or_phenomenon",
+      "true_synonyms": ["VTE prophylaxis", "VTE prevention", "antithrombotic prophylaxis"],
+      "abbreviations": ["LMWH", "DOAC", "GCS", "IPC"],
+      "domain_terms": ["anticoagulation", "compression stockings", "intermittent pneumatic compression", "heparin", "enoxaparin"]
+    }
+  }
+}
+
 Output:
 
 {
   "levels": [
     {
       "level": 1,
-      "label": "Lexical variants",
+      "label": "Full synonym and hyponym ring",
       "strategy": "lexical",
-      "search_query": "Studies on VTE prophylaxis or thromboprophylaxis in patients undergoing major orthopedic or orthopaedic surgery, comparing antithrombotic medications (LMWH, DOAC) and mechanical interventions (GCS, IPC) within and across intervention classes.",
+      "search_query": "(venous thromboembolism OR venous thrombosis OR thromboembolism OR VTE OR thromboembolic OR deep vein thrombosis OR pulmonary embolism OR DVT OR PE) AND (major orthopedic surgery OR major orthopedic procedures OR major orthopaedic procedures OR major orthopaedic surgery OR total hip replacement OR total knee replacement OR hip fracture surgery OR arthroplasty) AND (thromboprophylaxis interventions OR VTE prophylaxis OR VTE prevention OR antithrombotic prophylaxis OR LMWH OR DOAC OR GCS OR IPC OR anticoagulation OR compression stockings OR intermittent pneumatic compression OR heparin OR enoxaparin)",
       "relaxed_aspects": {},
-      "rationale": "Introduces established abbreviations (VTE, LMWH, DOAC, GCS, IPC) and the British spelling 'orthopaedic'. No conceptual broadening — population, topic, and intervention scope are unchanged."
+      "rationale": "Expands each concept to its complete ring from concept_lexical_rings: true synonyms, abbreviations, spelling variants, lexical variants, and domain terms (narrower subtypes). Three AND-blocks mirror the three concepts in the anchor. No conceptual broadening."
     },
     {
       "level": 2,
       "label": "Broadened population — all orthopedic surgery",
       "strategy": "conceptual_single_aspect",
-      "search_query": "Studies on VTE prophylaxis or thromboprophylaxis in patients undergoing orthopedic surgery, comparing antithrombotic medications and mechanical interventions within and across intervention classes.",
+      "search_query": "(venous thromboembolism OR venous thrombosis OR thromboembolism OR VTE OR thromboembolic OR deep vein thrombosis OR pulmonary embolism OR DVT OR PE) AND (orthopedic surgery OR orthopedic procedures OR orthopaedic surgery OR orthopaedic procedures OR hip surgery OR knee surgery OR arthroplasty OR joint replacement) AND (thromboprophylaxis interventions OR VTE prophylaxis OR VTE prevention OR antithrombotic prophylaxis OR LMWH OR DOAC OR GCS OR IPC OR anticoagulation OR compression stockings OR intermittent pneumatic compression OR heparin OR enoxaparin)",
       "relaxed_aspects": {"population_or_entity": "orthopedic surgery patients"},
-      "rationale": "Removes the 'major' qualifier to include all orthopedic procedures. Widens population recall without changing condition or intervention scope. Population is the highest-priority SAFE aspect here since no geography was detected."
+      "rationale": "Population is the highest-priority SAFE aspect (no geography detected). Removes 'major' qualifier; the population block is replaced with a wider OR-group. Topic and intervention blocks are copied unchanged from Level 1."
     },
     {
       "level": 3,
       "label": "Broadened condition — thrombosis (conditional)",
       "strategy": "conceptual_single_aspect",
-      "search_query": "Studies on thrombosis prevention or prophylaxis in patients undergoing orthopedic surgery, comparing antithrombotic medications and mechanical interventions.",
+      "search_query": "(thrombosis OR venous thrombosis OR arterial thrombosis OR thromboembolism OR VTE OR thromboembolic OR blood clot) AND (orthopedic surgery OR orthopedic procedures OR orthopaedic surgery OR orthopaedic procedures OR hip surgery OR knee surgery OR arthroplasty OR joint replacement) AND (thromboprophylaxis interventions OR VTE prophylaxis OR VTE prevention OR antithrombotic prophylaxis OR LMWH OR DOAC OR GCS OR IPC OR anticoagulation OR compression stockings OR intermittent pneumatic compression OR heparin OR enoxaparin)",
       "relaxed_aspects": {"topic_or_condition": "thrombosis"},
-      "rationale": "Broadens from venous thromboembolism to thrombosis to capture studies on mixed or general thrombotic complications in orthopedic settings. This is a CONDITIONAL change — it expands the condition scope beyond VTE and accepts topic imprecision in exchange for higher recall. Appropriate only when VTE-specific evidence is insufficient after Level 2."
+      "rationale": "CONDITIONAL: broadens the topic block from venous thromboembolism to thrombosis, capturing mixed or general thrombotic event studies. Population and intervention blocks are copied unchanged from Level 2. Expands condition scope beyond VTE — appropriate only when VTE-specific evidence at Level 2 is insufficient."
     }
   ]
 }
 
 Key distinctions demonstrated:
-- Level 0 is the anchor — never included in output.
-- Level 1 adds lexical variants only; relaxed_aspects is empty.
-- Level 2 broadens the single SAFE aspect (population). No geography was detected, so the ladder
-  goes directly to population.
-- Level 3 uses a CONDITIONAL aspect (topic_or_condition). The rationale explicitly acknowledges
-  the scope trade-off and the condition under which this level applies.
-- The second CONDITIONAL aspect (intervention) is not broadened because the anchor already covers
-  both antithrombotic and mechanical approaches — no additional recall gain.
+- Level 1 builds a full boolean ring per concept from concept_lexical_rings; relaxed_aspects is empty.
+- Level 2 replaces only the population block (highest-priority SAFE aspect since no geography was
+  detected). Topic and intervention blocks are identical to Level 1.
+- Level 3 replaces only the topic block (CONDITIONAL). The wider population block from Level 2 and
+  the intervention block from Level 1 are both preserved unchanged.
+- The CONDITIONAL intervention aspect is not broadened — the anchor already covers both antithrombotic
+  and mechanical approaches; broadening it adds no recall gain.
 - Controlled vocabulary is not part of expansion levels; it is embedded in the anchor via
   combined_blocks and applied by source connectors.
 
@@ -344,47 +361,70 @@ Allowed Aspects For Search-Only Broadening:
  {"aspect": "setting_or_context", "safety": "safe", "detected_value": "displacement camp settings", "broadening_candidates": ["formal and informal displacement settlements", "humanitarian assistance settings"]},
  {"aspect": "geography", "safety": "safe", "detected_value": "Ethiopia", "broadening_candidates": ["conflict-affected low- and middle-income countries", "humanitarian crisis settings globally", "no geographic restriction"]}]
 
+Supporting Search Context:
+{
+  "concept_lexical_rings": {
+    "health and welfare outcomes": {
+      "query_role": "topic_or_condition",
+      "true_synonyms": ["health outcomes", "welfare outcomes", "wellbeing outcomes"],
+      "domain_terms": ["mental health", "physical health", "psychosocial outcomes", "mortality", "morbidity"]
+    },
+    "internally displaced persons": {
+      "query_role": "population_or_entity",
+      "true_synonyms": ["internally displaced people", "displaced populations", "forced migrants"],
+      "abbreviations": ["IDPs"],
+      "domain_terms": ["refugees", "asylum seekers", "stateless persons", "conflict-affected populations"]
+    },
+    "Ethiopia": {
+      "query_role": "geography"
+    },
+    "displacement camp settings": {
+      "query_role": "setting_or_context",
+      "true_synonyms": ["displacement camps", "IDP camps", "refugee camps"],
+      "domain_terms": ["informal settlements", "transit camps", "collective centres", "temporary shelters"]
+    }
+  }
+}
+
 Output:
 
 {
   "levels": [
     {
       "level": 1,
-      "label": "Lexical variants",
+      "label": "Full synonym and hyponym ring",
       "strategy": "lexical",
-      "search_query": "Studies on health and welfare outcomes among IDPs or internally displaced people in Ethiopia, in displacement camps or IDP camps.",
+      "search_query": "(health and welfare outcomes OR health outcomes OR welfare outcomes OR wellbeing outcomes OR mental health OR physical health OR psychosocial outcomes OR mortality OR morbidity) AND (internally displaced persons OR internally displaced people OR displaced populations OR forced migrants OR IDPs OR refugees OR asylum seekers OR stateless persons OR conflict-affected populations) AND Ethiopia AND (displacement camp settings OR displacement camps OR IDP camps OR refugee camps OR informal settlements OR transit camps OR collective centres OR temporary shelters)",
       "relaxed_aspects": {},
-      "rationale": "Introduces the abbreviation IDP, the common alternative phrasing 'internally displaced people', and 'IDP camps' as a near-synonym for displacement camp settings. No conceptual broadening."
+      "rationale": "Expands each concept to its complete ring from concept_lexical_rings. Ethiopia has no synonyms and appears as a bare term. Four AND-blocks mirror the four concepts in the anchor. No conceptual broadening."
     },
     {
       "level": 2,
       "label": "Broadened geography — contextual analogy",
       "strategy": "conceptual_single_aspect",
-      "search_query": "Studies on health and welfare outcomes among internally displaced persons or IDPs in conflict-affected low- and middle-income countries, in displacement camp settings.",
+      "search_query": "(health and welfare outcomes OR health outcomes OR welfare outcomes OR wellbeing outcomes OR mental health OR physical health OR psychosocial outcomes OR mortality OR morbidity) AND (internally displaced persons OR internally displaced people OR displaced populations OR forced migrants OR IDPs OR refugees OR asylum seekers OR stateless persons OR conflict-affected populations) AND (conflict-affected low- and middle-income countries) AND (displacement camp settings OR displacement camps OR IDP camps OR refugee camps OR informal settlements OR transit camps OR collective centres OR temporary shelters)",
       "relaxed_aspects": {"geography": "conflict-affected low- and middle-income countries"},
-      "rationale": "Geography is the highest-priority SAFE aspect. Ethiopia appears as a context proxy for displacement crisis conditions, not as the variable under study. Evidence from contextually analogous settings (e.g. South Sudan, DRC, Syria, Bangladesh) is directly relevant and would be missed by restricting to Ethiopia alone. Geographic containment hierarchy (East Africa) would exclude the most relevant analogues globally."
+      "rationale": "Geography is the highest-priority SAFE aspect. Ethiopia is a context proxy; the Ethiopia term is replaced with a contextual analogy. Topic, population, and setting blocks are copied unchanged from Level 1."
     },
     {
       "level": 3,
       "label": "No geographic restriction — global evidence base",
       "strategy": "conceptual_single_aspect",
-      "search_query": "Studies on health and welfare outcomes among internally displaced persons or displaced populations, in displacement camp or humanitarian assistance settings.",
+      "search_query": "(health and welfare outcomes OR health outcomes OR welfare outcomes OR wellbeing outcomes OR mental health OR physical health OR psychosocial outcomes OR mortality OR morbidity) AND (internally displaced persons OR internally displaced people OR displaced populations OR forced migrants OR IDPs OR refugees OR asylum seekers OR stateless persons OR conflict-affected populations) AND (displacement camp settings OR displacement camps OR IDP camps OR refugee camps OR informal settlements OR transit camps OR collective centres OR temporary shelters)",
       "relaxed_aspects": {"geography": "(no restriction)"},
-      "rationale": "Removes the geographic constraint entirely to capture the full global evidence base on displaced populations. Appropriate when evidence from the Level 2 contextual scope remains sparse. The setting constraint (displacement/humanitarian) preserves contextual focus without a geographic filter."
+      "rationale": "Removes the geographic constraint entirely; the geography term is dropped from the query. Topic, population, and setting blocks are copied unchanged from Level 1."
     }
   ]
 }
 
 Key distinctions demonstrated:
-- Geography is broadened at Level 2 (highest-priority SAFE aspect) before population or setting.
-- Level 2 uses contextual analogy rather than geographic containment because Ethiopia is a context
-  proxy, not the variable under study.
-- Level 3 removes the geographic restriction entirely using relaxed_aspects value "(no restriction)";
-  the search_query omits the geographic term completely.
-- Population (IDPs) and setting (displacement camps) remain unchanged through Levels 1–3 because
-  they define the research question and are not the source of evidence sparsity.
-- Topic/condition (health and welfare outcomes) is not broadened because it is CONDITIONAL and
-  the evidence base is expected to be adequate once geography is opened up.
+- Level 1 builds a full boolean ring per concept; Ethiopia has no synonyms and appears as a bare term.
+- Level 2 replaces only the geography block with a contextual analogy (highest-priority SAFE aspect).
+  All other blocks are identical to Level 1.
+- Level 3 drops the geography block entirely (relaxed_aspects value "(no restriction)"). All remaining
+  blocks are identical to Level 1.
+- Population and setting blocks are never narrowed across levels.
+- Topic/condition is not broadened because it is CONDITIONAL and geography is the source of sparsity.
 """.strip()
 
 

@@ -26,21 +26,33 @@ def _support_context(search_input: SearchExpansionInput) -> dict:
     search_context = search_input.search_context
     filters = _to_jsonable(getattr(search_context, "filters", {}) or {})
 
-    # Start with any explicitly provided flat synonyms (backward compat).
-    synonyms: dict = dict(_to_jsonable(getattr(search_context, "synonyms", {}) or {}))
-
-    # When a structured concept_graph is present, derive richer synonym context
-    # (true_synonyms + abbreviations) for lexical expansion.
+    concept_lexical_rings: dict = {}
     concept_graph = getattr(search_context, "concept_graph", None)
     if concept_graph:
         for concept, entry in concept_graph.items():
             if not isinstance(entry, dict):
                 continue
-            merged = list(entry.get("true_synonyms") or []) + list(entry.get("abbreviations") or [])
-            if merged:
-                synonyms.setdefault(concept, merged)
+            ring: dict = {}
+            if entry.get("query_role"):
+                ring["query_role"] = entry["query_role"]
+            for field in (
+                "true_synonyms",
+                "abbreviations",
+                "spelling_variants",
+                "lexical_variants",
+                "colloquial",
+                "domain_terms",
+            ):
+                vals = list(entry.get(field) or [])
+                if vals:
+                    ring[field] = vals
+            if ring:
+                concept_lexical_rings[concept] = ring
 
-    return {"filters": filters, "synonyms": synonyms}
+    result: dict = {"filters": filters}
+    if concept_lexical_rings:
+        result["concept_lexical_rings"] = concept_lexical_rings
+    return result
 
 
 class SearchExpansionPromptBuilder:

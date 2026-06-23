@@ -106,18 +106,10 @@ class KeywordSearch(BaseModel):
     )
 
 
-class GreyLiteratureSearch(BaseModel):
-    """Grey literature search optimization."""
-    broad_concepts: List[str] = Field(default_factory=list)
-    organizational_terms: List[str] = Field(default_factory=list)
-    geographic_variants: List[str] = Field(default_factory=list)
-
-
 class SearchOptimized(BaseModel):
     """Search variants optimized for different retrieval strategies."""
     semantic: str = Field(description="Natural language semantic search query")
     keyword: KeywordSearch
-    grey_literature: Optional[GreyLiteratureSearch] = None
 
 class SearchFilters(BaseModel):
     """Metadata filters for search refinement."""
@@ -364,9 +356,8 @@ class SemanticRepresentationResponse(BaseModel):
 
 
 class SearchConstructionResponse(BaseModel):
-    """Agent C output: anchor keyword search + grey literature + filters."""
+    """Agent C output: anchor keyword search + filters."""
     keyword: KeywordSearch
-    grey_literature: Optional[GreyLiteratureSearch] = None
     search_filters: SearchFilters
 
 
