@@ -14,9 +14,9 @@
 #   Tier 3:  RPM=2 000,  TPM=160 000,   concurrent=20
 #   Tier 4:  RPM=4 000,  TPM=400 000,   concurrent=40
 #   Custom:  set values below to match headers from detect_anthropic_tier.py
-LLM_PROVIDER_RATE_LIMIT_RPM: "5000"
-LLM_PROVIDER_RATE_LIMIT_TPM: "6000000"
-LLM_PROVIDER_MAX_CONCURRENT: "50"
+LLM_PROVIDER_RATE_LIMIT_RPM: "1000"
+LLM_PROVIDER_RATE_LIMIT_TPM: "800000"
+LLM_PROVIDER_MAX_CONCURRENT: "10"
 
 # ── Prompt caching ────────────────────────────────────────────────────────────
 # Reduces cost on repeated system prompts (requires Anthropic Tier 1+; not tested on other private models).

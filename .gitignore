@@ -151,7 +151,7 @@ celerybeat.pid
 !.env.cloud
 !.env.local
 !.env.selfhosted
-!.env.prod.local
+!.env.prod.selfhosted
 .envrc
 .venv
 env/
