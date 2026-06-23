@@ -31,7 +31,7 @@ Convert the user's research query into a structured, search-ready specification 
 ## Output Schema
 
 {
-  "integrated_statement": "",
+  "clarified_query": "",
   "dimensions_specifications": {},
   "search_optimized": {
     "semantic": "",
@@ -60,7 +60,7 @@ Convert the user's research query into a structured, search-ready specification 
 
 ## Field Specifications
 
-### integrated_statement
+### clarified_query
 Write one coherent sentence that integrates the original query with all non-null dimensions.
 
 Rules in precedence order:
@@ -105,20 +105,20 @@ Allowed block patterns:
 - `((qual1 OR qual2) AND (term1 OR term2))`
 
 Rules:
-- Build blocks from `integrated_statement`, `terminology.synonyms`, and explicit terminology already supported by the inputs.
+- Build blocks from `clarified_query`, `terminology.synonyms`, and explicit terminology already supported by the inputs.
 - Within each block, include only terms anchored to the same concept.
 - Include exact synonyms, established abbreviations, spelling variants, and lexical variants.
 - Enumerate narrower drugs, devices, procedures, technologies, subtypes, subpopulations, or geographic members only when they are explicit in the input or are standard retrieval variants of the same concept.
 - For process concepts such as adoption, implementation, uptake, or diffusion, include only closely adjacent retrieval variants of that same process.
 - Exclude years, venues, authors, and publication types.
-- Do not include a term unless it is anchored to a concept present in `integrated_statement`.
+- Do not include a term unless it is anchored to a concept present in `clarified_query`.
 - Prefer exact phrases over free terms when both are equally precise.
 
 ### search_optimized.keyword.phrases
 Return 5-8 exact phrases, each 2-4 words.
 
 Rules:
-- Prefer phrases taken directly from `integrated_statement`.
+- Prefer phrases taken directly from `clarified_query`.
 - Otherwise use established equivalents already represented in `terminology.synonyms`.
 - Use phrases that could plausibly appear verbatim in a relevant title, abstract, subject heading, or author keyword.
 - Exclude vague academic language, full-sentence fragments, and phrases that broaden the stated scope.
@@ -198,7 +198,7 @@ Input 2:
 Output:
 
 {
-  "integrated_statement": "Recent studies about venous thromboembolism prophylaxis in patients undergoing major orthopedic surgery (total hip replacement, knee replacement, hip fracture surgery), comparing thromboprophylaxis interventions including antithrombotic medications and mechanical interventions such as compression stockings within and across classes",
+  "clarified_query": "Recent studies about venous thromboembolism prophylaxis in patients undergoing major orthopedic surgery (total hip replacement, knee replacement, hip fracture surgery), comparing thromboprophylaxis interventions including antithrombotic medications and mechanical interventions such as compression stockings within and across classes",
   "dimensions_specifications": {
     "population": "Patients undergoing major orthopedic surgery (total hip replacement, knee replacement, hip fracture surgery)",
     "intervention": "Thromboprophylaxis interventions including antithrombotic medications and mechanical interventions such as compression stockings",
@@ -257,7 +257,7 @@ Input 2:
 Output:
 
 {
-  "integrated_statement": "What economic barriers, policy frameworks, infrastructure availability, cultural acceptance, and financing mechanisms influence the adoption of solar photovoltaic systems, wind turbines, and small-scale hydroelectric installations among rural households, smallholder farmers, and local enterprises in off-grid and rural electrification programs in low and middle-income countries in Sub-Saharan Africa and South Asia, based on studies from 2015 onwards, for use by energy policymakers and development aid organizations?",
+  "clarified_query": "What economic barriers, policy frameworks, infrastructure availability, cultural acceptance, and financing mechanisms influence the adoption of solar photovoltaic systems, wind turbines, and small-scale hydroelectric installations among rural households, smallholder farmers, and local enterprises in off-grid and rural electrification programs in low and middle-income countries in Sub-Saharan Africa and South Asia, based on studies from 2015 onwards, for use by energy policymakers and development aid organizations?",
   "dimensions_specifications": {
     "technology_type": "Solar photovoltaic systems, wind turbines, and small-scale hydroelectric installations",
     "geographic_context": "Low and middle-income countries in Sub-Saharan Africa and South Asia",

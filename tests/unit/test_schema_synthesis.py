@@ -145,7 +145,7 @@ class TestSynthesisResponseValidation:
     def test_valid_response_passes(self):
         """Test valid synthesis response passes validation."""
         response = {
-            "integrated_statement": "A refined research question",
+            "clarified_query": "A refined research question",
             "dimensions_specifications": {"population": "adults"},
             "search_optimized": {
                 "semantic": "semantic query",
@@ -189,13 +189,13 @@ class TestSynthesisResponseValidation:
         
         # Should not raise
         result = validate_synthesis_response(response)
-        assert result.integrated_statement == "A refined research question"
+        assert result.clarified_query == "A refined research question"
         assert result.dimensions_specifications == {"population": "adults"}
     
     def test_valid_response_without_optional_fields(self):
         """Test valid synthesis response with optional fields omitted."""
         response = {
-            "integrated_statement": "A refined research question",
+            "clarified_query": "A refined research question",
             "dimensions_specifications": {"population": "adults"},
             "search_optimized": {
                 "semantic": "semantic query",
@@ -225,7 +225,7 @@ class TestSynthesisResponseValidation:
         
         # Should not raise
         result = validate_synthesis_response(response)
-        assert result.integrated_statement == "A refined research question"
+        assert result.clarified_query == "A refined research question"
         assert result.search_optimized.grey_literature is None
         assert result.terminology.primary_terms is None
         assert result.terminology.domain_specific is None

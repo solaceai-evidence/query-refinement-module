@@ -292,18 +292,18 @@ def save_query_refinement_response(
     if query:
         # Set completion timestamp
         query.completed_at = datetime.now(timezone.utc)
-        
-        integrated_statement = response.get('integrated_statement')
+
+        clarified_query = response.get('clarified_query')
         dimensions_specifications = response.get('dimensions_specifications')
         metadata_payload = response.get('metadata')
 
         processing_log = response.get('processing_log')
 
         # Store canonical synthesis fields.
-        if integrated_statement is not None:
-            query.integrated_statement = integrated_statement
+        if clarified_query is not None:
+            query.integrated_statement = clarified_query
             # Also update legacy refined_query field
-            query.refined_query = integrated_statement
+            query.refined_query = clarified_query
         
         if dimensions_specifications is not None:
             query.dimensions_specifications = dimensions_specifications

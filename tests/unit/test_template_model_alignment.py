@@ -24,10 +24,10 @@ class TestSynthesisTemplateAlignment:
     """Ensure synthesis template matches QueryRefinementResponse model."""
     
     def test_synthesis_template_uses_correct_field_names(self):
-        """Verify template uses integrated_statement (LLM field name)."""
-        # Template instructs LLM to return integrated_statement
-        assert "integrated_statement" in SYNTHESIS_TEMPLATE, \
-            "Template must use 'integrated_statement' (LLM field name)"
+        """Verify template uses clarified_query (LLM field name)."""
+        # Template instructs LLM to return clarified_query
+        assert "clarified_query" in SYNTHESIS_TEMPLATE, \
+            "Template must use 'clarified_query' (LLM field name)"
         
         assert "dimensions_specifications" in SYNTHESIS_TEMPLATE, \
             "Template must use 'dimensions_specifications' (LLM field name)"
@@ -53,18 +53,18 @@ class TestSynthesisTemplateAlignment:
     
     def test_synthesis_example_responses_validate(self):
         """Verify template uses LLM field names throughout."""
-        # Find integrated_statement occurrences in examples
-        example_pattern = r'"integrated_statement":\s*"[^"]+'
+        # Find clarified_query occurrences in examples
+        example_pattern = r'"clarified_query":\s*"[^"]+'
         example_matches = re.findall(example_pattern, SYNTHESIS_TEMPLATE)
-        
+
         # Should have at least 2 example responses
         assert len(example_matches) >= 2, \
             f"Expected at least 2 example responses, found {len(example_matches)}"
-        
+
         # Verify LLM field names are used
-        assert '"integrated_statement"' in SYNTHESIS_TEMPLATE, \
-            "Template must use 'integrated_statement' (LLM field name)"
-        
+        assert '"clarified_query"' in SYNTHESIS_TEMPLATE, \
+            "Template must use 'clarified_query' (LLM field name)"
+
         assert '"dimensions_specifications"' in SYNTHESIS_TEMPLATE, \
             "Template must use 'dimensions_specifications' (LLM field name)"
 
@@ -121,8 +121,8 @@ class TestResponseModelFieldNaming:
         model_fields = QueryRefinementResponse.model_fields
         field_names = set(model_fields.keys())
         
-        assert "integrated_statement" in field_names, \
-            "Model should expose 'integrated_statement' as canonical field"
+        assert "clarified_query" in field_names, \
+            "Model should expose 'clarified_query' as canonical field"
         
         assert "dimensions_specifications" in field_names, \
             "Model should expose 'dimensions_specifications' as canonical field"
@@ -162,7 +162,7 @@ class TestTemplateToModelIntegration:
         
         # Filter to top-level fields (not nested)
         top_level_template_fields = {
-            "integrated_statement", "dimensions_specifications",
+            "clarified_query", "dimensions_specifications",
             "search_optimized", "search_filters", "terminology",
             "metadata", "processing_log"
         }
@@ -171,7 +171,7 @@ class TestTemplateToModelIntegration:
         
         # Map LLM field names to model field names
         field_mapping = {
-            "integrated_statement": "integrated_statement",
+            "clarified_query": "clarified_query",
             "dimensions_specifications": "dimensions_specifications",
         }
         
@@ -182,10 +182,10 @@ class TestTemplateToModelIntegration:
                     f"Template field '{template_field}' should map to model field '{model_field}'"
     
     def test_llm_json_parses_with_validation_aliases(self):
-        """Test that LLM JSON with integrated_statement/dimensions_specifications parses correctly."""
+        """Test that LLM JSON with clarified_query/dimensions_specifications parses correctly."""
         # Simulate LLM response using template field names
         llm_response = {
-            "integrated_statement": "Test research statement",
+            "clarified_query": "Test research statement",
             "dimensions_specifications": {"population": "adults", "condition": "diabetes"},
             "search_optimized": {
                 "semantic": "test query",
@@ -212,11 +212,11 @@ class TestTemplateToModelIntegration:
         response = QueryRefinementResponse(**llm_response)
         
         # Verify code can access canonical names
-        assert response.integrated_statement == "Test research statement"
+        assert response.clarified_query == "Test research statement"
         assert response.dimensions_specifications == {"population": "adults", "condition": "diabetes"}
         
         # Verify the aliases worked
-        assert hasattr(response, 'integrated_statement')
+        assert hasattr(response, 'clarified_query')
         assert hasattr(response, 'dimensions_specifications')
 
 

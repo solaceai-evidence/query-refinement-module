@@ -11,13 +11,13 @@ Return exactly one valid JSON object and no other text.
 ## Output Schema
 
 {
-  "integrated_statement": "",
+  "clarified_query": "",
   "dimensions_specifications": {}
 }
 
 ---
 
-## integrated_statement
+## clarified_query
 
 One sentence integrating the original user's input with all non-null dimensions.
 
@@ -61,7 +61,7 @@ Input:
 Output:
 
 {
-  "integrated_statement": "Recent studies about venous thromboembolism prophylaxis in patients undergoing major orthopedic surgery (total hip replacement, knee replacement, hip fracture surgery), comparing thromboprophylaxis interventions including antithrombotic medications and mechanical interventions such as compression stockings within and across classes.",
+  "clarified_query": "Recent studies about venous thromboembolism prophylaxis in patients undergoing major orthopedic surgery (total hip replacement, knee replacement, hip fracture surgery), comparing thromboprophylaxis interventions including antithrombotic medications and mechanical interventions such as compression stockings within and across classes.",
   "dimensions_specifications": {
     "Population": "Patients undergoing major orthopedic surgery (total hip replacement, knee replacement, hip fracture surgery)",
     "Intervention": "Thromboprophylaxis interventions including antithrombotic medications and mechanical interventions such as compression stockings",
@@ -93,7 +93,7 @@ Input:
 Output:
 
 {
-  "integrated_statement": "What is the effect of progressive resistance training (PRT) programmes, 3 sessions per week for 12 weeks, on muscle strength in community-dwelling adults aged 55 and above with no prior resistance training in outpatient rehabilitation centres?",
+  "clarified_query": "What is the effect of progressive resistance training (PRT) programmes, 3 sessions per week for 12 weeks, on muscle strength in community-dwelling adults aged 55 and above with no prior resistance training in outpatient rehabilitation centres?",
   "dimensions_specifications": {
     "Population": "older adults aged 65 and above with no prior resistance training",
     "Intervention": "progressive resistance training (PRT) programmes, 3 sessions per week for 12 weeks",

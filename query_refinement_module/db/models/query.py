@@ -72,5 +72,15 @@ class Query(Base):
 
     session = relationship("QuerySession", backref="queries")
 
+    @property
+    def clarified_query(self) -> str | None:
+        """Alias for integrated_statement (canonical field name)."""
+        return self.integrated_statement
+
+    @clarified_query.setter
+    def clarified_query(self, value: str | None):
+        """Set integrated_statement via clarified_query alias."""
+        self.integrated_statement = value
+
     def __repr__(self):
         return f"<Query(id={self.id}, session_id={self.session_id})>"
