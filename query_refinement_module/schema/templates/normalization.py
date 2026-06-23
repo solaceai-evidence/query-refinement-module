@@ -1,4 +1,4 @@
-"""Agent A: Research Statement Normalization prompt template."""
+"""Agent A: Statement Normalization prompt template."""
 
 NORMALIZATION_TEMPLATE = """
 # USER'S INPUT NORMALIZATION

@@ -297,7 +297,7 @@ class QueryRefinementResponse(BaseModel):
     Complete synthesis output integrating all refined dimensions.
 
     Provides:
-    - Clarified research statement
+    - Clarified statement
     - Individual dimension specifications
     - Search-optimized variants
     - Filters and terminology
@@ -312,7 +312,7 @@ class QueryRefinementResponse(BaseModel):
         validate_assignment=True
     )
     clarified_query: str = Field(
-        description="Clarified research specification preserving user's voice",
+        description="Clarified statement preserving user's voice",
     )
     dimensions_specifications: Dict[str, Any] = Field(
         description="Normalized value for each dimension (dimension_id -> value)",
@@ -351,7 +351,7 @@ class ConceptEntry(BaseModel):
 
 
 class ResearchStatementResponse(BaseModel):
-    """Agent A output: clarified research statement + dimension passthrough."""
+    """Agent A output: clarified statement + dimension passthrough."""
     clarified_query: str
     dimensions_specifications: Dict[str, Any] = Field(default_factory=dict)
 

@@ -1942,7 +1942,7 @@ class QueryRefinementManager:
         model: Optional[str] = None,
         temperature: float = 0.2,
     ) -> Tuple[ResearchStatementResponse, Dict[str, Any]]:
-        """Agent A: normalize research statement from session query + dimensions."""
+        """Agent A: normalize statement from session query + dimensions."""
         aspects = [step.refinement_aspect for step in session.steps]
         assembled = self._assemble_dimensions_specifications(session) or {}
         builder = NormalizationPromptBuilder()

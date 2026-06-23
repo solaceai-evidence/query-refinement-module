@@ -117,7 +117,7 @@ Must NOT appear in the anchor Boolean query for academic bibliographic databases
 
 ### controlled_vocabulary_hints
 
-Infer which controlled vocabulary applies from the domain of the research statement.
+Infer which controlled vocabulary applies from the domain of the statement.
 Examples: "MeSH" for medicine, "PsycINFO Thesaurus" for psychology, "ERIC Thesaurus" for education,
 "ACM Computing Classification System" for computer science, "CAB Thesaurus" for agriculture,
 "UNESCO Thesaurus" for social science, "EMTREE" for pharmacology/pharmacovigilance.
@@ -137,7 +137,7 @@ If no controlled vocabulary applies or is known for the domain, return an empty 
 
 Input:
 
-## Research Statement
+## Statement
 
 "Recent studies about venous thromboembolism prophylaxis in patients undergoing major orthopedic surgery (total hip replacement, knee replacement, hip fracture surgery), comparing thromboprophylaxis interventions including antithrombotic medications and mechanical interventions such as compression stockings within and across classes."
 
@@ -221,7 +221,7 @@ Key distinctions demonstrated:
 
 ## Hard Rules
 - Output exactly one JSON object. No preamble, explanation, markdown fences, or comments.
-- Extract only what is present in the research statement. Do not invent unstated concepts or vocabulary.
+- Extract only what is present in the statement. Do not invent unstated concepts or vocabulary.
 - query_role must be one of the listed values or null.
 - domain_terms and colloquial must never appear in true_synonyms or abbreviations.
 """.strip()

@@ -90,7 +90,7 @@ class SynthesisPromptBuilder:
 
 
 class NormalizationPromptBuilder:
-    """Builds prompts for Agent A (research statement normalization)."""
+    """Builds prompts for Agent A (statement normalization)."""
 
     @staticmethod
     def get_system_prompt() -> str:
@@ -127,7 +127,7 @@ class SemanticRepresentationPromptBuilder:
 
     @staticmethod
     def get_user_prompt(statement: str) -> str:
-        return f"## Research Statement\n\n{statement}\n"
+        return f"## Statement\n\n{statement}\n"
 
 
 class SearchConstructionPromptBuilder:
@@ -146,7 +146,7 @@ class SearchConstructionPromptBuilder:
     ) -> str:
         graph_json = json.dumps(concept_graph, ensure_ascii=False, indent=2)
         parts = [
-            f"## Research Statement\n\n{statement}",
+            f"## Statement\n\n{statement}",
             f"## Concept Graph\n\n{graph_json}",
         ]
         if additional_guidance:
