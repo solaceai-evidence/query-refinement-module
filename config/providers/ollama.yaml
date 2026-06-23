@@ -19,9 +19,14 @@ LLM_PROVIDER_MAX_CONCURRENT: "1"
 LLM_PROVIDER_RATE_LIMIT_RPM: "0"
 
 # ── Context window ────────────────────────────────────────────────────────────
-# Default is 16384 tokens. Uncomment to increase for larger models:
+# Sets Ollama's num_ctx (default on the Ollama server is only 2 048).
+# If the value exceeds the model's native context, Ollama silently caps it —
+# so this is safe to leave at 16 384 for any modern model (Qwen 2.5, Llama 3,
+# Mistral, etc. all support ≥ 32 K natively). Only uncomment to go higher if
+# your framework files are very large and the model supports it.
 # LLM_CONTEXT_WINDOW: "32768"
 
 # ── Max output tokens ─────────────────────────────────────────────────────────
-# Uncomment to increase for very long refinement responses:
+# Code default is 4 096 tokens — sufficient for refinement queries + examples.
+# Uncomment only if you extend the system to produce very long structured outputs.
 # LLM_MAX_OUTPUT_TOKENS: "8192"
