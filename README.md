@@ -53,7 +53,7 @@ Or use the startup script, which checks the environment and launches the API wit
 
 Backend available at: http://localhost:8001 (interactive API docs at /docs)
 
-### Frontend
+### Frontend (TODO: NEEDS UPDATING AFTER CHANGES TO THE SYNTHESIS STAGE)
 
 ```bash
 cd frontend

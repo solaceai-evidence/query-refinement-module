@@ -14,6 +14,7 @@ Return exactly one valid JSON object and no other text.
 
 {
   "semantic_statement": "",
+  "keyword_statement": "",
   "concept_graph": {
     "canonical_concept": {
       "query_role": "topic_or_condition",
@@ -34,13 +35,35 @@ Return exactly one valid JSON object and no other text.
 
 ## semantic_statement
 
-One natural-language retrieval statement for embedding or semantic search.
-- 50-75 words.
-- Describe the core subject, phenomenon, and scope.
+A natural-language retrieval statement optimised for dense embedding or semantic search.
+- 2-3 sentences, 50-70 words total. Do not compress all content into a single long sentence.
+- Frame as an information need: what this researcher needs to find, not a topic description.
+  Information-need framing encodes closer to how academic documents describe their own content.
+- Cover all key aspects present in the research statement: primary subject, any comparison or
+  contrast, relevant population or entity, and contextual scope. Do not omit secondary aspects.
+- Use vocabulary that appears in academic and domain-specific literature for the inferred field.
+  Embedding models operate in the document representation space — document-side language reduces
+  the encoding gap between the query and relevant documents.
 - Include domain abbreviations when they function as primary retrieval signals in the field.
-- Exclude venues, authors, publication types, and years (unless the year range is intrinsic to the statement itself).
-- Do not include spelling variants or morphological forms — embedding models handle these internally.
-- One sentence only.
+- Exclude venues, authors, publication types, and years (unless a year range is intrinsic to
+  the research statement itself).
+- Do not include spelling variants or morphological forms — embedding models handle these.
+
+---
+
+## keyword_statement
+
+A natural-language keyword query optimised for BM25 or simple keyword retrieval.
+- 1 sentence or phrase, 15-35 words.
+- Include the primary concept terms and their most established synonyms or abbreviations,
+  written as space-separated terms or short phrases.
+- No Boolean operators (AND, OR, NOT, parentheses).
+- No controlled vocabulary headings (those belong in the concept_graph).
+- No metadata filters (venues, publication types, years).
+- Complement, not repeat, the semantic_statement: where semantic_statement frames the information
+  need in prose, keyword_statement enumerates the key retrieval terms.
+- Optimised for systems that tokenise on whitespace and score by term frequency
+  (Elasticsearch query_string, Google Scholar, Semantic Scholar, CORE).
 
 ---
 
@@ -122,7 +145,8 @@ Research Statement: "Recent studies about venous thromboembolism prophylaxis in 
 Output:
 
 {
-  "semantic_statement": "Studies comparing venous thromboembolism prophylaxis interventions in patients undergoing major orthopedic surgery, including total hip replacement, total knee replacement, and hip fracture surgery, with emphasis on antithrombotic medications and mechanical prophylaxis such as compression stockings and intermittent pneumatic compression devices, comparing approaches within and across intervention classes.",
+  "semantic_statement": "This research seeks studies comparing prophylaxis interventions for venous thromboembolism in patients undergoing major orthopedic surgery, including hip and knee arthroplasty and hip fracture repair. The focus is on pharmacological thromboprophylaxis (antithrombotic and anticoagulant agents) versus mechanical prophylaxis (compression stockings, intermittent pneumatic compression), comparing effectiveness within and across intervention classes.",
+  "keyword_statement": "venous thromboembolism VTE prophylaxis prevention major orthopedic surgery hip knee arthroplasty antithrombotic anticoagulant compression stockings intermittent pneumatic compression thromboprophylaxis",
   "concept_graph": {
     "venous thromboembolism": {
       "query_role": "topic_or_condition",

@@ -266,21 +266,14 @@ class SearchExpansionContext(BaseModel):
 
 class SearchExpansionInput(BaseModel):
     """Standalone input contract for the fixed-core search expansion stage."""
-    anchor_query: str = Field(description="Exact Level 0 query preserved as the retrieval anchor")
+    statement: str = Field(description="Exact Level 0 query preserved as the retrieval anchor")
     search_context: Optional[SearchExpansionContext] = None
-    advisory_dimensions: Dict[str, Any] = Field(
-        default_factory=dict,
-        description=(
-            "Non-authoritative dimension values (e.g. from synthesis) that may "
-            "help aspect detection. They do not define expansion axes."
-        ),
-    )
 
-    @field_validator("anchor_query")
+    @field_validator("statement")
     @classmethod
-    def validate_anchor_query(cls, v: str) -> str:
+    def validate_statement(cls, v: str) -> str:
         if not v or not v.strip():
-            raise ValueError("anchor_query must be non-empty")
+            raise ValueError("statement must be non-empty")
         return v.strip()
 
 
@@ -298,24 +291,24 @@ class SearchAspectAssessmentSummary(BaseModel):
 class QueryRefinementResponse(BaseModel):
     """
     Complete synthesis output integrating all refined dimensions.
-    
+
     Provides:
-    - Integrated research statement
+    - Clarified research statement
     - Individual dimension specifications
     - Search-optimized variants
     - Filters and terminology
     - Optional metadata and processing logs
-    
+
     Uses LLM template field names as canonical:
-    - integrated_statement (not synthesized_statement)
+    - clarified_query (not synthesized_statement)
     - dimensions_specifications (not refined_dimensions)
     """
     model_config = ConfigDict(
         frozen=False,
         validate_assignment=True
     )
-    integrated_statement: str = Field(
-        description="Integrated research specification preserving user's voice",
+    clarified_query: str = Field(
+        description="Clarified research specification preserving user's voice",
     )
     dimensions_specifications: Dict[str, Any] = Field(
         description="Normalized value for each dimension (dimension_id -> value)",
@@ -354,14 +347,15 @@ class ConceptEntry(BaseModel):
 
 
 class ResearchStatementResponse(BaseModel):
-    """Agent A output: normalized research statement + dimension passthrough."""
-    normalized_statement: str
+    """Agent A output: clarified research statement + dimension passthrough."""
+    clarified_query: str
     dimensions_specifications: Dict[str, Any] = Field(default_factory=dict)
 
 
 class SemanticRepresentationResponse(BaseModel):
-    """Agent B output: embedding query + structured concept graph."""
+    """Agent B output: embedding query + keyword query + structured concept graph."""
     semantic_statement: str
+    keyword_statement: str
     concept_graph: Dict[str, ConceptEntry] = Field(default_factory=dict)
 
 

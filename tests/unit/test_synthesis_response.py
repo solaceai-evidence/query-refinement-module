@@ -15,7 +15,7 @@ class TestSynthesisResponse:
     def _base_payload(self):
         """Base payload using LLM field names (as template specifies)."""
         return {
-            "integrated_statement": "diabetes in adults",
+            "clarified_query": "diabetes in adults",
             "dimensions_specifications": {"population": "adults", "condition": "diabetes"},
             "search_optimized": {
                 "semantic": "Semantic search query for diabetes in adults",
@@ -64,7 +64,7 @@ class TestSynthesisResponse:
     def _minimal_payload(self):
         """Minimal payload with only required fields using LLM field names."""
         return {
-            "integrated_statement": "diabetes in adults",
+            "clarified_query": "diabetes in adults",
             "dimensions_specifications": {"population": "adults", "condition": "diabetes"},
             "search_optimized": {
                 "semantic": "Semantic search query for diabetes in adults",
@@ -101,14 +101,14 @@ class TestSynthesisResponse:
         response = QueryRefinementResponse(**self._base_payload())
 
         # Verify Python code accesses via LLM template field names
-        assert response.integrated_statement == "diabetes in adults"
+        assert response.clarified_query == "diabetes in adults"
         assert response.dimensions_specifications == {"population": "adults", "condition": "diabetes"}
         assert response.search_filters.publication_years == ""
 
     def test_valid_response_with_all_fields(self):
         """Test creation with all optional fields."""
         payload = self._base_payload()
-        payload["integrated_statement"] = "diabetes treatment in adults"
+        payload["clarified_query"] = "diabetes treatment in adults"
         payload["dimensions_specifications"].update(
             {
                 "intervention": "metformin",
@@ -127,17 +127,17 @@ class TestSynthesisResponse:
         response = QueryRefinementResponse(**payload)
 
         # Access via LLM template field names
-        assert response.integrated_statement == "diabetes treatment in adults"
+        assert response.clarified_query == "diabetes treatment in adults"
         assert response.search_filters.publication_years == "2018-2023"
         assert response.search_filters.venues == ["Diabetes Care", "JAMA"]
         assert len(response.search_filters.authors) == 2
         assert response.search_filters.fields_of_study == ["Medicine", "Endocrinology"]
 
-    def test_missing_required_field_integrated_statement(self):
-        """Test validation fails without integrated_statement (LLM field name)."""
+    def test_missing_required_field_clarified_query(self):
+        """Test validation fails without clarified_query (LLM field name)."""
         with pytest.raises(ValidationError) as exc_info:
             payload = self._base_payload()
-            payload.pop("integrated_statement")
+            payload.pop("clarified_query")
             QueryRefinementResponse(**payload)
         
         # Validation should fail - check that at least one error occurred
@@ -194,8 +194,8 @@ class TestSynthesisResponse:
         response = QueryRefinementResponse(**self._base_payload())
 
         # Should allow updates (frozen=False in Config)
-        response.integrated_statement = "updated"
-        assert response.integrated_statement == "updated"
+        response.clarified_query = "updated"
+        assert response.clarified_query == "updated"
     
     def test_optional_fields_can_be_omitted(self):
         """Test that optional fields (grey_literature, primary_terms, domain_specific, metadata, processing_log) can be omitted."""
@@ -203,7 +203,7 @@ class TestSynthesisResponse:
         response = QueryRefinementResponse(**payload)
         
         # Verify required fields are present
-        assert response.integrated_statement == "diabetes in adults"
+        assert response.clarified_query == "diabetes in adults"
         assert response.dimensions_specifications == {"population": "adults", "condition": "diabetes"}
         assert response.search_optimized.semantic
         assert response.search_optimized.keyword

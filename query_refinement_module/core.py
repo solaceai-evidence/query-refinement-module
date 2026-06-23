@@ -1805,7 +1805,7 @@ class QueryRefinementManager:
             level=0,
             label="Exact clarified question",
             strategy=ExpansionStrategy.ANCHOR,
-            search_query=search_input.anchor_query,
+            search_query=search_input.statement,
             relaxed_aspects={},
             rationale="Exact clarified query preserved as the review anchor.",
         )
@@ -1817,8 +1817,7 @@ class QueryRefinementManager:
         logger.info(
             "Search expansion generation started",
             extra={
-                "anchor_query_length": len(search_input.anchor_query),
-                "advisory_dimension_count": len(search_input.advisory_dimensions),
+                "statement_length": len(search_input.statement),
                 "model": model or "(default)",
                 "temperature": temperature,
                 "max_tokens": max_tokens,
@@ -1827,7 +1826,7 @@ class QueryRefinementManager:
         self.trace_emitter.emit(
             "search_expansion_start",
             metadata={
-                "advisory_dimension_count": len(search_input.advisory_dimensions),
+                "advisory_dimension_count": len(search_input.dimensions_specifications),
                 "model": model or "(default)",
                 "temperature": temperature,
                 "max_tokens": max_tokens,
@@ -1968,16 +1967,16 @@ class QueryRefinementManager:
 
     async def _run_semantic_representation(
         self,
-        research_statement: str,
+        statement: str,
         *,
         model: Optional[str] = None,
         temperature: float = 0.2,
     ) -> Tuple[SemanticRepresentationResponse, Dict[str, Any]]:
-        """Agent B: produce semantic_statement + concept_graph from research_statement."""
+        """Agent B: produce semantic_statement + keyword_statement + concept_graph from statement."""
         builder = SemanticRepresentationPromptBuilder()
         completion = await self.llm_provider.complete_async(
             system_prompt=builder.get_system_prompt(),
-            user_prompt=builder.get_user_prompt(research_statement),
+            user_prompt=builder.get_user_prompt(statement),
             model=model,
             temperature=temperature,
             max_tokens=2048,
@@ -1992,7 +1991,7 @@ class QueryRefinementManager:
 
     async def _run_search_construction(
         self,
-        research_statement: str,
+        statement: str,
         concept_graph: Dict[str, Any],
         *,
         model: Optional[str] = None,
@@ -2000,7 +1999,7 @@ class QueryRefinementManager:
         max_tokens: Optional[int] = None,
         additional_guidance: Optional[str] = None,
     ) -> Tuple[SearchConstructionResponse, Dict[str, Any]]:
-        """Agent C: build anchor keyword search + filters from research_statement and concept_graph."""
+        """Agent C: build anchor keyword search + filters from statement and concept_graph."""
         builder = SearchConstructionPromptBuilder()
         concept_graph_dict = {
             k: (v.model_dump() if hasattr(v, "model_dump") else v)
@@ -2009,7 +2008,7 @@ class QueryRefinementManager:
         completion = await self.llm_provider.complete_async(
             system_prompt=builder.get_system_prompt(),
             user_prompt=builder.get_user_prompt(
-                research_statement=research_statement,
+                statement=statement,
                 concept_graph=concept_graph_dict,
                 additional_guidance=additional_guidance or "",
             ),
@@ -2179,12 +2178,12 @@ class QueryRefinementManager:
                 temperature=resolved_temperature,
             )
             sem, meta_b = await self._run_semantic_representation(
-                norm.normalized_statement,
+                norm.clarified_query,
                 model=model,
                 temperature=resolved_temperature,
             )
-            construction, meta_d = await self._run_search_construction(
-                research_statement=norm.normalized_statement,
+            construction, meta_c = await self._run_search_construction(
+                statement=norm.clarified_query,
                 concept_graph=sem.concept_graph,
                 model=model,
                 temperature=resolved_temperature,
@@ -2192,10 +2191,10 @@ class QueryRefinementManager:
                 additional_guidance=additional_guidance,
             )
             aggregated_metadata = self._accumulate_metadata(
-                self._accumulate_metadata(meta_a, meta_b), meta_d
+                self._accumulate_metadata(meta_a, meta_b), meta_c
             )
             synthesis_response = QueryRefinementResponse(
-                integrated_statement=norm.normalized_statement,
+                clarified_query=norm.clarified_query,
                 dimensions_specifications=norm.dimensions_specifications,
                 search_optimized=SearchOptimized(
                     semantic=sem.semantic_statement,
@@ -2219,7 +2218,7 @@ class QueryRefinementManager:
             metadata={
                 "clarification_count": len(clarifications),
                 "baseline_count": len(baseline_summaries),
-                "response_length": len(synthesis_response.integrated_statement),
+                "response_length": len(synthesis_response.clarified_query),
                 "structured_response": True,
                 "duration_ms": aggregated_metadata.get("duration_ms", 0),
                 "prompt_tokens": aggregated_metadata.get("prompt_tokens", 0),
@@ -2242,7 +2241,7 @@ class QueryRefinementManager:
                 "used_llm": True,
                 "clarification_count": len(clarifications),
                 "baseline_count": len(baseline_summaries),
-                "response_length": len(synthesis_response.integrated_statement),
+                "response_length": len(synthesis_response.clarified_query),
                 "structured_response": True,
                 "synthesis_duration_ms": aggregated_metadata.get("duration_ms", 0),
                 "prompt_tokens": aggregated_metadata.get("prompt_tokens", 0),
@@ -2255,7 +2254,8 @@ class QueryRefinementManager:
         )
 
         result_dict = {
-            "integrated_statement": synthesis_response.integrated_statement,
+            "clarified_query": synthesis_response.clarified_query,
+            "keyword_statement": sem.keyword_statement,
             "used_llm": True,
             "clarifications": clarifications,
             "baseline_summaries": baseline_summaries,

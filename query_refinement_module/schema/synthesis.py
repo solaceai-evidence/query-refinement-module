@@ -126,8 +126,8 @@ class SemanticRepresentationPromptBuilder:
         return SEMANTIC_REPRESENTATION_TEMPLATE
 
     @staticmethod
-    def get_user_prompt(research_statement: str) -> str:
-        return f"## Research Statement\n\n{research_statement}\n"
+    def get_user_prompt(statement: str) -> str:
+        return f"## Research Statement\n\n{statement}\n"
 
 
 class SearchConstructionPromptBuilder:
@@ -140,13 +140,13 @@ class SearchConstructionPromptBuilder:
 
     @staticmethod
     def get_user_prompt(
-        research_statement: str,
+        statement: str,
         concept_graph: Dict[str, Any],
         additional_guidance: str = "",
     ) -> str:
         graph_json = json.dumps(concept_graph, ensure_ascii=False, indent=2)
         parts = [
-            f"## Research Statement\n\n{research_statement}",
+            f"## Research Statement\n\n{statement}",
             f"## Concept Graph\n\n{graph_json}",
         ]
         if additional_guidance:

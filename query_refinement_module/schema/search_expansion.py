@@ -56,15 +56,10 @@ class SearchExpansionPromptBuilder:
     def get_assessment_user_prompt(search_input: SearchExpansionInput) -> str:
         sections = [
             "## Anchor Query (source of truth)\n\n"
-            f"{search_input.anchor_query}",
+            f"{search_input.statement}",
             "## Supporting Search Context\n\n"
             f"{json.dumps(_support_context(search_input), ensure_ascii=False, indent=2)}",
         ]
-        if search_input.advisory_dimensions:
-            sections.append(
-                "## Advisory Dimension Values (non-authoritative hints only)\n\n"
-                f"{json.dumps(_to_jsonable(search_input.advisory_dimensions), ensure_ascii=False, indent=2)}"
-            )
         sections.append(
             "Return one assessment per fixed aspect. Detect only what is "
             "actually present in the anchor query."
@@ -94,7 +89,7 @@ class SearchExpansionPromptBuilder:
         ]
         return (
             "## Level 0 Anchor (already established; do not regenerate)\n\n"
-            f"{search_input.anchor_query}\n\n"
+            f"{search_input.statement}\n\n"
             "## Allowed Aspects For Search-Only Broadening\n\n"
             f"{json.dumps(allowed, ensure_ascii=False, indent=2)}\n\n"
             "## Supporting Search Context\n\n"

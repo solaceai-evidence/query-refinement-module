@@ -451,8 +451,8 @@ async def test_synthesis_uses_three_agent_pipeline():
         publication_years="", venues=[], authors=[], publication_types=[], fields_of_study=[]
     )
     responses = [
-        ResearchStatementResponse(normalized_statement="Refined question", dimensions_specifications={}),
-        SemanticRepresentationResponse(semantic_statement="semantic query", concept_graph={}),
+        ResearchStatementResponse(clarified_query="Refined question", dimensions_specifications={}),
+        SemanticRepresentationResponse(semantic_statement="semantic query", keyword_statement="semantic query keywords", concept_graph={}),
         SearchConstructionResponse(keyword=_keyword, grey_literature=None, search_filters=_filters),
     ]
     manager = QueryRefinementManager(
@@ -463,7 +463,7 @@ async def test_synthesis_uses_three_agent_pipeline():
 
     result = await manager.synthesize_refined_query(session, model="anthropic/claude-sonnet-4-6")
 
-    assert result["integrated_statement"] == "Refined question"
+    assert result["clarified_query"] == "Refined question"
     calls = manager.llm_provider.calls
     assert len(calls) == 3
     assert calls[0]["response_format"] is ResearchStatementResponse
@@ -482,8 +482,8 @@ async def test_synthesis_pipeline_with_bedrock_model():
         publication_years="", venues=[], authors=[], publication_types=[], fields_of_study=[]
     )
     responses = [
-        ResearchStatementResponse(normalized_statement="Refined question", dimensions_specifications={}),
-        SemanticRepresentationResponse(semantic_statement="semantic query", concept_graph={}),
+        ResearchStatementResponse(clarified_query="Refined question", dimensions_specifications={}),
+        SemanticRepresentationResponse(semantic_statement="semantic query", keyword_statement="semantic query keywords", concept_graph={}),
         SearchConstructionResponse(keyword=_keyword, grey_literature=None, search_filters=_filters),
     ]
     manager = QueryRefinementManager(
@@ -509,8 +509,8 @@ async def test_synthesis_pipeline_uses_provider_default_model():
         publication_years="", venues=[], authors=[], publication_types=[], fields_of_study=[]
     )
     responses = [
-        ResearchStatementResponse(normalized_statement="Refined question", dimensions_specifications={}),
-        SemanticRepresentationResponse(semantic_statement="semantic query", concept_graph={}),
+        ResearchStatementResponse(clarified_query="Refined question", dimensions_specifications={}),
+        SemanticRepresentationResponse(semantic_statement="semantic query", keyword_statement="semantic query keywords", concept_graph={}),
         SearchConstructionResponse(keyword=_keyword, grey_literature=None, search_filters=_filters),
     ]
     provider = StubLLMProvider(responses)

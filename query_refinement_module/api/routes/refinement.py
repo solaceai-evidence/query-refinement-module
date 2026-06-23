@@ -227,6 +227,136 @@ class SynthesizeQueryRequest(BaseModel):
     query_id: int = Field(..., gt=0, description="ID of the query to synthesize")
 
 
+# ---------------------------------------------------------------------------
+# Individual agent request / response models
+# ---------------------------------------------------------------------------
+
+class NormalizeQueryRequest(BaseModel):
+    """Agent A — Normalization request. Requires a completed refinement session."""
+    query_id: int = Field(..., gt=0, description="ID of a session ready for synthesis")
+
+
+class NormalizeQueryResponse(BaseModel):
+    """
+    Agent A — Normalization response.
+
+    Returns the clean, human-readable research statement without running
+    Agents B or C. The session is NOT marked as synthesized — a subsequent
+    call to POST /synthesize remains valid.
+    """
+    query_id: int
+    clarified_query: str = Field(
+        ...,
+        description=(
+            "Clarified research statement integrating all refined dimension values. "
+            "Human-readable; suitable for display, QA forwarding, or as input to POST /represent."
+        ),
+    )
+    dimensions_specifications: Dict[str, Any] = Field(
+        default_factory=dict,
+        description="Per-dimension id → refined value, assembled deterministically from session state.",
+    )
+    used_llm: bool = Field(True, description="Always True; Agent A was invoked.")
+
+
+class RepresentQueryRequest(BaseModel):
+    """Agent B — Semantic Representation request. Accepts Agent A output directly."""
+    statement: str = Field(
+        ...,
+        min_length=3,
+        description="Clarified research statement from Agent A (POST /normalize → clarified_query).",
+    )
+    model: Optional[str] = Field(None, description="Optional LLM model override")
+
+    @field_validator("statement")
+    @classmethod
+    def _not_empty(cls, v: str) -> str:
+        if not v or not v.strip():
+            raise ValueError("statement cannot be empty")
+        return v.strip()
+
+
+class RepresentQueryResponse(BaseModel):
+    """
+    Agent B — Semantic Representation response.
+
+    Produces two filter-free query strings and a structured concept graph.
+    Both query strings share the same search_filters produced by Agent C (POST /construct).
+    """
+    semantic_statement: str = Field(
+        ...,
+        description=(
+            "Dense embedding query (2-3 sentences, 50-70 words) for vector / semantic search. "
+            "Information-need framing using document-side vocabulary."
+        ),
+    )
+    keyword_statement: str = Field(
+        ...,
+        description=(
+            "Natural-language keyword query (15-35 words) for BM25 / simple keyword search. "
+            "Key concepts and primary synonyms; no Boolean operators; no metadata filters."
+        ),
+    )
+    concept_graph: Dict[str, Any] = Field(
+        default_factory=dict,
+        description=(
+            "Per-concept retrieval metadata. Pass as search_context.concept_graph to "
+            "POST /construct and POST /expand."
+        ),
+    )
+    used_llm: bool = Field(True, description="Always True; Agent B was invoked.")
+
+
+class ConstructSearchRequest(BaseModel):
+    """Agent C — Search Construction request. Accepts Agents A and B output directly."""
+    statement: str = Field(
+        ...,
+        min_length=3,
+        description="Clarified research statement from Agent A (POST /normalize → clarified_query).",
+    )
+    concept_graph: Dict[str, Any] = Field(
+        default_factory=dict,
+        description="Concept graph from Agent B (POST /represent → concept_graph).",
+    )
+    model: Optional[str] = Field(None, description="Optional LLM model override")
+
+    @field_validator("statement")
+    @classmethod
+    def _not_empty(cls, v: str) -> str:
+        if not v or not v.strip():
+            raise ValueError("statement cannot be empty")
+        return v.strip()
+
+
+class ConstructSearchResponse(BaseModel):
+    """
+    Agent C — Search Construction response.
+
+    Produces Boolean keyword query constructions, grey literature terms,
+    and metadata search filters. Filters apply to both the semantic_statement
+    and keyword_statement from Agent B.
+    """
+    keyword: Dict[str, Any] = Field(
+        ...,
+        description=(
+            "Keyword query artifacts: structured (Boolean), phrases, terms (required/optional/excluded), "
+            "combined_blocks (primary RAG artifact — AND-blocks with free_text and controlled_vocabulary)."
+        ),
+    )
+    grey_literature: Optional[Dict[str, Any]] = Field(
+        None,
+        description="Colloquial and organizational terms for non-academic / grey literature search.",
+    )
+    search_filters: Dict[str, Any] = Field(
+        ...,
+        description=(
+            "Metadata narrowing filters: publication_years, venues, authors, publication_types, "
+            "fields_of_study. Apply to both semantic and keyword retrieval."
+        ),
+    )
+    used_llm: bool = Field(True, description="Always True; Agent C was invoked.")
+
+
 class SynthesizeQueryResponse(BaseModel):
     """
     Full output of the A→B→C synthesis pipeline.
@@ -234,8 +364,8 @@ class SynthesizeQueryResponse(BaseModel):
     Pipeline stages and field mapping
     ----------------------------------
     Agent A — Normalization
-      integrated_statement
-          Normalized research statement.
+      clarified_query
+          Clarified research statement.
       structured_output["dimensions_specifications"]
           Per-dimension id → value map.
 
@@ -271,16 +401,16 @@ class SynthesizeQueryResponse(BaseModel):
           Metadata filters: publication_years, venues, publication_types, fields_of_study.
 
     Agent D — Search Expansion (separate endpoint)
-      Call POST /search-expand with:
-        anchor_query = integrated_statement
+      Call POST /expand with:
+        statement = clarified_query
         search_context.concept_graph = structured_output["concept_graph"]
     """
     query_id: int = Field(..., description="Database ID of the synthesized query")
-    integrated_statement: str = Field(
+    clarified_query: str = Field(
         ...,
         description=(
-            "Agent A output. Normalized research statement integrating all user-provided "
-            "dimension values. Pass as anchor_query to /search-expand for Agent D broadening levels."
+            "Agent A output. Clarified research statement integrating all user-provided "
+            "dimension values. Pass as statement to /expand for Agent D broadening levels."
         ),
     )
     used_llm: bool = Field(..., description="Always True; LLM was invoked for synthesis")
@@ -301,45 +431,37 @@ class SearchExpandRequest(BaseModel):
     Generates up to 3 broadening levels (Levels 1-3) beyond the anchor query (Level 0).
 
     Typical flow after POST /synthesize:
-      anchor_query = synthesize_response.integrated_statement
+      statement = synthesize_response.clarified_query
       search_context.concept_graph = synthesize_response.structured_output["concept_graph"]
 
     Expansion levels produced:
-      Level 0  anchor                   (deterministic — the anchor_query unchanged)
+      Level 0  anchor                   (deterministic — the statement unchanged)
       Level 1  lexical                  (morphological + spelling variants)
       Level 2  conceptual_single_aspect (one concept class broadened via domain_terms)
       Level 3  conceptual_multi_aspect  (two or more concept classes broadened)
     """
-    anchor_query: str = Field(
+    statement: str = Field(
         ...,
         description=(
             "Exact Level 0 query to preserve unchanged. "
-            "Typically: POST /synthesize → integrated_statement, or "
-            "keyword.structured for keyword-mode connectors."
-        ),
-    )
-    advisory_dimensions: Dict[str, Any] = Field(
-        default_factory=dict,
-        description=(
-            "Optional non-authoritative dimension values to assist concept detection. "
-            "Use POST /synthesize → structured_output['dimensions_specifications']."
+            "Use POST /normalize → clarified_query or POST /synthesize → clarified_query."
         ),
     )
     search_context: Optional[SearchExpansionContext] = Field(
         None,
         description=(
             "Optional retrieval context. Set search_context.concept_graph to "
-            "POST /synthesize → structured_output['concept_graph'] for best results. "
+            "POST /represent → concept_graph (or POST /synthesize → structured_output['concept_graph']) for best results. "
             "Provides lexical broadening candidates and vocabulary hints for Agent D."
         ),
     )
     model: Optional[str] = Field(None, description="Optional LLM model override")
 
-    @field_validator("anchor_query")
+    @field_validator("statement")
     @classmethod
-    def validate_anchor_query(cls, v: str) -> str:
+    def validate_statement(cls, v: str) -> str:
         if not v or not v.strip():
-            raise ValueError("anchor_query cannot be empty or just whitespace")
+            raise ValueError("statement cannot be empty or just whitespace")
         return v.strip()
 
 
@@ -2018,26 +2140,27 @@ async def _run_synthesis(
             detail=f"Failed to synthesize query: {str(_e)}",
         )
 
-    integrated_statement = synthesis_result.get("integrated_statement", "")
+    clarified_query = synthesis_result.get("clarified_query", "")
 
     # Build structured output
     structured_output = None
     if synthesis_result.get("dimensions_specifications"):
         structured_output = {
             "dimensions_specifications": synthesis_result.get("dimensions_specifications"),
+            "keyword_statement": synthesis_result.get("keyword_statement"),
             "search_optimized": synthesis_result.get("search_optimized"),
             "search_filters": synthesis_result.get("search_filters"),
             "terminology": synthesis_result.get("terminology"),
             "concept_graph": synthesis_result.get("concept_graph"),
         }
-    elif integrated_statement and (
-        integrated_statement.startswith("{") or integrated_statement.startswith("`")
+    elif clarified_query and (
+        clarified_query.startswith("{") or clarified_query.startswith("`")
     ):
         try:
             import json as _json
             import re as _re
 
-            json_str = integrated_statement
+            json_str = clarified_query
             if json_str.startswith("`"):
                 lines = json_str.split("\n")
                 if lines[0].startswith("`"):
@@ -2051,9 +2174,9 @@ async def _run_synthesis(
                     "JSON response appears truncated (doesn't end with '}'), likely hit max_tokens limit",
                     extra={"json_length": len(json_str), "request_id": request_id},
                 )
-                _match = _re.search(r'"integrated_statement"\s*:\s*"([^"]+)"', json_str)
+                _match = _re.search(r'"clarified_query"\s*:\s*"([^"]+)"', json_str)
                 if _match:
-                    integrated_statement = _match.group(1)
+                    clarified_query = _match.group(1)
                 raise ValueError("JSON response was truncated, increase max_tokens")
 
             _parsed = _json.loads(json_str)
@@ -2064,30 +2187,30 @@ async def _run_synthesis(
                 "terminology": _parsed.get("terminology"),
                 "concept_graph": _parsed.get("concept_graph"),
             }
-            if _parsed.get("integrated_statement"):
-                integrated_statement = _parsed["integrated_statement"]
+            if _parsed.get("clarified_query"):
+                clarified_query = _parsed["clarified_query"]
             logger.info(
-                "Successfully parsed JSON from integrated_statement string",
+                "Successfully parsed JSON from clarified_query string",
                 extra={"has_dimensions": "dimensions" in _parsed},
             )
         except (_json.JSONDecodeError, ValueError) as _e:
             logger.error(
-                f"Failed to parse JSON from integrated_statement: {_e}",
+                f"Failed to parse JSON from clarified_query: {_e}",
                 extra={"error_type": type(_e).__name__},
             )
 
-    if not integrated_statement or not integrated_statement.strip():
+    if not clarified_query or not clarified_query.strip():
         raise HTTPException(
             status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
             detail="Synthesis produced empty result. Please try again.",
         )
 
     logger.info(
-        "Integrated statement before database update",
+        "Clarified query before database update",
         extra={
             "request_id": request_id,
-            "integrated_statement_preview": integrated_statement[:200],
-            "integrated_statement_length": len(integrated_statement),
+            "clarified_query_preview": clarified_query[:200],
+            "clarified_query_length": len(clarified_query),
         },
     )
 
@@ -2100,7 +2223,7 @@ async def _run_synthesis(
         db,
         query_id,
         {
-            "integrated_statement": integrated_statement,
+            "clarified_query": clarified_query,
             "dimensions_specifications": (
                 structured_output.get("dimensions_specifications")
                 if structured_output
@@ -2162,14 +2285,14 @@ async def _run_synthesis(
             "request_id": request_id,
             "query_id": query_id,
             "used_llm": synthesis_result.get("used_llm", False),
-            "integrated_statement_length": len(integrated_statement),
+            "clarified_query_length": len(clarified_query),
             "has_structured_output": structured_output is not None,
         },
     )
 
     return SynthesizeQueryResponse(
         query_id=query_id,
-        integrated_statement=integrated_statement,
+        clarified_query=clarified_query,
         used_llm=synthesis_result.get("used_llm", False),
         structured_output=structured_output,
     )
@@ -2183,8 +2306,8 @@ def _dimension_value_is_accepted(value: Any) -> bool:
     return True
 
 
-@router.post("/search-expand", response_model=SearchExpandResponse)
-async def search_expand_query(
+@router.post("/expand", response_model=SearchExpandResponse)
+async def expand_search(
     request: SearchExpandRequest,
     manager: QueryRefinementManager = Depends(get_refinement_manager),
     current_user = Depends(get_current_user_or_integration),
@@ -2192,17 +2315,18 @@ async def search_expand_query(
     """
     Agent D — Search Expansion. Generate progressive broadening levels beyond the anchor query.
 
-    Call this after POST /synthesize to obtain a recall ladder for fallback retrieval.
+    Call this after POST /normalize, POST /represent, POST /construct, or POST /synthesize
+    to obtain a recall ladder for fallback retrieval.
 
     Input:
-      anchor_query                  Exact Level 0 query (unchanged). Use POST /synthesize →
-                                    integrated_statement, or keyword.structured for keyword connectors.
-      search_context.concept_graph  Agent B concept graph from POST /synthesize →
-                                    structured_output["concept_graph"]. Provides broadening candidates.
-      advisory_dimensions           Optional dimension values from structured_output["dimensions_specifications"].
+      statement                     Exact Level 0 query (unchanged). Use POST /normalize →
+                                    clarified_query or POST /synthesize → clarified_query.
+      search_context.concept_graph  Agent B concept graph from POST /represent →
+                                    concept_graph (or POST /synthesize →
+                                    structured_output["concept_graph"]). Provides broadening candidates.
 
     Output levels:
-      Level 0  anchor                   Deterministic — the anchor_query unchanged, relaxed_aspects={}.
+      Level 0  anchor                   Deterministic — the statement unchanged, relaxed_aspects={}.
       Level 1  lexical                  Spelling variants, abbreviations, morphological forms only.
                                         strategy=lexical, relaxed_aspects={}.
       Level 2  conceptual_single_aspect One SAFE aspect broadened (geography first, then setting,
@@ -2229,16 +2353,14 @@ async def search_expand_query(
             "request_id": request_id_val,
             "user_id": current_user.id,
             "model_override": request.model,
-            "advisory_dimension_count": len(request.advisory_dimensions),
-            "anchor_query_length": len(request.anchor_query),
+            "statement_length": len(request.statement),
         },
     )
 
     try:
         levels, metadata = await manager.generate_search_expansion_levels(
             search_input=SearchExpansionInput(
-                anchor_query=request.anchor_query,
-                advisory_dimensions=request.advisory_dimensions,
+                statement=request.statement,
                 search_context=request.search_context,
             ),
             model=request.model,
@@ -2272,6 +2394,186 @@ async def search_expand_query(
     )
 
 
+# ==========================================
+# Individual Agent Endpoints
+# ==========================================
+
+@router.post("/normalize", response_model=NormalizeQueryResponse)
+async def normalize_query(
+    request: NormalizeQueryRequest,
+    manager: QueryRefinementManager = Depends(get_refinement_manager),
+    current_user = Depends(get_current_user_or_integration),
+    db: Session = Depends(get_db),
+    session_manager: SessionManager = Depends(get_session_manager),
+):
+    """
+    Agent A — Normalization. Returns the clarified research statement only.
+
+    Use when you need a clean, human-readable version of the refined query without
+    running Agents B or C. The session is NOT marked as synthesized — a subsequent
+    call to POST /synthesize remains valid.
+
+    Pass the returned clarified_query to POST /represent (Agent B) or directly
+    to POST /expand (Agent D) as needed.
+    """
+    request_id_val = generate_request_id()
+    set_request_id(request_id_val)
+
+    db_query = get_query(db, request.query_id)
+    if not db_query:
+        raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Query not found")
+    if db_query.session.user_id != current_user.id:
+        raise HTTPException(status_code=status.HTTP_403_FORBIDDEN, detail="Access denied")
+
+    framework_name = db_query.session.framework_name
+    if not framework_name:
+        raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail="Framework name not found for session")
+
+    framework = get_framework(framework_name)
+
+    try:
+        async with session_manager.session_lock(request.query_id):
+            session = session_manager.load_session(request.query_id, framework)
+            if not session:
+                session = await asyncio.to_thread(
+                    manager.initialize_sequential,
+                    db_query.original_query,
+                    framework,
+                )
+                db_steps = get_query_refinement_steps(db, request.query_id)
+                _restore_session_from_db_state(session, db_steps)
+
+            if not _is_session_ready_for_synthesis(session):
+                raise HTTPException(
+                    status_code=status.HTTP_409_CONFLICT,
+                    detail="Query is not ready for normalization. Complete all dimensions or use /submit first.",
+                )
+
+            norm, _ = await manager._run_normalization(session)
+    except RuntimeError:
+        raise HTTPException(
+            status_code=status.HTTP_503_SERVICE_UNAVAILABLE,
+            detail="Session is temporarily locked by another request. Please retry in a moment.",
+        )
+
+    return NormalizeQueryResponse(
+        query_id=request.query_id,
+        clarified_query=norm.clarified_query,
+        dimensions_specifications=norm.dimensions_specifications,
+        used_llm=True,
+    )
+
+
+@router.post("/represent", response_model=RepresentQueryResponse)
+async def represent_query(
+    request: RepresentQueryRequest,
+    manager: QueryRefinementManager = Depends(get_refinement_manager),
+    current_user = Depends(get_current_user_or_integration),
+):
+    """
+    Agent B — Semantic Representation. Produces embedding and keyword query strings
+    plus a structured concept graph from a clarified research statement.
+
+    Input: clarified_query from POST /normalize (or POST /synthesize → clarified_query).
+    Output: semantic_statement, keyword_statement, concept_graph.
+
+    Pass concept_graph to POST /construct (Agent C) and POST /expand (Agent D).
+    No session required — accepts raw text.
+    """
+    request_id_val = generate_request_id()
+    set_request_id(request_id_val)
+
+    logger.info(
+        "API: Running Agent B (Semantic Representation)",
+        extra={
+            "request_id": request_id_val,
+            "user_id": current_user.id,
+            "statement_length": len(request.statement),
+        },
+    )
+
+    try:
+        sem, _ = await manager._run_semantic_representation(
+            request.statement,
+            model=request.model,
+        )
+    except Exception as exc:
+        logger.exception("API: Agent B failed", extra={"request_id": request_id_val})
+        raise HTTPException(
+            status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
+            detail=f"Semantic representation failed: {exc}",
+        )
+
+    concept_graph_dict = {
+        k: (v.model_dump() if hasattr(v, "model_dump") else v)
+        for k, v in sem.concept_graph.items()
+    }
+    return RepresentQueryResponse(
+        semantic_statement=sem.semantic_statement,
+        keyword_statement=sem.keyword_statement,
+        concept_graph=concept_graph_dict,
+        used_llm=True,
+    )
+
+
+@router.post("/construct", response_model=ConstructSearchResponse)
+async def construct_search(
+    request: ConstructSearchRequest,
+    manager: QueryRefinementManager = Depends(get_refinement_manager),
+    current_user = Depends(get_current_user_or_integration),
+):
+    """
+    Agent C — Search Construction. Builds Boolean query constructions, grey literature
+    terms, and metadata search filters from a clarified statement and concept graph.
+
+    Input: clarified_query from POST /normalize, concept_graph from POST /represent.
+    Output: keyword (Boolean query + combined_blocks), grey_literature, search_filters.
+
+    search_filters applies to both the semantic_statement and keyword_statement from Agent B.
+    No session required — accepts raw text and concept graph.
+    """
+    request_id_val = generate_request_id()
+    set_request_id(request_id_val)
+
+    logger.info(
+        "API: Running Agent C (Search Construction)",
+        extra={
+            "request_id": request_id_val,
+            "user_id": current_user.id,
+            "statement_length": len(request.statement),
+            "concept_graph_size": len(request.concept_graph),
+        },
+    )
+
+    try:
+        construction, _ = await manager._run_search_construction(
+            statement=request.statement,
+            concept_graph=request.concept_graph,
+            model=request.model,
+        )
+    except Exception as exc:
+        logger.exception("API: Agent C failed", extra={"request_id": request_id_val})
+        raise HTTPException(
+            status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
+            detail=f"Search construction failed: {exc}",
+        )
+
+    keyword_dict = construction.keyword.model_dump() if hasattr(construction.keyword, "model_dump") else construction.keyword
+    grey_dict = (
+        construction.grey_literature.model_dump()
+        if construction.grey_literature and hasattr(construction.grey_literature, "model_dump")
+        else construction.grey_literature
+    )
+    filters_dict = construction.search_filters.model_dump() if hasattr(construction.search_filters, "model_dump") else construction.search_filters
+
+    return ConstructSearchResponse(
+        keyword=keyword_dict,
+        grey_literature=grey_dict,
+        search_filters=filters_dict,
+        used_llm=True,
+    )
+
+
 @router.post("/synthesize", response_model=SynthesizeQueryResponse)
 async def synthesize_refined_query(
     request: SynthesizeQueryRequest,
@@ -2298,11 +2600,11 @@ async def synthesize_refined_query(
       structured_output["search_optimized"]["keyword"]["structured"]
           Boolean query for keyword / sparse search.
       structured_output["concept_graph"]
-          Agent B concept graph. Pass as search_context.concept_graph to /search-expand.
+          Agent B concept graph. Pass as search_context.concept_graph to POST /expand.
       structured_output["search_filters"]
           Metadata filters ready for database filter parameters.
 
-    Agent D (search expansion) is a separate step — call POST /search-expand after this.
+    Agent D (search expansion) is a separate step — call POST /expand after this.
     Session must be ready for synthesis: all dimensions answered or /submit issued.
     """
     from query_refinement_module.tracing import generate_request_id, set_request_id

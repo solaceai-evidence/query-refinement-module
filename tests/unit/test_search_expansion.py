@@ -42,12 +42,7 @@ ANCHOR = "Studies of heatwave impacts on pregnant people in London."
 
 def _search_input() -> SearchExpansionInput:
     return SearchExpansionInput(
-        anchor_query=ANCHOR,
-        advisory_dimensions={
-            "population": "pregnant people",
-            "condition": "heatwave impacts",
-            "geography": "London",
-        },
+        statement=ANCHOR,
         search_context=SearchExpansionContext(
             filters=SearchFilters(fields_of_study=["Medicine"]).model_dump(exclude_none=True),
             synonyms={"heatwave": ["extreme heat"]},
@@ -127,7 +122,6 @@ def test_assessment_user_prompt_includes_anchor_and_advisory_context():
     assert ANCHOR in prompt
     assert "pregnant people" in prompt
     assert "extreme heat" in prompt
-    assert "non-authoritative" in prompt
 
 
 def test_expansion_user_prompt_includes_anchor_and_allowed_aspects_only():

@@ -140,11 +140,10 @@ def _accepted_dimensions_from_session(session, fallback_dimensions: Optional[Dic
 
 def _build_search_expansion_input_from_synthesis(
     synthesis: Dict[str, Any],
-    advisory_dimensions: Dict[str, Any],
 ) -> SearchExpansionInput:
     missing = [
         field_name
-        for field_name in ("integrated_statement", "search_filters", "terminology")
+        for field_name in ("clarified_query", "search_filters", "terminology")
         if synthesis.get(field_name) is None or synthesis.get(field_name) == ""
     ]
     if missing:
@@ -154,8 +153,7 @@ def _build_search_expansion_input_from_synthesis(
     terminology = Terminology.model_validate(synthesis["terminology"])
 
     return SearchExpansionInput(
-        anchor_query=synthesis["integrated_statement"],
-        advisory_dimensions=advisory_dimensions,
+        statement=synthesis["clarified_query"],
         search_context=SearchExpansionContext(
             filters=search_filters.model_dump(exclude_none=True),
             synonyms=terminology.synonyms or {},
@@ -386,15 +384,15 @@ async def run_cli(manager: QueryRefinementManager, framework_name: str, query: s
             except Exception as exc:
                 print(f"Error: {exc}")
             else:
-                integrated_statement = synthesis.get("integrated_statement", "").strip()
-                if not integrated_statement:
-                    integrated_statement = synthesis.get("refined_query", "").strip() or session.original_query
+                clarified_query = synthesis.get("clarified_query", "").strip()
+                if not clarified_query:
+                    clarified_query = synthesis.get("refined_query", "").strip() or session.original_query
 
-                # ── AGENT A — NORMALIZED RESEARCH STATEMENT ──────────────────
+                # ── AGENT A — CLARIFIED RESEARCH STATEMENT ──────────────────
                 print("\n" + "─"*80)
-                print("AGENT A — NORMALIZED RESEARCH STATEMENT")
+                print("AGENT A — CLARIFIED RESEARCH STATEMENT")
                 print("─"*80)
-                print(f"  {integrated_statement}\n")
+                print(f"  {clarified_query}\n")
 
                 dimension_values = synthesis.get("dimensions_specifications")
                 if dimension_values:
@@ -422,6 +420,11 @@ async def run_cli(manager: QueryRefinementManager, framework_name: str, query: s
                     if semantic:
                         print(f"\nSemantic Query (dense / vector search):")
                         print(f"  {semantic}")
+
+                keyword_statement = synthesis.get("keyword_statement") or ""
+                if keyword_statement:
+                    print(f"\nKeyword Query (BM25 / simple keyword search):")
+                    print(f"  {keyword_statement}")
 
                 if concept_graph:
                     print(f"\nConcept Graph ({len(concept_graph)} concept(s) extracted):")
@@ -514,13 +517,8 @@ async def run_cli(manager: QueryRefinementManager, framework_name: str, query: s
                 if expand_answer in {"y", "yes"}:
                     logger.info("CLI: user requested search expansion")
                     try:
-                        accepted_dimensions = _accepted_dimensions_from_session(
-                            session,
-                            synthesis.get("dimensions_specifications"),
-                        )
                         search_input = _build_search_expansion_input_from_synthesis(
                             synthesis,
-                            accepted_dimensions,
                         )
                         levels, metadata = await manager.generate_search_expansion_levels(
                             search_input=search_input,

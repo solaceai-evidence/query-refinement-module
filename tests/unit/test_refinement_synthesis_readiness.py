@@ -100,7 +100,8 @@ class _FakeSessionManager:
 class _FakeManager:
     async def synthesize_refined_query(self, session):
         return {
-            "integrated_statement": "Adults with COPD receiving pulmonary rehab.",
+            "clarified_query": "Adults with COPD receiving pulmonary rehab.",
+            "keyword_statement": "pulmonary rehabilitation COPD chronic obstructive pulmonary disease exercise",
             "dimensions_specifications": {"population": "Adults with COPD"},
             "search_optimized": {"semantic": "pulmonary rehabilitation for COPD adults"},
             "search_filters": {"publication_types": ["Systematic review"]},
@@ -156,8 +157,9 @@ async def test_run_synthesis_persists_full_response_payload(test_db_session, mon
     test_db_session.refresh(user)
     test_db_session.refresh(db_query)
 
-    assert response.integrated_statement == "Adults with COPD receiving pulmonary rehab."
+    assert response.clarified_query == "Adults with COPD receiving pulmonary rehab."
     assert response.structured_output == {
+        "keyword_statement": "pulmonary rehabilitation COPD chronic obstructive pulmonary disease exercise",
         "dimensions_specifications": {"population": "Adults with COPD"},
         "search_optimized": {"semantic": "pulmonary rehabilitation for COPD adults"},
         "search_filters": {"publication_types": ["Systematic review"]},
@@ -165,7 +167,7 @@ async def test_run_synthesis_persists_full_response_payload(test_db_session, mon
         "concept_graph": None,
     }
     assert db_query.refined_query == "Adults with COPD receiving pulmonary rehab."
-    assert db_query.integrated_statement == "Adults with COPD receiving pulmonary rehab."
+    assert db_query.clarified_query == "Adults with COPD receiving pulmonary rehab."
     assert db_query.dimensions_specifications == {"population": "Adults with COPD"}
     assert db_query.search_optimized == {"semantic": "pulmonary rehabilitation for COPD adults"}
     assert db_query.search_filters == {"publication_types": ["Systematic review"]}

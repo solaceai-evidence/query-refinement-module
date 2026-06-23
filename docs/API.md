@@ -21,10 +21,13 @@ This section is the primary reference for building agents or automated integrati
 ### The three-phase pipeline
 
 ```
-Phase 1 — Discover          GET  /frameworks
-Phase 2 — Refine (loop)     POST /start  →  loop: POST /answer
-Phase 3 — Synthesize        POST /synthesize  (Agents A → B → C)
-                             POST /search-expand  (Agent D, optional)
+Phase 1 — Discover               GET  /frameworks
+Phase 2 — Refine (loop)          POST /start  →  loop: POST /answer
+Phase 3 — Synthesize (core)      POST /synthesize  (Agents A → B → C, orchestrated)
+           or call individually:  POST /normalize   (Agent A only)
+                                  POST /represent   (Agent B only)
+                                  POST /construct   (Agent C only)
+Phase 4 — Expand (optional)      POST /expand  (Agent D, standalone)
 ```
 
 ### Authentication for agents
@@ -72,7 +75,7 @@ POST /start
 POST /synthesize
   │
   └─ structured_output ──► RAG retrieval (see field mapping below)
-                      └──► POST /search-expand  (optional broadening levels)
+                      └──► POST /expand  (optional broadening levels, Agent D)
 ```
 
 ### Minimal integration loop (pseudocode)
@@ -113,49 +116,53 @@ synthesis = POST(f"{BASE}/refinement/synthesize", {"query_id": query_id})
 
 ### Synthesis agents
 
-Phase 3 runs a four-agent pipeline. Each agent is an independent LLM call with a defined input/output contract. Agents A → B → C are automatically chained by `POST /synthesize`; Agent D is exposed as a standalone endpoint.
+Each agent is an independent LLM call with a defined input/output contract and its own HTTP endpoint. They are designed to be called in sequence (A → B → C → D), but each can be invoked individually.
 
 ```
-Agent A  Normalization           POST /synthesize      (always runs)
-Agent B  Semantic representation POST /synthesize      (always runs, follows A)
-Agent C  Search construction     POST /synthesize      (always runs, follows B)
-Agent D  Search expansion        POST /search-expand   (optional, standalone)
+Agent A  POST /normalize   Normalization — session → clarified_query
+Agent B  POST /represent   Semantic Representation — statement → queries + concept_graph
+Agent C  POST /construct   Search Construction — statement + concept_graph → keyword artifacts
+Agent D  POST /expand      Search Expansion — statement → broadening levels (optional)
 ```
 
-Calling `POST /synthesize` is the **shortest path** — it runs A → B → C and returns the full `structured_output`. There are no dedicated HTTP endpoints for Agents A, B, or C individually; they are internal pipeline stages. Agent D is the only agent that has its own endpoint and can be called independently.
+`POST /synthesize` is the **shortest path** — it orchestrates A → B → C in a single call and returns the full `structured_output`. Call the individual endpoints when you need only a subset of the pipeline or want to cache intermediate outputs.
 
 #### Agent A — Normalization
 
-**Endpoint:** embedded in `POST /api/v1/refinement/synthesize`
+**Endpoint:** `POST /api/v1/refinement/normalize`  
+Also invoked automatically by `POST /api/v1/refinement/synthesize`.
 
-**Input:** completed refinement session (`query_id`)
+**Input:** `{ "query_id": 123 }` — completed refinement session.
 
-**Output fields in `structured_output`:**
+**Output:**
 
 | Field | Description |
 |---|---|
-| `integrated_statement` | Normalized research statement — the review anchor and Level 0 query |
+| `clarified_query` | Clarified research statement — the review anchor and Level 0 query |
 | `dimensions_specifications` | Per-dimension refined values assembled deterministically from session state |
 
-`integrated_statement` is the primary human-readable output of synthesis. Pass it as `anchor_query` to Agent D (`/search-expand`) to generate a retrieval ladder.
+`clarified_query` is the primary human-readable output. If you only need the refined query (for display, QA forwarding, or logging), call `/normalize` — Agents B and C are not invoked and the session is not marked as synthesized.
 
-#### Agent B — Semantic representation
+Pass `clarified_query` as input to `/represent` (Agent B) or `/expand` (Agent D).
 
-**Endpoint:** embedded in `POST /api/v1/refinement/synthesize` (follows Agent A)
+#### Agent B — Semantic Representation
 
-**Input:** `integrated_statement` from Agent A
+**Endpoint:** `POST /api/v1/refinement/represent`  
+Also invoked automatically by `POST /api/v1/refinement/synthesize`.
 
-**Output fields in `structured_output`:**
+**Input:** `{ "statement": "..." }` — no session required. (Use `clarified_query` from POST /normalize.)
+
+**Output:**
 
 | Field | Description |
 |---|---|
-| `search_optimized.semantic` | Dense embedding query for vector/semantic search |
+| `semantic_statement` | Dense embedding query (2-3 sentences, 50-70 words) for vector/semantic search. Information-need framing using document-side vocabulary. |
+| `keyword_statement` | Natural-language keyword query (15-35 words) for BM25/simple keyword search. Key concepts + primary synonyms; no Boolean operators; no metadata filters. |
 | `concept_graph` | Per-concept retrieval metadata — synonyms, abbreviations, domain terms, controlled vocabulary hints |
-| `terminology` | Legacy flat synonym map — prefer `concept_graph` for structured retrieval |
 
-`concept_graph` is the richest artifact from Agent B. Pass it as `search_context.concept_graph` to Agent D so that broadening candidates are derived from the full lexical context rather than the anchor text alone.
+Both `semantic_statement` and `keyword_statement` are filter-free — they share the same `search_filters` produced by Agent C. Pass `concept_graph` to `/construct` (Agent C) and `/expand` (Agent D).
 
-Each entry in `concept_graph` follows this shape:
+Each entry in `concept_graph`:
 
 ```json
 {
@@ -174,21 +181,22 @@ Each entry in `concept_graph` follows this shape:
 
 `domain_terms` are reserved for Agent D broadening (Levels 2–3) and are not included in the Agent C anchor Boolean query. `colloquial` terms appear only in `grey_literature`, not in formal database queries.
 
-#### Agent C — Search construction
+#### Agent C — Search Construction
 
-**Endpoint:** embedded in `POST /api/v1/refinement/synthesize` (follows Agent B)
+**Endpoint:** `POST /api/v1/refinement/construct`  
+Also invoked automatically by `POST /api/v1/refinement/synthesize`.
 
-**Input:** `integrated_statement` from Agent A + `concept_graph` from Agent B
+**Input:** `{ "statement": "...", "concept_graph": {...} }` — no session required. (Use `clarified_query` from POST /normalize and `concept_graph` from POST /represent.)
 
-**Output fields in `structured_output`:**
+**Output:**
 
 | Field | Description |
 |---|---|
-| `search_optimized.keyword.combined_blocks` | **Primary RAG artifact** — one AND-block per concept with `role`, `free_text` terms, and `controlled_vocabulary` |
-| `search_optimized.keyword.structured` | Boolean anchor query (fallback) |
-| `search_optimized.keyword.phrases` | Exact key phrases |
-| `search_optimized.grey_literature` | Colloquial and organizational terms for grey literature search |
-| `search_filters` | Metadata narrowing filters (`publication_years`, `publication_types`, etc.) |
+| `keyword.combined_blocks` | **Primary RAG artifact** — one AND-block per concept with `role`, `free_text` terms, and `controlled_vocabulary` |
+| `keyword.structured` | Boolean anchor query (fallback) |
+| `keyword.phrases` | Exact key phrases |
+| `grey_literature` | Colloquial and organizational terms for grey literature search |
+| `search_filters` | Metadata narrowing filters (`publication_years`, `publication_types`, etc.) — applies to both `semantic_statement` and `keyword_statement` from Agent B |
 
 `combined_blocks` connector logic:
 ```
@@ -199,34 +207,54 @@ AND all blocks together
 
 Use `controlled_vocabulary` only for indexed sources (PubMed → MeSH, WHO IRIS → DeCS). Use `free_text` alone for unindexed sources (OpenAlex, CORE, ReliefWeb).
 
-#### Agent D — Search expansion
+#### Agent D — Search Expansion
 
-**Endpoint:** `POST /api/v1/refinement/search-expand` (standalone, optional)
+**Endpoint:** `POST /api/v1/refinement/expand` (standalone, optional)
 
 **Input:**
 
-| Field | Recommended source | Required |
+| Field | Source | Required |
 |---|---|---|
-| `anchor_query` | `integrated_statement` from Agent A (`/synthesize`) | Yes |
-| `search_context.concept_graph` | `concept_graph` from Agent B (`/synthesize`) | No, but improves accuracy |
-| `advisory_dimensions` | `dimensions_specifications` from Agent A (`/synthesize`) | No |
+| `statement` | Agent A output (`clarified_query`) | Yes |
+| `search_context.concept_graph` | `concept_graph` from Agent B | No, but improves accuracy |
 
 **Output:** `search_expansion_levels` — Level 0 (exact anchor) plus up to three broader retrieval levels. Use when initial retrieval yields insufficient results.
 
-Each level carries a `strategy` field: `anchor` (Level 0 only), `lexical`, `conceptual_single_aspect`, or `conceptual_multi_aspect`. The `strategy` field is authoritative — do not infer broadening type from the level number alone.
+Each level carries a `strategy` field: `anchor` (Level 0 only), `lexical`, `conceptual_single_aspect`, or `conceptual_multi_aspect`. The `strategy` field is authoritative — do not infer broadening type from level number alone.
 
-Calling Agent D after `/synthesize`:
+Calling agents individually in sequence:
+
+```python
+# Agent A
+norm = POST(f"{BASE}/refinement/normalize", {"query_id": query_id})
+
+# Agent B
+sem = POST(f"{BASE}/refinement/represent", {
+    "statement": norm["clarified_query"]
+})
+
+# Agent C
+search = POST(f"{BASE}/refinement/construct", {
+    "statement": norm["clarified_query"],
+    "concept_graph": sem["concept_graph"]
+})
+
+# Agent D (optional)
+expand = POST(f"{BASE}/refinement/expand", {
+    "statement": norm["clarified_query"],
+    "search_context": {"concept_graph": sem["concept_graph"]}
+})
+```
+
+Or use the single-call orchestration path (POST /synthesize) to run A → B → C at once:
 
 ```python
 synthesis = POST(f"{BASE}/refinement/synthesize", {"query_id": query_id})
 so = synthesis["structured_output"]
 
-expand = POST(f"{BASE}/refinement/search-expand", {
-    "anchor_query": synthesis["integrated_statement"],
-    "search_context": {
-        "concept_graph": so["concept_graph"]
-    },
-    "advisory_dimensions": so["dimensions_specifications"]
+expand = POST(f"{BASE}/refinement/expand", {
+    "statement": synthesis["clarified_query"],
+    "search_context": {"concept_graph": so["concept_graph"]}
 })
 ```
 
@@ -261,10 +289,11 @@ After `POST /synthesize`, `structured_output` contains all retrieval artifacts:
 | Controlled vocabulary (MeSH, DeCS) | `combined_blocks[i].controlled_vocabulary` | Agent C |
 | Metadata narrowing filters | `structured_output.search_filters` | Agent C |
 | Synonym expansion per concept | `structured_output.concept_graph.<concept>` | Agent B |
-| Normalized research statement | `integrated_statement` | Agent A |
+| Clarified research statement | `clarified_query` | Agent A |
+| Keyword query (BM25 / simple keyword search) | `structured_output.keyword_statement` | Agent B |
 | Per-dimension refined values | `structured_output.dimensions_specifications` | Agent A |
 | Terminology / synonym map | `structured_output.terminology` | Agent B (legacy — prefer `concept_graph`) |
-| Broadening fallback levels | `POST /search-expand` with `integrated_statement` + `concept_graph` | Agent D |
+| Broadening fallback levels | `POST /expand` with `statement` + `concept_graph` | Agent D |
 
 **`combined_blocks` connector rules:**
 
@@ -306,8 +335,11 @@ for attempt in range(3):
 - `POST /api/v1/refinement/queries/{query_id}/answer`
 - `GET /api/v1/refinement/queries/{query_id}/status`
 - `POST /api/v1/refinement/queries/{query_id}/resume`
+- `POST /api/v1/refinement/normalize`
+- `POST /api/v1/refinement/represent`
+- `POST /api/v1/refinement/construct`
 - `POST /api/v1/refinement/synthesize`
-- `POST /api/v1/refinement/search-expand`
+- `POST /api/v1/refinement/expand`
 - `POST /api/v1/refinement/queries/{query_id}/forward-to-qa`
 - `GET /api/v1/refinement/queries/{query_id}/command-history`
 - `GET /api/v1/refinement/queries/{query_id}/inspect-messages`
@@ -445,13 +477,13 @@ The `conversation_history` array is ordered and contains the visible interaction
 Returns `SynthesizeQueryResponse` with these fields:
 
 - `query_id`: query record ID
-- `integrated_statement`: the final refined statement
+- `clarified_query`: the final clarified statement
 - `used_llm`: whether synthesis used the LLM path
 - `structured_output`: optional structured result for clients that need search-ready fields
 
 Canonical synthesis field names used by the API and internal runtime are:
 
-- `integrated_statement`
+- `clarified_query` (Agent A output; called `statement` when passed as input to Agents B, C, D)
 - `dimensions_specifications`
 - `search_optimized`
 - `search_filters`
@@ -463,9 +495,9 @@ The query persistence schema now uses the same canonical synthesis names. The SQ
 
 The detailed `structured_output` contract is described below.
 
-#### `POST /api/v1/refinement/search-expand`
+#### `POST /api/v1/refinement/expand`
 
-Generates optional search expansion levels from a standalone request payload. The endpoint does not depend on a persisted query or a completed synthesis result. Callers provide the exact Level 0 anchor query, optional advisory dimension values, and optional search context with filters and synonyms.
+Generates optional search expansion levels from a standalone request payload. The endpoint does not depend on a persisted query or a completed synthesis result. Callers provide the exact Level 0 statement (from Agent A's `clarified_query`) and optional search context with filters and synonyms.
 
 The service runs a two-stage pipeline:
 
@@ -476,13 +508,7 @@ Request body:
 
 ```json
 {
-	"anchor_query": "In adults over 65, compare aspirin versus placebo for stroke prevention.",
-	"advisory_dimensions": {
-		"population": "adults over 65",
-		"intervention": "aspirin",
-		"comparator": "placebo",
-		"outcome": "stroke prevention"
-	},
+	"statement": "In adults over 65, compare aspirin versus placebo for stroke prevention.",
 	"search_context": {
 		"filters": {
 			"publication_types": ["randomized controlled trial"]
@@ -493,7 +519,9 @@ Request body:
 }
 ```
 
-`advisory_dimensions` is optional and non-authoritative: framework dimension values may be supplied as hints to help aspect detection, but the anchor query is always the source of truth.
+The `statement` parameter is required and must be provided. Optional parameters:
+- `search_context`: optional retrieval context. Set `search_context.concept_graph` to `structured_output["concept_graph"]` from a prior `/represent` or `/synthesize` call for best results.
+- `model`: optional LLM model override.
 
 `search_context.concept_graph` should be set to `structured_output["concept_graph"]` from a prior `/synthesize` call. It provides the full lexical context (synonyms, domain terms, controlled vocabulary hints) for each concept, enabling more accurate broadening candidates. Without it, Agent D falls back to aspect detection from the anchor query text alone.
 
@@ -511,7 +539,7 @@ Level 0 is deterministic and always preserves the supplied anchor query:
 	"level": 0,
 	"label": "Exact clarified question",
 	"strategy": "anchor",
-	"search_query": "...same as anchor_query...",
+	"search_query": "...same as statement...",
 	"relaxed_aspects": {},
 	"rationale": "Exact clarified query preserved as the review anchor."
 }
@@ -605,7 +633,7 @@ curl -X POST http://localhost:8001/api/v1/refinement/start \
 	"source": "api_integration",
 	"synthesis": {
 		"query_id": 124,
-		"integrated_statement": "In adults, compare aspirin versus placebo for stroke prevention.",
+		"clarified_query": "In adults, compare aspirin versus placebo for stroke prevention.",
 		"used_llm": true,
 		"structured_output": null
 	}
@@ -755,7 +783,7 @@ Response:
 ```json
 {
 	"query_id": 123,
-	"integrated_statement": "In adults over 65, compare aspirin versus placebo for stroke prevention.",
+	"clarified_query": "In adults over 65, compare aspirin versus placebo for stroke prevention.",
 	"used_llm": true,
 	"structured_output": {
 		"dimensions_specifications": {
@@ -864,21 +892,21 @@ Notes:
 
 - `structured_output` can be `null` when the service cannot derive a structured payload from the synthesis result.
 - When present, `structured_output` is assembled from the three internal synthesis agents (A → B → C):
-  - `integrated_statement` (**Agent A**): normalized research statement — the review anchor and Level 0 query
+  - `clarified_query` (**Agent A**): clarified research statement — the review anchor and Level 0 query (passed as `statement` to Agents B, C, D)
   - `dimensions_specifications` (**Agent A**): the refined value for each dimension, keyed by dimension id — assembled deterministically from session state, never from the LLM
   - `search_optimized` (**Agents B + C**): retrieval-ready search artifacts:
     - `semantic` (**Agent B**): dense embedding query for vector search
     - `keyword.structured` (**Agent C**): Boolean anchor query for sparse/keyword search
     - `keyword.combined_blocks` (**Agent C**): **primary RAG artifact** — one entry per AND-block with `role`, `free_text` terms, and `controlled_vocabulary` (vocabulary name → headings). Source connectors: OR `free_text` with `controlled_vocabulary` within each block, then AND all blocks. Use `controlled_vocabulary` only for indexed databases (PubMed → MeSH, WHO IRIS → DeCS); use `free_text` alone for unindexed sources.
     - `grey_literature` (**Agent C**): colloquial and organizational terms for grey literature search
-  - `concept_graph` (**Agent B**): per-concept retrieval metadata — pass as `search_context.concept_graph` to `/search-expand` for Agent D broadening levels. Each concept entry has: `query_role`, `true_synonyms`, `abbreviations`, `spelling_variants`, `lexical_variants`, `domain_terms`, `colloquial`, `controlled_vocabulary_hints`.
+  - `concept_graph` (**Agent B**): per-concept retrieval metadata — pass as `search_context.concept_graph` to `/expand` for Agent D broadening levels. Each concept entry has: `query_role`, `true_synonyms`, `abbreviations`, `spelling_variants`, `lexical_variants`, `domain_terms`, `colloquial`, `controlled_vocabulary_hints`.
   - `search_filters` (**Agent C**): optional narrowing filters — `publication_years`, `venues`, `authors`, and `publication_types` are extracted deterministically from the query text; `fields_of_study` is LLM-generated and constrained to a permitted-values list
   - `terminology` (**Agent B**, legacy): synonym mappings — use `concept_graph` in preference to this for structured retrieval
 - `search_optimized.keyword.terms.required` contains the smallest set of anchors that should remain in the query.
 - `search_optimized.keyword.terms.optional` contains precision-raising terms.
 - `search_optimized.keyword.terms.excluded` contains only true confounders, not close variants of the target concept.
 
-#### `POST /api/v1/refinement/search-expand` (200)
+#### `POST /api/v1/refinement/expand` (200)
 
 ```json
 {
@@ -930,8 +958,8 @@ Notes:
 
 Notes:
 
-- `search_expansion_levels[0].search_query` always equals the supplied `anchor_query` exactly.
-- Levels 1-N are optional search-only broadening variants. They do not update `integrated_statement` or redefine the review scope.
+- `search_expansion_levels[0].search_query` always equals the supplied `statement` exactly.
+- Levels 1-N are optional search-only broadening variants. They do not update `statement` or redefine the review scope.
 - `relaxed_aspects` keys are always drawn from the fixed six-aspect ontology, never from framework dimension ids.
 - `metadata.status` is one of `completed`, `skipped_no_assessable_aspects`, or `failed_level_0_only`; the latter two return Level 0 only with warning metadata.
 
@@ -1101,7 +1129,7 @@ Most non-validation API errors return:
 
 When a query has already been synthesized, `QueryResponse` exposes the canonical synthesis fields:
 
-- `integrated_statement`
+- `clarified_query`
 - `dimensions_specifications`
 - `search_optimized`
 - `search_filters`
