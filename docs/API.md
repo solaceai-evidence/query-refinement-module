@@ -23,7 +23,8 @@ This section is the primary reference for building agents or automated integrati
 ```
 Phase 1 — Discover          GET  /frameworks
 Phase 2 — Refine (loop)     POST /start  →  loop: POST /answer
-Phase 3 — Synthesize        POST /synthesize  →  POST /search-expand (optional)
+Phase 3 — Synthesize        POST /synthesize  (Agents A → B → C)
+                             POST /search-expand  (Agent D, optional)
 ```
 
 ### Authentication for agents
@@ -110,6 +111,125 @@ while not r.get("ready_for_synthesis"):
 synthesis = POST(f"{BASE}/refinement/synthesize", {"query_id": query_id})
 ```
 
+### Synthesis agents
+
+Phase 3 runs a four-agent pipeline. Each agent is an independent LLM call with a defined input/output contract. Agents A → B → C are automatically chained by `POST /synthesize`; Agent D is exposed as a standalone endpoint.
+
+```
+Agent A  Normalization           POST /synthesize      (always runs)
+Agent B  Semantic representation POST /synthesize      (always runs, follows A)
+Agent C  Search construction     POST /synthesize      (always runs, follows B)
+Agent D  Search expansion        POST /search-expand   (optional, standalone)
+```
+
+Calling `POST /synthesize` is the **shortest path** — it runs A → B → C and returns the full `structured_output`. There are no dedicated HTTP endpoints for Agents A, B, or C individually; they are internal pipeline stages. Agent D is the only agent that has its own endpoint and can be called independently.
+
+#### Agent A — Normalization
+
+**Endpoint:** embedded in `POST /api/v1/refinement/synthesize`
+
+**Input:** completed refinement session (`query_id`)
+
+**Output fields in `structured_output`:**
+
+| Field | Description |
+|---|---|
+| `integrated_statement` | Normalized research statement — the review anchor and Level 0 query |
+| `dimensions_specifications` | Per-dimension refined values assembled deterministically from session state |
+
+`integrated_statement` is the primary human-readable output of synthesis. Pass it as `anchor_query` to Agent D (`/search-expand`) to generate a retrieval ladder.
+
+#### Agent B — Semantic representation
+
+**Endpoint:** embedded in `POST /api/v1/refinement/synthesize` (follows Agent A)
+
+**Input:** `integrated_statement` from Agent A
+
+**Output fields in `structured_output`:**
+
+| Field | Description |
+|---|---|
+| `search_optimized.semantic` | Dense embedding query for vector/semantic search |
+| `concept_graph` | Per-concept retrieval metadata — synonyms, abbreviations, domain terms, controlled vocabulary hints |
+| `terminology` | Legacy flat synonym map — prefer `concept_graph` for structured retrieval |
+
+`concept_graph` is the richest artifact from Agent B. Pass it as `search_context.concept_graph` to Agent D so that broadening candidates are derived from the full lexical context rather than the anchor text alone.
+
+Each entry in `concept_graph` follows this shape:
+
+```json
+{
+  "query_role": "intervention_or_exposure_or_phenomenon",
+  "true_synonyms": ["acetylsalicylic acid"],
+  "abbreviations": ["ASA"],
+  "spelling_variants": [],
+  "lexical_variants": [],
+  "domain_terms": ["antiplatelet agent"],
+  "colloquial": ["blood thinner"],
+  "controlled_vocabulary_hints": [
+    { "vocabulary_name": "MeSH", "terms": ["Aspirin"], "confidence": "high" }
+  ]
+}
+```
+
+`domain_terms` are reserved for Agent D broadening (Levels 2–3) and are not included in the Agent C anchor Boolean query. `colloquial` terms appear only in `grey_literature`, not in formal database queries.
+
+#### Agent C — Search construction
+
+**Endpoint:** embedded in `POST /api/v1/refinement/synthesize` (follows Agent B)
+
+**Input:** `integrated_statement` from Agent A + `concept_graph` from Agent B
+
+**Output fields in `structured_output`:**
+
+| Field | Description |
+|---|---|
+| `search_optimized.keyword.combined_blocks` | **Primary RAG artifact** — one AND-block per concept with `role`, `free_text` terms, and `controlled_vocabulary` |
+| `search_optimized.keyword.structured` | Boolean anchor query (fallback) |
+| `search_optimized.keyword.phrases` | Exact key phrases |
+| `search_optimized.grey_literature` | Colloquial and organizational terms for grey literature search |
+| `search_filters` | Metadata narrowing filters (`publication_years`, `publication_types`, etc.) |
+
+`combined_blocks` connector logic:
+```
+OR  free_text terms  within each block
+OR  controlled_vocabulary terms  within each block
+AND all blocks together
+```
+
+Use `controlled_vocabulary` only for indexed sources (PubMed → MeSH, WHO IRIS → DeCS). Use `free_text` alone for unindexed sources (OpenAlex, CORE, ReliefWeb).
+
+#### Agent D — Search expansion
+
+**Endpoint:** `POST /api/v1/refinement/search-expand` (standalone, optional)
+
+**Input:**
+
+| Field | Recommended source | Required |
+|---|---|---|
+| `anchor_query` | `integrated_statement` from Agent A (`/synthesize`) | Yes |
+| `search_context.concept_graph` | `concept_graph` from Agent B (`/synthesize`) | No, but improves accuracy |
+| `advisory_dimensions` | `dimensions_specifications` from Agent A (`/synthesize`) | No |
+
+**Output:** `search_expansion_levels` — Level 0 (exact anchor) plus up to three broader retrieval levels. Use when initial retrieval yields insufficient results.
+
+Each level carries a `strategy` field: `anchor` (Level 0 only), `lexical`, `conceptual_single_aspect`, or `conceptual_multi_aspect`. The `strategy` field is authoritative — do not infer broadening type from the level number alone.
+
+Calling Agent D after `/synthesize`:
+
+```python
+synthesis = POST(f"{BASE}/refinement/synthesize", {"query_id": query_id})
+so = synthesis["structured_output"]
+
+expand = POST(f"{BASE}/refinement/search-expand", {
+    "anchor_query": synthesis["integrated_statement"],
+    "search_context": {
+        "concept_graph": so["concept_graph"]
+    },
+    "advisory_dimensions": so["dimensions_specifications"]
+})
+```
+
 ### Quick-reply / examples field
 
 Every `next_prompt` includes an `examples` list:
@@ -131,18 +251,20 @@ Every `next_prompt` includes an `examples` list:
 
 After `POST /synthesize`, `structured_output` contains all retrieval artifacts:
 
-| Use case | Field path |
-|---|---|
-| Dense / vector retrieval | `structured_output.search_optimized.semantic` |
-| **Primary RAG keyword search** | `structured_output.search_optimized.keyword.combined_blocks` |
-| Boolean anchor query (fallback) | `structured_output.search_optimized.keyword.structured` |
-| Exact key phrases | `structured_output.search_optimized.keyword.phrases` |
-| Grey / organizational literature | `structured_output.search_optimized.grey_literature` |
-| Controlled vocabulary (MeSH, DeCS) | `combined_blocks[i].controlled_vocabulary` |
-| Metadata narrowing filters | `structured_output.search_filters` |
-| Synonym expansion per concept | `structured_output.concept_graph.<concept>` |
-| Terminology / synonym map | `structured_output.terminology` |
-| Broadening fallback levels | `POST /search-expand` with `integrated_statement` + `concept_graph` |
+| Use case | Field path | Source agent |
+|---|---|---|
+| Dense / vector retrieval | `structured_output.search_optimized.semantic` | Agent B |
+| **Primary RAG keyword search** | `structured_output.search_optimized.keyword.combined_blocks` | Agent C |
+| Boolean anchor query (fallback) | `structured_output.search_optimized.keyword.structured` | Agent C |
+| Exact key phrases | `structured_output.search_optimized.keyword.phrases` | Agent C |
+| Grey / organizational literature | `structured_output.search_optimized.grey_literature` | Agent C |
+| Controlled vocabulary (MeSH, DeCS) | `combined_blocks[i].controlled_vocabulary` | Agent C |
+| Metadata narrowing filters | `structured_output.search_filters` | Agent C |
+| Synonym expansion per concept | `structured_output.concept_graph.<concept>` | Agent B |
+| Normalized research statement | `integrated_statement` | Agent A |
+| Per-dimension refined values | `structured_output.dimensions_specifications` | Agent A |
+| Terminology / synonym map | `structured_output.terminology` | Agent B (legacy — prefer `concept_graph`) |
+| Broadening fallback levels | `POST /search-expand` with `integrated_statement` + `concept_graph` | Agent D |
 
 **`combined_blocks` connector rules:**
 
@@ -741,16 +863,17 @@ Response:
 Notes:
 
 - `structured_output` can be `null` when the service cannot derive a structured payload from the synthesis result.
-- When present, `structured_output` has five sections:
-  - `dimensions_specifications`: the refined value for each dimension, keyed by dimension id — assembled deterministically from session state, never from the LLM
-  - `search_optimized`: retrieval-ready search artifacts:
-    - `semantic`: dense embedding query for vector search (Agent B)
-    - `keyword.structured`: Boolean anchor query for sparse/keyword search (Agent C)
-    - `keyword.combined_blocks`: **primary RAG artifact** — one entry per AND-block with `role`, `free_text` terms, and `controlled_vocabulary` (vocabulary name → headings). Source connectors: OR `free_text` with `controlled_vocabulary` within each block, then AND all blocks. Use `controlled_vocabulary` only for indexed databases (PubMed → MeSH, WHO IRIS → DeCS); use `free_text` alone for unindexed sources.
-    - `grey_literature`: colloquial and organizational terms for grey literature search
-  - `concept_graph`: Agent B's per-concept retrieval metadata — pass as `search_context.concept_graph` to `/search-expand` for Agent D broadening levels. Each concept entry has: `query_role`, `true_synonyms`, `abbreviations`, `spelling_variants`, `lexical_variants`, `domain_terms`, `colloquial`, `controlled_vocabulary_hints`.
-  - `search_filters`: optional narrowing filters — `publication_years`, `venues`, `authors`, and `publication_types` are extracted deterministically from the query text; `fields_of_study` is LLM-generated and constrained to a permitted-values list
-  - `terminology`: synonym mappings — LLM-generated; use `concept_graph` in preference to this for structured retrieval
+- When present, `structured_output` is assembled from the three internal synthesis agents (A → B → C):
+  - `integrated_statement` (**Agent A**): normalized research statement — the review anchor and Level 0 query
+  - `dimensions_specifications` (**Agent A**): the refined value for each dimension, keyed by dimension id — assembled deterministically from session state, never from the LLM
+  - `search_optimized` (**Agents B + C**): retrieval-ready search artifacts:
+    - `semantic` (**Agent B**): dense embedding query for vector search
+    - `keyword.structured` (**Agent C**): Boolean anchor query for sparse/keyword search
+    - `keyword.combined_blocks` (**Agent C**): **primary RAG artifact** — one entry per AND-block with `role`, `free_text` terms, and `controlled_vocabulary` (vocabulary name → headings). Source connectors: OR `free_text` with `controlled_vocabulary` within each block, then AND all blocks. Use `controlled_vocabulary` only for indexed databases (PubMed → MeSH, WHO IRIS → DeCS); use `free_text` alone for unindexed sources.
+    - `grey_literature` (**Agent C**): colloquial and organizational terms for grey literature search
+  - `concept_graph` (**Agent B**): per-concept retrieval metadata — pass as `search_context.concept_graph` to `/search-expand` for Agent D broadening levels. Each concept entry has: `query_role`, `true_synonyms`, `abbreviations`, `spelling_variants`, `lexical_variants`, `domain_terms`, `colloquial`, `controlled_vocabulary_hints`.
+  - `search_filters` (**Agent C**): optional narrowing filters — `publication_years`, `venues`, `authors`, and `publication_types` are extracted deterministically from the query text; `fields_of_study` is LLM-generated and constrained to a permitted-values list
+  - `terminology` (**Agent B**, legacy): synonym mappings — use `concept_graph` in preference to this for structured retrieval
 - `search_optimized.keyword.terms.required` contains the smallest set of anchors that should remain in the query.
 - `search_optimized.keyword.terms.optional` contains precision-raising terms.
 - `search_optimized.keyword.terms.excluded` contains only true confounders, not close variants of the target concept.
