@@ -264,13 +264,15 @@ class RefinementDimension(BaseModel):
     BASE_SCHEMA_FIELDS: ClassVar[Dict[str, str]] = {
         "complete": "boolean",
         "current": "string",
-        "question": "string"
+        "question": "string",
+        "examples": "array",
     }
-    
+
     BASE_FIELD_DESCRIPTIONS: ClassVar[Dict[str, str]] = {
         "complete": "Whether the dimension has been sufficiently clarified",
         "current": "The accumulated value of this dimension assembled from all sources (original query, completed dimensions, conversation history) using the user's exact words. Non-empty whenever any value has been extracted, regardless of whether the dimension is complete. Empty string only when no information for this dimension exists across all sources.",
-        "question": "Follow-up question when incomplete, empty string otherwise"
+        "question": "Follow-up question when incomplete, empty string otherwise",
+        "examples": "Array of 2–4 short standalone quick-reply options when complete=false; empty array when complete=true. Do NOT embed these in the question field.",
     }
     
     # =========================================================================
@@ -295,14 +297,14 @@ class RefinementDimension(BaseModel):
         # Check required fields
         for field_name, field_type in self.BASE_SCHEMA_FIELDS.items():
             if field_name not in response:
-                # Some fields are conditionally required
-                if field_name in ("current", "question"):
+                # Some fields are conditionally required or optional
+                if field_name in ("current", "question", "examples"):
                     continue
                 validation_errors.append(f"Missing required field: {field_name}")
                 continue
-            
+
             value = response[field_name]
-            
+
             # Type validation
             if field_type == "boolean" and not isinstance(value, bool):
                 validation_errors.append(f"Field '{field_name}' must be boolean")
@@ -310,6 +312,8 @@ class RefinementDimension(BaseModel):
                 validation_errors.append(f"Field '{field_name}' must be float")
             elif field_type == "string" and not isinstance(value, str):
                 validation_errors.append(f"Field '{field_name}' must be string")
+            elif field_type == "array" and not isinstance(value, list):
+                validation_errors.append(f"Field '{field_name}' must be array")
         
         # Validate conditional fields based on complete
         complete = response.get("complete", False)
@@ -321,6 +325,11 @@ class RefinementDimension(BaseModel):
             question = response.get("question", "")
             if not question or not isinstance(question, str):
                 validation_errors.append("'question' required as non-empty string when complete=false")
+            examples = response.get("examples")
+            if examples is None:
+                validation_errors.append("'examples' required as array when complete=false")
+            elif not isinstance(examples, list):
+                validation_errors.append("'examples' must be array when complete=false")
         
         if validation_errors:
             return False, "; ".join(validation_errors)

@@ -34,9 +34,8 @@ def make_aspect(id="aspect", allow_follow_up=True, max_follow_ups=2):
 @pytest.mark.asyncio
 async def test_followup_loop_stops_on_is_complete():
     aspect = make_aspect()
-    # Updated: Include all required fields (complete, current, question)
     responses = [
-        '{"complete": false, "current": "", "question": "Clarify?"}',
+        '{"complete": false, "current": "", "question": "Clarify?", "examples": []}',
         '{"complete": true, "current": "Clear value", "question": ""}',
     ]
     llm = DummyLLMProvider(responses)
@@ -53,11 +52,10 @@ async def test_followup_loop_stops_on_is_complete():
 @pytest.mark.asyncio
 async def test_followup_loop_respects_max_rounds():
     aspect = make_aspect(max_follow_ups=1)
-    # Updated: Include all required fields
     responses = [
-        '{"complete": false, "current": "", "question": "Clarify?"}',
-        '{"complete": false, "current": "", "question": "Clarify?"}',  # retry
-        '{"complete": false, "current": "", "question": "Clarify?"}',  # retry
+        '{"complete": false, "current": "", "question": "Clarify?", "examples": []}',
+        '{"complete": false, "current": "", "question": "Clarify?", "examples": []}',  # retry
+        '{"complete": false, "current": "", "question": "Clarify?", "examples": []}',  # retry
     ]
     llm = DummyLLMProvider(responses)
     manager = QueryRefinementManager(llm)

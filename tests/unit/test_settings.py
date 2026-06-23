@@ -14,6 +14,7 @@ def _clear_env(monkeypatch):
         "LLM_COMPLETION_KWARGS",
         "LLM_ENABLE_PROMPT_CACHING",
         "LLM_CONSTRAINED_DECODING",
+        "LLM_PROVIDER_PRESET",
     }:
         monkeypatch.delenv(key, raising=False)
 
