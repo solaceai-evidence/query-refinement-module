@@ -1,6 +1,15 @@
 # Query Refinement Module
 
-A tool that helps turn a rough research idea into a clear, structured question. It guides users through a short series of clarifying questions based on a chosen framework, then produces a refined statement ready for literature search or systematic review.
+A multi-agent LLM pipeline that turns a rough research idea into a structured, search-ready question. Users go through a short guided dialogue based on a configurable framework (e.g. PICO, COCOPOP); the system then runs a four-agent synthesis pipeline that produces:
+
+- A **clarified query** — the canonical refined statement in the user's own language
+- A **semantic statement** — optimised for dense vector / embedding search
+- A **keyword statement** — optimised for BM25 and keyword-based retrieval
+- A **Boolean search construction** — AND/OR blocks with controlled vocabulary hints for databases such as PubMed or Embase
+- A **concept graph** — structured synonyms, abbreviations, and domain terms per concept
+- Optional **search expansion levels** — progressively broader retrieval variants for fallback recall
+
+The system is framework-agnostic and domain-agnostic. It exposes a REST API for integration into external search and systematic review platforms.
 
 ---
 
@@ -40,10 +49,10 @@ A tool that helps turn a rough research idea into a clear, structured question. 
 poetry install --with dev
 
 # Copy the template for your LLM provider:
-cp .env.anthropic-claude-sonnet-4-6 .env   # Anthropic Claude (recommended)
-cp .env.openai-gpt-4o .env                  # OpenAI GPT-4o
-cp .env.ollama-qwen2.5-72b .env             # Ollama — local models
-cp .env.vllm .env                           # vLLM — self-hosted
+cp .env.claude_api .env        # Anthropic Claude (recommended, cloud)
+cp .env.cloud .env              # Other cloud providers (OpenAI, etc.)
+cp .env.local .env              # Ollama — local models
+cp .env.selfhosted .env         # Self-hosted inference (vLLM, etc.)
 
 # Set LLM_API_KEY in .env (cloud providers), then:
 poetry run alembic upgrade head
@@ -70,12 +79,11 @@ Docker is the recommended path.
 
 ```bash
 # Copy the matching production template
-cp .env.prod .env                    # Anthropic Claude Sonnet 4.6
-cp .env.prod.openai-gpt-4o .env      # OpenAI GPT-4o
-cp .env.prod.ollama-qwen2.5-72b .env # Ollama / Qwen 2.5 72B
+cp .env.prod .env                # Anthropic Claude (recommended, cloud)
+cp .env.prod.selfhosted .env     # Self-hosted or local inference
 
 # Set these required values in .env:
-# SECRET_KEY, LLM_API_KEY, POSTGRES_USER, POSTGRES_PASSWORD, POSTGRES_DB, ALLOWED_ORIGINS
+# SECRET_KEY, LLM_API_KEY (if using cloud), POSTGRES_USER, POSTGRES_PASSWORD, POSTGRES_DB, ALLOWED_ORIGINS
 
 docker compose -f docker-compose.yml -f docker-compose.prod.yml up -d
 ```
@@ -177,8 +185,6 @@ docs/                      Technical documentation
 - [docs/API.md](docs/API.md) — Full API reference for external integrations
 - [docs/DEPLOYMENT.md](docs/DEPLOYMENT.md) — Production deployment, infrastructure, and backups
 - [docs/FRAMEWORKS.md](docs/FRAMEWORKS.md) — How to define custom refinement frameworks
-- [docs/OPERATIONS.md](docs/OPERATIONS.md) — Migrations, backups, and rollback procedures
-- [docs/DATA_RECOVERY.md](docs/DATA_RECOVERY.md) — Database and cache recovery procedures
 
 ## License
 

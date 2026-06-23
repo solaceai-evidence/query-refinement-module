@@ -7,7 +7,7 @@ This guide is written for someone who needs to put the application on a server a
 For a normal production deployment, you will need:
 
 - Docker Engine and the Docker Compose plugin on the server
-- A copy of the production environment file (`.env.prod` for Claude, `.env.prod.openai-gpt-4o` for OpenAI, or `.env.prod.ollama-qwen2.5-72b` for Qwen)
+- A copy of the production environment file (`.env.prod` for Anthropic Claude, or `.env.prod.selfhosted` for self-hosted inference)
 - Values for the database, AI provider, and website addresses
 - A writable location for logs
 
@@ -16,11 +16,9 @@ For a normal production deployment, you will need:
 1. Copy the production environment file that matches your LLM backend:
 
 ```bash
-cp .env.prod .env
+cp .env.prod .env                  # Anthropic Claude (recommended)
 # or
-cp .env.prod.openai-gpt-4o .env
-# or
-cp .env.prod.ollama-qwen2.5-72b .env
+cp .env.prod.selfhosted .env       # Self-hosted or local inference
 ```
 
 2. Edit `.env` and set these required values:
@@ -47,7 +45,7 @@ docker compose -f docker-compose.yml -f docker-compose.prod.yml up -d --build
 Before starting, verify the following:
 
 - Docker Engine and Docker Compose plugin are installed on the server
-- The correct template has been copied to `.env` (`.env.anthropic-claude-sonnet-4-6`, `.env.openai-gpt-4o`, `.env.prod`, `.env.prod.openai-gpt-4o`, `.env.prod.ollama-qwen2.5-72b`, `.env.ollama-qwen2.5-72b`, or `.env.vllm`)
+- The correct template has been copied to `.env` (`.env.claude_api`, `.env.cloud`, `.env.local`, `.env.selfhosted`, `.env.prod`, or `.env.prod.selfhosted`)
 - `SECRET_KEY` is set, is at least 32 characters long, and is not one of the known placeholder values (the API will refuse to start in production mode if this check fails)
 - `LLM_API_KEY` is set **if using a cloud provider** (Anthropic, OpenAI); leave blank for Ollama or vLLM
 - `LLM_API_BASE` is set **if needed** for vLLM or for an Ollama server that is not using the default `http://localhost:11434`
@@ -81,39 +79,38 @@ Routing model:
 
 ## LLM Provider Configuration
 
-The API service connects to an LLM provider via LiteLLM.  Seven pre-filled
-environment templates are provided:
+The API service connects to an LLM provider via LiteLLM. Six pre-filled environment templates are provided:
 
-| Template                           | Provider                                 | API key required | `CONSTRAINED_DECODING` |
-| ---------------------------------- | ---------------------------------------- | ---------------- | ---------------------- |
-| `.env.anthropic-claude-sonnet-4-6` | Anthropic Claude Sonnet 4.6 (dev)        | yes              | `false`                |
-| `.env.openai-gpt-4o`               | OpenAI GPT-4o (dev)                      | yes              | `false`                |
-| `.env.prod`                        | Anthropic Claude Sonnet 4.6 (production) | yes              | `false`                |
-| `.env.prod.openai-gpt-4o`          | OpenAI GPT-4o (production)               | yes              | `false`                |
-| `.env.prod.ollama-qwen2.5-72b`     | Ollama — Qwen 2.5 72B (production)       | no               | `false`                |
-| `.env.ollama-qwen2.5-72b`          | Ollama — Qwen 2.5 72B (local)            | no               | `false`                |
-| `.env.vllm`                        | vLLM — Llama 3.1 8B (self-hosted)        | no               | `true`                 |
+| Template | Provider | Environment | API key required |
+| -------- | -------- | ------------ | ---------------- |
+| `.env.claude_api` | Anthropic Claude Sonnet 4.6 | Development (cloud) | yes |
+| `.env.cloud` | Other cloud providers (OpenAI, etc.) | Development (cloud) | yes |
+| `.env.local` | Ollama — local models | Development (local) | no |
+| `.env.selfhosted` | vLLM or self-hosted inference | Development / Production | no |
+| `.env.prod` | Anthropic Claude Sonnet 4.6 | Production (cloud) | yes |
+| `.env.prod.selfhosted` | Self-hosted or local inference | Production | no |
 
-### Switching to OpenAI
+### Switching to OpenAI or other cloud providers
 
-1. Generate or retrieve an OpenAI API key.
+1. Generate or retrieve an API key from your cloud provider.
 
 2. Copy the template and configure:
 
 ```bash
-cp .env.openai-gpt-4o .env
+cp .env.cloud .env
 ```
 
-Key OpenAI-specific settings:
+Key cloud provider settings:
 
-| Variable                | Value           | Notes                                                                                |
-| ----------------------- | --------------- | ------------------------------------------------------------------------------------ |
-| `LLM_API_KEY`           | required        | Required for OpenAI cloud access                                                     |
-| `LLM_API_BASE`          | *(leave blank)* | Leave blank for OpenAI cloud; set only for an OpenAI-compatible self-hosted endpoint |
-| `LLM_MAX_OUTPUT_TOKENS` | `4096`          | Default per-call output ceiling; does not change the model context window            |
-| `LLM_CONTEXT_WINDOW`    | unsupported     | Do not set for OpenAI; the provider manages context window                           |
+| Variable                | Value           | Notes                                                                          |
+| ----------------------- | --------------- | ------------------------------------------------------------------------------ |
+| `LLM_API_KEY`           | required        | API key for your cloud provider (Anthropic, OpenAI, etc.)                      |
+| `LLM_MODEL`             | provider/model  | Model identifier (e.g. `openai/gpt-4o`, `anthropic/claude-sonnet-4-6`)        |
+| `LLM_API_BASE`          | *(leave blank)* | Leave blank for official cloud endpoints; set only if using a custom endpoint  |
+| `LLM_MAX_OUTPUT_TOKENS` | `4096`          | Default per-call output ceiling; does not change the model context window      |
+| `LLM_CONTEXT_WINDOW`    | unsupported     | Cloud providers manage context window; do not set this                         |
 
-### Switching to Ollama
+### Switching to Ollama (local models)
 
 1. Install and start Ollama: https://ollama.com
 
@@ -129,7 +126,7 @@ ollama pull qwen2.5:72b
 3. Copy the template and configure:
 
 ```bash
-cp .env.ollama-qwen2.5-72b .env
+cp .env.local .env
 ```
 
 Key Ollama-specific settings:
@@ -141,49 +138,35 @@ Key Ollama-specific settings:
 | `LLM_COMPLETION_KWARGS`     | auto            | Defaults internally to `{"num_ctx": 16384}`     |
 | `LLM_ENABLE_PROMPT_CACHING` | auto            | Defaults internally to `false` for Ollama       |
 
-### Switching to vLLM (requires GPU and the `vllm` package):
+### Switching to vLLM or self-hosted inference
+
+1. Start your self-hosted inference server (vLLM, TGI, etc.):
 
 ```bash
-./start_vllm.sh
+# Example vLLM launch
+./start_vllm.sh meta-llama/Llama-3.1-8B-Instruct
 # Verify: curl http://localhost:8000/v1/models
 ```
-
-For an explicit 8B model launch:
-
-```bash
-./start_vllm.sh meta-llama/Llama-3.1-8B-Instruct
-```
-
-On macOS, vLLM runs CPU-only; keep local testing on the 8B model.
 
 2. Copy the template and configure:
 
 ```bash
-cp .env.vllm .env
-# Set LLM_API_BASE to match your vLLM server address
+cp .env.selfhosted .env
+# Set LLM_API_BASE to match your server address
 # Set LLM_MODEL to match the loaded model
 ```
 
-Key vLLM-specific settings:
+Key self-hosted settings:
 
-| Variable                    | Required value          | Notes                                               |
-| --------------------------- | ----------------------- | --------------------------------------------------- |
-| `LLM_API_BASE`              | `http://<host>:8000/v1` | Must point at the vLLM server                       |
-| `LLM_API_KEY`               | `EMPTY`                 | Conventional placeholder for local servers          |
-| `LLM_CONSTRAINED_DECODING`  | `true`                  | Sends `guided_json` schema in every structured call |
-| `LLM_ENABLE_PROMPT_CACHING` | `false`                 | Anthropic-specific feature; disable for vLLM        |
+| Variable                    | Value                   | Notes                                |
+| --------------------------- | ----------------------- | ------------------------------------ |
+| `LLM_API_BASE`              | `http://<host>:8000/v1` | Point this at your inference server  |
+| `LLM_MODEL`                 | The loaded model name   | Must match the model on your server  |
+| `LLM_API_KEY`               | `EMPTY`                 | Placeholder for local servers        |
+| `LLM_CONSTRAINED_DECODING`  | `true` (vLLM only)      | Enforces JSON schema at token level  |
 
-> **Warning:** `LLM_CONSTRAINED_DECODING=true` must only be
-> set when the API base points at a vLLM server. Setting it for Anthropic,
-> OpenAI, or Ollama will break structured output.
-
-### Constrained decoding behaviour
-
-When `LLM_CONSTRAINED_DECODING=true`, the provider injects the full Pydantic JSON
-Schema as `extra_body={"guided_json": <schema>}` in every structured LLM
-call.  vLLM enforces the schema at the token level, guaranteeing
-structurally valid output from both the dimension evaluation and synthesis
-stages without any post-hoc JSON repair.
+> **Warning:** `LLM_CONSTRAINED_DECODING=true` only works with vLLM.
+> Set it to `false` for other self-hosted backends.
 
 ---
 
@@ -192,11 +175,9 @@ stages without any post-hoc JSON repair.
 1. Copy the production template if you have not already done so:
 
 ```bash
-cp .env.prod .env
+cp .env.prod .env              # Anthropic Claude (recommended)
 # or
-cp .env.prod.openai-gpt-4o .env
-# or
-cp .env.prod.ollama-qwen2.5-72b .env
+cp .env.prod.selfhosted .env   # Self-hosted or local inference
 ```
 
 2. Set required values in `.env`:
