@@ -179,7 +179,7 @@ Each entry in `concept_graph`:
 }
 ```
 
-`domain_terms` are reserved for Agent D broadening (Levels 2–3) and are not included in the Agent C anchor Boolean query. `colloquial` terms are not used in formal database queries.
+`domain_terms` (hyponyms/narrower terms) are not included in the Agent C anchor Boolean query but are included in Agent D Level 1 for maximum recall. `colloquial` terms are not used in formal database queries.
 
 #### Agent C — Search Construction
 
@@ -217,9 +217,9 @@ Use `controlled_vocabulary` only for indexed sources (PubMed → MeSH, WHO IRIS 
 | `statement` | Agent A output (`clarified_query`) | Yes |
 | `search_context.concept_graph` | `concept_graph` from Agent B | No, but improves accuracy |
 
-**Output:** `search_expansion_levels` — Level 0 (exact anchor) plus up to three broader retrieval levels. Use when initial retrieval yields insufficient results.
+**Output:** `search_expansion_levels` — Levels 1–3, progressive broadening retrieval levels. Level 0 (the anchor) is not echoed — the caller already has it as `statement`. Use these levels when initial retrieval yields insufficient results.
 
-Each level carries a `strategy` field: `anchor` (Level 0 only), `lexical`, `conceptual_single_aspect`, or `conceptual_multi_aspect`. The `strategy` field is authoritative — do not infer broadening type from level number alone.
+Each level carries a `strategy` field: `lexical` (Level 1 only), `conceptual_single_aspect`, or `conceptual_multi_aspect` (Levels 2–3). The `strategy` field is authoritative — do not infer broadening type from level number alone.
 
 Calling agents individually in sequence:
 

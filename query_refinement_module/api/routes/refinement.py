@@ -488,7 +488,7 @@ class SearchExpandResponse(BaseModel):
     search_expansion_levels: List[Dict[str, Any]] = Field(
         ...,
         description=(
-            "Ordered list of expansion levels (Level 0 first). "
+            "Ordered list of expansion levels (Levels 1–N only; Level 0 is the anchor passed in as statement). "
             "Each entry: {level, label, strategy, search_query, relaxed_aspects, rationale}. "
             "Use search_query as the retrieval string for each fallback step."
         ),
