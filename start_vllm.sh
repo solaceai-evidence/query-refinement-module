@@ -47,3 +47,7 @@ echo "  dtype: $DTYPE"
 echo "  max-model-len: $MAX_MODEL_LEN"
 
 exec vllm serve "$MODEL" --port "$PORT" --dtype "$DTYPE" --max-model-len "$MAX_MODEL_LEN" "$@"
+
+# After this server is running, point the API at it in your .env:
+#   cp .env.selfhosted .env
+# Then check LLM_API_BASE and LLM_MODEL match the port and model name above.

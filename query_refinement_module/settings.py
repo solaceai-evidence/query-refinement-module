@@ -4,6 +4,8 @@ from __future__ import annotations
 
 import copy
 import json
+import os
+from pathlib import Path
 from typing import Any, Dict, Optional
 
 from pydantic import AliasChoices, Field, field_validator, model_validator
@@ -256,6 +258,29 @@ class LLMSettings(BaseSettings):
         return self
 
     @classmethod
+    def _load_provider_preset(cls, preset_name: str) -> None:
+        """Apply a provider preset YAML as env-var defaults.
+
+        Uses os.environ.setdefault so real env vars (and .env file values already
+        loaded by load_dotenv) always take priority over the preset.
+        """
+        import yaml
+
+        for base in (Path.cwd(), Path(__file__).parent.parent):
+            preset_path = base / "config" / "providers" / f"{preset_name}.yaml"
+            if preset_path.exists():
+                break
+        else:
+            return
+
+        with open(preset_path) as f:
+            values = yaml.safe_load(f) or {}
+
+        for key, value in values.items():
+            if value is not None:
+                os.environ.setdefault(str(key), str(value))
+
+    @classmethod
     def from_env(
         cls,
         *,
@@ -267,6 +292,10 @@ class LLMSettings(BaseSettings):
             from dotenv import load_dotenv
 
             load_dotenv(override=False)
+
+        preset = os.environ.get("LLM_PROVIDER_PRESET")
+        if preset:
+            cls._load_provider_preset(preset)
 
         settings = cls()
         if require_model and not settings.model:

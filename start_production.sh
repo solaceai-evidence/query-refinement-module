@@ -178,7 +178,7 @@ echo "  Environment: ${ENVIRONMENT:-development}"
 echo "  Database: ${EFFECTIVE_DATABASE_URL#*@}"  # Hide credentials
 echo "  Redis: ${REDIS_URL:-not configured}"
 echo "  Workers: ${WORKERS:-4}"
-  echo "  Worker Timeout: ${WORKER_TIMEOUT:-180}s"
+echo "  Worker Timeout: ${WORKER_TIMEOUT:-180}s"
 echo "  Log Level: ${LOG_LEVEL:-INFO}"
 echo "  Log Format: ${LOG_FORMAT:-json}"
 echo "  CORS Origins: ${ALLOWED_ORIGINS:-localhost}"

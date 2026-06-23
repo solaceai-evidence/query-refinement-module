@@ -8,11 +8,10 @@ echo ""
 if [ ! -f ".env" ]; then
     echo "Warning: .env file not found"
     echo "   Pick the template that matches your LLM provider:"
-    echo "     cp .env.anthropic-claude-sonnet-4-6 .env   # Anthropic Claude Sonnet 4.6 (cloud)"
-    echo "     cp .env.openai-gpt-4o .env                 # OpenAI GPT-4o (cloud)"
-    echo "     cp .env.ollama-qwen2.5-72b .env          # Ollama — Qwen 2.5 72B (local)"
-    echo "     cp .env.vllm .env                         # vLLM (self-hosted; use ./start_vllm.sh)"
-    echo "   Then set LLM_API_KEY (cloud) or verify LLM_API_BASE for vLLM / non-default local hosts"
+    echo "     cp .env.cloud .env            # cloud LLM (Anthropic, OpenAI, …) — fill in LLM_API_KEY"
+    echo "     cp .env.local .env            # local runner (Ollama) — requires Ollama running"
+    echo "     cp .env.selfhosted .env       # self-hosted server (vLLM, llama.cpp) — run ./start_vllm.sh first"
+    echo "   Then set LLM_API_KEY (cloud) or verify LLM_API_BASE (local/self-hosted)"
     echo ""
     exit 1
 fi

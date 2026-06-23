@@ -1,0 +1,32 @@
+# Anthropic Claude provider preset
+# ─────────────────────────────────────────────────────────────────────────────
+# To activate:  add  LLM_PROVIDER_PRESET=anthropic  to your .env
+#
+# Values here are applied as env-var defaults — any matching variable already
+# set in your shell or .env file takes priority.
+
+# ── Rate limits ───────────────────────────────────────────────────────────────
+# Edit these to match your Anthropic account tier.
+# Detect your actual limits: python scripts/detect_anthropic_tier.py
+#
+#   Tier 1:  RPM=50,     TPM=40 000,    concurrent=5
+#   Tier 2:  RPM=1 000,  TPM=80 000,    concurrent=10
+#   Tier 3:  RPM=2 000,  TPM=160 000,   concurrent=20
+#   Tier 4:  RPM=4 000,  TPM=400 000,   concurrent=40
+#   Custom:  set values below to match headers from detect_anthropic_tier.py
+LLM_PROVIDER_RATE_LIMIT_RPM: "5000"
+LLM_PROVIDER_RATE_LIMIT_TPM: "6000000"
+LLM_PROVIDER_MAX_CONCURRENT: "50"
+
+# ── Prompt caching ────────────────────────────────────────────────────────────
+# Reduces cost on repeated system prompts (requires Anthropic Tier 1+; not tested on other private models).
+LLM_ENABLE_PROMPT_CACHING: "true"
+
+# ── Adaptive back-off ─────────────────────────────────────────────────────────
+# Automatically slows request rate after 429 errors.
+# Set to "true" for production; "false" is fine for local development.
+LLM_PROVIDER_ADAPTIVE_RATE_LIMIT: "false"
+
+# ── Proxy / custom endpoint ───────────────────────────────────────────────────
+# Uncomment only if routing through an Anthropic-compatible proxy:
+# LLM_API_BASE: "https://your-proxy.example.com"

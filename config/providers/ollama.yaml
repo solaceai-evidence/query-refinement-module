@@ -1,0 +1,27 @@
+# Ollama provider preset
+# ─────────────────────────────────────────────────────────────────────────────
+# To activate:  add  LLM_PROVIDER_PRESET=ollama  to your .env
+# Also set:     LLM_MODEL=ollama/<model-name>   (e.g. ollama/qwen2.5:72b)
+#
+# Values here are applied as env-var defaults — any matching variable already
+# set in your shell or .env file takes priority.
+
+# ── API base URL ──────────────────────────────────────────────────────────────
+# Default for local Ollama. Change to your host if running on another machine.
+LLM_API_BASE: "http://localhost:11434"
+
+# ── Concurrency ───────────────────────────────────────────────────────────────
+# One concurrent request avoids overloading a single local GPU.
+LLM_PROVIDER_MAX_CONCURRENT: "1"
+
+# ── Rate limits ───────────────────────────────────────────────────────────────
+# Self-hosted — no external rate limits enforced.
+LLM_PROVIDER_RATE_LIMIT_RPM: "0"
+
+# ── Context window ────────────────────────────────────────────────────────────
+# Default is 16384 tokens. Uncomment to increase for larger models:
+# LLM_CONTEXT_WINDOW: "32768"
+
+# ── Max output tokens ─────────────────────────────────────────────────────────
+# Uncomment to increase for very long refinement responses:
+# LLM_MAX_OUTPUT_TOKENS: "8192"

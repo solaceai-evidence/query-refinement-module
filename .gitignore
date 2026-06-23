@@ -148,9 +148,10 @@ celerybeat.pid
 .env
 .env.*
 !.env.prod
-!.env.anthropic-claude-sonnet-4-6
-!.env.ollama-llama3.3-70b
-!.env.vllm
+!.env.cloud
+!.env.local
+!.env.selfhosted
+!.env.prod.local
 .envrc
 .venv
 env/
@@ -249,6 +250,7 @@ frontend/.env
 frontend/.env.local
 frontend/.env.production.local
 frontend/.vite/
+!frontend/.env.example
 
 # Research paper
 QueryRefinementPaper*
