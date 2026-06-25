@@ -286,42 +286,55 @@ Strategy ladder (apply in this order; skip steps that add no value):
    exactly the string "(no restriction)" as the relaxed_aspects value for geography (no other
    phrasing), and omit the geographic term from search_query entirely.
 
-Rules:
-- Generate Levels 1 through N only. The supplied anchor is fixed; do not restate, rewrite, or replace it.
-- Level 1 must include every term from concept_lexical_rings for every concept — no omissions,
-  except that domain_terms for proper nouns (named locations, named organisations with no
-  true_synonyms, abbreviations, spelling_variants, or lexical_variants) must be excluded.
-- Level 1 establishes the canonical boolean ring. Levels 2–N must copy Level 1's exact boolean blocks
-  verbatim and replace only the concept block for the aspect being broadened. Never reduce or omit
-  synonyms that were present in Level 1.
-- Broaden only for search recall; never change the intent, scope, or core meaning of the anchor query.
-- relaxed_aspects keys must come from the allowed aspects listed in the input. Never use an aspect
-  marked AVOID or an aspect that was not detected.
-- Conceptual broadened values must come from (or be consistent with) the allowed broadening candidates
-  given per aspect.
-- If relaxed_aspects contains exactly two keys, use strategy "conceptual_multi_aspect".
-- If strategy is "conceptual_single_aspect", relax exactly one aspect.
-- Relax at most two aspects per level, and avoid Cartesian combinations.
-- Prefer lexical expansion before any conceptual broadening.
-- Treat filters as retrieval constraints to respect during broadening; do not contradict them or
-  force them into the query text unless they naturally belong there.
-- Return levels generously: if ANY SAFE or CONDITIONAL aspects were detected, generate at least Level 2. Do not skip level generation just because the query seems "specific" or "narrow" — broadening is exactly what narrow queries need.
-- Return zero additional levels ONLY if: no SAFE or CONDITIONAL aspects were detected at all, and the anchor query has zero broadening candidates (rare scenario).
-- For queries with geographic constraints (named locations, specific regions) OR rare populations OR conflict-affected contexts: ALWAYS generate Levels 2–3 to broaden geography or setting. These are high-priority SAFE aspects with good broadening candidates.
-- Return at most three additional levels.
-- Stop generating levels as soon as all SAFE aspects have been broadened. If only one SAFE aspect
-  was detected, Level 2 broadens it and the ladder ends there — do not manufacture a Level 3 by
-  reaching for CONDITIONAL aspects by default. If a SAFE aspect's broadening already removed its
-  constraint entirely (e.g. "no geographic restriction" at Level 2), stop — there is no constraint
-  left to remove and inventing a further level adds noise, not recall.
-- CONDITIONAL aspects (topic_or_condition, intervention_or_exposure_or_phenomenon) may be used at
-  the final level only when you have positive reason to expect that the SAFE-aspect scope will yield
-  insufficient evidence — for example, a rare condition, a minority population with limited research
-  output, or a conflict-affected low-income setting. Apply them as a deliberate escalation, not as
-  a way to reach a particular level count.
-- Keep search_query non-empty and directly usable by a retrieval system.
-- Explain in each rationale what changed and why it broadens recall without scope drift.
-- When a CONDITIONAL aspect is used, explicitly acknowledge the scope trade-off in the rationale.
+MANDATORY OUTPUT RULES (must follow these in order of precedence):
+
+1. **If ANY SAFE or CONDITIONAL aspects were detected, you MUST generate at least Level 1 + Level 2.**
+   - If geography or setting_or_context detected: MUST generate Level 1 + Level 2 + Level 3 (minimum 3 levels)
+   - If only population_or_entity SAFE: Generate Level 1 + Level 2 (minimum 2 levels)
+   - Never return an empty levels array if aspects were detected.
+
+2. **Never return `{"levels": []}`** when allowed_aspects is non-empty. This is the primary failure mode.
+   An empty levels array with detected aspects represents a template failure.
+
+3. **Generate Levels 1 through N only.** The supplied anchor is fixed; do not restate, rewrite, or replace it.
+
+4. **Level 1 structure** (lexical expansion):
+   - Must include: anchor term + true_synonyms + abbreviations + spelling_variants + lexical_variants + domain_terms
+   - Exception: For proper nouns (named locations like "Qoloji camp") with no synonyms/abbreviations/variants,
+     use anchor term alone (exclude domain_terms for proper nouns)
+   - relaxed_aspects must be {} (empty) for Level 1
+   - Format: (term1 OR syn1 OR abbr1) AND (term2 OR syn2) AND ...
+
+5. **Levels 2+** (conceptual broadening):
+   - Copy Level 1's exact boolean blocks verbatim, replace only the block for the aspect being broadened
+   - Never omit or reduce synonyms that appeared in Level 1
+   - Include relaxed_aspects with the broadening key-value pair
+
+6. **Broadening priority** (apply in this strict order):
+   - Level 2: Broaden highest-priority SAFE aspect (geography > setting > population)
+   - Level 3: Broaden next SAFE aspect OR use Level 2's broadening candidate chain
+   - Level 4+: Only if multiple SAFE aspects remain and evidence base is expected to be very sparse
+
+7. **When to stop generating levels:**
+   - ONLY when: (a) ALL detected SAFE aspects have been broadened, AND
+                 (b) broadened scope is already very wide (e.g., "no geographic restriction")
+   - For geographic/setting queries: ALWAYS generate at least 3 levels (L1 + L2 broader geography + L3 no restriction)
+   - Do NOT stop early just because scope seems "broad enough"
+
+8. **Relaxed aspects validation:**
+   - Keys must come from allowed aspects list (never use AVOID-marked aspects)
+   - Values must come from broadening_candidates provided in input
+   - Use "(no restriction)" exactly for removing geographic constraints
+
+9. **General rules:**
+   - Broaden only for recall; never change intent or core scope
+   - If two aspects in relaxed_aspects, strategy must be "conceptual_multi_aspect"
+   - If one aspect in relaxed_aspects, strategy must be "conceptual_single_aspect"
+   - At most 2 aspects per level, avoid Cartesian combinations
+   - Prefer lexical (L1) before conceptual (L2+)
+   - Keep search_query non-empty and directly usable
+   - Explain each rationale with what changed and why it broadens recall
+   - When using CONDITIONAL aspects, acknowledge the scope trade-off in rationale
 
 ## Recommending a starting level
 
@@ -494,6 +507,37 @@ Key distinctions demonstrated:
   blocks are identical to Level 1.
 - Population and setting blocks are never narrowed across levels.
 - Topic/condition is not broadened because it is CONDITIONAL and geography is the source of sparsity.
+
+## HARD RULES — Failure Prevention
+
+These rules override all others. Violating them represents a template failure:
+
+1. **NEVER return an empty levels array if allowed_aspects is non-empty.**
+   - "levels": [] is only acceptable if no SAFE/CONDITIONAL aspects were provided
+   - If any aspects were provided, you MUST generate at least Level 1 + Level 2
+
+2. **For queries with geography or setting_or_context constraints, generate 3 levels minimum:**
+   - Level 1: Lexical expansion of anchor
+   - Level 2: Broaden geography (or setting if no geography)
+   - Level 3: Either broaden next SAFE aspect OR remove geographic constraint "(no restriction)"
+
+3. **Output exactly one JSON object, no preamble/explanation/markdown.**
+   - The JSON must be valid and complete
+   - levels must be a non-empty array (minimum 1 level, typically 2-3)
+
+4. **Each level must have:**
+   - level: integer (1, 2, 3, ...)
+   - label: brief string (2-5 words)
+   - strategy: one of "lexical", "conceptual_single_aspect", "conceptual_multi_aspect"
+   - search_query: non-empty string, directly usable in retrieval system
+   - relaxed_aspects: {} for Level 1, {aspect: value} for Levels 2+
+   - rationale: 1-3 sentences explaining what changed and why
+
+5. **Never invent broadening candidates** that weren't provided in input.
+   Use only values from the allowed_aspects list.
+
+6. **recommended_starting_level** must be an integer matching one of your generated levels.
+   For geographic queries, typically 2 or 3 (never 1 if Level 1 will be sparse).
 """.strip()
 
 
