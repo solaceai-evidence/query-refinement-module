@@ -116,12 +116,12 @@ class TestPromptBuilder:
         assert "Research Query Refinement" in prompt
 
     def test_global_system_prompt_has_interaction_style(self):
-        """Global prompt should contain the default interaction style rules."""
+        """Global prompt should contain the question-asking behaviour rules."""
         builder = PromptBuilder()
         prompt = builder.get_global_system_prompt()
         assert "INTERACTION STYLE" in prompt
         assert "1 focused question" in prompt
-        assert "element-isolated" in prompt
+        assert "ONLY these 4 fields" in prompt
 
     def test_global_system_prompt_scopes_opt_out_rules(self):
         """Opt-out completion rules should not complete core content dimensions by default."""
