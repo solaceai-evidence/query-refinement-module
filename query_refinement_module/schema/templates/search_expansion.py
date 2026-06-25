@@ -219,6 +219,18 @@ Return exactly one JSON object matching this schema:
 
 Valid strategy values: "lexical", "conceptual_single_aspect", "conceptual_multi_aspect".
 
+CRITICAL RULE FOR GEOGRAPHIC/SETTING CONSTRAINTS:
+When the anchor contains a specific named location (e.g., "Qoloji camp"), a geographic region (e.g., "Ethiopia"),
+or a setting_or_context constraint (e.g., "refugee camp"), ALWAYS generate at least Levels 2–3. Geographic and
+setting constraints are high-priority SAFE aspects that systematically exclude evidence from analogous contexts.
+Never return an empty level list for queries with geographic or setting specificity — these are exactly the cases
+where broadening matters most.
+
+Examples:
+- "Studies in Qoloji camp, Ethiopia" → Level 1 (lexical) + Level 2 (broaden geography to region/context proxy) + Level 3 (remove geo restriction entirely)
+- "Mental health interventions in refugee camps" → Same pattern: L1 + L2 + L3
+- "Perinatal mental health in Sub-Saharan Africa" → L1 + L2 (broaden to global if Africa-specific is sparse)
+
 Strategy ladder (apply in this order; skip steps that add no value):
 1. Level 1 — strategy "lexical": build one boolean retrieval query from concept_lexical_rings in the
    Supporting Search Context. For every concept in the anchor query, OR-combine: the anchor term
@@ -279,7 +291,9 @@ Rules:
 - Prefer lexical expansion before any conceptual broadening.
 - Treat filters as retrieval constraints to respect during broadening; do not contradict them or
   force them into the query text unless they naturally belong there.
-- Return zero additional levels if the anchor query is already broad or no useful broadening exists.
+- Return levels generously: if ANY SAFE or CONDITIONAL aspects were detected, generate at least Level 2. Do not skip level generation just because the query seems "specific" or "narrow" — broadening is exactly what narrow queries need.
+- Return zero additional levels ONLY if: no SAFE or CONDITIONAL aspects were detected at all, and the anchor query has zero broadening candidates (rare scenario).
+- For queries with geographic constraints (named locations, specific regions) OR rare populations OR conflict-affected contexts: ALWAYS generate Levels 2–3 to broaden geography or setting. These are high-priority SAFE aspects with good broadening candidates.
 - Return at most three additional levels.
 - Stop generating levels as soon as all SAFE aspects have been broadened. If only one SAFE aspect
   was detected, Level 2 broadens it and the ladder ends there — do not manufacture a Level 3 by
@@ -298,11 +312,14 @@ Rules:
 ## Recommending a starting level
 
 After generating levels, recommend which level (1-N) to start retrieval from:
-- If anchor is specific/narrow (e.g., named entity, rare condition, specific geography): recommend Level 2 or 3
-- If anchor is already moderate/broad: recommend Level 1
-- If both L1 and L2 are likely sparse (rare phenomenon + narrow context): recommend Level 3
+- If anchor specifies a NAMED LOCATION (e.g., "Qoloji camp", "Cox's Bazar", specific hospital): **ALWAYS recommend Level 2 or 3** — Level 1 will be too sparse.
+- If anchor specifies a geographic region + specific context (e.g., "Ethiopia" + "refugee camp"): recommend Level 2 — broaden geography first.
+- If anchor is already moderate/broad (no named location, not rare, not conflict-affected): recommend Level 1.
+- If both L1 and L2 are likely sparse (rare phenomenon + narrow context + named location): recommend Level 3.
 
-Rationale should be 1-2 sentences explaining why: e.g., "Anchor names a specific camp; Level 1 will be sparse. Level 2 broadens to refugee displacement context which has better coverage."
+Rationale should be 1-2 sentences explaining why:
+- Example (named location): "Anchor specifies Qoloji camp, a named geographic location. Level 1 will be sparse. Level 2 broadens to refugee displacement context which has better coverage."
+- Example (rare + narrow): "Query combines rare condition + specific camp + vulnerable population. Level 1 will be sparse. Level 3 removes geographic restriction to access global evidence base."
 
 ## Example 1 — Biomedical (no geography; CONDITIONAL topic used at Level 3)
 
