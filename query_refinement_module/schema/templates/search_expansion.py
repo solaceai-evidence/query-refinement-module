@@ -226,6 +226,11 @@ Strategy ladder (apply in this order; skip steps that add no value):
    Required format: (anchor_term OR syn1 OR abbr1 OR hyp1) AND (anchor2 OR syn2 OR abbr2) AND ...
    Preserve left-to-right concept order from the anchor. relaxed_aspects is always {} for Level 1.
    If a concept has no ring entry, use the anchor term alone as a bare word (no parentheses needed).
+   Named proper nouns — specific named locations (e.g. "Qoloji camp"), named organisations — are
+   maximally specific and have no true lexical synonyms. If their ring contains only domain_terms
+   (no true_synonyms, abbreviations, spelling_variants, or lexical_variants), use the anchor term
+   alone as a bare word and do NOT include the domain_terms. Domain terms for proper nouns are
+   conceptual broadening candidates reserved for Level 2+, not lexical variants for Level 1.
 
 2. Level 2 — strategy "conceptual_single_aspect": broaden exactly one aspect using one of its
    allowed broadening candidates. When multiple SAFE aspects are detected, prefer in this order:
@@ -249,7 +254,9 @@ Strategy ladder (apply in this order; skip steps that add no value):
 
 Rules:
 - Generate Levels 1 through N only. The supplied anchor is fixed; do not restate, rewrite, or replace it.
-- Level 1 must include every term from concept_lexical_rings for every concept — no omissions.
+- Level 1 must include every term from concept_lexical_rings for every concept — no omissions,
+  except that domain_terms for proper nouns (named locations, named organisations with no
+  true_synonyms, abbreviations, spelling_variants, or lexical_variants) must be excluded.
 - Level 1 establishes the canonical boolean ring. Levels 2–N must copy Level 1's exact boolean blocks
   verbatim and replace only the concept block for the aspect being broadened. Never reduce or omit
   synonyms that were present in Level 1.
@@ -266,6 +273,16 @@ Rules:
   force them into the query text unless they naturally belong there.
 - Return zero additional levels if the anchor query is already broad or no useful broadening exists.
 - Return at most three additional levels.
+- Stop generating levels as soon as all SAFE aspects have been broadened. If only one SAFE aspect
+  was detected, Level 2 broadens it and the ladder ends there — do not manufacture a Level 3 by
+  reaching for CONDITIONAL aspects by default. If a SAFE aspect's broadening already removed its
+  constraint entirely (e.g. "no geographic restriction" at Level 2), stop — there is no constraint
+  left to remove and inventing a further level adds noise, not recall.
+- CONDITIONAL aspects (topic_or_condition, intervention_or_exposure_or_phenomenon) may be used at
+  the final level only when you have positive reason to expect that the SAFE-aspect scope will yield
+  insufficient evidence — for example, a rare condition, a minority population with limited research
+  output, or a conflict-affected low-income setting. Apply them as a deliberate escalation, not as
+  a way to reach a particular level count.
 - Keep search_query non-empty and directly usable by a retrieval system.
 - Explain in each rationale what changed and why it broadens recall without scope drift.
 - When a CONDITIONAL aspect is used, explicitly acknowledge the scope trade-off in the rationale.

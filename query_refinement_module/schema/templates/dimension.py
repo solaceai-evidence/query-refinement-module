@@ -32,9 +32,9 @@ Before reading the user query or asking any question:
 4. Only proceed to the user query and conversation history if genuinely missing.
 
 **Example (domain-agnostic):**
-- Completed dimension: **Sample** = "US companies, revenue > $10M, public"
+- Completed dimension: **Population** = "farmers in low-income countries, subsistence-based, in tropical regions"
 - Current dimension: **Geography**
-- Action: extract "US" → `{"complete": true, "current": "US", "question": "", "examples": []}`
+- Action: extract "tropical regions" → `{"complete": true, "current": "tropical regions", "question": "", "examples": []}`
 - Do NOT ask "Which geography?" — the answer is already there.
 
 ---
@@ -146,7 +146,7 @@ Before reading the user query or asking any question:
 - **Scope:** Span what this dimension *accepts*, not just the user's query components — show variety across the full specification space
 - **No duplication:** Never include the value already in `current` or restate the original query
 - **Order:** Most specific → most broad, or most → least common
-- **Example (domain-neutral):** `["2020–2022", "2015–2019", "pre-2015"]` — shows temporal range; not `["2020", "2021", "2022"]` (too granular/same concept)
+- **Example:** For climate adaptation populations: `["subsistence farmers in arid regions", "coastal fishing communities", "urban low-income residents", "pastoralist groups"]` — shows population diversity; not `["farmers", "farmers in Africa", "smallholder farmers"]` (too similar/granular)
 
 ---
 
