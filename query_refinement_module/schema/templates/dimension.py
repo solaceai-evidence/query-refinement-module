@@ -141,12 +141,16 @@ Before reading the user query or asking any question:
 - `examples`: quick-reply strings; return `[]` only when `complete=true`
 
 **Rules for generating `examples` (when `complete=false`):**
-- **Quantity:** 4–6 options showing the dimension's full valid range; fewer only for binary/ternary choices
-- **Quality:** Each is a complete, standalone answer the user can submit as-is (≤10 words)
-- **Scope:** Span what this dimension *accepts*, not just the user's query components — show variety across the full specification space
-- **No duplication:** Never include the value already in `current` or restate the original query
+- **Purpose:** Examples help users quickly select from a broad range of valid answers for the current dimension. Each example should be usable as-is without modification.
+- **Quantity:** 4–6 options
+- **Breadth:** Span the full valid range of the dimension — not just variations on the user's query. Show diversity within the context.
+- **Context focus:** Each option must be specific to the current context and answerable by the user right now. Do not use hypotheticals or examples the user cannot evaluate.
+- **No prior-dimension repetition:** Never repeat values from completed dimensions. If Context is "displacement camp in Ethiopia", options should be `["Children", "Adolescents","Pregnant women", "All residents"]`, not `["Children in camp", "Pregnant women in camp", ...]`.
+- **Distinct options:** No overlapping or redundant options. Not `["Refugees", "All residents"]` (redundant in camp context); use `["Children", "Pregnant women", "Adolescents", "All residents"]` (distinct).
+- **Catch-all:** Always include one "no restriction" option (e.g., "Any level", "All groups", "No specific preference"). Place it last.
 - **Order:** Most specific → most broad, or most → least common
-- **Example:** For climate adaptation populations: `["subsistence farmers in arid regions", "coastal fishing communities", "urban low-income residents", "pastoralist groups"]` — shows population diversity; not `["farmers", "farmers in Africa", "smallholder farmers"]` (too similar/granular)
+- **Example (right):** When Context is "displacement camp": `["Children under 5", "Pregnant and lactating women", "Adolescents", "Older adults", "All residents"]` — distinct groups, no location repetition, includes catch-all
+- **Example (wrong):** `["Mental health cases", "Substance misuse cases", "Co-occurring cases", "All mental health cases"]` — repeats the Condition; has redundant overlap
 
 ---
 
