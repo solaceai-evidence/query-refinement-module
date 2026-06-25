@@ -310,15 +310,18 @@ def save_query_refinement_response(
         
         # Store search optimization
         if 'search_optimized' in response:
-            query.search_optimized = response['search_optimized']
-        
+            v = response['search_optimized']
+            query.search_optimized = v.model_dump() if hasattr(v, 'model_dump') else v
+
         # Store search filters
         if 'search_filters' in response:
-            query.search_filters = response['search_filters']
-        
+            v = response['search_filters']
+            query.search_filters = v.model_dump() if hasattr(v, 'model_dump') else v
+
         # Store terminology
         if 'terminology' in response:
-            query.terminology = response['terminology']
+            v = response['terminology']
+            query.terminology = v.model_dump() if hasattr(v, 'model_dump') else v
 
         # Store optional post-synthesis search expansion levels.
         if 'search_expansion_levels' in response:

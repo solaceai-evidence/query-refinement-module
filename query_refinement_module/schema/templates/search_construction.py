@@ -40,10 +40,10 @@ Return exactly one valid JSON object and no other text.
 One Boolean retrieval query with AND-connected concept blocks and OR-connected variants within each block.
 
 Block count and ordering:
-- 4 blocks by default.
-- 3 blocks only when fewer than 4 concepts are indispensable.
-- 5 blocks only when a location, context, or factor forms a distinct indispensable concept absent from all other blocks.
-- Order blocks by query_role: topic_or_condition first, then population_or_entity, then intervention_or_exposure_or_phenomenon, then setting_or_context or geography.
+- 4 blocks by default: topic_or_condition, population_or_entity, intervention_or_exposure_or_phenomenon, setting_or_context (or geography if setting is absent).
+- Use 5 blocks when BOTH setting_or_context AND geography are present: create separate blocks for each, with geography as the final block.
+- Use 3 blocks only when fewer than 4 concepts are indispensable.
+- Always order blocks: topic_or_condition, then population_or_entity, then intervention_or_exposure_or_phenomenon, then setting_or_context, then geography (if present).
 
 Building each block: for every concept assigned to that block, include ONLY:
   true_synonyms + abbreviations + spelling_variants + lexical_variants
@@ -53,7 +53,16 @@ Do NOT include domain_terms or colloquial — they cause scope creep.
 Use uppercase Boolean operators: AND, OR, NOT.
 Use parentheses only where they change scope or grouping.
 Do NOT use double quotes inside keyword.structured — they break JSON encoding. Write multi-word terms as bare phrases (e.g. venous thromboembolism, not "venous thromboembolism"). Exact phrase matching is handled by keyword.phrases.
-Use truncation (word*) for morphological variants when appropriate.
+
+Wildcard truncation — MANDATORY for certain term types:
+Apply truncation (word*) to ALL verbs and terms with productive suffixes that generate distinct retrieval forms:
+- Verbs (present/past/gerund variants): prevent*, implement*, improve*, develop*, support*, treat*, manage*
+- Nouns with common suffixes: misuse* (misuse/misused/misusing), abuse* (abuse/abused/abusing), use* (use/used/using)
+- Adjectives/adverbs: wellbeing* (to catch wellbeing, wellbeing-related), psychosocial*
+- Terms where stemming may fail: disorder*, illness*, health* (especially when searching across databases)
+
+DO NOT apply truncation to: proper nouns (Qoloji, Ethiopia), medical abbreviations (MHPSS, IDP), or exact phrases already in keyword.phrases.
+Apply truncation conservatively: only when common morphological forms would be missed by exact matching.
 
 ## keyword.phrases
 
@@ -196,7 +205,7 @@ Output:
 
 {
   "keyword": {
-    "structured": "(venous thromboembolism OR venous thrombosis OR thromboembolism OR VTE OR thromboembolic) AND (major orthopedic surgery OR major orthopaedic surgery OR major orthopedic procedures OR major orthopaedic procedures) AND (thromboprophylaxis OR VTE prophylaxis OR VTE prevention OR venous thromboembolism prevention OR thromboprophylactic OR antithrombotic medications OR antithrombotic agents OR antithrombotic therapy OR DOAC OR LMWH OR mechanical prophylaxis OR physical prophylaxis OR GCS OR IPC)",
+    "structured": "(venous thromboembolism OR venous thrombosis OR thromboembolism OR VTE OR thromboembolic*) AND (major orthopedic surgery OR major orthopaedic surgery OR major orthopedic procedures OR major orthopaedic procedures) AND (thromboprophylaxis* OR VTE prophylaxis OR VTE prevent* OR venous thromboembolism prevent* OR antithrombotic* OR antithrombotic medications OR antithrombotic agents OR antithrombotic therapy OR DOAC OR LMWH OR mechanical prophylaxis OR physical prophylaxis OR GCS OR IPC)",
     "phrases": [
       "venous thromboembolism prophylaxis",
       "major orthopedic surgery",
@@ -246,15 +255,59 @@ Output:
 Key distinctions demonstrated:
 - keyword.structured contains ONLY true_synonyms + abbreviations + spelling_variants + lexical_variants. Specific drugs (aspirin, heparin, warfarin, rivaroxaban) and devices (compression stockings, intermittent pneumatic compression) are domain_terms — they do NOT appear in keyword.structured.
 - Three AND-blocks are used (not four) because the comparison ("within and across classes") is a methodological specification with no distinct keyword representation.
+- Wildcards (thromboembolic*, thromboprophylaxis*) are used for terms with productive morphological variants.
 - publication_years "2020-2026" derives from "recent studies" in medicine (rule: recent in medicine → 2020-CURRENTYEAR).
 - combined_blocks mirrors the three AND-blocks exactly. The intervention block merges controlled vocabulary from three concepts (thromboprophylaxis, antithrombotic medications, mechanical interventions), deduplicating "Anticoagulants" which appeared in two of them.
+
+## Geographic and Setting Blocks — Critical Rule
+
+When both setting_or_context and geography are present in the concept_graph:
+- Create SEPARATE AND-blocks for each.
+- Order: setting_or_context block first, then geography block.
+- Example: "Studies in displacement camps in Ethiopia" produces 5 blocks:
+  - Block 1: (mental health OR ...) [topic]
+  - Block 2: (internally displaced persons OR ...) [population]
+  - Block 3: (intervention OR ...) [intervention]
+  - Block 4: (displacement camps OR IDP camps OR ...) [setting_or_context]
+  - Block 5: (Ethiopia OR Qoloji OR ...) [geography]
+
+- Named proper-noun locations (e.g., "Qoloji camp") appear as bare terms in the geography block; they have no synonyms or domain_terms.
+- DO NOT merge setting and geography blocks with a single OR-group. This collapses the query hierarchy and treats "Ethiopia" as an alternative to "refugee camp" instead of a geographic constraint on camp types.
+
+---
+
+## Example 2 — Humanitarian Health (Five Blocks with Geographic Separation and Wildcards)
+
+Input:
+"How to improve mental health and substance misuse outcomes in children under 5 and pregnant and lactating women in Qoloji camp, Ethiopia."
+
+Concept Graph:
+- mental health, substance misuse [topic_or_condition, true_synonyms, domain_terms, etc.]
+- children under 5, pregnant and lactating women [population_or_entity]
+- interventions to improve outcomes [intervention_or_exposure_or_phenomenon]
+- refugee camp settings [setting_or_context]
+- Qoloji camp, Ethiopia [geography — two separate concepts]
+
+Output keyword.structured (5 AND-blocks, with wildcards on verbs and productive nouns):
+
+`(mental health OR psychological wellbeing OR psychosocial wellbeing OR MHPSS OR mental illness OR mental disorder OR substance misuse* OR substance use* OR substance abuse* OR drug misuse* OR SUD) AND (children under five OR under-five children OR young children OR early childhood OR infants OR toddlers OR pregnant women OR lactating women OR pregnant and lactating women OR PLW) AND (mental health interventions OR psychosocial interventions OR treat* OR prevent* OR improve* OR manage* OR support* OR implement*) AND (refugee camp OR displacement camp OR IDP camp OR humanitarian context OR forced displacement) AND (Qoloji OR Ethiopia OR Ethiopian)`
+
+Key distinctions demonstrated:
+- 5 AND-blocks: setting_or_context and geography are SEPARATE, not merged.
+- Verbs are wildcarded: treat*, prevent*, improve*, manage*, support*, implement*
+- Nouns with productive morphology are wildcarded: misuse*, use*, abuse*, misuse*
+- Proper nouns (Qoloji, Ethiopia) are NOT wildcarded.
+- Abbreviations (MHPSS, SUD, PLW, IDP) are NOT wildcarded.
+- Adjectives like "mental" and "psychological" do NOT get wildcards (they're different concepts, not morphological variants).
 
 ---
 
 ## Hard Rules
 - Output exactly one JSON object. No preamble, explanation, markdown fences, or comments.
 - Do NOT use double quotes inside keyword.structured — they break JSON encoding. Use bare terms only.
-- domain_terms and colloquial must NOT appear in keyword.structured.
+- domain_terms and colloquial must NOT appear in keyword.structured. They are reserved for search expansion levels.
+- When geography and setting_or_context are both present, create separate AND-blocks in strict order: setting_or_context first, geography last. Never merge them into a single OR-block.
+- MANDATORY: Apply truncation (word*) to all verbs and terms with productive morphological suffixes. Do NOT omit wildcards from verbs like prevent*, implement*, treat*, manage*, improve*, or from nouns like misuse*, abuse*, use*.
 - Do not invent venues, authors, years, or publication types not stated in the inputs.
 - Use empty values ("", [], {}) when evidence is insufficient — do not infer.
 """.strip()

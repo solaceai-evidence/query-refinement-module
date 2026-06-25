@@ -212,7 +212,9 @@ Return exactly one JSON object matching this schema:
       "relaxed_aspects": {"aspect_id": "search-only broadened value"},
       "rationale": "what changed and why it broadens recall"
     }
-  ]
+  ],
+  "recommended_starting_level": 1,
+  "recommendation_rationale": "why start here vs. higher levels"
 }
 
 Valid strategy values: "lexical", "conceptual_single_aspect", "conceptual_multi_aspect".
@@ -226,11 +228,17 @@ Strategy ladder (apply in this order; skip steps that add no value):
    Required format: (anchor_term OR syn1 OR abbr1 OR hyp1) AND (anchor2 OR syn2 OR abbr2) AND ...
    Preserve left-to-right concept order from the anchor. relaxed_aspects is always {} for Level 1.
    If a concept has no ring entry, use the anchor term alone as a bare word (no parentheses needed).
+
    Named proper nouns — specific named locations (e.g. "Qoloji camp"), named organisations — are
    maximally specific and have no true lexical synonyms. If their ring contains only domain_terms
    (no true_synonyms, abbreviations, spelling_variants, or lexical_variants), use the anchor term
    alone as a bare word and do NOT include the domain_terms. Domain terms for proper nouns are
    conceptual broadening candidates reserved for Level 2+, not lexical variants for Level 1.
+
+   Geographic hierarchy rule: When the anchor contains both a specific named location (e.g. "Qoloji camp")
+   and a broader geographic region (e.g. "Ethiopia") as separate AND-blocks, preserve this separation
+   in Level 1. Do NOT merge them into a single OR-block. Correct: "... AND Qoloji camp AND Ethiopia"
+   Wrong: "... AND (Qoloji camp OR Ethiopia)". This preserves the semantic constraint "camps IN Ethiopia".
 
 2. Level 2 — strategy "conceptual_single_aspect": broaden exactly one aspect using one of its
    allowed broadening candidates. When multiple SAFE aspects are detected, prefer in this order:
@@ -286,6 +294,15 @@ Rules:
 - Keep search_query non-empty and directly usable by a retrieval system.
 - Explain in each rationale what changed and why it broadens recall without scope drift.
 - When a CONDITIONAL aspect is used, explicitly acknowledge the scope trade-off in the rationale.
+
+## Recommending a starting level
+
+After generating levels, recommend which level (1-N) to start retrieval from:
+- If anchor is specific/narrow (e.g., named entity, rare condition, specific geography): recommend Level 2 or 3
+- If anchor is already moderate/broad: recommend Level 1
+- If both L1 and L2 are likely sparse (rare phenomenon + narrow context): recommend Level 3
+
+Rationale should be 1-2 sentences explaining why: e.g., "Anchor names a specific camp; Level 1 will be sparse. Level 2 broadens to refugee displacement context which has better coverage."
 
 ## Example 1 — Biomedical (no geography; CONDITIONAL topic used at Level 3)
 
@@ -353,7 +370,9 @@ Output:
       "relaxed_aspects": {"topic_or_condition": "thrombosis"},
       "rationale": "CONDITIONAL: broadens the topic block from venous thromboembolism to thrombosis, capturing mixed or general thrombotic event studies. Population and intervention blocks are copied unchanged from Level 2. Expands condition scope beyond VTE — appropriate only when VTE-specific evidence at Level 2 is insufficient."
     }
-  ]
+  ],
+  "recommended_starting_level": 1,
+  "recommendation_rationale": "The anchor is already moderate in scope (major orthopedic surgery, not a rare condition). Level 1 with full lexical expansion should yield adequate results; escalate only if recall is insufficient."
 }
 
 Key distinctions demonstrated:
@@ -431,7 +450,9 @@ Output:
       "relaxed_aspects": {"geography": "(no restriction)"},
       "rationale": "Removes the geographic constraint entirely; the geography term is dropped from the query. Topic, population, and setting blocks are copied unchanged from Level 1."
     }
-  ]
+  ],
+  "recommended_starting_level": 2,
+  "recommendation_rationale": "Anchor specifies a named camp and specific geography (Ethiopia). Level 1 will be sparse. Level 2 broadens to the humanitarian displacement context, which has better evidence coverage."
 }
 
 Key distinctions demonstrated:

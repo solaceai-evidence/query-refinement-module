@@ -16,7 +16,7 @@ from .llm_model_defaults import get_model_defaults
 from .logging_utils import configure_file_logging
 from .providers import ConsoleTracing, FileTracingProvider, LiteLLMProvider
 from .schema import registry
-from .schema.response import SearchExpansionContext, SearchExpansionInput, SearchFilters, Terminology
+from .schema.response import SearchExpansionContext, SearchExpansionInput, SearchExpansionResponse, SearchFilters, Terminology
 from .settings import LLMSettings
 
 load_dotenv(override=False)
@@ -190,10 +190,11 @@ def _resolve_numeric_examples(user_input: str, examples: Optional[list[str]]) ->
     if not numbers:
         return user_input, False
 
-    # Check if input looks like numeric selection: should be mostly digits/dots/spaces/commas
+    # Check if input looks like numeric selection: should be mostly digits/dots/spaces/commas/list-words
     # This heuristic prevents misinterpreting "type 1 diabetes" as numeric reference
-    cleaned = re.sub(r'[\d\s,\.]+', '', user_input.strip())
-    if cleaned:  # If anything other than digits/spaces/dots/commas remains
+    cleaned = re.sub(r'\b(and|or)\b', '', user_input.strip(), flags=re.IGNORECASE)
+    cleaned = re.sub(r'[\d\s,\.]+', '', cleaned)
+    if cleaned:  # If anything other than digits/spaces/dots/commas/and/or remains
         return user_input, False
 
     # Try to resolve each number to an example (1-indexed)
@@ -217,11 +218,18 @@ def _resolve_numeric_examples(user_input: str, examples: Optional[list[str]]) ->
     return user_input, False
 
 
-def _print_search_expansion_levels(levels) -> None:
+def _print_search_expansion_levels(response) -> None:
     print("─"*80)
     print("SEARCH EXPANSION LEVELS")
     print("─"*80)
-    for level in levels:
+
+    # Print recommendation if levels exist
+    if response.levels:
+        print(f"Recommended starting level: {response.recommended_starting_level}")
+        print(f"Rationale: {response.recommendation_rationale}\n")
+
+    # Print each level
+    for level in response.levels:
         strategy = getattr(level.strategy, "value", level.strategy)
         print(f"Level {level.level} — {level.label} [{strategy}]")
         print(f"  {level.search_query}")
@@ -232,6 +240,11 @@ def _print_search_expansion_levels(levels) -> None:
             )
             print(f"  Relaxed: {relaxed}")
         print(f"  Rationale: {level.rationale}\n")
+
+    # Print message if no levels were generated
+    if not response.levels:
+        print("No expansion levels generated.")
+        print(f"  {response.recommendation_rationale}\n")
 
 
 async def run_cli(manager: QueryRefinementManager, framework_name: str, query: str) -> None:
@@ -390,6 +403,11 @@ async def run_cli(manager: QueryRefinementManager, framework_name: str, query: s
                 if was_numeric:
                     print(f"  → Selected: {resolved_input}")
                 step.add_follow_up(question=question, response=resolved_input)
+
+                # Selection from provided options is always complete — skip LLM eval loop
+                if was_numeric:
+                    step.is_complete = True
+                    break
 
                 # Run follow-up analysis
                 print("\n Analyzing your answer...")
@@ -561,7 +579,7 @@ async def run_cli(manager: QueryRefinementManager, framework_name: str, query: s
                         search_input = _build_search_expansion_input_from_synthesis(
                             synthesis,
                         )
-                        levels, metadata = await manager.generate_search_expansion_levels(
+                        expansion_response, metadata = await manager.generate_search_expansion_levels(
                             search_input=search_input,
                         )
                     except Exception as exc:
@@ -571,7 +589,7 @@ async def run_cli(manager: QueryRefinementManager, framework_name: str, query: s
                         logger.info(
                             "CLI: search expansion completed",
                             extra={
-                                "returned_level_count": len(levels),
+                                "returned_level_count": len(expansion_response.levels),
                                 "generated_level_count": metadata.get("generated_level_count", 0),
                                 "status": metadata.get("status"),
                             },
@@ -579,7 +597,7 @@ async def run_cli(manager: QueryRefinementManager, framework_name: str, query: s
                         print("─"*80)
                         print("AGENT D — SEARCH EXPANSION LEVELS")
                         print("─"*80)
-                        _print_search_expansion_levels(levels)
+                        _print_search_expansion_levels(expansion_response)
                 else:
                     logger.info("CLI: user skipped search expansion")
                     

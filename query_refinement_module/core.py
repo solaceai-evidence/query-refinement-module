@@ -1793,7 +1793,7 @@ class QueryRefinementManager:
         model: Optional[str] = None,
         temperature: float = 0.2,
         max_tokens: int = 1536,
-    ) -> tuple[List[SearchExpansionLevel], Dict[str, Any]]:
+    ) -> tuple[SearchExpansionResponse, Dict[str, Any]]:
         """Generate retrieval expansion levels from a standalone expansion input.
 
         Pipeline: fixed aspect assessment (LLM) -> deterministic safety policy
@@ -1839,7 +1839,7 @@ class QueryRefinementManager:
             metadata["warning"] = "Aspect assessment failed; no expansion levels generated."
             metadata["duration_ms"] = round((time.monotonic() - start_time) * 1000)
             logger.warning("Search expansion failed: aspect assessment returned no results")
-            return [], metadata
+            return SearchExpansionResponse(), metadata
 
         metadata["used_llm"] = True
         summary = self._build_assessment_summary(assessments)
@@ -1858,7 +1858,7 @@ class QueryRefinementManager:
             metadata["status"] = "skipped_no_assessable_aspects"
             metadata["duration_ms"] = round((time.monotonic() - start_time) * 1000)
             logger.info("Search expansion skipped: no detected non-avoided aspects")
-            return [], metadata
+            return SearchExpansionResponse(), metadata
 
         prompt_builder = SearchExpansionPromptBuilder()
         result, call_metadata = await self._run_search_expansion_call(
@@ -1879,21 +1879,21 @@ class QueryRefinementManager:
                 "Search expansion failed after LLM call; returning empty level list",
                 extra={"duration_ms": metadata["duration_ms"]},
             )
-            return [], metadata
+            return SearchExpansionResponse(), metadata
 
         generated_levels = result.levels[:4]
         metadata["status"] = "completed"
         metadata["generated_level_count"] = len(generated_levels)
-        levels = generated_levels
+        result.levels = generated_levels
         logger.info(
             "Search expansion generation completed",
             extra={
                 "duration_ms": metadata["duration_ms"],
-                "returned_level_count": len(levels),
+                "returned_level_count": len(result.levels),
                 "generated_level_count": len(generated_levels),
             },
         )
-        return levels, metadata
+        return result, metadata
 
 
     @staticmethod
@@ -1926,7 +1926,17 @@ class QueryRefinementManager:
         start = raw.find("{")
         if start == -1:
             raise ValueError(f"{model_cls.__name__}: response contained no JSON object")
-        return model_cls(**json.loads(raw[start:]))
+        decoder = json.JSONDecoder()
+        obj, _ = decoder.raw_decode(raw, start)
+        # Pre-decode any string-valued nested fields (Claude sometimes double-encodes them)
+        for field in ("keyword", "search_filters"):
+            v = obj.get(field)
+            if isinstance(v, str):
+                v = v.strip()
+                s = v.find("{")
+                if s != -1:
+                    obj[field], _ = decoder.raw_decode(v, s)
+        return model_cls(**obj)
 
     async def _run_normalization(
         self,

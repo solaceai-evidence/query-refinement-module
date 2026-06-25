@@ -117,6 +117,14 @@ list []. They are maximally specific and have no retrievable narrower subtypes. 
 broadening (e.g. "Qoloji camp" → "refugee camps") belongs at the search expansion stage; adding
 generic equivalents here would pollute the lexical ring and make expansion levels indistinct.
 
+Hierarchical geography rule: When an input contains both a specific named location and a broader
+geographic region (e.g., "Qoloji camp, Ethiopia" or "displacement camps in Ethiopia"), extract
+them as SEPARATE concepts with different query_roles:
+- The specific location (Qoloji camp): query_role=geography, empty domain_terms, proper noun.
+- The broader region (Ethiopia): query_role=geography, separate concept, acts as geographic scope constraint.
+Search construction will emit these as separate AND-blocks, which correctly models "camps IN Ethiopia" rather
+than "camps OR Ethiopia".
+
 ### colloquial
 
 Informal, lay, or vernacular equivalents.

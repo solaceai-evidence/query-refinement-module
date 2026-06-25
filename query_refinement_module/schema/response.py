@@ -5,9 +5,10 @@ This module defines the unified response structure used for both initial
 and follow-up analysis of refinement aspects.
 """
 
+import json as _json
 from enum import Enum
 
-from pydantic import BaseModel, ConfigDict, Field, field_validator, validator
+from pydantic import BaseModel, ConfigDict, Field, field_validator, model_validator, validator
 from typing import List, Optional, Literal, Dict, Any
 
 
@@ -234,8 +235,16 @@ class SearchExpansionLevel(BaseModel):
 
 
 class SearchExpansionResponse(BaseModel):
-    """LLM response containing only generated Levels 1-N."""
+    """LLM response containing generated Levels 1-N plus retrieval recommendation."""
     levels: List[SearchExpansionLevel] = Field(default_factory=list)
+    recommended_starting_level: int = Field(
+        default=1,
+        description="Which level (1-N) to start retrieval from based on expected result sparsity"
+    )
+    recommendation_rationale: str = Field(
+        default="Start with Level 1; escalate if recall is insufficient",
+        description="Why this level is optimal (e.g., anchor too narrow, start at L2)"
+    )
 
     @field_validator("levels")
     @classmethod
@@ -358,7 +367,23 @@ class SemanticRepresentationResponse(BaseModel):
 class SearchConstructionResponse(BaseModel):
     """Agent C output: anchor keyword search + filters."""
     keyword: KeywordSearch
-    search_filters: SearchFilters
+    search_filters: SearchFilters = Field(default_factory=SearchFilters)
+
+    @model_validator(mode="before")
+    @classmethod
+    def _decode_string_fields(cls, data):
+        if isinstance(data, dict):
+            for field in ("keyword", "search_filters"):
+                v = data.get(field)
+                if isinstance(v, str):
+                    v = v.strip()
+                    start = v.find("{")
+                    if start != -1:
+                        obj, _ = _json.JSONDecoder().raw_decode(v, start)
+                        data[field] = obj
+                    else:
+                        data[field] = _json.loads(v)
+        return data
 
 
 # Backward compatibility alias
