@@ -45,8 +45,19 @@ Block count and ordering:
 - Use 3 blocks only when fewer than 4 concepts are indispensable.
 - Always order blocks: topic_or_condition, then population_or_entity, then intervention_or_exposure_or_phenomenon, then setting_or_context, then geography (if present).
 
-Building each block: for every concept assigned to that block, include ONLY:
-  true_synonyms + abbreviations + spelling_variants + lexical_variants
+CRITICAL: Every block must have wildcards applied to verbs and productive nouns (see "Building each block" section below).
+
+Building each block: for every concept assigned to that block:
+1. Extract: true_synonyms + abbreviations + spelling_variants + lexical_variants
+2. MODIFY: Apply wildcard truncation (word*) to each extracted term that is a verb or productive noun:
+   - Verbs ending in common tenses: prevent → prevent*, treat → treat*, implement → implement*
+   - Nouns with productive morphology: misuse → misuse*, abuse → abuse*, use → use*
+   - DO NOT truncate: proper nouns, abbreviations, invariant adjectives (e.g., "mental", "psychological")
+3. Include the modified terms in the OR-block.
+
+Example for intervention_or_exposure_or_phenomenon block:
+  Input from concept_graph: [treat, treatment, treating, prevent, prevention, preventing, improve, improvement]
+  After wildcard application: treat*, prevent*, improve* (one per root; all variants covered by single truncated root)
 
 Do NOT include domain_terms or colloquial — they cause scope creep.
 
@@ -278,27 +289,50 @@ When both setting_or_context and geography are present in the concept_graph:
 
 ## Example 2 — Humanitarian Health (Five Blocks with Geographic Separation and Wildcards)
 
-Input:
+Input Statement:
 "How to improve mental health and substance misuse outcomes in children under 5 and pregnant and lactating women in Qoloji camp, Ethiopia."
 
-Concept Graph:
-- mental health, substance misuse [topic_or_condition, true_synonyms, domain_terms, etc.]
+Concept Graph (from Agent B) simplified:
+```
+- mental health, substance misuse [topic_or_condition]
 - children under 5, pregnant and lactating women [population_or_entity]
-- interventions to improve outcomes [intervention_or_exposure_or_phenomenon]
-- refugee camp settings [setting_or_context]
+- interventions to improve outcomes [intervention_or_exposure_or_phenomenon, true_synonyms: treatment, improving, management, support, prevention]
+- humanitarian or refugee camp setting [setting_or_context]
 - Qoloji camp, Ethiopia [geography — two separate concepts]
+```
 
-Output keyword.structured (5 AND-blocks, with wildcards on verbs and productive nouns):
+Output keyword.structured (AFTER mandatory wildcard application):
 
-`(mental health OR psychological wellbeing OR psychosocial wellbeing OR MHPSS OR mental illness OR mental disorder OR substance misuse* OR substance use* OR substance abuse* OR drug misuse* OR SUD) AND (children under five OR under-five children OR young children OR early childhood OR infants OR toddlers OR pregnant women OR lactating women OR pregnant and lactating women OR PLW) AND (mental health interventions OR psychosocial interventions OR treat* OR prevent* OR improve* OR manage* OR support* OR implement*) AND (refugee camp OR displacement camp OR IDP camp OR humanitarian context OR forced displacement) AND (Qoloji OR Ethiopia OR Ethiopian)`
+`(mental health OR psychological wellbeing OR substance misuse* OR substance use* OR substance abuse*) AND (children under five OR pregnant women OR lactating women OR pregnant and lactating women) AND (mental health interventions OR treat* OR improv* OR manag* OR support* OR prevent*) AND (refugee camp OR displacement camp OR IDP camp OR humanitarian context) AND (Qoloji OR Ethiopia)`
+
+Wildcard application example for Block 3 (intervention):
+```
+Input from concept_graph true_synonyms:
+  treatment, improving, management, support, prevention
+
+Step 1: Identify morphological roots
+  - treat (treatment, treat, treats, treating, treated)
+  - improv (improve, improving, improvement, improved)
+  - manag (manage, managing, management, manager)
+  - support (support, supporting, supported, supports)
+  - prevent (prevention, prevent, preventing, prevents)
+
+Step 2: Apply truncation to roots
+  - treat → treat*
+  - improv → improv*
+  - manag → manag*
+  - support → support*
+  - prevent → prevent*
+
+Result: (treat* OR improv* OR manag* OR support* OR prevent*)
+```
 
 Key distinctions demonstrated:
-- 5 AND-blocks: setting_or_context and geography are SEPARATE, not merged.
-- Verbs are wildcarded: treat*, prevent*, improve*, manage*, support*, implement*
-- Nouns with productive morphology are wildcarded: misuse*, use*, abuse*, misuse*
-- Proper nouns (Qoloji, Ethiopia) are NOT wildcarded.
-- Abbreviations (MHPSS, SUD, PLW, IDP) are NOT wildcarded.
-- Adjectives like "mental" and "psychological" do NOT get wildcards (they're different concepts, not morphological variants).
+- **5 AND-blocks**: setting_or_context and geography SEPARATE (not merged).
+- **BLOCK 3 wildcards (MANDATORY)**: treat*, improv*, manag*, support*, prevent* ← CRITICAL FOR RECALL
+- **Block 1 wildcards**: substance misuse* (covers: misuse, misused), substance use* (covers: use, used, using)
+- **Proper nouns**: Qoloji, Ethiopia remain unwildcarded (no morphological variants).
+- **Abbreviations**: MHPSS, IDP remain unwildcarded.
 
 ---
 
