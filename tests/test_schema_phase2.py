@@ -7,7 +7,6 @@ from query_refinement_module.schema import (
     # Models
     RefinementDimension,
     RefinementAspect,
-    UserContext,
     CompletedDimension,
     ExamplesCollection,
     ClearExample,
@@ -28,7 +27,7 @@ from query_refinement_module.schema import (
 
 class TestPydanticModels:
     """Test the Pydantic model classes."""
-    
+
     def test_refinement_dimension_basic(self):
         """Test creating a basic RefinementDimension."""
         dim = RefinementDimension(
@@ -40,23 +39,11 @@ class TestPydanticModels:
         assert dim.id == "test_dim"
         assert dim.name == "Test Dimension"
         assert dim.specifications == "Test criteria"
-    
+
     def test_refinement_aspect_is_alias(self):
         """Test that RefinementAspect is an alias for RefinementDimension."""
         assert RefinementAspect is RefinementDimension
-    
-    def test_user_context_model(self):
-        """Test UserContext model."""
-        ctx = UserContext(
-            user_type="researcher",
-            context="Academic research",
-            tone="professional",
-            complexity="intermediate",
-            examples_from="public health"
-        )
-        assert ctx.user_type == "researcher"
-        assert ctx.tone == "professional"
-    
+
     def test_completed_dimension_model(self):
         """Test CompletedDimension model."""
         completed = CompletedDimension(
@@ -66,7 +53,7 @@ class TestPydanticModels:
             assembled_value="Test value"
         )
         assert completed.assembled_value == "Test value"
-    
+
     def test_examples_collection_model(self):
         """Test ExamplesCollection model."""
         examples = ExamplesCollection(
@@ -78,13 +65,13 @@ class TestPydanticModels:
 
 class TestFrameworkLoading:
     """Test framework loading with new models."""
-    
+
     def test_list_frameworks(self):
         """Test that frameworks can be listed."""
         frameworks = list_frameworks()
         assert isinstance(frameworks, list)
         assert len(frameworks) > 0
-    
+
     def test_get_framework(self):
         """Test getting a framework by name."""
         frameworks = list_frameworks()
@@ -92,7 +79,7 @@ class TestFrameworkLoading:
             fw = get_framework(frameworks[0])
             assert isinstance(fw, list)
             assert len(fw) > 0
-    
+
     def test_framework_aspects_are_pydantic(self):
         """Test that loaded aspects are Pydantic models."""
         frameworks = list_frameworks()
@@ -100,84 +87,51 @@ class TestFrameworkLoading:
             fw = get_framework(frameworks[0])
             for aspect in fw:
                 assert isinstance(aspect, RefinementDimension)
-    
-    def test_framework_has_user_context(self):
-        """Test that loaded aspects have user_context attached."""
+
+    def test_framework_first_item_is_dimension(self):
+        """Test that the first item in a loaded framework is a dimension, not a user_context block."""
         frameworks = list_frameworks()
         if frameworks:
             fw = get_framework(frameworks[0])
-            if fw:
-                # At least first aspect should have user_context
-                assert fw[0].user_context is not None
-                assert isinstance(fw[0].user_context, UserContext)
+            assert fw, "Framework should have dimensions"
+            first = fw[0]
+            assert first.id, "First item should be a dimension with an id"
+            assert first.name, "First item should be a dimension with a name"
 
 
 class TestPromptBuilder:
     """Test the PromptBuilder class."""
-    
+
     def test_get_prompt_builder(self):
         """Test getting default prompt builder."""
         builder = get_prompt_builder()
         assert isinstance(builder, PromptBuilder)
-    
+
     def test_global_system_prompt(self):
         """Test getting global system prompt."""
         builder = PromptBuilder()
         prompt = builder.get_global_system_prompt()
         assert isinstance(prompt, str)
-        assert len(prompt) > 1000  # Should be substantial
+        assert len(prompt) > 1000
         assert "Research Query Refinement" in prompt
-    
-    def test_render_user_context(self):
-        """Test rendering user context."""
+
+    def test_global_system_prompt_has_interaction_style(self):
+        """Global prompt should contain the question-asking behaviour rules."""
         builder = PromptBuilder()
-        ctx = UserContext(
-            user_type="student",
-            context="Academic research",
-            tone="educational",
-            complexity="novice",
-            examples_from="public health"
-        )
-        rendered = builder.render_user_context(ctx)
-        # Check that user type and context are preserved across prompt variants
-        assert "student" in rendered
-        assert "Academic research" in rendered
-        assert "**Examples domain**: public health" not in rendered
-        assert "FEASIBILITY ALERTS" not in rendered
-        assert "shape phrasing, explanation depth, and question framing" in rendered
-        assert "Do not use this section" in rendered or "override task rules" in rendered
-        assert "clear, partial, or complete" in rendered or "judge completeness" in rendered
+        prompt = builder.get_global_system_prompt()
+        assert "INTERACTION STYLE" in prompt
+        assert "1 focused question" in prompt
+        assert "ONLY these 4 fields" in prompt
 
     def test_global_system_prompt_scopes_opt_out_rules(self):
         """Opt-out completion rules should not complete core content dimensions by default."""
         builder = PromptBuilder()
         prompt = builder.get_global_system_prompt()
-
         assert "no-restriction answer" in prompt
         assert "For core content dimensions" in prompt
         assert "continue assessing" in prompt
         assert "required elements" in prompt
 
-    def test_user_context_constraints_do_not_define_completeness(self):
-        """User-context constraints should shape phrasing only, not completeness decisions."""
-        builder = PromptBuilder()
-        ctx = UserContext(
-            user_type="practitioner",
-            context="Working under delivery constraints",
-            tone="pragmatic",
-            complexity="intermediate",
-            examples_from="public health",
-            constraints=["Limited budget", "Rural service footprint"],
-        )
-
-        rendered = builder.render_user_context(ctx)
-
-        assert "FEASIBILITY ALERTS" not in rendered
-        assert "**Examples domain**" not in rendered
-        assert "shape phrasing, explanation depth, and question framing" in rendered
-        assert "Do not use this section" in rendered or "override task rules" in rendered
-        assert "clear, partial, or complete" in rendered or "judge completeness" in rendered
-    
     def test_render_dimension_prompt(self):
         """Test rendering dimension prompt."""
         builder = PromptBuilder()
@@ -191,7 +145,7 @@ class TestPromptBuilder:
         assert "Test Dimension" in rendered
         assert "Test description" in rendered
         assert "Test criteria" in rendered
-    
+
     def test_render_completed_dimensions(self):
         """Test rendering completed dimensions section."""
         builder = PromptBuilder()
@@ -206,7 +160,7 @@ class TestPromptBuilder:
         rendered = builder.render_completed_dimensions(completed)
         assert "Test 1" in rendered
         assert "Value 1" in rendered
-    
+
     def test_build_refinement_system_prompt(self):
         """Test building complete refinement system prompt."""
         builder = PromptBuilder()
@@ -215,23 +169,12 @@ class TestPromptBuilder:
             name="Test Dimension",
             description="Test description",
             specifications="Test criteria",
-            user_context=UserContext(
-                user_type="student",
-                context="Academic research",
-                tone="educational",
-                complexity="novice",
-                examples_from="public health"
-            )
         )
-        
-        prompt = builder.build_refinement_system_prompt(
-            dimension=dim,
-            user_context=dim.user_context
-        )
-        
-        assert "Research Query Refinement" in prompt  # Global
-        assert "student" in prompt  # User context
-        assert "Test Dimension" in prompt  # Dimension
+
+        prompt = builder.build_refinement_system_prompt(dimension=dim)
+
+        assert "Research Query Refinement" in prompt
+        assert "Test Dimension" in prompt
 
     def test_get_synthesis_system_prompt(self):
         """Test getting synthesis system prompt."""
@@ -243,17 +186,17 @@ class TestPromptBuilder:
 
 class TestTemplates:
     """Test template constants."""
-    
+
     def test_global_system_prompt_exists(self):
         """Test global system prompt template exists."""
         assert GLOBAL_SYSTEM_PROMPT is not None
         assert len(GLOBAL_SYSTEM_PROMPT) > 0
-    
+
     def test_synthesis_template_exists(self):
         """Test synthesis template exists."""
         assert SYNTHESIS_TEMPLATE is not None
         assert len(SYNTHESIS_TEMPLATE) > 0
-    
+
     def test_dimension_template_exists(self):
         """Test dimension template exists."""
         assert DIMENSION_REFINEMENT_TEMPLATE is not None
@@ -262,53 +205,42 @@ class TestTemplates:
 
 class TestIntegration:
     """Integration tests with real framework data."""
-    
+
     def test_full_prompt_with_real_framework(self):
         """Test building full prompt with real framework data."""
         frameworks = list_frameworks()
         if not frameworks:
             pytest.skip("No frameworks available")
-        
+
         fw = get_framework(frameworks[0])
         if not fw:
             pytest.skip("Framework has no aspects")
-        
+
         builder = PromptBuilder()
         dim = fw[0]
-        
-        # Build full system prompt
-        prompt = builder.build_refinement_system_prompt(
-            dimension=dim,
-            user_context=dim.user_context
-        )
-        
-        # Should contain key sections
+
+        prompt = builder.build_refinement_system_prompt(dimension=dim)
+
         assert "Research Query Refinement" in prompt
         assert dim.name in prompt
-        
-        # Should be substantial
         assert len(prompt) > 5000
-    
+
     def test_dimension_with_examples(self):
         """Test dimension with examples renders correctly."""
         frameworks = list_frameworks()
         if not frameworks:
             pytest.skip("No frameworks available")
-        
+
         fw = get_framework(frameworks[0])
-        
-        # Find a dimension with examples
-        dim_with_examples = None
-        for dim in fw:
-            if dim.examples and dim.has_examples():
-                dim_with_examples = dim
-                break
-        
+
+        dim_with_examples = next(
+            (d for d in fw if d.examples and d.has_examples()),
+            None,
+        )
         if not dim_with_examples:
             pytest.skip("No dimension with examples found")
-        
+
         builder = PromptBuilder()
         rendered = builder.render_dimension_prompt(dim_with_examples)
-        
-        # Should contain examples section
+
         assert "Clear Specifications" in rendered or "Examples" in rendered

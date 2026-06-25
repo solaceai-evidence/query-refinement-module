@@ -108,6 +108,14 @@ Related concepts that are NOT true equivalents but improve recall in retrieval b
 These must NOT appear in the anchor Boolean query — they widen scope.
 They serve as broadening candidates for conceptual expansion (Levels 2–3).
 The test: if you substituted a domain_term for the canonical concept, the query scope would widen.
+Domain terms must be NARROWER or more specific than the canonical concept (subtypes, instances,
+specialised forms). Never add terms that are broader or more generic than the concept.
+
+Exception — proper nouns: Named entities (specific named locations such as "Qoloji camp" or
+"Cox's Bazar district", named organisations, named individuals) must have an empty domain_terms
+list []. They are maximally specific and have no retrievable narrower subtypes. Their conceptual
+broadening (e.g. "Qoloji camp" → "refugee camps") belongs at the search expansion stage; adding
+generic equivalents here would pollute the lexical ring and make expansion levels indistinct.
 
 ### colloquial
 

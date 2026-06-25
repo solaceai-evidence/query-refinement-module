@@ -1,16 +1,16 @@
 """
-Test message structure matches YAML schema with proper caching.
+Test message structure for dimension refinement prompts.
 
 Verifies:
-1. Message ordering: global → user_context → completed_dims → current_dim → query → history
-2. Cache markers applied to global directive and user context
-3. User context included when specified in framework
+1. Message ordering: global → completed_dims → current_dim → query → history
+2. Cache marker applied to global directive only
+3. Terminal reinforcement fires at threshold
 """
 
 import pytest
 import importlib
 from query_refinement_module.session_models import AspectRefinementState
-from query_refinement_module.schema.models import RefinementDimension, UserContext
+from query_refinement_module.schema.models import RefinementDimension
 from query_refinement_module.schema import registry
 import query_refinement_module.schema.templates as templates_module
 import query_refinement_module.schema.prompt_builder as prompt_builder_module
@@ -28,66 +28,45 @@ def _load_framework_from_current_yaml():
     return aspects
 
 
-def test_message_structure_with_user_context():
-    """Test that messages include user context after global directive with cache markers."""
+def test_message_structure_basic():
+    """Test baseline message structure: global directive, dimension spec, user query."""
     aspects = _load_framework_from_current_yaml()
-    
-    # Get first aspect with user context
     aspect = aspects[0]
-    assert aspect.user_context is not None, "Aspect should have user context from framework"
-    
-    # Create refinement state
+
     state = AspectRefinementState(refinement_aspect=aspect)
-    
-    # Build messages
     query = "Test query about intervention effectiveness"
     messages = state.get_messages(query=query)
-    
-    # Verify structure
-    assert len(messages) >= 4, "Should have at least 4 messages: global, user_context, dimension, query"
-    
+
     # 1. First message: Global directive with cache marker
-    assert messages[0]["role"] == "system", "First message should be system (global directive)"
-    assert "Research Query Refinement" in messages[0]["content"] or "System Directive" in messages[0]["content"], "Should contain global instructions"
-    assert messages[0].get("_cache") is True, "Global directive should be marked for caching"
-    
-    # 2. Second message: User context with cache marker
-    assert messages[1]["role"] == "system", "Second message should be system (user context)"
-    assert any(kw in messages[1]["content"].lower() for kw in ["user", "context", "tone", "complexity"]), \
-        "Should contain user context information"
-    assert messages[1].get("_cache") is True, "User context should be marked for caching"
-    
-    # 3. Find dimension specification
-    dimension_msg = None
-    for msg in messages[2:]:
-        if msg["role"] == "system" and aspect.name in msg["content"]:
-            dimension_msg = msg
-            break
+    assert messages[0]["role"] == "system"
+    assert "Research Query Refinement" in messages[0]["content"] or "System Directive" in messages[0]["content"]
+    assert messages[0].get("_cache") is True
+
+    # 2. Dimension specification present somewhere
+    dimension_msg = next(
+        (m for m in messages[1:] if m["role"] == "system" and aspect.name in m["content"]),
+        None,
+    )
     assert dimension_msg is not None, "Should contain current dimension specification"
-    assert aspect.description in dimension_msg["content"], "Should include dimension description"
-    
-    # 4. A user message containing the query must be present.
-    # Note: a style-cue system message may appear after the user query (recency-bias
-    # counter for open-weight models), so we search rather than checking messages[-1].
+    assert aspect.description in dimension_msg["content"]
+
+    # 3. User query present
     user_msgs = [m for m in messages if m["role"] == "user"]
     assert user_msgs, "Should contain a user query message"
-    assert query in user_msgs[-1]["content"], "Should contain original query"
+    assert query in user_msgs[-1]["content"]
 
 
 def test_message_structure_with_dependencies():
     """Test that completed dimensions and dependencies are included correctly."""
     aspects = _load_framework_from_current_yaml()
-    
-    # Get an aspect that has dependencies (e.g., outcome might depend on intervention)
+
     aspects_with_deps = [a for a in aspects if a.depends_on]
-    
     if not aspects_with_deps:
         pytest.skip("No aspects with dependencies in framework")
-    
+
     aspect = aspects_with_deps[0]
     state = AspectRefinementState(refinement_aspect=aspect)
-    
-    # Create dependency context
+
     dependency_context = {}
     for dep_id in aspect.depends_on:
         dependency_context[dep_id] = {
@@ -95,31 +74,19 @@ def test_message_structure_with_dependencies():
             "description": f"Description of {dep_id}",
             "value": f"Clarified value for {dep_id}"
         }
-    
-    # Build messages with dependencies
-    query = "Test query"
-    messages = state.get_messages(query=query, dependency_context=dependency_context)
-    
-    # Find dependency message (completed dimensions that serve as dependencies)
+
+    messages = state.get_messages(query="Test query", dependency_context=dependency_context)
+
     dep_msg = None
     for msg in messages:
-        # Look for system message containing dependency values
         if msg["role"] == "system":
-            # Check if it contains the actual dependency values (not just mentions in global directive)
-            has_all_values = all(
-                dependency_context[dep_id]["value"] in msg["content"]
-                for dep_id in aspect.depends_on
-            )
-            if has_all_values:
+            if all(dependency_context[dep_id]["value"] in msg["content"] for dep_id in aspect.depends_on):
                 dep_msg = msg
                 break
-    
-    assert dep_msg is not None, f"Should include previously clarified dimensions with dependency values. Aspect depends on: {aspect.depends_on}"
-    
-    # Verify all dependency values are included
+
+    assert dep_msg is not None, f"Should include dependency values. Aspect depends on: {aspect.depends_on}"
     for dep_id in aspect.depends_on:
-        expected_value = dependency_context[dep_id]["value"]
-        assert expected_value in dep_msg["content"], f"Should include dependency value for {dep_id}"
+        assert dependency_context[dep_id]["value"] in dep_msg["content"]
 
 
 def test_message_structure_with_conversation_history():
@@ -127,8 +94,7 @@ def test_message_structure_with_conversation_history():
     aspects = _load_framework_from_current_yaml()
     aspect = aspects[0]
     state = AspectRefinementState(refinement_aspect=aspect)
-    
-    # Add conversation history
+
     state.add_follow_up(
         question="Can you clarify the population?",
         response="Adults aged 18-65 with diabetes"
@@ -137,94 +103,55 @@ def test_message_structure_with_conversation_history():
         question="What about exclusion criteria?",
         response="Exclude pregnant women and children"
     )
-    
-    # Build messages
+
     query = "Test query"
     messages = state.get_messages(query=query)
-    
-    # Find conversation messages (after user query)
-    user_query_idx = None
-    for i, msg in enumerate(messages):
-        if msg["role"] == "user" and query in msg["content"]:
-            user_query_idx = i
-            break
-    
+
+    user_query_idx = next(
+        (i for i, m in enumerate(messages) if m["role"] == "user" and query in m["content"]),
+        None,
+    )
     assert user_query_idx is not None, "Should find user query"
-    
-    # Conversation history should follow
+
     conv_messages = messages[user_query_idx + 1:]
-    
     assert len(conv_messages) >= 4, "Should have at least 4 messages (2 Q&A pairs)"
-    
-    # Verify alternating pattern: assistant (question), user (response)
-    assert conv_messages[0]["role"] == "assistant", "First follow-up should be assistant question"
+
+    assert conv_messages[0]["role"] == "assistant"
     assert "clarify the population" in conv_messages[0]["content"].lower()
-    
-    assert conv_messages[1]["role"] == "user", "Second follow-up should be user response"
+
+    assert conv_messages[1]["role"] == "user"
     assert "Adults aged 18-65" in conv_messages[1]["content"]
-    
-    assert conv_messages[2]["role"] == "assistant", "Third follow-up should be assistant question"
+
+    assert conv_messages[2]["role"] == "assistant"
     assert "exclusion criteria" in conv_messages[2]["content"].lower()
-    
-    assert conv_messages[3]["role"] == "user", "Fourth follow-up should be user response"
+
+    assert conv_messages[3]["role"] == "user"
     assert "pregnant women" in conv_messages[3]["content"]
 
 
-def test_no_user_context_when_not_specified():
-    """Test that user context is not included when framework doesn't specify it."""
-    # Create a dimension without user context
-    dimension = RefinementDimension(
-        id="test_dim",
-        name="Test Dimension",
-        description="Test dimension without user context",
-        specifications="Evaluate something",
-        allow_follow_up=True,
-        max_follow_ups=3
-    )
-    
-    state = AspectRefinementState(refinement_aspect=dimension)
-    
-    # Build messages
-    query = "Test query"
-    messages = state.get_messages(query=query)
-    
-    # Should have: global, dimension, query (no user context)
-    assert len(messages) == 3, "Should have 3 messages when no user context"
-    
-    # First should still be global with cache
-    assert messages[0]["role"] == "system"
-    assert messages[0].get("_cache") is True
-    
-    # Second should be dimension (not user context)
-    assert messages[1]["role"] == "system"
-    assert dimension.name in messages[1]["content"]
-    
-    # Third should be query
-    assert messages[2]["role"] == "user"
-    assert query in messages[2]["content"]
-
-
-def test_cache_markers_only_on_first_two_system_messages():
-    """Test that _cache markers are only applied to global and user context."""
+def test_only_global_directive_is_cached():
+    """Test that _cache marker is applied only to the global directive."""
     aspects = _load_framework_from_current_yaml()
     aspect = aspects[0]
     state = AspectRefinementState(refinement_aspect=aspect)
-    
-    # Build messages
+
     messages = state.get_messages(query="Test query")
-    
-    # Check cache markers
+
     cache_marked = [msg for msg in messages if msg.get("_cache") is True]
-    
-    # Should have exactly 2 cached messages (global + user_context)
-    assert len(cache_marked) == 2, "Should have exactly 2 messages marked for caching"
-    assert cache_marked[0] == messages[0], "First cached message should be global directive"
-    assert cache_marked[1] == messages[1], "Second cached message should be user context"
-    
-    # All other system messages should NOT be cached
-    for msg in messages[2:]:
-        if msg["role"] == "system":
-            assert msg.get("_cache") is not True, "Dimension/dependency messages should not be cached"
+    assert len(cache_marked) == 1, "Only the global directive should be marked for caching"
+    assert cache_marked[0] == messages[0]
+
+    for msg in messages[1:]:
+        assert msg.get("_cache") is not True, "Only global directive should be cached"
+
+
+def _build_plain_dimension():
+    return RefinementDimension(
+        id="population",
+        name="Population",
+        description="Target population",
+        specifications="Extract the population first, then ask only for what is missing.",
+    )
 
 
 def _reload_prompt_modules(monkeypatch, *, prompt_variant=None, llm_model=None):
@@ -242,24 +169,6 @@ def _reload_prompt_modules(monkeypatch, *, prompt_variant=None, llm_model=None):
     return importlib.reload(prompt_builder_module)
 
 
-def _build_dimension_with_user_context():
-    return RefinementDimension(
-        id="population",
-        name="Population",
-        description="Target population",
-        specifications="Extract the population first, then ask only for what is missing.",
-        user_context=UserContext(
-            user_type="researcher",
-            context="Clarifying a search specification",
-            tone="pragmatic",
-            complexity="advanced",
-            examples_from="general",
-            constraints=[],
-            pitfalls=[],
-        ),
-    )
-
-
 def test_open_llm_completed_context_reminder_preserves_question_gating(monkeypatch):
     prompt_builder = _reload_prompt_modules(
         monkeypatch,
@@ -267,7 +176,7 @@ def test_open_llm_completed_context_reminder_preserves_question_gating(monkeypat
         llm_model="ollama/qwen2.5:72b",
     )
     builder = prompt_builder.PromptBuilder()
-    dimension = _build_dimension_with_user_context()
+    dimension = _build_plain_dimension()
     dimension.depends_on = ["condition"]
 
     messages = builder.build_refinement_messages(
@@ -291,14 +200,11 @@ def test_open_llm_completed_context_reminder_preserves_question_gating(monkeypat
     assert "fragment relevant to the current dimension" in messages[-1]["content"].lower()
 
 
-def test_private_terminal_reinforcement_keeps_full_user_context(monkeypatch):
-    prompt_builder = _reload_prompt_modules(
-        monkeypatch,
-        prompt_variant=None,
-        llm_model="anthropic/claude-sonnet-4-6",
-    )
+def test_terminal_reinforcement_does_not_include_user_context(monkeypatch):
+    """Terminal reinforcement should contain global directive + dimension spec only."""
+    prompt_builder = _reload_prompt_modules(monkeypatch)
     builder = prompt_builder.PromptBuilder()
-    dimension = _build_dimension_with_user_context()
+    dimension = _build_plain_dimension()
 
     messages = builder.build_refinement_messages(
         dimension=dimension,
@@ -311,8 +217,9 @@ def test_private_terminal_reinforcement_keeps_full_user_context(monkeypatch):
         terminal_reinforcement_threshold=3,
     )
 
-    assert "## USER CONTEXT" in messages[-1]["content"]
+    assert "USER CONTEXT" not in messages[-1]["content"]
     assert "Style cue" not in messages[-1]["content"]
+    assert "INTERACTION STYLE" in messages[-1]["content"] or "Research Query Refinement" in messages[-1]["content"]
 
 
 if __name__ == "__main__":

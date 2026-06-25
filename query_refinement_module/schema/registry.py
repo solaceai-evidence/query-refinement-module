@@ -3,7 +3,6 @@ Refinement framework registry for loading and managing frameworks from YAML.
 
 This module handles:
 - Loading frameworks from REFINEMENT_FRAMEWORK_PATH environment variable
-- Parsing new user_context structure  
 - Validating and sorting dimensions by dependencies
 - Providing access to registered frameworks
 """
@@ -20,7 +19,7 @@ from dotenv import load_dotenv
 load_dotenv()
 
 # Use Pydantic model (with backward compat alias)
-from .models import RefinementDimension, RefinementAspect, UserContext
+from .models import RefinementDimension, RefinementAspect
 from .dependencies import sort_aspects_by_dependencies
 
 logger = logging.getLogger(__name__)
@@ -49,25 +48,10 @@ _FRAMEWORKS_LOCK = threading.RLock()
 def _load_frameworks(*, raise_on_error: bool = False) -> Dict[str, List[RefinementAspect]]:
     """
     Load frameworks from YAML file specified by REFINEMENT_FRAMEWORK_PATH.
-    
-    The YAML structure (new format with user_context):
-    ```yaml
-    framework_name:
-      - user_context:  # First item (optional)
-          user_type: "..."
-          context: "..."
-          tone: "..."
-          # ... other context fields
-      - id: aspect_id_1  # Remaining items are aspects
-        aspect_name: "..."
-        # ... aspect fields
-      - id: aspect_id_2
-        # ...
-    ```
-    
+
     Returns:
         Dict mapping framework names to lists of RefinementAspect objects
-        
+
     Raises:
         FrameworkLoadError: If raise_on_error=True and loading fails
     """
@@ -106,44 +90,14 @@ def _load_frameworks(*, raise_on_error: bool = False) -> Dict[str, List[Refineme
             if not isinstance(items, list) or len(items) == 0:
                 logger.warning(f"Framework '{framework_name}' has no items, skipping")
                 continue
-            
-            # Check if first item is user_context
-            # YAML structure supports TWO formats:
-            # Format 1 (nested): first item has "user_context" key with nested dict value
-            # Format 2 (sibling): first item has "user_context" key (value is None) 
-            #                     with user_type, context, etc. as sibling keys
-            user_context = None
-            aspect_items = items
-            
-            first_item = items[0]
-            if isinstance(first_item, dict) and "user_context" in first_item:
-                uc_value = first_item["user_context"]
-                
-                # Format 1: nested dict (user_context: {user_type: ..., context: ...})
-                if isinstance(uc_value, dict):
-                    user_context = uc_value
-                    aspect_items = items[1:]  # Remaining items are aspects
-                    logger.debug(f"Framework '{framework_name}' has user_context (nested): {user_context.get('user_type', 'unknown')}")
-                
-                # Format 2: sibling keys (user_context: null, user_type: ..., context: ...)
-                elif uc_value is None:
-                    # Extract user_context fields from the first item
-                    # All keys except "user_context" itself are the context fields
-                    user_context = {k: v for k, v in first_item.items() if k != "user_context"}
-                    aspect_items = items[1:]  # Remaining items are aspects
-                    logger.debug(f"Framework '{framework_name}' has user_context (sibling): {user_context.get('user_type', 'unknown')}")
-            
+
             # Load aspects
             aspects = []
-            for item in aspect_items:
+            for item in items:
                 if not isinstance(item, dict):
                     logger.warning(f"Skipping non-dict item in framework '{framework_name}'")
                     continue
-                
-                # Attach user_context to each aspect if present
-                if user_context:
-                    item['user_context'] = user_context
-                
+
                 try:
                     aspect = RefinementAspect(**item)
                     aspects.append(aspect)

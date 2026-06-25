@@ -22,7 +22,7 @@ This section is the primary reference for building agents or automated integrati
 
 ```
 Phase 1 — Discover               GET  /frameworks
-Phase 2 — Refine (loop)          POST /start  →  loop: POST /answer
+Phase 2 — Refine/clarify (loop)          POST /start  →  loop: POST /answer
 Phase 3 — Synthesize (core)      POST /synthesize  (Agents A → B → C, orchestrated)
            or call individually:  POST /normalize   (Agent A only)
                                   POST /represent   (Agent B only)
@@ -136,9 +136,9 @@ Also invoked automatically by `POST /api/v1/refinement/synthesize`.
 
 **Output:**
 
-| Field | Description |
-|---|---|
-| `clarified_query` | Clarified research statement — the review anchor and Level 0 query |
+| Field                       | Description                                                                 |
+| --------------------------- | --------------------------------------------------------------------------- |
+| `clarified_query`           | Clarified research statement — the review anchor and Level 0 query          |
 | `dimensions_specifications` | Per-dimension refined values assembled deterministically from session state |
 
 `clarified_query` is the primary human-readable output. If you only need the refined query (for display, QA forwarding, or logging), call `/normalize` — Agents B and C are not invoked and the session is not marked as synthesized.
@@ -154,11 +154,11 @@ Also invoked automatically by `POST /api/v1/refinement/synthesize`.
 
 **Output:**
 
-| Field | Description |
-|---|---|
-| `semantic_statement` | Dense embedding query (2-3 sentences, 50-70 words) for vector/semantic search. Information-need framing using document-side vocabulary. |
-| `keyword_statement` | Natural-language keyword query (15-35 words) for BM25/simple keyword search. Key concepts + primary synonyms; no Boolean operators; no metadata filters. |
-| `concept_graph` | Per-concept retrieval metadata — synonyms, abbreviations, domain terms, controlled vocabulary hints |
+| Field                | Description                                                                                                                                              |
+| -------------------- | -------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| `semantic_statement` | Dense embedding query (2-3 sentences, 50-70 words) for vector/semantic search. Information-need framing using document-side vocabulary.                  |
+| `keyword_statement`  | Natural-language keyword query (15-35 words) for BM25/simple keyword search. Key concepts + primary synonyms; no Boolean operators; no metadata filters. |
+| `concept_graph`      | Per-concept retrieval metadata — synonyms, abbreviations, domain terms, controlled vocabulary hints                                                      |
 
 Both `semantic_statement` and `keyword_statement` are filter-free — they share the same `search_filters` produced by Agent C. Pass `concept_graph` to `/construct` (Agent C) and `/expand` (Agent D).
 
@@ -190,12 +190,12 @@ Also invoked automatically by `POST /api/v1/refinement/synthesize`.
 
 **Output:**
 
-| Field | Description |
-|---|---|
-| `keyword.combined_blocks` | **Primary RAG artifact** — one AND-block per concept with `role`, `free_text` terms, and `controlled_vocabulary` |
-| `keyword.structured` | Boolean anchor query (fallback) |
-| `keyword.phrases` | Exact key phrases |
-| `search_filters` | Metadata narrowing filters (`publication_years`, `publication_types`, etc.) — applies to both `semantic_statement` and `keyword_statement` from Agent B |
+| Field                     | Description                                                                                                                                             |
+| ------------------------- | ------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| `keyword.combined_blocks` | **Primary RAG artifact** — one AND-block per concept with `role`, `free_text` terms, and `controlled_vocabulary`                                        |
+| `keyword.structured`      | Boolean anchor query (fallback)                                                                                                                         |
+| `keyword.phrases`         | Exact key phrases                                                                                                                                       |
+| `search_filters`          | Metadata narrowing filters (`publication_years`, `publication_types`, etc.) — applies to both `semantic_statement` and `keyword_statement` from Agent B |
 
 `combined_blocks` connector logic:
 ```
@@ -212,10 +212,10 @@ Use `controlled_vocabulary` only for indexed sources (PubMed → MeSH, WHO IRIS 
 
 **Input:**
 
-| Field | Source | Required |
-|---|---|---|
-| `statement` | Agent A output (`clarified_query`) | Yes |
-| `search_context.concept_graph` | `concept_graph` from Agent B | No, but improves accuracy |
+| Field                          | Source                             | Required                  |
+| ------------------------------ | ---------------------------------- | ------------------------- |
+| `statement`                    | Agent A output (`clarified_query`) | Yes                       |
+| `search_context.concept_graph` | `concept_graph` from Agent B       | No, but improves accuracy |
 
 **Output:** `search_expansion_levels` — Levels 1–3, progressive broadening retrieval levels. Level 0 (the anchor) is not echoed — the caller already has it as `statement`. Use these levels when initial retrieval yields insufficient results.
 
@@ -278,20 +278,20 @@ Every `next_prompt` includes an `examples` list:
 
 After `POST /synthesize`, `structured_output` contains all retrieval artifacts:
 
-| Use case | Field path | Source agent |
-|---|---|---|
-| Dense / vector retrieval | `structured_output.search_optimized.semantic` | Agent B |
-| **Primary RAG keyword search** | `structured_output.search_optimized.keyword.combined_blocks` | Agent C |
-| Boolean anchor query (fallback) | `structured_output.search_optimized.keyword.structured` | Agent C |
-| Exact key phrases | `structured_output.search_optimized.keyword.phrases` | Agent C |
-| Controlled vocabulary (MeSH, DeCS) | `combined_blocks[i].controlled_vocabulary` | Agent C |
-| Metadata narrowing filters | `structured_output.search_filters` | Agent C |
-| Synonym expansion per concept | `structured_output.concept_graph.<concept>` | Agent B |
-| Clarified research statement | `clarified_query` | Agent A |
-| Keyword query (BM25 / simple keyword search) | `structured_output.keyword_statement` | Agent B |
-| Per-dimension refined values | `structured_output.dimensions_specifications` | Agent A |
-| Terminology / synonym map | `structured_output.terminology` | Agent B (legacy — prefer `concept_graph`) |
-| Broadening fallback levels | `POST /expand` with `statement` + `concept_graph` | Agent D |
+| Use case                                     | Field path                                                   | Source agent                              |
+| -------------------------------------------- | ------------------------------------------------------------ | ----------------------------------------- |
+| Dense / vector retrieval                     | `structured_output.search_optimized.semantic`                | Agent B                                   |
+| **Primary RAG keyword search**               | `structured_output.search_optimized.keyword.combined_blocks` | Agent C                                   |
+| Boolean anchor query (fallback)              | `structured_output.search_optimized.keyword.structured`      | Agent C                                   |
+| Exact key phrases                            | `structured_output.search_optimized.keyword.phrases`         | Agent C                                   |
+| Controlled vocabulary (MeSH, DeCS)           | `combined_blocks[i].controlled_vocabulary`                   | Agent C                                   |
+| Metadata narrowing filters                   | `structured_output.search_filters`                           | Agent C                                   |
+| Synonym expansion per concept                | `structured_output.concept_graph.<concept>`                  | Agent B                                   |
+| Clarified research statement                 | `clarified_query`                                            | Agent A                                   |
+| Keyword query (BM25 / simple keyword search) | `structured_output.keyword_statement`                        | Agent B                                   |
+| Per-dimension refined values                 | `structured_output.dimensions_specifications`                | Agent A                                   |
+| Terminology / synonym map                    | `structured_output.terminology`                              | Agent B (legacy — prefer `concept_graph`) |
+| Broadening fallback levels                   | `POST /expand` with `statement` + `concept_graph`            | Agent D                                   |
 
 **`combined_blocks` connector rules:**
 
@@ -306,14 +306,14 @@ Use `free_text` alone for unindexed sources (OpenAlex, CORE, ReliefWeb).
 
 ### Error handling for agents
 
-| HTTP code | Meaning | Action |
-|---|---|---|
-| 401 | Missing or invalid auth | Check `X-API-Key` or `Authorization` header |
-| 403 | Framework access denied | Grant the integration user access to the framework |
-| 404 | Query/session not found | Session may have expired — restart with `/start` |
-| 409 | Already synthesized | Call `/status` to retrieve the existing result |
-| 422 | Validation error | Check request body — see error envelope below |
-| 503 | Session lock held | Retry after 1–2 s; concurrent request on same session |
+| HTTP code | Meaning                 | Action                                                |
+| --------- | ----------------------- | ----------------------------------------------------- |
+| 401       | Missing or invalid auth | Check `X-API-Key` or `Authorization` header           |
+| 403       | Framework access denied | Grant the integration user access to the framework    |
+| 404       | Query/session not found | Session may have expired — restart with `/start`      |
+| 409       | Already synthesized     | Call `/status` to retrieve the existing result        |
+| 422       | Validation error        | Check request body — see error envelope below         |
+| 503       | Session lock held       | Retry after 1–2 s; concurrent request on same session |
 
 Retry pattern for 503 (session contention):
 ```python

@@ -6,7 +6,6 @@ Query refinement framework with Pydantic models and Jinja2 templates.
 from .models import (
     RefinementDimension,
     RefinementAspect,  # Alias for backward compatibility
-    UserContext,
     CompletedDimension,
     ExamplesCollection,
     ClearExample,
@@ -69,7 +68,6 @@ from .synthesis import (
 from .prompt_builder import (
     PromptBuilder,
     render_template,
-    create_dimension_prompt,
     get_prompt_builder,
 )
 
@@ -78,7 +76,6 @@ from .templates import (
     GLOBAL_SYSTEM_PROMPT,
     SYNTHESIS_TEMPLATE,
     DIMENSION_REFINEMENT_TEMPLATE,
-    USER_CONTEXT_PROFILE_TEMPLATE,
     DIMENSIONS_CLARIFIED_AND_DEPENDENCIES_TEMPLATE,
 )
 
@@ -88,7 +85,6 @@ __all__ = [
     # Pydantic models
     "RefinementDimension",
     "RefinementAspect",  # Alias
-    "UserContext",
     "CompletedDimension",
     "ExamplesCollection",
     "ClearExample",
@@ -132,13 +128,11 @@ __all__ = [
     # Prompt builder
     "PromptBuilder",
     "render_template",
-    "create_dimension_prompt",
     "get_prompt_builder",
-    
+
     # Templates
     "GLOBAL_SYSTEM_PROMPT",
     "SYNTHESIS_TEMPLATE",
     "DIMENSION_REFINEMENT_TEMPLATE",
-    "USER_CONTEXT_PROFILE_TEMPLATE",
     "DIMENSIONS_CLARIFIED_AND_DEPENDENCIES_TEMPLATE",
 ]

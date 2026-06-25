@@ -26,18 +26,16 @@ DIMENSION_REFINEMENT_TEMPLATE = """
 
 Before reading the user query or asking any question:
 
-1. **Scan the completed dimensions listed in the PRIOR CONTEXT system message above.**
-2. Look for any value in those dimensions that matches or contains the current dimension ({{ name }}).
-3. If a matching value exists, extract it immediately into `current`. Do NOT ask a question.
-4. If the extracted value fully satisfies this dimension's specification, set `complete=true` and `question=""`.
+1. **Scan the completed dimensions in the PRIOR CONTEXT system message.**
+2. If this dimension's value (or a component of it) appears there, extract it as `current`.
+3. If the extracted value fully satisfies this dimension's specification, set `complete=true` and `question=""`. Do NOT ask.
+4. Only proceed to the user query and conversation history if genuinely missing.
 
-**Cross-dimension extraction example:**
-- Completed dimension: **Population** = "adults aged 18-65 with type 2 diabetes in urban clinics"
-- Current dimension: **Setting**
-- Action: extract "urban clinics" → `{"complete": true, "current": "urban clinics", "question": ""}`
-- Do NOT ask "Which specific setting do you mean?" — the answer is already present.
-
-Only proceed to the query and conversation history after this check is complete.
+**Example (domain-agnostic):**
+- Completed dimension: **Population** = "farmers in low-income countries, subsistence-based, in tropical regions"
+- Current dimension: **Geography**
+- Action: extract "tropical regions" → `{"complete": true, "current": "tropical regions", "question": "", "examples": []}`
+- Do NOT ask "Which geography?" — the answer is already there.
 
 ---
 
@@ -131,24 +129,28 @@ Only proceed to the query and conversation history after this check is complete.
 ---
 
 ## OUTPUT FORMAT
+
 ```json
 {"complete": <boolean>, "current": "<string>", "question": "<string>", "examples": [<string>, ...]}
 ```
 
-- `complete`: boolean (not quoted) — false if gaps remain, true if requirements met
-- `current`: FULL cumulative specification, user's exact words + minimal connectors
-- `question`: plain prose clarifying question — **do NOT embed inline examples here**
-- `examples`: array of 2–4 concrete quick-reply options when `complete=false`; empty array `[]` when `complete=true`
-- Expand references to actual content (not "first one", "combination", "both")
-- ONLY these 4 fields
+**Field definitions:**
+- `complete` (boolean): true if this dimension is fully specified; false if gaps remain
+- `current`: FULL cumulative specification in user's exact words + minimal connectors
+- `question`: plain prose clarifying question (no inline examples embedded here)
+- `examples`: quick-reply strings; return `[]` only when `complete=true`
 
-### Rules for `examples`
-- Each string must be a **standalone, complete answer** a user could select and submit as-is
-- Options must **span the clarification range** — cover different ends of the possibility space, not cluster around one interpretation
-- Keep each option short (≤ 10 words) — these are button labels, not sentences
-- Order from most specific/narrow to most broad, or most common to least common
-- Good diversity example for Population: `["elderly patients (65+)", "working-age adults (18–64)", "children under 12"]`
-- Bad clustering (avoid): `["adults", "adult patients", "adult population"]`
+**Rules for generating `examples` (when `complete=false`):**
+- **Purpose:** Examples help users quickly select from a broad range of valid answers for the current dimension. Each example should be usable as-is without modification.
+- **Quantity:** 4–6 options
+- **Breadth:** Span the full valid range of the dimension — not just variations on the user's query. Show diversity within the context.
+- **Context focus:** Each option must be specific to the current context and answerable by the user right now. Do not use hypotheticals or examples the user cannot evaluate.
+- **No prior-dimension repetition:** Never repeat values from completed dimensions. If Context is "displacement camp in Ethiopia", options should be `["Children", "Adolescents","Pregnant women", "All residents"]`, not `["Children in camp", "Pregnant women in camp", ...]`.
+- **Distinct options:** No overlapping or redundant options. Not `["Refugees", "All residents"]` (redundant in camp context); use `["Children", "Pregnant women", "Adolescents", "All residents"]` (distinct).
+- **Catch-all:** Always include one "no restriction" option (e.g., "Any level", "All groups", "No specific preference"). Place it last.
+- **Order:** Most specific → most broad, or most → least common
+- **Example (right):** When Context is "displacement camp": `["Children under 5", "Pregnant and lactating women", "Adolescents", "Older adults", "All residents"]` — distinct groups, no location repetition, includes catch-all
+- **Example (wrong):** `["Mental health cases", "Substance misuse cases", "Co-occurring cases", "All mental health cases"]` — repeats the Condition; has redundant overlap
 
 ---
 

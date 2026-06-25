@@ -3025,8 +3025,6 @@ class InspectMessagesResponse(BaseModel):
     current_dimension: Optional[str] = None
     message_count: int
     messages: List[Dict[str, Any]]
-    user_context_detected: bool
-    user_context_preview: Optional[str] = None
 
 
 @router.get("/queries/{query_id}/inspect-messages", response_model=InspectMessagesResponse)
@@ -3038,40 +3036,30 @@ def inspect_messages(
 ):
     """
     Debug endpoint to inspect the actual messages being sent to the LLM.
-    
-    Shows:
-    - Full message array with roles and content
-    - Whether user context is included
-    - Preview of user context content
-    - Message count and structure
-    
-    Use this to verify that user context is being properly included in prompts.
+
+    Shows the full message array with roles, content, and message count.
     """
-    # Verify query ownership
     query = get_query(db, query_id)
     if not query or query.user_id != current_user.id:
         raise HTTPException(
             status_code=status.HTTP_404_NOT_FOUND,
             detail="Query not found"
         )
-    
-    # Load session
+
     session = session_manager.load_session(query_id)
     if not session:
         raise HTTPException(
             status_code=status.HTTP_404_NOT_FOUND,
             detail="Session not found or expired"
         )
-    
-    # Get active step to inspect messages
+
     active_step = session.get_active_step()
     if not active_step:
         raise HTTPException(
             status_code=status.HTTP_400_BAD_REQUEST,
             detail="No active dimension to inspect"
         )
-    
-    # Get messages for current dimension
+
     llm_settings = LLMSettings.from_env(require_model=False)
     dependency_context = session.get_dependency_context(active_step.refinement_aspect.id)
     messages = active_step.get_messages(
@@ -3079,26 +3067,12 @@ def inspect_messages(
         dependency_context=dependency_context,
         terminal_reinforcement_threshold=llm_settings.terminal_reinforcement_threshold
     )
-    
-    # Check for user context in messages
-    user_context_detected = False
-    user_context_preview = None
-    
-    for msg in messages:
-        content = msg.get("content", "")
-        if "User Context" in content or "user_context" in content.lower():
-            user_context_detected = True
-            # Get first 200 chars of user context message
-            user_context_preview = content[:200] + "..." if len(content) > 200 else content
-            break
-    
+
     return InspectMessagesResponse(
         query_id=query_id,
         current_dimension=active_step.refinement_aspect.id,
         message_count=len(messages),
         messages=messages,
-        user_context_detected=user_context_detected,
-        user_context_preview=user_context_preview
     )
 
 
