@@ -2,7 +2,6 @@
 Pydantic models for query refinement framework.
 
 This module defines type-safe models for:
-- UserContext: User adaptation profile from framework
 - RefinementDimension: A dimension/aspect that can be refined
 - CompletedDimension: A dimension that has been refined
 - ExamplesCollection: Few-shot examples for LLM guidance
@@ -19,7 +18,6 @@ logger = logging.getLogger(__name__)
 
 
 __all__ = [
-    "UserContext",
     "RefinementDimension",
     "CompletedDimension",
     "ExamplesCollection",
@@ -130,28 +128,6 @@ class ExamplesCollection(BaseModel):
 
 
 # =============================================================================
-# User Context Model
-# =============================================================================
-
-class UserContext(BaseModel):
-    """
-    User adaptation profile from framework.
-    
-    Controls how the LLM adapts its responses based on user type,
-    expertise level, domain, and constraints.
-    """
-    model_config = ConfigDict(extra="allow")
-    
-    user_type: str = Field(description="Type of user (e.g., 'MPH student', 'researcher')")
-    context: str = Field(description="Description of user's situation/needs")
-    tone: str = Field(default="professional", description="Response tone: educational, professional, pragmatic")
-    complexity: str = Field(default="intermediate", description="Complexity level: intermediate, advanced, expert")
-    examples_from: str = Field(default="general", description="Domain for examples")
-    constraints: List[str] = Field(default_factory=list, description="User constraints (timeline, resources, etc.)")
-    pitfalls: List[str] = Field(default_factory=list, description="Common pitfalls to watch for")
-
-
-# =============================================================================
 # Dimension Models
 # =============================================================================
 
@@ -216,10 +192,7 @@ class RefinementDimension(BaseModel):
     
     # Dependencies
     depends_on: List[str] = Field(default_factory=list, description="IDs of dimensions this depends on")
-    
-    # User context (attached by registry loader)
-    user_context: Optional[UserContext] = Field(default=None, description="User adaptation profile")
-    
+
     # Optional fields
     response_format: Optional[Dict[str, Any]] = Field(default=None, description="Response format config")
     allow_follow_up: bool = Field(default=True, description="Whether follow-ups are allowed")
@@ -239,18 +212,6 @@ class RefinementDimension(BaseModel):
         # Handle empty list (backward compatibility)
         if isinstance(v, list) and len(v) == 0:
             return None
-        return v
-    
-    @field_validator('user_context', mode='before')
-    @classmethod
-    def parse_user_context(cls, v):
-        """Parse user_context dict into UserContext model."""
-        if v is None:
-            return None
-        if isinstance(v, UserContext):
-            return v
-        if isinstance(v, dict):
-            return UserContext(**v)
         return v
     
     def has_examples(self) -> bool:

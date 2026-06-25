@@ -22,17 +22,6 @@ def sample_framework_yaml() -> str:
     return textwrap.dedent(
         """
         test_framework:
-          - user_context:
-              user_type: "Test User"
-              context: "Testing context"
-              tone: "professional"
-              complexity: "intermediate"
-              examples_from: "testing"
-              constraints:
-                - "Constraint 1"
-                - "Constraint 2"
-              pitfalls:
-                - "Pitfall 1"
           - id: aspect_one
             name: "First Aspect"
             description: "Description of first aspect"
@@ -79,7 +68,7 @@ def temp_legacy_file(legacy_framework_yaml):
 
 
 class TestFrameworkLoading:
-    def test_load_framework_with_user_context(self, temp_framework_file, monkeypatch):
+    def test_load_framework(self, temp_framework_file, monkeypatch):
         monkeypatch.setenv("REFINEMENT_FRAMEWORK_PATH", temp_framework_file)
 
         frameworks = _load_frameworks(raise_on_error=True)
@@ -90,8 +79,6 @@ class TestFrameworkLoading:
         aspect_one = aspects[0]
         assert aspect_one.id == "aspect_one"
         assert aspect_one.name == "First Aspect"
-        assert aspect_one.user_context is not None
-        assert aspect_one.user_context.user_type == "Test User"
 
     def test_load_legacy_framework(self, temp_legacy_file, monkeypatch):
         monkeypatch.setenv("REFINEMENT_FRAMEWORK_PATH", temp_legacy_file)
@@ -140,24 +127,6 @@ class TestRegistryFunctions:
         reload_from_env()
         with pytest.raises(KeyError):
             get_framework("nonexistent")
-
-
-class TestUserContextParsing:
-    def test_user_context_fields_extracted(self, temp_framework_file, monkeypatch):
-        monkeypatch.setenv("REFINEMENT_FRAMEWORK_PATH", temp_framework_file)
-        frameworks = _load_frameworks(raise_on_error=True)
-        ctx = frameworks["test_framework"][0].user_context
-        assert ctx is not None
-        assert ctx.user_type == "Test User"
-        assert ctx.context == "Testing context"
-        assert len(ctx.constraints) == 2
-
-    def test_user_context_propagated_to_all_aspects(self, temp_framework_file, monkeypatch):
-        monkeypatch.setenv("REFINEMENT_FRAMEWORK_PATH", temp_framework_file)
-        frameworks = _load_frameworks(raise_on_error=True)
-        for aspect in frameworks["test_framework"]:
-            assert aspect.user_context is not None
-            assert aspect.user_context.user_type == "Test User"
 
 
 # ── Thread-safety (ISSUE-14) ───────────────────────────────────────────────────

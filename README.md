@@ -16,11 +16,11 @@ The system is framework-agnostic and domain-agnostic. It exposes a REST API for 
 ## Using the web application
 
 1. Log in at the application URL provided to you.
-2. Select a refinement framework.
-3. Enter your initial research question.
+2. Select a refinement framework, if more that one framework are available.
+3. Enter your initial research question or statement.
 4. Answer the guided questions. Each comes with example answers you can click or type your own. You can skip, go back, or finish early at any time.
 5. Review the clarified research statement and search query artifacts produced at the end.
-6. Complete the feedback survey.
+6. Complete the feedback survey (if evaluating the web app).
 
 ### Commands during the dialogue
 

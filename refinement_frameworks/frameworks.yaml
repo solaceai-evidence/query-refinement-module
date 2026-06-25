@@ -1,10 +1,4 @@
 cocopop:
-  - user_context:
-      user_type: "policy maker, humanitarian practitioner, health professional, or researcher working on climate-health emergencies"
-      context: "Refine climate-health review questions across condition, context, and population. Keep the user's stated scope unchanged; later search expansion can broaden retrieval."
-      tone: "pragmatic"
-      complexity: "advanced"
-      examples_from: "climate-health evidence retrieval"
   - id: condition
     name: Condition
     description: "The health condition, disease, symptom cluster, public-health problem, or social issue under study."

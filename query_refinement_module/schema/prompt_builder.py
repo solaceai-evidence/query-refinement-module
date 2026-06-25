@@ -12,14 +12,12 @@ import logging
 from .models import (
     RefinementDimension,
     CompletedDimension,
-    UserContext,
     ExamplesCollection,
 )
 from .templates import (
     GLOBAL_SYSTEM_PROMPT,
     SYNTHESIS_TEMPLATE,
     DIMENSION_REFINEMENT_TEMPLATE,
-    USER_CONTEXT_PROFILE_TEMPLATE,
     DIMENSIONS_CLARIFIED_AND_DEPENDENCIES_TEMPLATE,
 )
 
@@ -32,7 +30,6 @@ _PromptBuilderBase = _previous_prompt_builder if isinstance(_previous_prompt_bui
 __all__ = [
     "PromptBuilder",
     "render_template",
-    "create_dimension_prompt",
     "get_prompt_builder",
     "build_refinement_messages",
 ]
@@ -96,29 +93,7 @@ class PromptBuilder(_PromptBuilderBase):
         # Precompile templates for performance
         self._dimension_template = self._env.from_string(DIMENSION_REFINEMENT_TEMPLATE)
         self._synthesis_template = self._env.from_string(SYNTHESIS_TEMPLATE)
-        self._user_context_template = self._env.from_string(USER_CONTEXT_PROFILE_TEMPLATE)
         self._dependencies_template = self._env.from_string(DIMENSIONS_CLARIFIED_AND_DEPENDENCIES_TEMPLATE)
-
-    def render_style_cue(self, user_context: UserContext) -> str:
-        """Render a compact late-position style reminder for the current user context."""
-        tone_hints = {
-            "educational": "warm, encouraging register; briefly say why each missing detail matters",
-            "professional": "direct, formal register; no small talk or reassurance",
-            "pragmatic": "lead with the practical consequence only when a question is required; keep the wording brief and action-oriented",
-        }
-        complexity_hints = {
-            "intermediate": "standard domain terminology; no need to define basics",
-            "advanced": "precise technical vocabulary; ask only when the dimension specification explicitly requires missing detail",
-            "expert": "peer-level methodological language; challenge only when the dimension specification explicitly requires clarification",
-        }
-        tone_hint = tone_hints.get(user_context.tone, user_context.tone)
-        complexity_hint = complexity_hints.get(user_context.complexity, user_context.complexity)
-        cue = (
-            "**Style cue — apply when formulating your response:**\n"
-            f"Tone: {tone_hint}\n"
-            f"Complexity: {complexity_hint}"
-        )
-        return cue
 
     # =========================================================================
     # Global System Prompt
@@ -127,35 +102,12 @@ class PromptBuilder(_PromptBuilderBase):
     def get_global_system_prompt(self) -> str:
         """
         Get the global system prompt.
-        
+
         Returns:
             The global system directive string
         """
         return GLOBAL_SYSTEM_PROMPT.strip()
-    
-    # =========================================================================
-    # User Context Section
-    # =========================================================================
-    
-    def render_user_context(self, user_context: UserContext) -> str:
-        """
-        Render the user context adaptation profile.
-        
-        Args:
-            user_context: The user context to render
-            
-        Returns:
-            Rendered user context section
-        """
-        # Convert Pydantic model to dict for template
-        if hasattr(user_context, 'model_dump'):
-            ctx_dict = user_context.model_dump()
-        elif hasattr(user_context, '__dict__'):
-            ctx_dict = vars(user_context)
-        else:
-            ctx_dict = dict(user_context)
-        return self._user_context_template.render(user_context=ctx_dict)
-    
+
     # =========================================================================
     # Completed Dimensions & Dependencies
     # =========================================================================
@@ -284,48 +236,37 @@ class PromptBuilder(_PromptBuilderBase):
     def build_refinement_system_prompt(
         self,
         dimension: RefinementDimension,
-        user_context: Optional[UserContext] = None,
         completed_dimensions: Optional[List[CompletedDimension]] = None,
         dependencies: Optional[List[RefinementDimension]] = None
     ) -> str:
         """
         Build the complete system prompt for dimension refinement.
-        
+
         Combines:
         1. Global system prompt
-        2. User context adaptation
-        3. Completed dimensions & dependencies
-        4. Dimension evaluation criteria
-        
+        2. Completed dimensions & dependencies
+        3. Dimension evaluation criteria
+
         Args:
             dimension: The dimension being refined
-            user_context: User adaptation profile (uses dimension's if not provided)
             completed_dimensions: Already completed dimensions
             dependencies: Dimensions this one depends on
-            
+
         Returns:
             Complete system prompt string
         """
         parts = []
-        
-        # 1. Global system prompt
+
         parts.append(self.get_global_system_prompt())
-        
-        # 2. User context (from dimension or provided)
-        ctx = user_context or dimension.user_context
-        if ctx:
-            parts.append(self.render_user_context(ctx))
-        
-        # 3. Completed dimensions & dependencies
+
         if completed_dimensions or dependencies:
             parts.append(self.render_completed_dimensions(
                 completed_dimensions or [],
                 dependencies
             ))
-        
-        # 4. Dimension evaluation criteria
+
         parts.append(self.render_dimension_prompt(dimension))
-        
+
         return "\n\n".join(parts)
     
     def build_refinement_messages(
@@ -339,46 +280,36 @@ class PromptBuilder(_PromptBuilderBase):
     ) -> List[Dict[str, str]]:
         """
         Build messages array for dimension refinement with terminal reinforcement.
-        
+
         Constructs structured messages with:
         1. System message: Global System Directive [CACHED]
-        2. System message: User context adaptation profile [CACHED]
-        3. System message: Previously clarified dimensions (dependencies)
-        4. System message: Current dimension specification
-        5. User message: Original query to analyze
-        6. Conversation history: Alternating assistant/user messages
-        7. System message: Terminal reinforcement (turns ≥ threshold only)
-        
+        2. System message: Previously clarified dimensions (dependencies)
+        3. System message: Current dimension specification
+        4. User message: Original query to analyze
+        5. Conversation history: Alternating assistant/user messages
+        6. System message: Terminal reinforcement (turns ≥ threshold only)
+
         Terminal reinforcement repeats cached instructions at conversation end
-        to combat recency bias in long conversations (research-backed approach).
-        
+        to combat recency bias in long conversations.
+
         Args:
             dimension: The dimension being refined
             query: The original query to analyze
             conversation_history: List of Q&A exchanges for THIS dimension only
             dependency_context: Values from completed dependencies
             terminal_reinforcement_threshold: Add reinforcement after N turns (0=disabled)
-            
+
         Returns:
             List of message dicts with 'role' and 'content' keys
         """
         messages = []
-        
+
         # 1. System message: Global System Directive [CACHED]
-        # Uses GLOBAL_SYSTEM_PROMPT from module-level imports (from .templates)
         messages.append({
             'role': 'system',
             'content': GLOBAL_SYSTEM_PROMPT,
             '_cache': True
         })
-        
-        # 2. System message: User context adaptation profile [CACHED]
-        if dimension.user_context:
-            messages.append({
-                'role': 'system',
-                'content': self.render_user_context(dimension.user_context),
-                '_cache': True
-            })
         
         # 3. System message: Previously clarified dimensions (all completed) + dependency markers
         completed_dims_for_context: List[CompletedDimension] = []
@@ -439,23 +370,12 @@ class PromptBuilder(_PromptBuilderBase):
             'content': query
         })
         
-        # 6. Conversation history: Alternating assistant/user messages for THIS dimension
+        # 5. Conversation history: Alternating assistant/user messages for THIS dimension
         for qa in conversation_history:
             messages.append({'role': 'assistant', 'content': qa['question']})
             messages.append({'role': 'user', 'content': qa['response']})
 
-        # 6b. Style cue: re-append compact tone/complexity hint after conversation history
-        # to counter recency bias at ALL turn counts (incl. turn 0 where terminal
-        # reinforcement has not fired). The full user_context profile is cached early
-        # in the message list but is dominated by the dimension spec + user query when
-        # the model generates its response. This compact cue restores it at recency.
-        if dimension.user_context:
-            messages.append({
-                'role': 'system',
-                'content': self.render_style_cue(dimension.user_context)
-            })
-
-        # 6c. Completed-context reminder: re-append after conversation history so the model
+        # 5c. Completed-context reminder: re-append after conversation history so the model
         # reads it in the most recent position. This combats recency bias in open-weight
         # models that deprioritise early system messages when a user message dominates.
         # Safe for all models — Claude ignores the redundancy; Qwen benefits from recency.
@@ -482,13 +402,10 @@ class PromptBuilder(_PromptBuilderBase):
                 )
             })
         
-        # 7. Terminal reinforcement: Repeat cached instructions at end for long conversations
-        # Research-backed approach to combat recency bias and maintain instruction adherence
+        # 6. Terminal reinforcement: Repeat cached instructions at end for long conversations
+        # Combats recency bias when conversation history dominates the context window.
         if terminal_reinforcement_threshold > 0 and len(conversation_history) >= terminal_reinforcement_threshold:
-            # Build reinforcement from cached components
             reinforcement_parts = [GLOBAL_SYSTEM_PROMPT]
-            if dimension.user_context:
-                reinforcement_parts.append(self.render_user_context(dimension.user_context))
             reinforcement_parts.append(
                 self.render_dimension_prompt(
                     dimension=dimension,
@@ -512,50 +429,6 @@ class PromptBuilder(_PromptBuilderBase):
             )
         
         return messages
-    
-    # =========================================================================
-    # Legacy Methods (for backward compatibility)
-    # =========================================================================
-    
-    def build_dimension_refinement_prompt(
-        self,
-        dimension: RefinementDimension,
-        user_context: UserContext,
-        original_input: str,
-        completed_dimensions: List[CompletedDimension],
-        dependency_values: Dict[str, str]
-    ) -> str:
-        """
-        Build dimension refinement prompt (legacy method).
-        
-        Args:
-            dimension: Dimension to refine
-            user_context: User context for adaptation
-            original_input: User's original research input
-            completed_dimensions: Previously completed dimensions
-            dependency_values: Dict mapping dimension IDs to assembled values
-            
-        Returns:
-            Complete prompt string ready for LLM
-        """
-        # Find dependency dimensions
-        dependencies = []
-        if dimension.depends_on:
-            for dep_id in dimension.depends_on:
-                dep_dim = next(
-                    (d for d in completed_dimensions if d.id == dep_id),
-                    None
-                )
-                if dep_dim:
-                    # Create a mock dimension for the template (uses 'name' to match template)
-                    dependencies.append(type('Dep', (), {'name': dep_dim.name, 'id': dep_dim.id})())
-        
-        return self.build_refinement_system_prompt(
-            dimension=dimension,
-            user_context=user_context,
-            completed_dimensions=completed_dimensions,
-            dependencies=dependencies if dependencies else None
-        )
     
 # =============================================================================
 # Default Instance & Convenience Functions
@@ -602,31 +475,4 @@ def build_refinement_messages(
     )
 
 
-def create_dimension_prompt(
-    dimension: RefinementDimension,
-    user_context: UserContext,
-    original_input: str,
-    completed_dimensions: List[CompletedDimension] = None,
-    dependency_values: Dict[str, str] = None
-) -> str:
-    """
-    Convenience function to create dimension refinement prompt.
-    
-    Args:
-        dimension: Dimension to refine
-        user_context: User context
-        original_input: User's research input
-        completed_dimensions: Previously completed dimensions
-        dependency_values: Dependency values dict
-        
-    Returns:
-        Formatted prompt string
-    """
-    return _default_builder.build_dimension_refinement_prompt(
-        dimension=dimension,
-        user_context=user_context,
-        original_input=original_input,
-        completed_dimensions=completed_dimensions or [],
-        dependency_values=dependency_values or {}
-    )
 
