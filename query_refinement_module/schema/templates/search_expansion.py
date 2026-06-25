@@ -24,6 +24,13 @@ Disambiguation — setting_or_context vs geography:
 - Both may be present simultaneously only when the query contains distinct constraints of each kind
   (e.g. "displacement camps in Ethiopia" → setting_or_context: displacement camps; geography: Ethiopia).
 
+IMPORTANT: For all detected aspects:
+- Set detected=true (do NOT mark as false unless the aspect is genuinely absent)
+- Mark as safety="safe" for: geography, setting_or_context, population_or_entity (highest priority for broadening)
+- Mark as safety="conditional" for: topic_or_condition, intervention_or_exposure_or_phenomenon (lower priority, broader scope trade-offs)
+- Use safety="avoid" ONLY when an aspect is present but explicitly excluded by the query (e.g., "exclude pediatric")
+- When in doubt about detected vs not detected: err toward detected=true (searching expands from there)
+
 Return exactly one JSON object matching this schema:
 
 {
@@ -52,6 +59,13 @@ General rules:
   they are not part of the fixed aspect set.
 - Use the optional advisory dimension values and synonyms only to resolve ambiguity about what the
   anchor query means; the anchor query itself is the source of truth.
+
+SAFETY CLASSIFICATION RULES (critical):
+- geography & setting_or_context: ALWAYS mark as "safe" when detected. These are the primary levers for retrieval broadening.
+- population_or_entity: Mark as "safe" when specific populations are mentioned (e.g., "children", "pregnant women"). These have clear broadening paths.
+- topic_or_condition: Mark as "conditional" (not safe). Broadening topics changes scope.
+- intervention_or_exposure_or_phenomenon: Mark as "conditional". Broadening interventions may drift from original intent.
+- Use "avoid" only for explicitly excluded constraints, not for "undetected" aspects.
 
 Geography-specific rules:
 - Ask: is this geographic constraint the variable under study, or a proxy for a context characteristic?
