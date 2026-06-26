@@ -62,10 +62,14 @@ from query_refinement_module.schema import (
     DimensionEvaluationResponse,
     QueryRefinementResponse,
     SearchExpansionContext,
+)
+from query_refinement_module.schema.response import (
+    CombinedBlock,
     SearchExpansionInput,
+    SearchExpansionResponse,
 )
 
-from pydantic import BaseModel, Field, field_validator, AnyHttpUrl
+from pydantic import BaseModel, ConfigDict, Field, field_validator, AnyHttpUrl
 
 
 router = APIRouter(prefix="/refinement", tags=["Query Refinement Workflow"])
@@ -225,6 +229,15 @@ class ResumeRefinementResponse(GetRefinementStatusResponse):
 class SynthesizeQueryRequest(BaseModel):
     """Request to synthesize the refined query."""
     query_id: int = Field(..., gt=0, description="ID of the query to synthesize")
+    include_expansion: bool = Field(
+        False,
+        description=(
+            "When true, Agent D (search expansion) runs automatically after A→B→C "
+            "and the results are included in expansion_levels and expansion_metadata. "
+            "Requires Agent C to produce combined_blocks. Adds one LLM call of latency "
+            "when geography or setting blocks are present; Level 1 only otherwise (no LLM)."
+        ),
+    )
 
 
 # ---------------------------------------------------------------------------
@@ -393,11 +406,20 @@ class SynthesizeQueryResponse(BaseModel):
       structured_output["search_filters"]
           Metadata filters: publication_years, venues, publication_types, fields_of_study.
 
-    Agent D — Search Expansion (separate endpoint)
-      Call POST /expand with:
+    Agent D — Search Expansion
+      Included when include_expansion=true was set on the request.
+      expansion_levels
+          List of ExpansionLevel objects (same structure as POST /expand → levels).
+          Level 0 is the anchor. Level 1 is always present (deterministic). Levels 2–3 require geography or
+          setting blocks to be present in Agent C output.
+      expansion_metadata
+          geography_broadening_strategy, recommended_starting_level,
+          recommendation_rationale, status, used_llm, generated_level_count.
+
+      To call Agent D separately: POST /expand with
         statement = clarified_query
+        anchor_blocks = structured_output["search_optimized"]["keyword"]["combined_blocks"]
         search_context.concept_graph = structured_output["concept_graph"]
-      Returns Levels 1–3 only; Level 0 (the anchor) is not echoed.
     """
     query_id: int = Field(..., description="Database ID of the synthesized query")
     clarified_query: str = Field(
@@ -416,38 +438,138 @@ class SynthesizeQueryResponse(BaseModel):
             "structured_output['search_optimized']['keyword']['combined_blocks']."
         ),
     )
+    expansion_levels: Optional[List[Dict[str, Any]]] = Field(
+        None,
+        description=(
+            "Agent D output. Present only when include_expansion=true. "
+            "List of expansion levels in ascending broadening order; Level 0 is the anchor."
+        ),
+    )
+    expansion_metadata: Optional[Dict[str, Any]] = Field(
+        None,
+        description=(
+            "Agent D metadata. Present only when include_expansion=true. "
+            "Includes geography_broadening_strategy, recommended_starting_level, "
+            "recommendation_rationale, status, used_llm, generated_level_count."
+        ),
+    )
 
 
 class SearchExpandRequest(BaseModel):
     """
     Agent D — Search Expansion request.
 
-    Generates up to 3 broadening levels (Levels 1-3) beyond the anchor query.
-    Level 0 (the anchor) is not echoed — the caller already has it as `statement`.
+    Generates Cochrane-compliant broadening levels beyond the anchor query.
+    Level 0 (the anchor) is included in the response.
 
     Typical flow after POST /synthesize:
-      statement = synthesize_response.clarified_query
-      search_context.concept_graph = synthesize_response.structured_output["concept_graph"]
+      statement            = synthesize_response.clarified_query
+      anchor_blocks        = synthesize_response.structured_output["search_optimized"]["keyword"]["combined_blocks"]
+      concept_graph        = synthesize_response.structured_output["concept_graph"]
+      semantic_statement   = synthesize_response.structured_output["search_optimized"]["semantic"]
+      keyword_statement    = synthesize_response.structured_output["keyword_statement"]
+      keyword_structured   = synthesize_response.structured_output["search_optimized"]["keyword"]["structured"]
+      search_filters       = synthesize_response.structured_output["search_filters"]
+      phrases              = synthesize_response.structured_output["search_optimized"]["keyword"]["phrases"]
 
-    Expansion levels produced:
-      Level 1  lexical                  Full boolean OR-ring per concept (all synonyms + hyponyms)
-      Level 2  conceptual_single_aspect One SAFE aspect broadened; Level 1 ring preserved
-      Level 3  conceptual_single_aspect/multi  Further broadening; Level 1 ring preserved
+    Level 0  anchor        Exact Agent C output — no enrichment.
+    Level 1  deterministic Full lexical ring built in Python — free_text + domain_terms per block. No LLM.
+    Level 2  LLM-assisted  Geography block replaced with contextual analogy or geographic superset.
+    Level 3  LLM-assisted  Geography block removed — Cochrane-compliant globally sensitive search.
     """
+    model_config = ConfigDict(
+        json_schema_extra={
+            "example": {
+                "statement": "How to improve mental health outcomes among children in Qoloji camp, Ethiopia.",
+                "anchor_blocks": [
+                    {
+                        "role": "topic_or_condition",
+                        "free_text": ["mental health", "psychological wellbeing", "MHPSS"],
+                        "controlled_vocabulary": {"MeSH": ["Mental Health"]},
+                    },
+                    {
+                        "role": "population_or_entity",
+                        "free_text": ["children under five", "young children", "U5"],
+                        "controlled_vocabulary": {"MeSH": ["Child"]},
+                    },
+                    {
+                        "role": "setting_or_context",
+                        "free_text": ["refugee camp", "displacement camp", "IDP camp"],
+                        "controlled_vocabulary": {"MeSH": ["Refugees", "Displaced Persons"]},
+                    },
+                    {
+                        "role": "geography",
+                        "free_text": ["Qoloji", "Ethiopia"],
+                        "controlled_vocabulary": {"MeSH": ["Ethiopia"]},
+                    },
+                ],
+                "search_context": {
+                    "concept_graph": {
+                        "mental health": {
+                            "query_role": "topic_or_condition",
+                            "domain_terms": ["psychosocial wellbeing", "depression", "anxiety"],
+                        }
+                    }
+                },
+                "semantic_statement": "Studies examining interventions to improve mental health outcomes among children in refugee camp settings in Ethiopia.",
+                "keyword_statement": "mental health children refugee camp Ethiopia",
+                "keyword_structured": "(mental health OR psychological wellbeing OR MHPSS) AND (children under five OR young children OR U5) AND (refugee camp OR displacement camp OR IDP camp) AND (Qoloji OR Ethiopia)",
+                "search_filters": {
+                    "publication_years": "",
+                    "venues": [],
+                    "authors": [],
+                    "publication_types": [],
+                    "fields_of_study": ["Public Health", "Psychology"],
+                },
+                "phrases": ["mental health outcomes", "children under five", "refugee camp Ethiopia"],
+            }
+        }
+    )
     statement: str = Field(
         ...,
         description=(
-            "Exact Level 0 query to preserve unchanged. "
+            "Exact anchor query (unchanged). "
             "Use POST /normalize → clarified_query or POST /synthesize → clarified_query."
+        ),
+    )
+    anchor_blocks: List[CombinedBlock] = Field(
+        ...,
+        description=(
+            "Agent C combined_blocks from POST /construct → keyword.combined_blocks "
+            "(or POST /synthesize → structured_output.search_optimized.keyword.combined_blocks). "
+            "Level 1 is built deterministically in Python; the LLM is called only for "
+            "geography broadening proposals (Levels 2–3)."
         ),
     )
     search_context: Optional[SearchExpansionContext] = Field(
         None,
         description=(
             "Optional retrieval context. Set search_context.concept_graph to "
-            "POST /represent → concept_graph (or POST /synthesize → structured_output['concept_graph']) for best results. "
-            "Provides lexical broadening candidates and vocabulary hints for Agent D."
+            "POST /represent → concept_graph for domain_term enrichment at Level 1 "
+            "and accurate broadening candidates at Levels 2–3."
         ),
+    )
+    # Agent B passthrough — used to populate Level 0
+    semantic_statement: Optional[str] = Field(
+        None,
+        description="POST /represent → semantic_statement. Used as Level 0 semantic_statement.",
+    )
+    keyword_statement: Optional[str] = Field(
+        None,
+        description="POST /represent → keyword_statement. Used as Level 0 keyword_statement.",
+    )
+    # Agent C passthrough — used to populate Level 0 and response-level fields
+    keyword_structured: Optional[str] = Field(
+        None,
+        description="POST /construct → keyword.structured. Used as Level 0 search_query.",
+    )
+    search_filters: Optional[Dict[str, Any]] = Field(
+        None,
+        description="POST /construct → search_filters. Passed through to response.",
+    )
+    phrases: Optional[List[str]] = Field(
+        None,
+        description="POST /construct → keyword.phrases. Passed through to response.",
     )
     model: Optional[str] = Field(None, description="Optional LLM model override")
 
@@ -462,42 +584,144 @@ class SearchExpandRequest(BaseModel):
 class SearchExpandResponse(BaseModel):
     """Agent D — Search Expansion response.
 
-    search_expansion_levels is a list of level objects starting at Level 1.
-    Level 0 (the anchor) is not included — it is the `statement` the caller passed in.
+    All levels share the same structure. Level 0 is always levels[0].
 
-    Each level object has:
-      level           int     1 = lexical, 2-3 = conceptual broadening
-      label           str     Human-readable label (e.g. "Full synonym and hyponym ring")
-      strategy        str     One of: lexical | conceptual_single_aspect |
-                              conceptual_multi_aspect
-      search_query    str     Boolean block query at this broadening level.
-                              Level 1: (concept OR syn OR hyp) AND (concept2 OR syn2) AND ...
-                              Levels 2-N: Level 1 ring with one aspect block replaced.
-                              For RAG: use as retrieval query for dense and sparse connectors.
-      relaxed_aspects dict    Aspect id → broadened value. Empty ({}) for Level 1.
-                              Keys are SearchAspect values: topic_or_condition,
-                              population_or_entity, intervention_or_exposure_or_phenomenon,
-                              setting_or_context, geography, time_scope.
-                              Special value "(no restriction)" for geography means the
-                              geographic constraint was removed entirely.
-      rationale       str     Explanation of what changed and why it broadens recall.
+    Each level object:
+      level                 int     Level number (0 = anchor, 1 = full lexical ring, 2-3 = broadening)
+      label                 str     Short descriptor
+      boolean_query         str     Generic boolean query for PubMed, WHO IRIS, OpenAlex, CORE
+      query                 str     NL query adapted for this level's scope.
+                                    Use for ReliefWeb, WHO IRIS NL mode, UI display, and semantic fallback.
+      semantic_query        str     Semantic/vector query for this level.
+      keyword_query         str     BM25/simple keyword query for this level.
+      controlled_vocabulary dict    vocabulary_name → term list for database-specific connectors.
+                                    Use MeSH terms with [MeSH Terms] tag for PubMed.
+                                    Geography block CV excluded at Level 2+ by design.
+      broadened_aspect      str     Which block role was modified (e.g. "geography"). Empty at Level 1.
+      broadened_value       str     What the aspect was replaced with. Empty at Level 1.
+      rationale             str     Why this broadening improves Cochrane-compliant recall.
+      cochrane_compliant    bool    true when geographic restriction is fully removed (Level 3).
 
-    Apply levels in sequence: Level 1 is the full-recall baseline; fall back to Level 2
-    then Level 3 when precision at the current level is acceptable but recall is insufficient.
+    Apply levels in order: start with recommended_starting_level and escalate when
+    result count at the current level is insufficient.
     """
-    search_expansion_levels: List[Dict[str, Any]] = Field(
+    model_config = ConfigDict(
+        json_schema_extra={
+            "example": {
+                "levels": [
+                    {
+                        "level": 0,
+                        "label": "Anchor query",
+                        "query": "How to improve mental health outcomes among children in Qoloji camp, Ethiopia.",
+                        "semantic_query": "Studies examining interventions to improve mental health outcomes among children in refugee camp settings in Ethiopia.",
+                        "keyword_query": "mental health children refugee camp Ethiopia",
+                        "boolean_query": "(mental health OR psychological wellbeing OR MHPSS) AND (children under five OR young children OR U5) AND (refugee camp OR displacement camp OR IDP camp) AND (Qoloji OR Ethiopia)",
+                        "controlled_vocabulary": {"MeSH": ["Mental Health", "Child", "Ethiopia"]},
+                        "blocks": [
+                            {
+                                "role": "topic_or_condition",
+                                "free_text": ["mental health", "psychological wellbeing", "MHPSS"],
+                                "controlled_vocabulary": {"MeSH": ["Mental Health"]},
+                            }
+                        ],
+                        "broadened_aspect": "",
+                        "broadened_value": "",
+                        "rationale": "Your refined query as-is — exact concepts from your refinement session, no broadening.",
+                        "cochrane_compliant": False,
+                    },
+                    {
+                        "level": 1,
+                        "label": "Full lexical ring",
+                        "query": "How to improve mental health outcomes among children in Qoloji camp, Ethiopia.",
+                        "semantic_query": "How to improve mental health outcomes among children in Qoloji camp, Ethiopia.",
+                        "keyword_query": "mental health psychological wellbeing MHPSS children under five young children refugee camp displacement camp Qoloji Ethiopia",
+                        "boolean_query": "(mental health OR psychological wellbeing OR MHPSS OR depression OR anxiety) AND (children under five OR young children OR U5) AND (refugee camp OR displacement camp OR IDP camp) AND (Qoloji OR Ethiopia)",
+                        "controlled_vocabulary": {"MeSH": ["Mental Health", "Child", "Ethiopia"]},
+                        "blocks": [
+                            {
+                                "role": "topic_or_condition",
+                                "free_text": ["mental health", "psychological wellbeing", "MHPSS", "depression", "anxiety"],
+                                "controlled_vocabulary": {"MeSH": ["Mental Health"]},
+                            }
+                        ],
+                        "broadened_aspect": "",
+                        "broadened_value": "",
+                        "rationale": "Full synonym and domain-term ring for every concept block.",
+                        "cochrane_compliant": False,
+                    },
+                    {
+                        "level": 2,
+                        "label": "Contextual analogy — conflict-affected settings",
+                        "query": "How to improve mental health outcomes among children in displacement camps in conflict-affected low- and middle-income countries.",
+                        "semantic_query": "How to improve mental health outcomes among children in displacement camps in conflict-affected low- and middle-income countries.",
+                        "keyword_query": "mental health psychological wellbeing MHPSS children under five young children refugee camp displacement camp conflict-affected settings LMICs",
+                        "boolean_query": "(mental health OR psychological wellbeing OR MHPSS OR depression OR anxiety) AND (children under five OR young children OR U5) AND (refugee camp OR displacement camp OR IDP camp) AND (conflict-affected settings OR fragile states OR LMICs)",
+                        "controlled_vocabulary": {"MeSH": ["Mental Health", "Child"]},
+                        "blocks": [
+                            {
+                                "role": "geography",
+                                "free_text": ["conflict-affected settings", "fragile states", "LMICs"],
+                                "controlled_vocabulary": {},
+                            }
+                        ],
+                        "broadened_aspect": "geography",
+                        "broadened_value": "conflict-affected low- and middle-income countries",
+                        "rationale": "Broadens beyond the named location to comparable humanitarian settings.",
+                        "cochrane_compliant": False,
+                    },
+                ],
+                "geography_broadening_strategy": "context_proxy",
+                "recommended_starting_level": 2,
+                "recommendation_rationale": "The named camp is too specific for first-pass retrieval; start with a comparable-context search.",
+                "search_filters": {
+                    "publication_years": "",
+                    "venues": [],
+                    "authors": [],
+                    "publication_types": [],
+                    "fields_of_study": ["Public Health", "Psychology"],
+                },
+                "phrases": ["mental health outcomes", "children under five", "refugee camp Ethiopia"],
+                "metadata": {
+                    "status": "completed",
+                    "generated_level_count": 3,
+                    "used_llm": True,
+                    "total_tokens": 1234,
+                },
+            }
+        }
+    )
+    levels: List[Dict[str, Any]] = Field(
         ...,
         description=(
-            "Ordered list of expansion levels (Levels 1–N only; Level 0 is the anchor passed in as statement). "
-            "Each entry: {level, label, strategy, search_query, relaxed_aspects, rationale}. "
-            "Use search_query as the retrieval string for each fallback step."
+            "Ordered expansion levels (Level 0 first). "
+            "Each entry: {level, label, query, semantic_query, keyword_query, boolean_query, controlled_vocabulary, "
+            "broadened_aspect, broadened_value, rationale, cochrane_compliant}."
         ),
+    )
+    geography_broadening_strategy: str = Field(
+        default="none",
+        description="Broadening strategy used for geography when present.",
+    )
+    recommended_starting_level: int = Field(
+        default=1,
+        description="Recommended level to run first following Cochrane-style escalation logic.",
+    )
+    recommendation_rationale: str = Field(
+        default="",
+        description="Why the recommended_starting_level is the best initial retrieval level.",
+    )
+    search_filters: Optional[Dict[str, Any]] = Field(
+        default=None,
+        description="Agent C search filters that apply across all levels.",
+    )
+    phrases: Optional[List[str]] = Field(
+        default=None,
+        description="Agent C key phrases that apply across all levels.",
     )
     metadata: Optional[Dict[str, Any]] = Field(
         None,
         description=(
-            "Generation metadata: status, generated_level_count, used_llm, total_tokens, "
-            "aspect_assessment (safe_aspects, conditional_aspects, avoided_aspects)."
+            "Generation metadata: status, generated_level_count, used_llm, total_tokens."
         ),
     )
 
@@ -2103,6 +2327,7 @@ async def _run_synthesis(
     session_manager: SessionManager,
     query_id: int,
     request_id: str,
+    include_expansion: bool = False,
 ) -> SynthesizeQueryResponse:
     """
     Execute the full synthesis pipeline and return a SynthesizeQueryResponse.
@@ -2285,11 +2510,62 @@ async def _run_synthesis(
         },
     )
 
+    expansion_levels = None
+    expansion_metadata = None
+    if include_expansion:
+        so = synthesis_result.get("search_optimized")
+        keyword = getattr(so, "keyword", None) if so else None
+        combined_blocks = getattr(keyword, "combined_blocks", None) if keyword else None
+        concept_graph = synthesis_result.get("concept_graph") or {}
+        if combined_blocks and clarified_query:
+            try:
+                exp_input = SearchExpansionInput(
+                    clarified_query=clarified_query,
+                    anchor_blocks=combined_blocks,
+                    concept_graph=concept_graph,
+                    semantic_statement=getattr(so, "semantic", "") or "",
+                    keyword_statement=synthesis_result.get("keyword_statement") or "",
+                    keyword_structured=getattr(keyword, "structured", "") or "",
+                    search_filters=synthesis_result.get("search_filters"),
+                    phrases=list(getattr(keyword, "phrases", None) or []),
+                )
+                exp_result, exp_meta = await manager.generate_search_expansion_levels(
+                    search_input=exp_input,
+                )
+                expansion_levels = [lv.model_dump(by_alias=True) for lv in exp_result.levels]
+                expansion_metadata = {
+                    "geography_broadening_strategy": exp_result.geography_broadening_strategy,
+                    "recommended_starting_level": exp_result.recommended_starting_level,
+                    "recommendation_rationale": exp_result.recommendation_rationale,
+                    **exp_meta,
+                }
+                logger.info(
+                    "Agent D expansion completed inline",
+                    extra={
+                        "request_id": request_id,
+                        "query_id": query_id,
+                        "generated_level_count": exp_meta.get("generated_level_count", 0),
+                        "status": exp_meta.get("status"),
+                    },
+                )
+            except Exception as exc:
+                logger.warning(
+                    "Agent D expansion failed during synthesize pipeline: %s", exc,
+                    extra={"request_id": request_id, "query_id": query_id},
+                )
+        else:
+            logger.info(
+                "Agent D expansion skipped: combined_blocks unavailable",
+                extra={"request_id": request_id, "query_id": query_id},
+            )
+
     return SynthesizeQueryResponse(
         query_id=query_id,
         clarified_query=clarified_query,
         used_llm=synthesis_result.get("used_llm", False),
         structured_output=structured_output,
+        expansion_levels=expansion_levels,
+        expansion_metadata=expansion_metadata,
     )
 
 
@@ -2308,40 +2584,22 @@ async def expand_search(
     current_user = Depends(get_current_user_or_integration),
 ):
     """
-    Agent D — Search Expansion. Generate progressive broadening levels beyond the anchor query.
+    Agent D — Search Expansion. Cochrane-compliant recall ladder beyond the anchor query.
 
-    Call this after POST /normalize, POST /represent, POST /construct, or POST /synthesize
-    to obtain a recall ladder for fallback retrieval.
+    Level 1  deterministic  Free_text + domain_terms per block — built in Python, no LLM.
+    Level 2  LLM-assisted   Geography block replaced (contextual analogy or superset).
+    Level 3  LLM-assisted   Geography block removed — Cochrane-sensitive globally open search.
 
-    Input:
-      statement                     Exact anchor query (unchanged). Use POST /normalize →
-                                    clarified_query or POST /synthesize → clarified_query.
-      search_context.concept_graph  Agent B concept graph from POST /represent →
-                                    concept_graph (or POST /synthesize →
-                                    structured_output["concept_graph"]). Provides the full
-                                    synonym and hyponym rings used to build Level 1.
-
-    Output levels (Level 0 is NOT returned — caller already has it as `statement`):
-      Level 1  lexical                  Boolean ring: (anchor OR syn OR abbr OR hyp) AND ...
-                                        All synonyms, abbreviations, and hyponyms from the
-                                        concept_graph ORed within each concept block.
-                                        strategy=lexical, relaxed_aspects={}.
-      Level 2  conceptual_single_aspect Level 1 ring with one SAFE aspect block broadened
-                                        (geography first, then setting, then population).
-                                        strategy=conceptual_single_aspect.
-      Level 3  conceptual_single_aspect OR conceptual_multi_aspect
-                                        Level 1 ring with further broadening:
-                                        - "(no restriction)" drops the geography block entirely.
-                                        - CONDITIONAL aspect (topic or intervention): scope-expanding.
-                                        - Two aspects broadened: strategy=conceptual_multi_aspect.
-
-    The strategy field in each level is authoritative — do not infer broadening type from level number.
-    Apply levels in order: Level 1 is the full-recall baseline; fall back to higher levels when
-    result count at the current level is insufficient.
+    All output levels share the same structure: boolean_query, query, semantic_query,
+    keyword_query, controlled_vocabulary, and cochrane_compliant flag.
     """
     request_id_val = generate_request_id()
     set_request_id(request_id_val)
     start_time = time.time()
+
+    concept_graph = {}
+    if request.search_context and request.search_context.concept_graph:
+        concept_graph = request.search_context.concept_graph
 
     logger.info(
         "API: Generating search expansion levels",
@@ -2350,17 +2608,37 @@ async def expand_search(
             "user_id": current_user.id,
             "model_override": request.model,
             "statement_length": len(request.statement),
+            "anchor_block_count": len(request.anchor_blocks),
         },
     )
 
     try:
-        levels, metadata = await manager.generate_search_expansion_levels(
-            search_input=SearchExpansionInput(
-                statement=request.statement,
-                search_context=request.search_context,
-            ),
+        expansion_input = SearchExpansionInput(
+            clarified_query=request.statement,
+            anchor_blocks=request.anchor_blocks,
+            concept_graph=concept_graph,
+            semantic_statement=request.semantic_statement or "",
+            keyword_statement=request.keyword_statement or "",
+            keyword_structured=request.keyword_structured or "",
+            search_filters=request.search_filters,
+            phrases=request.phrases or [],
+        )
+        result, metadata = await manager.generate_search_expansion_levels(
+            search_input=expansion_input,
             model=request.model,
         )
+        levels_payload = [level.model_dump(by_alias=True) for level in result.levels]
+        metadata["geography_broadening_strategy"] = result.geography_broadening_strategy
+        metadata["recommended_starting_level"] = result.recommended_starting_level
+        metadata["recommendation_rationale"] = result.recommendation_rationale
+        if result.search_filters:
+            metadata["search_filters"] = (
+                result.search_filters.model_dump()
+                if hasattr(result.search_filters, "model_dump")
+                else result.search_filters
+            )
+        if result.phrases:
+            metadata["phrases"] = result.phrases
     except Exception as exc:
         logger.exception(
             "API: Search expansion generation failed unexpectedly",
@@ -2370,8 +2648,6 @@ async def expand_search(
             status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
             detail=f"Failed to generate search expansion levels: {str(exc)}",
         )
-
-    levels_payload = [level.model_dump() for level in levels]
 
     duration_ms = (time.time() - start_time) * 1000
     logger.info(
@@ -2385,7 +2661,16 @@ async def expand_search(
         },
     )
     return SearchExpandResponse(
-        search_expansion_levels=levels_payload,
+        levels=levels_payload,
+        geography_broadening_strategy=result.geography_broadening_strategy,
+        recommended_starting_level=result.recommended_starting_level,
+        recommendation_rationale=result.recommendation_rationale,
+        search_filters=(
+            result.search_filters.model_dump()
+            if hasattr(result.search_filters, "model_dump")
+            else result.search_filters
+        ) if result.search_filters else None,
+        phrases=result.phrases or None,
         metadata=metadata,
     )
 
@@ -2594,7 +2879,8 @@ async def synthesize_refined_query(
       structured_output["search_filters"]
           Metadata filters ready for database filter parameters.
 
-    Agent D (search expansion) is a separate step — call POST /expand after this.
+    Set include_expansion=true to chain Agent D automatically and receive expansion_levels
+    in the same response. POST /expand remains available as a standalone call.
     Session must be ready for synthesis: all dimensions answered or /submit issued.
     """
     from query_refinement_module.tracing import generate_request_id, set_request_id
@@ -2654,6 +2940,7 @@ async def synthesize_refined_query(
                 session_manager=session_manager,
                 query_id=request.query_id,
                 request_id=request_id_val,
+                include_expansion=request.include_expansion,
             )
     except RuntimeError as exc:
         logger.warning("Could not acquire session lock for query %d during synthesis: %s", request.query_id, exc)
@@ -2669,7 +2956,7 @@ async def synthesize_refined_query(
             "request_id": request_id_val,
             "duration_ms": round(duration_ms, 2),
             "response_query_id": response.query_id,
-            "response_integrated_statement_length": len(response.integrated_statement),
+            "response_clarified_query_length": len(response.clarified_query),
             "response_has_structured_output": response.structured_output is not None,
         },
     )
@@ -3309,4 +3596,3 @@ async def get_query_progress(
         )
     
     return progress
-

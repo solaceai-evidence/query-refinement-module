@@ -4,6 +4,7 @@ from typing import List, Optional
 
 import query_refinement_module.cli as cli
 from query_refinement_module.providers import FileTracingProvider, NoOpTracingProvider
+from query_refinement_module.schema.response import CombinedBlock, SearchFilters
 
 
 class StubSettings:
@@ -237,7 +238,76 @@ class StubManager:
         }
 
     async def synthesize_refined_query(self, session):
-        return {"integrated_statement": "refined", "used_llm": True}
+        return {
+            "clarified_query": "Refined question",
+            "dimensions_specifications": {"aspect": "refined answer"},
+            "search_optimized": SimpleNamespace(
+                semantic="semantic query",
+                keyword=SimpleNamespace(
+                    structured="(cancer)",
+                    phrases=["cancer prevention"],
+                    terms=SimpleNamespace(
+                        required=["cancer"],
+                        optional=["prevention"],
+                        excluded=[],
+                    ),
+                    combined_blocks=[
+                        CombinedBlock(
+                            role="topic_or_condition",
+                            free_text=["cancer"],
+                            controlled_vocabulary={"MeSH": ["Neoplasms"]},
+                        )
+                    ],
+                ),
+            ),
+            "keyword_statement": "cancer prevention",
+            "concept_graph": {"cancer": {"query_role": "topic_or_condition"}},
+            "search_filters": SearchFilters(
+                publication_years="2020-2024",
+                publication_types=["Review"],
+                fields_of_study=[],
+                venues=[],
+                authors=[],
+            ),
+            "used_llm": True,
+        }
+
+    async def generate_search_expansion_levels(self, *, search_input, model=None):
+        response = SimpleNamespace(
+            recommended_starting_level=1,
+            recommendation_rationale="Level 1 is a good starting point.",
+            search_filters=None,
+            phrases=["cancer prevention"],
+            levels=[
+                SimpleNamespace(
+                    level=0,
+                    label="Anchor query",
+                    clarified_query="Refined question",
+                    semantic_statement="semantic query",
+                    keyword_statement="cancer prevention",
+                    search_query="(cancer)",
+                    controlled_vocabulary={"MeSH": ["Neoplasms"]},
+                    broadened_aspect="",
+                    broadened_value="",
+                    rationale="Anchor query.",
+                    cochrane_compliant=False,
+                ),
+                SimpleNamespace(
+                    level=1,
+                    label="Full lexical ring",
+                    clarified_query="Refined question",
+                    semantic_statement="semantic query",
+                    keyword_statement="cancer prevention",
+                    search_query="(cancer OR neoplasm)",
+                    controlled_vocabulary={"MeSH": ["Neoplasms"]},
+                    broadened_aspect="",
+                    broadened_value="",
+                    rationale="Expanded lexical coverage.",
+                    cochrane_compliant=False,
+                ),
+            ],
+        )
+        return response, {"generated_level_count": 2, "status": "completed", "used_llm": False}
 
 
 def test_run_cli_processes_answer(monkeypatch, capsys):
@@ -277,6 +347,30 @@ def test_run_cli_handles_command(monkeypatch, capsys):
     # Check for synthesis section instead of "RESULTS"
     assert "GENERATING REFINED QUERY" in out or "Original:" in out
     assert session.command_calls
+
+
+def test_run_cli_runs_agent_d_automatically(monkeypatch, capsys):
+    import asyncio
+
+    step = StubStep()
+    session = StubSession(step)
+    manager = StubManager(session)
+
+    inputs = iter(["/submit"])
+    monkeypatch.setattr(cli.registry, "get_framework", lambda name: [])
+    monkeypatch.setattr("builtins.input", lambda prompt="": next(inputs))
+
+    asyncio.run(cli.run_cli(manager, "demo", "query"))
+
+    out = capsys.readouterr().out
+    assert "AGENT D — SEARCH EXPANSION LEVELS" in out
+    assert "Would you like to generate search expansion levels?" not in out
+    assert "Level 1 — Full lexical ring" in out
+    assert "recommended_starting_level: 1" in out
+    assert "query:" in out
+    assert "semantic_query:" in out
+    assert "keyword_query:" in out
+    assert "boolean_query:" in out
 
 
 def test_parse_args_defaults():

@@ -16,7 +16,9 @@ from .llm_model_defaults import get_model_defaults
 from .logging_utils import configure_file_logging
 from .providers import ConsoleTracing, FileTracingProvider, LiteLLMProvider
 from .schema import registry
-from .schema.response import SearchExpansionContext, SearchExpansionInput, SearchExpansionResponse, SearchFilters, Terminology
+from .schema.response import (
+    SearchExpansionInput,
+)
 from .settings import LLMSettings
 
 load_dotenv(override=False)
@@ -138,28 +140,51 @@ def _accepted_dimensions_from_session(session, fallback_dimensions: Optional[Dic
     }
 
 
+
+
 def _build_search_expansion_input_from_synthesis(
     synthesis: Dict[str, Any],
-) -> SearchExpansionInput:
-    missing = [
-        field_name
-        for field_name in ("clarified_query", "search_filters", "terminology")
-        if synthesis.get(field_name) is None or synthesis.get(field_name) == ""
-    ]
-    if missing:
-        raise ValueError("Search expansion bridge requires synthesis fields: " + ", ".join(missing))
+) -> Optional[SearchExpansionInput]:
+    """Build Agent D input from the synthesis dict.
 
-    search_filters = SearchFilters.model_validate(synthesis["search_filters"])
-    terminology = Terminology.model_validate(synthesis["terminology"])
+    Returns None if combined_blocks are unavailable.
+    """
+    clarified_query = synthesis.get("clarified_query")
+    if not clarified_query:
+        return None
+
+    search_optimized = synthesis.get("search_optimized")
+    combined_blocks = None
+    if search_optimized is not None:
+        keyword = getattr(search_optimized, "keyword", None)
+        if keyword is not None:
+            combined_blocks = getattr(keyword, "combined_blocks", None)
+
+    if not combined_blocks:
+        return None
+
+    concept_graph = synthesis.get("concept_graph") or {}
+
+    # Agent B passthrough
+    so = synthesis.get("search_optimized")
+    semantic_statement = getattr(so, "semantic", "") or "" if so else ""
+    keyword_statement_val = synthesis.get("keyword_statement") or ""
+
+    # Agent C passthrough
+    kw = getattr(so, "keyword", None) if so else None
+    keyword_structured = getattr(kw, "structured", "") or "" if kw else ""
+    phrases = list(getattr(kw, "phrases", None) or []) if kw else []
+    search_filters = synthesis.get("search_filters")
 
     return SearchExpansionInput(
-        statement=synthesis["clarified_query"],
-        search_context=SearchExpansionContext(
-            filters=search_filters.model_dump(exclude_none=True),
-            synonyms=terminology.synonyms or {},
-            concept_graph=synthesis.get("concept_graph") or None,
-        ),
-        dimensions_specifications=synthesis.get("dimensions_specifications", {}),
+        clarified_query=clarified_query,
+        anchor_blocks=combined_blocks,
+        concept_graph=concept_graph,
+        semantic_statement=semantic_statement,
+        keyword_statement=keyword_statement_val,
+        keyword_structured=keyword_structured,
+        search_filters=search_filters,
+        phrases=phrases,
     )
 
 
@@ -219,32 +244,91 @@ def _resolve_numeric_examples(user_input: str, examples: Optional[list[str]]) ->
 
 
 def _print_search_expansion_levels(response) -> None:
-    print("─"*80)
-    print("SEARCH EXPANSION LEVELS")
-    print("─"*80)
+    if response.recommended_starting_level and response.recommendation_rationale:
+        print(f"recommended_starting_level: {response.recommended_starting_level}")
+        print(f"recommendation_rationale: {response.recommendation_rationale}\n")
 
-    # Print recommendation if levels exist
-    if response.levels:
-        print(f"Recommended starting level: {response.recommended_starting_level}")
-        print(f"Rationale: {response.recommendation_rationale}\n")
+    if response.search_filters:
+        sf = response.search_filters
+        filter_parts = []
+        years = getattr(sf, "publication_years", None) or (sf.get("publication_years") if isinstance(sf, dict) else None)
+        types_ = getattr(sf, "publication_types", None) or (sf.get("publication_types") if isinstance(sf, dict) else None)
+        if years:
+            filter_parts.append(f"Years: {years}")
+        if types_:
+            filter_parts.append(f"Types: {', '.join(types_)}")
+        if filter_parts:
+            print(f"Filters: {' | '.join(filter_parts)}")
 
-    # Print each level
+    if response.phrases:
+        print(f"Key phrases: {', '.join(response.phrases[:6])}")
+
+    print()
+
     for level in response.levels:
-        strategy = getattr(level.strategy, "value", level.strategy)
-        print(f"Level {level.level} — {level.label} [{strategy}]")
-        print(f"  {level.search_query}")
-        if level.relaxed_aspects:
-            relaxed = ", ".join(
-                f"{aspect}: {value}"
-                for aspect, value in level.relaxed_aspects.items()
-            )
-            print(f"  Relaxed: {relaxed}")
-        print(f"  Rationale: {level.rationale}\n")
+        tags = []
+        if level.level == 0:
+            tags.append("anchor")
+        elif level.level == 1:
+            tags.append("deterministic")
+        if level.cochrane_compliant:
+            tags.append("Cochrane-sensitive")
+        tag_str = f" [{', '.join(tags)}]" if tags else ""
+        print(f"Level {level.level} — {level.label}{tag_str}")
+        print(f"  query:          {level.clarified_query}")
+        if level.semantic_statement:
+            print(f"  semantic_query: {level.semantic_statement[:120]}{'...' if len(level.semantic_statement) > 120 else ''}")
+        if level.keyword_statement:
+            print(f"  keyword_query:  {level.keyword_statement}")
+        print(f"  boolean_query:  {level.search_query}")
+        if level.controlled_vocabulary:
+            for vocab_name, terms in level.controlled_vocabulary.items():
+                print(f"  controlled_vocabulary.{vocab_name}: {', '.join(terms[:6])}" + (" …" if len(terms) > 6 else ""))
+        if level.broadened_value and level.broadened_value != "(no restriction)":
+            print(f"  broadened_aspect.{level.broadened_aspect}: {level.broadened_value}")
+        print(f"  rationale:      {level.rationale}\n")
 
-    # Print message if no levels were generated
     if not response.levels:
-        print("No expansion levels generated.")
-        print(f"  {response.recommendation_rationale}\n")
+        print("No expansion levels generated.\n")
+
+
+async def _run_cli_search_expansion(
+    manager: QueryRefinementManager,
+    synthesis: Dict[str, Any],
+) -> None:
+    logger.info("CLI: starting Agent D search expansion")
+
+    try:
+        expansion_input = _build_search_expansion_input_from_synthesis(synthesis)
+        if expansion_input is None:
+            logger.warning(
+                "CLI: Agent D search expansion unavailable because combined_blocks were missing"
+            )
+            print(
+                "Search expansion unavailable: combined_blocks not available from synthesis output."
+            )
+            return
+
+        expansion_response, metadata = await manager.generate_search_expansion_levels(
+            search_input=expansion_input,
+        )
+    except Exception as exc:
+        logger.warning("CLI: Agent D search expansion failed", exc_info=True)
+        print(f"Warning: Agent D search expansion failed ({exc})")
+        return
+
+    logger.info(
+        "CLI: Agent D search expansion completed",
+        extra={
+            "generated_level_count": metadata.get("generated_level_count", 0),
+            "status": metadata.get("status"),
+            "used_llm": metadata.get("used_llm"),
+        },
+    )
+    print("─"*80)
+    print("AGENT D — SEARCH EXPANSION LEVELS")
+    print("─"*80)
+    _print_search_expansion_levels(expansion_response)
 
 
 async def run_cli(manager: QueryRefinementManager, framework_name: str, query: str) -> None:
@@ -451,12 +535,27 @@ async def run_cli(manager: QueryRefinementManager, framework_name: str, query: s
             print(f"Original: {session.original_query}\n")
 
             try:
+                logger.info("CLI: starting chained synthesis for Agents A-C")
                 synthesis = await manager.synthesize_refined_query(session)
             except ValueError as exc:
                 print(f"Error: {exc}")
             except Exception as exc:
                 print(f"Error: {exc}")
             else:
+                search_optimized = synthesis.get("search_optimized")
+                keyword = getattr(search_optimized, "keyword", None) if search_optimized else None
+                combined_blocks = getattr(keyword, "combined_blocks", None) if keyword else None
+                concept_graph = synthesis.get("concept_graph") or {}
+                logger.info(
+                    "CLI: completed chained synthesis for Agents A-C",
+                    extra={
+                        "clarified_query_length": len(
+                            (synthesis.get("clarified_query") or "").strip()
+                        ),
+                        "concept_graph_size": len(concept_graph),
+                        "combined_block_count": len(combined_blocks or []),
+                    },
+                )
                 clarified_query = synthesis.get("clarified_query", "").strip()
                 if not clarified_query:
                     clarified_query = synthesis.get("refined_query", "").strip() or session.original_query
@@ -481,9 +580,6 @@ async def run_cli(manager: QueryRefinementManager, framework_name: str, query: s
                     print()
 
                 # ── AGENT B — SEMANTIC REPRESENTATION ────────────────────────
-                search_optimized = synthesis.get("search_optimized")
-                concept_graph = synthesis.get("concept_graph") or {}
-
                 print("─"*80)
                 print("AGENT B — SEMANTIC REPRESENTATION")
                 print("─"*80)
@@ -566,40 +662,8 @@ async def run_cli(manager: QueryRefinementManager, framework_name: str, query: s
                         print(f"\nSearch Filters:  {' | '.join(filter_parts)}")
                 print()
 
-                # ── AGENT D — SEARCH EXPANSION (optional) ────────────────────
-                expand_answer = (
-                    await asyncio.to_thread(
-                        _read_optional_input,
-                        "Would you like to generate search expansion levels? [y/N] ",
-                    )
-                ).strip().lower()
-                if expand_answer in {"y", "yes"}:
-                    logger.info("CLI: user requested search expansion")
-                    try:
-                        search_input = _build_search_expansion_input_from_synthesis(
-                            synthesis,
-                        )
-                        expansion_response, metadata = await manager.generate_search_expansion_levels(
-                            search_input=search_input,
-                        )
-                    except Exception as exc:
-                        logger.warning("CLI: search expansion failed", exc_info=True)
-                        print(f"Warning: search expansion was skipped ({exc})")
-                    else:
-                        logger.info(
-                            "CLI: search expansion completed",
-                            extra={
-                                "returned_level_count": len(expansion_response.levels),
-                                "generated_level_count": metadata.get("generated_level_count", 0),
-                                "status": metadata.get("status"),
-                            },
-                        )
-                        print("─"*80)
-                        print("AGENT D — SEARCH EXPANSION LEVELS")
-                        print("─"*80)
-                        _print_search_expansion_levels(expansion_response)
-                else:
-                    logger.info("CLI: user skipped search expansion")
+                # ── AGENT D — SEARCH EXPANSION ────────────────────────────────
+                await _run_cli_search_expansion(manager, synthesis)
                     
             print("="*80)
 

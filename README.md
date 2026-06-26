@@ -100,9 +100,12 @@ poetry run query-refine --list-frameworks
 
 # Start an interactive session
 poetry run query-refine --framework pico_advanced
+
+# Start an interactive session and write logs/traces to disk
+poetry run query-refine --framework pico_advanced --trace-dir logs/cli-trace --log-dir logs/cli
 ```
 
-At the end of the session, the CLI offers to generate optional search expansion levels — broader retrieval variants for fallback when initial search yields insufficient results. The Level 0 query is always the exact clarified statement; broader levels are search-only and do not change the canonical refined question.
+At the end of the session, the CLI now runs the full chained agent flow **A → B → C → D** automatically. Agent D generates search expansion levels for fallback retrieval when initial search yields insufficient results. The Level 0 query is always the exact clarified statement; broader levels are search-only and do not change the canonical refined question.
 
 ---
 
@@ -135,15 +138,15 @@ Non-superuser accounts can only use frameworks they have been explicitly granted
 
 The API is available at `/api/v1/refinement/`. Key endpoints:
 
-| Endpoint | Description |
-|---|---|
-| `POST /start` | Begin a refinement session |
-| `POST /queries/{id}/answer` | Submit an answer |
-| `POST /normalize` | Agent A — clarified query only |
-| `POST /represent` | Agent B — semantic + keyword queries + concept graph |
-| `POST /construct` | Agent C — keyword search constructions + filters |
-| `POST /synthesize` | Run full A → B → C pipeline in one call |
-| `POST /expand` | Agent D — optional search broadening levels |
+| Endpoint                    | Description                                          |
+| --------------------------- | ---------------------------------------------------- |
+| `POST /start`               | Begin a refinement session                           |
+| `POST /queries/{id}/answer` | Submit an answer                                     |
+| `POST /normalize`           | Agent A — clarified query only                       |
+| `POST /represent`           | Agent B — semantic + keyword queries + concept graph |
+| `POST /construct`           | Agent C — keyword search constructions + filters     |
+| `POST /synthesize`          | Run full A → B → C pipeline in one call              |
+| `POST /expand`              | Agent D — optional search broadening levels          |
 
 See [docs/API.md](docs/API.md) for the full reference.
 

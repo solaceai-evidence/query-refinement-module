@@ -23,6 +23,15 @@ from query_refinement_module.db.crud import (
 )
 from query_refinement_module.db.session import get_db
 from query_refinement_module.schema.models import RefinementAspect
+from query_refinement_module.schema.response import (
+    CombinedBlock,
+    ExpansionLevel,
+    KeywordSearch,
+    SearchExpansionResponse,
+    SearchFilters,
+    SearchOptimized,
+    SearchTerms,
+)
 
 
 FRAMEWORK_NAME = "test_reconstruction"
@@ -171,14 +180,105 @@ class _LockTrackingSessionManager(_CacheMissSessionManager):
 
 class _SynthesisManager:
     async def synthesize_refined_query(self, session):
+        keyword = KeywordSearch(
+            structured="(COPD OR chronic obstructive pulmonary disease) AND (pulmonary rehabilitation)",
+            phrases=["pulmonary rehabilitation", "chronic obstructive pulmonary disease"],
+            terms=SearchTerms(required=["COPD"], optional=["pulmonary rehabilitation"], excluded=[]),
+        )
         return {
+            "clarified_query": "Adults with COPD receiving pulmonary rehabilitation.",
             "integrated_statement": "Adults with COPD receiving pulmonary rehabilitation.",
             "dimensions_specifications": {"population": "Adults with COPD"},
-            "search_optimized": {"semantic": "pulmonary rehabilitation COPD adults"},
-            "search_filters": {"publication_types": ["Systematic review"]},
+            "search_optimized": SearchOptimized(
+                semantic="pulmonary rehabilitation COPD adults",
+                keyword=keyword,
+            ),
+            "keyword_statement": "pulmonary rehabilitation COPD adults",
+            "search_filters": SearchFilters(publication_types=["Systematic review"]),
             "terminology": {"synonyms": {"COPD": ["chronic obstructive pulmonary disease"]}},
+            "concept_graph": {},
             "used_llm": True,
         }
+
+
+class _SynthesisExpansionManager:
+    async def synthesize_refined_query(self, session):
+        keyword = KeywordSearch(
+            structured="(mental health OR psychological wellbeing) AND (children OR adolescents) AND (Qoloji OR Ethiopia)",
+            phrases=["mental health outcomes", "Qoloji camp"],
+            terms=SearchTerms(required=["mental health"], optional=["Qoloji"], excluded=[]),
+            combined_blocks=[
+                CombinedBlock(
+                    role="topic_or_condition",
+                    free_text=["mental health", "psychological wellbeing", "MHPSS"],
+                    controlled_vocabulary={"MeSH": ["Mental Health"]},
+                ),
+                CombinedBlock(
+                    role="population_or_entity",
+                    free_text=["children", "adolescents"],
+                    controlled_vocabulary={"MeSH": ["Child", "Adolescent"]},
+                ),
+                CombinedBlock(
+                    role="geography",
+                    free_text=["Qoloji", "Ethiopia"],
+                    controlled_vocabulary={"MeSH": ["Ethiopia"]},
+                ),
+            ],
+        )
+        return {
+            "clarified_query": "How to improve mental health outcomes among children in Qoloji camp, Ethiopia.",
+            "dimensions_specifications": {"population": "Children"},
+            "search_optimized": SearchOptimized(
+                semantic="Studies examining mental health interventions for children in refugee settings in Ethiopia.",
+                keyword=keyword,
+            ),
+            "keyword_statement": "mental health children refugee setting Ethiopia",
+            "search_filters": SearchFilters(fields_of_study=["Public Health"]),
+            "terminology": {"synonyms": {"mental health": ["psychological wellbeing"]}},
+            "concept_graph": {
+                "mental health": {
+                    "query_role": "topic_or_condition",
+                    "domain_terms": ["depression", "anxiety"],
+                }
+            },
+            "used_llm": True,
+        }
+
+    async def generate_search_expansion_levels(self, *, search_input, model=None):
+        response = SearchExpansionResponse(
+            levels=[
+                ExpansionLevel(
+                    level=0,
+                    label="Anchor query",
+                    clarified_query=search_input.clarified_query,
+                    semantic_statement=search_input.semantic_statement,
+                    keyword_statement=search_input.keyword_statement,
+                    search_query=search_input.keyword_structured,
+                    controlled_vocabulary={"MeSH": ["Mental Health", "Ethiopia"]},
+                    blocks=search_input.anchor_blocks,
+                    rationale="Anchor level.",
+                    cochrane_compliant=False,
+                ),
+                ExpansionLevel(
+                    level=1,
+                    label="Full lexical ring",
+                    clarified_query=search_input.clarified_query,
+                    semantic_statement=search_input.clarified_query,
+                    keyword_statement="mental health psychological wellbeing children Ethiopia",
+                    search_query='("mental health" OR "psychological wellbeing" OR MHPSS) AND (children OR adolescents) AND (Qoloji OR Ethiopia)',
+                    controlled_vocabulary={"MeSH": ["Mental Health", "Ethiopia"]},
+                    blocks=search_input.anchor_blocks,
+                    rationale="Lexical broadening.",
+                    cochrane_compliant=False,
+                ),
+            ],
+            geography_broadening_strategy="context_proxy",
+            recommended_starting_level=1,
+            recommendation_rationale="Start with the lexical ring before relaxing geography.",
+            search_filters=search_input.search_filters,
+            phrases=search_input.phrases,
+        )
+        return response, {"status": "completed", "generated_level_count": 2, "used_llm": True}
 
 
 class _SkipRefinementManager(_StubManager):
@@ -190,12 +290,23 @@ class _SkipRefinementManager(_StubManager):
         self.synthesis_sessions.append(session)
         assert session.synthesis_requested is True
         assert all(step.is_complete and step.was_skipped for step in session.steps)
+        keyword = KeywordSearch(
+            structured="(COPD OR chronic obstructive pulmonary disease) AND (pulmonary rehabilitation)",
+            phrases=["pulmonary rehabilitation", "chronic obstructive pulmonary disease"],
+            terms=SearchTerms(required=["COPD"], optional=["pulmonary rehabilitation"], excluded=[]),
+        )
         return {
+            "clarified_query": "Adults with COPD receiving pulmonary rehabilitation.",
             "integrated_statement": "Adults with COPD receiving pulmonary rehabilitation.",
             "dimensions_specifications": {"population": "Adults with COPD"},
-            "search_optimized": {"semantic": "pulmonary rehabilitation COPD adults"},
-            "search_filters": {"publication_types": ["Systematic review"]},
+            "search_optimized": SearchOptimized(
+                semantic="pulmonary rehabilitation COPD adults",
+                keyword=keyword,
+            ),
+            "keyword_statement": "pulmonary rehabilitation COPD adults",
+            "search_filters": SearchFilters(publication_types=["Systematic review"]),
             "terminology": {"synonyms": {"COPD": ["chronic obstructive pulmonary disease"]}},
+            "concept_graph": {},
             "metadata": {"total_tokens": 321},
             "used_llm": True,
         }
@@ -397,6 +508,63 @@ def test_synthesize_route_acquires_session_lock(db: Session, auth_user_and_token
         assert response.status_code == 200
         assert session_manager.locked_query_ids == [db_query.id]
         assert session_manager.deleted_sessions == [db_query.id]
+    finally:
+        app.dependency_overrides.pop(get_refinement_manager, None)
+        app.dependency_overrides.pop(get_session_manager, None)
+
+
+def test_synthesize_route_includes_agent_d_expansion_payload(
+    db: Session, auth_user_and_token, registered_framework, monkeypatch
+):
+    user, client = auth_user_and_token
+    stub_manager = _StubManager()
+    session = stub_manager.initialize_sequential("Mental health in Qoloji camp", registered_framework)
+    session.synthesis_requested = True
+    session_manager = _LockTrackingSessionManager(session=session)
+
+    app.dependency_overrides[get_refinement_manager] = lambda: _SynthesisExpansionManager()
+    app.dependency_overrides[get_session_manager] = lambda: session_manager
+
+    async def _track_progress(**kwargs):
+        return None
+
+    class _Tracker:
+        async def create(self, **kwargs):
+            return None
+
+        async def increment_llm_calls(self, query_id: str):
+            return None
+
+    monkeypatch.setattr("query_refinement_module.api.routes.refinement.track_progress", _track_progress)
+    monkeypatch.setattr("query_refinement_module.api.routes.refinement.get_progress_tracker", lambda: _Tracker())
+    monkeypatch.setattr(
+        "query_refinement_module.api.routes.refinement.get_settings",
+        lambda: SimpleNamespace(enforce_workflow_limit=False),
+    )
+    try:
+        db_session = create_query_session(db, user_id=user.id, framework_name=FRAMEWORK_NAME)
+        db_query = create_query(db, session_id=db_session.id, original_query="Mental health in Qoloji camp")
+
+        response = client.post(
+            "/api/v1/refinement/synthesize",
+            json={"query_id": db_query.id, "include_expansion": True},
+        )
+
+        assert response.status_code == 200, response.text
+        payload = response.json()
+        assert payload["clarified_query"] == "How to improve mental health outcomes among children in Qoloji camp, Ethiopia."
+        assert payload["expansion_levels"] is not None
+        assert payload["expansion_metadata"] is not None
+        assert payload["expansion_metadata"]["recommended_starting_level"] == 1
+        level0 = payload["expansion_levels"][0]
+        assert level0["level"] == 0
+        assert level0["query"] == "How to improve mental health outcomes among children in Qoloji camp, Ethiopia."
+        assert "semantic_query" in level0
+        assert "keyword_query" in level0
+        assert "boolean_query" in level0
+        assert "search_query" not in level0
+        assert "clarified_query" not in level0
+        assert session_manager.locked_query_ids == [db_query.id]
     finally:
         app.dependency_overrides.pop(get_refinement_manager, None)
         app.dependency_overrides.pop(get_session_manager, None)

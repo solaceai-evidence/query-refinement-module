@@ -1,28 +1,29 @@
+"""Tests for the block-aware search expansion pipeline (Agent D)."""
 from __future__ import annotations
 
+import json
 import pytest
 from types import SimpleNamespace
 
 from query_refinement_module.core import QueryRefinementManager
 from query_refinement_module.api.routes.refinement import _dimension_value_is_accepted
-from query_refinement_module.schema.search_expansion import SearchExpansionPromptBuilder
+from query_refinement_module.schema.search_expansion import (
+    SearchExpansionPromptBuilder,
+    build_keyword_statement,
+    build_level1_query,
+    build_leveln_query,
+)
 from query_refinement_module.schema.response import (
-    AspectSafety,
-    DEFAULT_ASPECT_SAFETY,
-    ExpansionStrategy,
-    SearchAspect,
-    SearchAspectAssessment,
-    SearchAspectAssessmentResponse,
-    SearchExpansionContext,
+    CombinedBlock,
+    ExpansionLevel,
     SearchExpansionInput,
-    SearchExpansionLevel,
-    SearchExpansionResponse,
-    SearchFilters,
 )
 
 
+# ─── Stub provider ───────────────────────────────────────────────────────────
+
 class StubProvider:
-    """Returns queued responses, one per LLM call, in order."""
+    """Returns queued raw-text responses, one per LLM call, in order."""
 
     def __init__(self, responses):
         self.responses = list(responses)
@@ -37,473 +38,396 @@ class StubProvider:
         )
 
 
-ANCHOR = "Studies of heatwave impacts on pregnant people in London."
+# ─── Fixtures ─────────────────────────────────────────────────────────────────
+
+ANCHOR = "How to improve mental health outcomes in children in Qoloji camp, Ethiopia."
+
+GEO_BLOCK = CombinedBlock(
+    role="geography",
+    free_text=["Qoloji", "Ethiopia", "Ethiopian"],
+    controlled_vocabulary={"MeSH": ["Ethiopia"]},
+)
+
+SETTING_BLOCK = CombinedBlock(
+    role="setting_or_context",
+    free_text=["refugee camp", "displacement camp", "IDP camp"],
+    controlled_vocabulary={"MeSH": ["Refugee Camps"]},
+)
+
+TOPIC_BLOCK = CombinedBlock(
+    role="topic_or_condition",
+    free_text=["mental health", "MHPSS", "psychological wellbeing"],
+    controlled_vocabulary={"MeSH": ["Mental Health"]},
+)
+
+POP_BLOCK = CombinedBlock(
+    role="population_or_entity",
+    free_text=["children", "under-five children", "U5"],
+    controlled_vocabulary={"MeSH": ["Child"]},
+)
 
 
-def _search_input() -> SearchExpansionInput:
+def _geo_input() -> SearchExpansionInput:
     return SearchExpansionInput(
-        statement=ANCHOR,
-        search_context=SearchExpansionContext(
-            filters=SearchFilters(fields_of_study=["Medicine"]).model_dump(exclude_none=True),
-            concept_graph={
-                "heatwave": {
-                    "query_role": "topic_or_condition",
-                    "true_synonyms": ["extreme heat"],
-                    "abbreviations": [],
-                    "spelling_variants": [],
-                    "lexical_variants": [],
-                    "colloquial": [],
-                    "domain_terms": ["heat stress", "thermal stress"],
-                }
+        clarified_query=ANCHOR,
+        anchor_blocks=[TOPIC_BLOCK, POP_BLOCK, SETTING_BLOCK, GEO_BLOCK],
+        concept_graph={},
+    )
+
+
+def _setting_input() -> SearchExpansionInput:
+    return SearchExpansionInput(
+        clarified_query="Effectiveness of nurse-led interventions for diabetes in hospitals.",
+        anchor_blocks=[
+            CombinedBlock(role="topic_or_condition", free_text=["diabetes management"]),
+            CombinedBlock(
+                role="setting_or_context",
+                free_text=["hospitals", "hospital wards", "inpatient setting"],
+            ),
+        ],
+        concept_graph={},
+    )
+
+
+def _geo_llm_response_json() -> str:
+    return json.dumps({
+        "geography_broadening_strategy": "context_proxy",
+        "levels": [
+            {
+                "level": 2,
+                "label": "Contextual analogy — conflict-affected LMICs",
+                "broadened_value": "conflict-affected LMICs",
+                "boolean_terms": ["conflict-affected low-income countries", "fragile states"],
+                "clarified_query": "How to improve mental health outcomes in children in displacement camps in conflict-affected LMICs.",
+                "rationale": "Ethiopia is a context proxy for conflict-affected settings.",
             },
-        ),
-    )
+            {
+                "level": 3,
+                "label": "No geographic restriction",
+                "broadened_value": "(no restriction)",
+                "boolean_terms": [],
+                "clarified_query": "How to improve mental health outcomes in children in displacement camps globally.",
+                "rationale": "Removes all geographic restriction.",
+            },
+        ],
+        "recommended_starting_level": 2,
+        "recommendation_rationale": "Level 1 names a specific camp site with almost no coverage.",
+    })
 
 
-def _assessment_response(detected_aspects=None) -> SearchAspectAssessmentResponse:
-    detected_aspects = detected_aspects if detected_aspects is not None else {
-        SearchAspect.TOPIC_OR_CONDITION: ("heatwave impacts", ["extreme weather impacts"]),
-        SearchAspect.POPULATION_OR_ENTITY: ("pregnant people", ["women of reproductive age"]),
-        SearchAspect.GEOGRAPHY: ("London", ["urban UK settings", "United Kingdom"]),
-    }
-    assessments = []
-    for aspect in SearchAspect:
-        if aspect in detected_aspects:
-            value, candidates = detected_aspects[aspect]
-            assessments.append(
-                SearchAspectAssessment(
-                    aspect=aspect,
-                    detected=True,
-                    detected_value=value,
-                    broadening_candidates=candidates,
-                    reasoning="present in anchor",
-                )
-            )
-        else:
-            assessments.append(SearchAspectAssessment(aspect=aspect, detected=False))
-    return SearchAspectAssessmentResponse(assessments=assessments)
+def _setting_llm_response_json() -> str:
+    return json.dumps({
+        "geography_broadening_strategy": "none",
+        "levels": [
+            {
+                "level": 2,
+                "label": "Broader care settings",
+                "broadened_value": "hospitals or clinics or outpatient care settings",
+                "boolean_terms": ["hospitals", "clinics", "outpatient care settings"],
+                "clarified_query": "Effectiveness of nurse-led interventions for diabetes in hospitals or clinics or outpatient care settings.",
+                "rationale": "Broadens the setting to adjacent care contexts.",
+            }
+        ],
+        "recommended_starting_level": 1,
+        "recommendation_rationale": "Level 1 is likely sufficient; Level 2 adds setting breadth.",
+    })
 
 
-def _valid_expansion_response() -> SearchExpansionResponse:
-    return SearchExpansionResponse(
-        levels=[
-            SearchExpansionLevel(
-                level=1,
-                label="Lexical variants",
-                strategy=ExpansionStrategy.LEXICAL,
-                search_query="Studies of heatwave or extreme heat impacts on pregnant people in London.",
-                relaxed_aspects={},
-                rationale="Adds synonym variants without conceptual broadening.",
-            ),
-            SearchExpansionLevel(
-                level=2,
-                label="Broader geography",
-                strategy=ExpansionStrategy.CONCEPTUAL_SINGLE_ASPECT,
-                search_query="Studies of heatwave impacts on pregnant people in urban UK settings.",
-                relaxed_aspects={"geography": "urban UK settings"},
-                rationale="Broadens London to comparable urban UK settings for recall.",
-            ),
-        ]
-    )
+# ─── Prompt builder ───────────────────────────────────────────────────────────
 
-
-def _allowed_aspects() -> dict:
-    return {
-        SearchAspect.TOPIC_OR_CONDITION.value: AspectSafety.SAFE,
-        SearchAspect.POPULATION_OR_ENTITY.value: AspectSafety.SAFE,
-        SearchAspect.GEOGRAPHY.value: AspectSafety.SAFE,
-    }
-
-
-# ---------------------------------------------------------------------------
-# Prompt builder
-# ---------------------------------------------------------------------------
-
-def test_prompt_builder_system_prompts_non_empty():
+def test_prompt_builder_system_prompt_contains_cochrane_guidance():
     system_prompt = SearchExpansionPromptBuilder.get_system_prompt()
     assert system_prompt
-    assert "concept_lexical_rings" in system_prompt
-    assert SearchExpansionPromptBuilder.get_assessment_system_prompt()
+    assert "Cochrane" in system_prompt
+    assert "geography" in system_prompt.lower()
 
 
-def test_assessment_user_prompt_includes_anchor_and_advisory_context():
-    prompt = SearchExpansionPromptBuilder.get_assessment_user_prompt(_search_input())
-
+def test_user_prompt_contains_anchor_and_level1_query():
+    level1_query = "(mental health OR MHPSS) AND (children)"
+    prompt = SearchExpansionPromptBuilder.get_user_prompt(_geo_input(), level1_query)
     assert ANCHOR in prompt
-    assert "pregnant people" in prompt
-    assert "extreme heat" in prompt
+    assert level1_query in prompt
 
 
-def test_expansion_user_prompt_includes_anchor_and_allowed_aspects_only():
-    assessments = QueryRefinementManager._apply_aspect_safety_policy(
-        _assessment_response().assessments
-    )
-
-    prompt = SearchExpansionPromptBuilder.get_user_prompt(_search_input(), assessments)
-
-    assert ANCHOR in prompt
-    assert "Level 0" in prompt
-    assert "geography" in prompt
-    assert "urban UK settings" in prompt
-    assert "extreme heat" in prompt
-    # Undetected aspects are AVOID and must not be offered for broadening
-    assert "time_scope" not in prompt
+def test_user_prompt_includes_geography_block_instructions_when_geo_present():
+    level1_query = "(mental health) AND (Qoloji OR Ethiopia)"
+    prompt = SearchExpansionPromptBuilder.get_user_prompt(_geo_input(), level1_query)
+    assert "Geography block" in prompt
+    assert "Qoloji" in prompt
 
 
-# ---------------------------------------------------------------------------
-# Safety policy
-# ---------------------------------------------------------------------------
-
-def test_safety_policy_assigns_defaults_and_marks_undetected_avoid():
-    classified = QueryRefinementManager._apply_aspect_safety_policy(
-        _assessment_response().assessments
-    )
-
-    by_aspect = {a.aspect: a for a in classified}
-    assert len(by_aspect) == len(SearchAspect)
-    assert by_aspect[SearchAspect.GEOGRAPHY].safety == AspectSafety.SAFE
-    assert by_aspect[SearchAspect.TIME_SCOPE].safety == AspectSafety.AVOID  # not detected
+def test_user_prompt_includes_setting_block_instructions_when_no_geo():
+    level1_query = "(diabetes management) AND (hospitals)"
+    prompt = SearchExpansionPromptBuilder.get_user_prompt(_setting_input(), level1_query, broadened_role="setting_or_context")
+    assert "Setting/context block" in prompt
+    assert "hospitals" in prompt
 
 
-def test_safety_policy_marks_detected_intervention_conditional():
-    detected = {
-        SearchAspect.INTERVENTION_OR_EXPOSURE_OR_PHENOMENON: ("heat exposure", ["climate exposure"]),
+# ─── build_level1_query ──────────────────────────────────────────────────────
+
+def test_build_level1_query_joins_blocks_with_and():
+    blocks = [
+        CombinedBlock(role="topic", free_text=["cancer", "neoplasm"]),
+        CombinedBlock(role="population", free_text=["children", "pediatric"]),
+    ]
+    query, _ = build_level1_query(blocks, {})
+    assert " AND " in query
+    assert query.startswith("(")
+
+
+def test_build_level1_query_or_joins_terms_within_block():
+    blocks = [CombinedBlock(role="topic", free_text=["cancer", "neoplasm", "tumour"])]
+    query, _ = build_level1_query(blocks, {})
+    assert "cancer OR neoplasm OR tumour" in query
+
+
+def test_build_level1_query_merges_controlled_vocabulary():
+    blocks = [
+        CombinedBlock(
+            role="topic",
+            free_text=["cancer"],
+            controlled_vocabulary={"MeSH": ["Neoplasms"], "PsycINFO": ["Cancer"]},
+        )
+    ]
+    _, cv = build_level1_query(blocks, {})
+    assert "MeSH" in cv
+    assert "Neoplasms" in cv["MeSH"]
+    assert "PsycINFO" in cv
+
+
+def test_build_level1_query_enriches_from_concept_graph():
+    blocks = [CombinedBlock(role="topic_or_condition", free_text=["cancer"])]
+    graph = {
+        "cancer": {
+            "query_role": "topic_or_condition",
+            "domain_terms": ["malignancy", "carcinoma"],
+        }
     }
-    classified = QueryRefinementManager._apply_aspect_safety_policy(
-        _assessment_response(detected).assessments
-    )
-
-    by_aspect = {a.aspect: a for a in classified}
-    assert (
-        by_aspect[SearchAspect.INTERVENTION_OR_EXPOSURE_OR_PHENOMENON].safety
-        == AspectSafety.CONDITIONAL
-    )
+    query, _ = build_level1_query(blocks, graph)
+    assert "malignancy" in query
+    assert "carcinoma" in query
 
 
-def test_safety_policy_fills_missing_aspects_as_avoid():
-    partial = [
-        SearchAspectAssessment(
-            aspect=SearchAspect.GEOGRAPHY,
-            detected=True,
-            detected_value="London",
+def test_build_level1_query_quotes_multi_word_phrases():
+    blocks = [CombinedBlock(role="topic", free_text=["mental health", "MHPSS"])]
+    query, _ = build_level1_query(blocks, {})
+    assert '"mental health"' in query
+    assert "MHPSS" in query
+
+
+def test_build_level1_query_empty_blocks_returns_empty():
+    query, cv = build_level1_query([], {})
+    assert query == ""
+    assert cv == {}
+
+
+def test_build_keyword_statement_skips_wildcard_terms():
+    blocks = [
+        CombinedBlock(
+            role="intervention",
+            free_text=["improv*", "treat*", "prevent*", "programmes", "strategies", "services"],
         )
     ]
 
-    classified = QueryRefinementManager._apply_aspect_safety_policy(partial)
+    keyword_query = build_keyword_statement(blocks)
 
-    assert len(classified) == len(SearchAspect)
-    assert all(a.safety is not None for a in classified)
-
-
-def test_default_policy_conditional_aspects():
-    conditional = {a for a, s in DEFAULT_ASPECT_SAFETY.items() if s == AspectSafety.CONDITIONAL}
-    assert conditional == {
-        SearchAspect.TOPIC_OR_CONDITION,
-        SearchAspect.INTERVENTION_OR_EXPOSURE_OR_PHENOMENON,
-    }
+    assert "*" not in keyword_query
+    assert keyword_query == "programmes strategies services"
 
 
-# ---------------------------------------------------------------------------
-# Response model validation
-# ---------------------------------------------------------------------------
+# ─── build_leveln_query ──────────────────────────────────────────────────────
 
-def test_search_expansion_response_parses_valid_llm_output():
-    parsed = SearchExpansionResponse(
-        levels=[
-            {
-                "level": 1,
-                "label": "Direct broadening",
-                "strategy": "conceptual_single_aspect",
-                "search_query": "query",
-                "relaxed_aspects": {"geography": "UK"},
-                "rationale": "reason",
-            }
-        ]
-    )
-
-    assert parsed.levels[0].level == 1
-    assert parsed.levels[0].strategy == ExpansionStrategy.CONCEPTUAL_SINGLE_ASPECT
+def test_build_leveln_query_replaces_broadened_block():
+    blocks = [
+        CombinedBlock(role="topic", free_text=["cancer"]),
+        CombinedBlock(role="geography", free_text=["Ethiopia", "Qoloji"]),
+    ]
+    query, _ = build_leveln_query(blocks, {}, "geography", ["conflict-affected LMICs", "fragile states"])
+    assert "Ethiopia" not in query
+    assert "conflict-affected LMICs" in query
+    assert "cancer" in query
 
 
-def test_search_expansion_level_rejects_empty_search_query():
-    with pytest.raises(ValueError):
-        SearchExpansionLevel(
-            level=1,
-            label="Label",
-            search_query="",
-            relaxed_aspects={},
-            rationale="reason",
-        )
+def test_build_leveln_query_removes_block_when_no_replacement_terms():
+    blocks = [
+        CombinedBlock(role="topic", free_text=["cancer"]),
+        CombinedBlock(role="geography", free_text=["Ethiopia"]),
+    ]
+    query, _ = build_leveln_query(blocks, {}, "geography", [])
+    assert "Ethiopia" not in query
+    assert "cancer" in query
 
 
-def test_aspect_assessment_requires_value_when_detected():
-    with pytest.raises(ValueError):
-        SearchAspectAssessment(aspect=SearchAspect.GEOGRAPHY, detected=True, detected_value="")
+def test_build_leveln_query_excludes_cv_for_broadened_block():
+    blocks = [
+        CombinedBlock(role="topic", free_text=["cancer"], controlled_vocabulary={"MeSH": ["Neoplasms"]}),
+        CombinedBlock(role="geography", free_text=["London"], controlled_vocabulary={"MeSH": ["London"]}),
+    ]
+    _, cv = build_leveln_query(blocks, {}, "geography", ["United Kingdom"])
+    assert "Neoplasms" in cv.get("MeSH", [])
+    assert "London" not in cv.get("MeSH", [])
 
 
-# ---------------------------------------------------------------------------
-# Contextual validation against allowed aspects
-# ---------------------------------------------------------------------------
-
-def test_validate_accepts_valid_levels():
-    assert QueryRefinementManager._validate_search_expansion_result(
-        _valid_expansion_response(),
-        _allowed_aspects(),
-    ) is None
-
-
-def test_validate_rejects_duplicate_level_numbers():
-    result = SearchExpansionResponse(
-        levels=[
-            {"level": 1, "label": "A", "search_query": "q1", "relaxed_aspects": {}, "rationale": "r1"},
-            {"level": 1, "label": "B", "search_query": "q2", "relaxed_aspects": {}, "rationale": "r2"},
-        ]
-    )
-
-    error = QueryRefinementManager._validate_search_expansion_result(result, {})
-
-    assert "duplicate level number" in error
+def test_build_leveln_query_preserves_other_blocks_verbatim():
+    blocks = [
+        CombinedBlock(role="topic", free_text=["diabetes", "DM"]),
+        CombinedBlock(role="population", free_text=["adults", "patients"]),
+        CombinedBlock(role="geography", free_text=["Ethiopia"]),
+    ]
+    query, _ = build_leveln_query(blocks, {}, "geography", ["sub-Saharan Africa"])
+    assert "diabetes" in query
+    assert "adults" in query
+    assert "sub-Saharan Africa" in query
 
 
-def test_validate_rejects_disallowed_relaxed_aspects():
-    result = SearchExpansionResponse(
-        levels=[
-            {
-                "level": 1,
-                "label": "Bad key",
-                "search_query": "query",
-                "relaxed_aspects": {"time_scope": "any period"},
-                "rationale": "reason",
-            }
-        ]
-    )
-
-    error = QueryRefinementManager._validate_search_expansion_result(result, _allowed_aspects())
-
-    assert "disallowed aspects" in error
-
-
-def test_validate_rejects_more_than_two_relaxed_aspects():
-    result = SearchExpansionResponse(
-        levels=[
-            {
-                "level": 1,
-                "label": "Too broad",
-                "search_query": "query",
-                "relaxed_aspects": {
-                    "topic_or_condition": "1",
-                    "population_or_entity": "2",
-                    "geography": "3",
-                },
-                "rationale": "reason",
-            }
-        ]
-    )
-
-    error = QueryRefinementManager._validate_search_expansion_result(result, _allowed_aspects())
-
-    assert "more than two aspects" in error
-
-
-def test_validate_rejects_two_conditional_aspects_in_one_level():
-    allowed = {
-        SearchAspect.GEOGRAPHY.value: AspectSafety.CONDITIONAL,
-        SearchAspect.SETTING_OR_CONTEXT.value: AspectSafety.CONDITIONAL,
-    }
-    result = SearchExpansionResponse(
-        levels=[
-            {
-                "level": 1,
-                "label": "Two conditional",
-                "strategy": "conceptual_multi_aspect",
-                "search_query": "query",
-                "relaxed_aspects": {"geography": "UK", "setting_or_context": "any setting"},
-                "rationale": "reason",
-            }
-        ]
-    )
-
-    error = QueryRefinementManager._validate_search_expansion_result(result, allowed)
-
-    assert "conditional" in error
-
-
-def test_validate_rejects_two_relaxed_aspects_with_single_aspect_strategy():
-    result = SearchExpansionResponse(
-        levels=[
-            {
-                "level": 3,
-                "label": "Mislabeled multi-aspect broadening",
-                "strategy": "conceptual_single_aspect",
-                "search_query": "query",
-                "relaxed_aspects": {"geography": "Pakistan", "setting_or_context": "outpatient care"},
-                "rationale": "reason",
-            }
-        ]
-    )
-
-    error = QueryRefinementManager._validate_search_expansion_result(result, {
-        SearchAspect.GEOGRAPHY.value: AspectSafety.SAFE,
-        SearchAspect.SETTING_OR_CONTEXT.value: AspectSafety.SAFE,
-    })
-
-    assert "single-aspect strategy" in error
-
-
-def test_validate_rejects_anchor_strategy_in_generated_levels():
-    result = SearchExpansionResponse(
-        levels=[
-            {
-                "level": 1,
-                "label": "Anchor restated",
-                "strategy": "anchor",
-                "search_query": "query",
-                "relaxed_aspects": {},
-                "rationale": "reason",
-            }
-        ]
-    )
-
-    error = QueryRefinementManager._validate_search_expansion_result(result, _allowed_aspects())
-
-    assert "anchor strategy" in error
-
-
-def test_validate_rejects_more_than_four_generated_levels():
-    result = SearchExpansionResponse(
-        levels=[
-            {"level": i, "label": f"L{i}", "search_query": f"q{i}", "relaxed_aspects": {}, "rationale": f"r{i}"}
-            for i in range(1, 6)
-        ]
-    )
-
-    error = QueryRefinementManager._validate_search_expansion_result(result, {})
-
-    assert "at most four" in error
-
-
-# ---------------------------------------------------------------------------
-# Orchestration pipeline
-# ---------------------------------------------------------------------------
+# ─── generate_search_expansion_levels pipeline ───────────────────────────────
 
 @pytest.mark.asyncio
-async def test_pipeline_runs_two_llm_calls_and_returns_generated_levels():
-    provider = StubProvider([_assessment_response(), _valid_expansion_response()])
+async def test_pipeline_returns_level1_only_when_no_expandable_blocks():
+    provider = StubProvider([])  # no LLM call expected
     manager = QueryRefinementManager(provider)
 
-    levels, metadata = await manager.generate_search_expansion_levels(
-        search_input=_search_input(),
+    expansion_input = SearchExpansionInput(
+        clarified_query="Studies of cancer treatment.",
+        anchor_blocks=[CombinedBlock(role="topic_or_condition", free_text=["cancer", "tumour"])],
+        concept_graph={},
     )
+    result, metadata = await manager.generate_search_expansion_levels(search_input=expansion_input)
 
-    assert len(provider.calls) == 2
-    # Level 0 is not returned — caller already has the anchor statement
-    assert len(levels) == 2
-    assert levels[0].level == 1
-    assert levels[0].strategy == ExpansionStrategy.LEXICAL
-    assert metadata["status"] == "completed"
+    assert len(provider.calls) == 0
+    assert len(result.levels) == 2  # Level 0 (anchor) + Level 1
+    assert result.levels[0].level == 0
+    assert result.levels[1].level == 1
+    assert metadata["status"] == "completed_no_geography"
+
+
+@pytest.mark.asyncio
+async def test_pipeline_returns_three_levels_with_geography():
+    provider = StubProvider([_geo_llm_response_json()])
+    manager = QueryRefinementManager(provider)
+
+    result, metadata = await manager.generate_search_expansion_levels(search_input=_geo_input())
+
+    assert len(provider.calls) == 1
     assert metadata["used_llm"] is True
-    assert metadata["generated_level_count"] == 2
-    # Token usage accumulated across both calls
-    assert metadata["total_tokens"] == 30
+    assert metadata["status"] == "completed"
+    assert len(result.levels) == 4  # Level 0 (anchor) + Levels 1, 2, 3
+    assert result.levels[0].level == 0
+    assert result.levels[1].level == 1
+    assert result.levels[2].level == 2
+    assert result.levels[3].level == 3
+    assert result.levels[3].cochrane_compliant is True
 
 
 @pytest.mark.asyncio
-async def test_pipeline_exposes_assessment_summary_metadata():
-    provider = StubProvider([_assessment_response(), _valid_expansion_response()])
+async def test_pipeline_level1_is_built_deterministically():
+    """Level 1 is built from blocks alone; it precedes the LLM call."""
+    provider = StubProvider([_geo_llm_response_json()])
     manager = QueryRefinementManager(provider)
 
-    _, metadata = await manager.generate_search_expansion_levels(
-        search_input=_search_input(),
-    )
+    result, _ = await manager.generate_search_expansion_levels(search_input=_geo_input())
 
-    summary = metadata["aspect_assessment"]
-    assert SearchAspect.GEOGRAPHY.value in summary["safe_aspects"]
-    assert SearchAspect.TIME_SCOPE.value in summary["avoided_aspects"]
-    assert len(summary["assessed_aspects"]) == len(SearchAspect)
-    assert metadata["allowed_aspect_count"] == 3
+    level1 = result.levels[1]  # Level 0 is anchor; Level 1 is at index 1
+    assert level1.level == 1
+    assert "mental health" in level1.search_query
+    assert "Qoloji" in level1.search_query
+    assert level1.broadened_aspect == ""
+    assert level1.semantic_statement == ANCHOR
 
 
 @pytest.mark.asyncio
-async def test_pipeline_skips_expansion_when_no_aspects_detected():
-    provider = StubProvider([_assessment_response(detected_aspects={})])
+async def test_pipeline_setting_broadening_produces_two_levels():
+    provider = StubProvider([_setting_llm_response_json()])
     manager = QueryRefinementManager(provider)
 
-    levels, metadata = await manager.generate_search_expansion_levels(
-        search_input=_search_input(),
-    )
+    result, metadata = await manager.generate_search_expansion_levels(search_input=_setting_input())
 
-    assert len(provider.calls) == 1  # assessment only, no expansion call
-    assert len(levels) == 0
-    assert metadata["status"] == "skipped_no_assessable_aspects"
+    assert metadata["status"] == "completed"
+    assert len(result.levels) == 3  # Level 0 (anchor) + Levels 1, 2
+    assert result.levels[2].level == 2
+    # No geo restriction → all levels are Cochrane-compliant
+    assert result.levels[2].cochrane_compliant is True
+    assert result.levels[2].semantic_statement == result.levels[2].clarified_query
 
 
 @pytest.mark.asyncio
-async def test_pipeline_returns_empty_when_assessment_fails():
+async def test_pipeline_fails_gracefully_when_no_anchor_blocks():
+    provider = StubProvider([])
+    manager = QueryRefinementManager(provider)
+
+    expansion_input = SearchExpansionInput(
+        clarified_query="Some query.",
+        anchor_blocks=[],
+        concept_graph={},
+    )
+    result, metadata = await manager.generate_search_expansion_levels(search_input=expansion_input)
+
+    assert len(result.levels) == 0
+    assert metadata["status"] == "failed"
+
+
+@pytest.mark.asyncio
+async def test_pipeline_returns_level1_when_llm_fails():
+    """When the LLM returns unparseable text, Level 1 is still returned (soft-fail)."""
     provider = StubProvider(["not json at all"])
     manager = QueryRefinementManager(provider)
 
-    levels, metadata = await manager.generate_search_expansion_levels(
-        search_input=_search_input(),
+    result, metadata = await manager.generate_search_expansion_levels(search_input=_geo_input())
+
+    assert len(result.levels) == 2  # Level 0 (anchor) + Level 1 (soft-fail returns both)
+    assert result.levels[1].level == 1
+
+
+def test_expansion_level_serializes_rag_friendly_field_names():
+    level = ExpansionLevel(
+        level=1,
+        label="Full lexical ring",
+        clarified_query="query text",
+        semantic_statement="semantic text",
+        keyword_statement="keyword text",
+        search_query="boolean text",
+        rationale="why",
     )
 
-    assert len(levels) == 0
-    assert metadata["status"] == "failed"
+    payload = level.model_dump(by_alias=True)
+
+    assert payload["query"] == "query text"
+    assert payload["semantic_query"] == "semantic text"
+    assert payload["keyword_query"] == "keyword text"
+    assert payload["boolean_query"] == "boolean text"
 
 
 @pytest.mark.asyncio
-async def test_pipeline_returns_empty_when_expansion_invalid_after_repair():
-    invalid = SearchExpansionResponse(
-        levels=[
-            SearchExpansionLevel(
-                level=1,
-                label="Bad",
-                search_query="query",
-                relaxed_aspects={"time_scope": "any period"},
-                rationale="reason",
-            )
-        ]
-    )
-    provider = StubProvider([_assessment_response(), invalid, invalid])
+async def test_pipeline_records_total_tokens():
+    provider = StubProvider([_geo_llm_response_json()])
     manager = QueryRefinementManager(provider)
 
-    levels, metadata = await manager.generate_search_expansion_levels(
-        search_input=_search_input(),
-    )
+    _, metadata = await manager.generate_search_expansion_levels(search_input=_geo_input())
 
-    assert len(provider.calls) == 3  # assessment + expansion + one repair
-    assert len(levels) == 0
-    assert metadata["status"] == "failed"
+    assert metadata.get("total_tokens", 0) == 15
 
 
 @pytest.mark.asyncio
-async def test_pipeline_repair_recovers_invalid_expansion():
-    invalid = SearchExpansionResponse(
-        levels=[
-            SearchExpansionLevel(
-                level=1,
-                label="Bad",
-                search_query="query",
-                relaxed_aspects={"time_scope": "any period"},
-                rationale="reason",
-            )
-        ]
-    )
-    provider = StubProvider([_assessment_response(), invalid, _valid_expansion_response()])
+async def test_pipeline_geography_broadening_strategy_propagated():
+    provider = StubProvider([_geo_llm_response_json()])
     manager = QueryRefinementManager(provider)
 
-    levels, metadata = await manager.generate_search_expansion_levels(
-        search_input=_search_input(),
-    )
+    result, _ = await manager.generate_search_expansion_levels(search_input=_geo_input())
 
-    assert len(provider.calls) == 3
-    assert metadata["status"] == "completed"
-    # Level 0 is not returned; _valid_expansion_response() has Level 1 and Level 2
-    assert len(levels) == 2
+    assert result.geography_broadening_strategy == "context_proxy"
 
 
-# ---------------------------------------------------------------------------
-# API helper
-# ---------------------------------------------------------------------------
+@pytest.mark.asyncio
+async def test_pipeline_recommended_starting_level_propagated():
+    provider = StubProvider([_geo_llm_response_json()])
+    manager = QueryRefinementManager(provider)
+
+    result, _ = await manager.generate_search_expansion_levels(search_input=_geo_input())
+
+    assert result.recommended_starting_level == 2
+
+
+# ─── API helper ──────────────────────────────────────────────────────────────
 
 @pytest.mark.parametrize("value, expected", [
     (None, False),

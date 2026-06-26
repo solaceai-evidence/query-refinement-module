@@ -6,8 +6,6 @@ and follow-up analysis of refinement aspects.
 """
 
 import json as _json
-from enum import Enum
-
 from pydantic import BaseModel, ConfigDict, Field, field_validator, model_validator, validator
 from typing import List, Optional, Literal, Dict, Any
 
@@ -129,131 +127,8 @@ class Terminology(BaseModel):
 
 
 # ============================================================================
-# Search Expansion: fixed aspect ontology, policy, and models
+# Search Expansion: context model for optional concept graph passthrough
 # ============================================================================
-
-class SearchAspect(str, Enum):
-    """Fixed internal ontology of search-expansion aspect classes.
-
-    This ontology is internal to the search expansion stage and is the only authoritative set of axes along which a query may be broadened. It is not derived from framework dimensions.
-    """
-    TOPIC_OR_CONDITION = "topic_or_condition"
-    POPULATION_OR_ENTITY = "population_or_entity"
-    INTERVENTION_OR_EXPOSURE_OR_PHENOMENON = "intervention_or_exposure_or_phenomenon"
-    SETTING_OR_CONTEXT = "setting_or_context"
-    GEOGRAPHY = "geography"
-    TIME_SCOPE = "time_scope"
-
-
-class AspectSafety(str, Enum):
-    """Deterministic safety classification for broadening a given aspect."""
-    SAFE = "safe"
-    CONDITIONAL = "conditional"
-    AVOID = "avoid"
-
-
-#: Evidence-backed default safety policy aligned with Cochrane/Campbell/JBI standards.
-#:
-#: CONDITIONAL aspects change the research question scope when broadened and must
-#: only be used at Level 3 with explicit rationale:
-#:   - TOPIC_OR_CONDITION: the condition defines what is being reviewed; broadening
-#:     it (e.g. "VTE" → "thrombosis") crosses into a different research question.
-#:   - INTERVENTION_OR_EXPOSURE_OR_PHENOMENON: broadening risks scope drift into
-#:     different mechanisms or exposure classes.
-#:
-#: SAFE aspects are search-strategy constraints that do not define the research
-#: question and can be relaxed for recall without changing review scope:
-#:   - POPULATION_OR_ENTITY: widening to a broader but still coherent population class.
-#:   - SETTING_OR_CONTEXT: removing a setting restriction to capture analogous contexts.
-#:   - GEOGRAPHY: geographic restrictions are search artifacts; broaden or remove first.
-#:     Includes contextual analogy (replacing a location with its context characteristic).
-#:   - TIME_SCOPE: widening an existing date range only; never adding a new restriction.
-#:
-#: Comparators, outcomes, and methodological constraints are outside the ontology.
-DEFAULT_ASPECT_SAFETY: Dict["SearchAspect", "AspectSafety"] = {
-    SearchAspect.TOPIC_OR_CONDITION: AspectSafety.CONDITIONAL,
-    SearchAspect.POPULATION_OR_ENTITY: AspectSafety.SAFE,
-    SearchAspect.INTERVENTION_OR_EXPOSURE_OR_PHENOMENON: AspectSafety.CONDITIONAL,
-    SearchAspect.SETTING_OR_CONTEXT: AspectSafety.SAFE,
-    SearchAspect.GEOGRAPHY: AspectSafety.SAFE,
-    SearchAspect.TIME_SCOPE: AspectSafety.SAFE,
-}
-
-
-class ExpansionStrategy(str, Enum):
-    """Methodological strategy type of one expansion level."""
-    ANCHOR = "anchor"
-    LEXICAL = "lexical"
-    CONCEPTUAL_SINGLE_ASPECT = "conceptual_single_aspect"
-    CONCEPTUAL_MULTI_ASPECT = "conceptual_multi_aspect"
-
-
-class SearchAspectAssessment(BaseModel):
-    """Assessment of one fixed aspect against the anchor query.
-
-    ``safety`` is assigned deterministically by the policy layer after the
-    LLM detection call; the LLM never controls safety classification.
-    """
-    aspect: SearchAspect
-    detected: bool = False
-    detected_value: str = ""
-    broadening_candidates: List[str] = Field(default_factory=list)
-    reasoning: str = ""
-    safety: Optional[AspectSafety] = None
-
-    @field_validator("detected_value")
-    @classmethod
-    def validate_detected_value(cls, v: str, info) -> str:
-        if info.data.get("detected") and not (v or "").strip():
-            raise ValueError("detected_value is required when detected=True")
-        return (v or "").strip()
-
-
-class SearchAspectAssessmentResponse(BaseModel):
-    """LLM response for the aspect-detection call."""
-    assessments: List[SearchAspectAssessment] = Field(default_factory=list)
-
-
-class SearchExpansionLevel(BaseModel):
-    """One retrieval broadening level. Level 0 is the deterministic anchor."""
-    level: int
-    label: str
-    strategy: ExpansionStrategy = ExpansionStrategy.CONCEPTUAL_SINGLE_ASPECT
-    search_query: str
-    relaxed_aspects: Dict[str, str] = Field(
-        default_factory=dict,
-        description="Fixed aspect id -> search-only broadened value",
-    )
-    rationale: str
-
-    @field_validator("label", "search_query", "rationale")
-    @classmethod
-    def validate_non_empty_text(cls, v: str) -> str:
-        if not v or not v.strip():
-            raise ValueError("field must be non-empty")
-        return v.strip()
-
-
-class SearchExpansionResponse(BaseModel):
-    """LLM response containing generated Levels 1-N plus retrieval recommendation."""
-    levels: List[SearchExpansionLevel] = Field(default_factory=list)
-    recommended_starting_level: int = Field(
-        default=1,
-        description="Which level (1-N) to start retrieval from based on expected result sparsity"
-    )
-    recommendation_rationale: str = Field(
-        default="Start with Level 1; escalate if recall is insufficient",
-        description="Why this level is optimal (e.g., anchor too narrow, start at L2)"
-    )
-
-    @field_validator("levels")
-    @classmethod
-    def validate_llm_levels_start_at_one(cls, v: List[SearchExpansionLevel]) -> List[SearchExpansionLevel]:
-        bad = [level.level for level in v if level.level < 1]
-        if bad:
-            raise ValueError(f"LLM-generated expansion levels must be >= 1: {bad}")
-        return v
-
 
 class SearchExpansionContext(BaseModel):
     """Optional retrieval context that can inform search broadening."""
@@ -265,29 +140,152 @@ class SearchExpansionContext(BaseModel):
     )
 
 
+# ============================================================================
+# Search Expansion: block-aware, Cochrane-compliant, deterministic Level 1
+# ============================================================================
+
 class SearchExpansionInput(BaseModel):
-    """Standalone input contract for the fixed-core search expansion stage."""
-    statement: str = Field(description="Exact Level 0 query preserved as the retrieval anchor")
-    search_context: Optional[SearchExpansionContext] = None
-    dimensions_specifications: Dict[str, Any] = Field(
+    """Input to Agent D — all Agent A/B/C output needed to build a complete unified response."""
+    clarified_query: str = Field(description="NL anchor from Agent A (clarified_query)")
+    anchor_blocks: List[CombinedBlock] = Field(
+        default_factory=list,
+        description="Agent C's combined_blocks — one AND-block per query role",
+    )
+    concept_graph: Dict[str, Any] = Field(
         default_factory=dict,
-        description="Refined dimension values for context (e.g., population, intervention)"
+        description="Agent B's concept graph — used to enrich blocks with domain_terms",
+    )
+    # Agent B passthrough — used to populate Level 0
+    semantic_statement: str = Field(
+        default="",
+        description="Agent B's dense embedding query — used as Level 0 semantic_statement",
+    )
+    keyword_statement: str = Field(
+        default="",
+        description="Agent B's compact NL keyword query — used as Level 0 keyword_statement",
+    )
+    # Agent C passthrough — used to populate Level 0 and top-level response fields
+    keyword_structured: str = Field(
+        default="",
+        description="Agent C's boolean anchor query (keyword.structured) — used as Level 0 search_query; "
+                    "derived from anchor_blocks if not provided",
+    )
+    search_filters: Optional["SearchFilters"] = Field(
+        default=None,
+        description="Agent C's search filters — passed through to SearchExpansionResponse",
+    )
+    phrases: List[str] = Field(
+        default_factory=list,
+        description="Agent C's exact key phrases (keyword.phrases) — passed through to SearchExpansionResponse",
     )
 
-    @field_validator("statement")
+    @field_validator("clarified_query")
     @classmethod
-    def validate_statement(cls, v: str) -> str:
+    def validate_non_empty(cls, v: str) -> str:
         if not v or not v.strip():
-            raise ValueError("statement must be non-empty")
+            raise ValueError("clarified_query must be non-empty")
         return v.strip()
 
 
-class SearchAspectAssessmentSummary(BaseModel):
-    """Transparent assessment metadata exposed alongside expansion levels."""
-    assessed_aspects: List[SearchAspectAssessment] = Field(default_factory=list)
-    safe_aspects: List[SearchAspect] = Field(default_factory=list)
-    conditional_aspects: List[SearchAspect] = Field(default_factory=list)
-    avoided_aspects: List[SearchAspect] = Field(default_factory=list)
+class ExpansionLevelLLMBroadening(BaseModel):
+    """What the LLM proposes for one expansion level's broadening."""
+    level: int
+    label: str
+    broadened_value: str = Field(description="What replaces the block; '(no restriction)' means remove")
+    boolean_terms: List[str] = Field(
+        default_factory=list,
+        description="Replacement OR-terms for the broadened block; empty = remove block (geography only)",
+    )
+    controlled_vocabulary_hints: Dict[str, List[str]] = Field(
+        default_factory=dict,
+        description="Optional replacement CV terms for the broadened block (e.g. MeSH for setting broadening). "
+                    "vocab_name → terms. Leave empty for geography broadening.",
+    )
+    clarified_query: str = Field(description="NL anchor adapted for this level's scope")
+    rationale: str
+
+    @field_validator("clarified_query")
+    @classmethod
+    def validate_clarified_query_non_empty(cls, v: str) -> str:
+        if not v or not v.strip():
+            raise ValueError("clarified_query must be non-empty")
+        return v.strip()
+
+
+class SearchExpansionLLMResponse(BaseModel):
+    """Full LLM output for Agent D — broadening proposals only."""
+    geography_broadening_strategy: str = Field(
+        default="none",
+        description="context_proxy | containment_hierarchy | none",
+    )
+    levels: List[ExpansionLevelLLMBroadening] = Field(default_factory=list)
+    recommended_starting_level: int = Field(default=1)
+    recommendation_rationale: str = Field(default="")
+
+
+class ExpansionLevel(BaseModel):
+    """One complete expansion level — same structure at every level for uniform downstream consumption."""
+    model_config = ConfigDict(populate_by_name=True)
+    level: int
+    label: str
+    search_query: str = Field(
+        serialization_alias="boolean_query",
+        description="Generic boolean query (free-text terms only, no field tags)",
+    )
+    clarified_query: str = Field(
+        serialization_alias="query",
+        description="Natural-language query for display and NL-search databases (ReliefWeb, WHO IRIS)",
+    )
+    semantic_statement: str = Field(
+        default="",
+        serialization_alias="semantic_query",
+        description="Dense or natural-language semantic query for vector/semantic search. "
+                    "Level 0 uses Agent B's semantic query. Levels 1-3 use the broadened natural-language query.",
+    )
+    keyword_statement: str = Field(
+        default="",
+        serialization_alias="keyword_query",
+        description="Compact keyword query for BM25/simple keyword search. "
+                    "Level 0: Agent B's keyword_query. Levels 1-3: derived from blocks without Boolean wildcards.",
+    )
+    controlled_vocabulary: Dict[str, List[str]] = Field(
+        default_factory=dict,
+        description="vocabulary_name → terms for database-specific connectors (e.g. MeSH for PubMed). "
+                    "Geography block CV excluded at Level 2+ (MeSH geo terms don't transfer to broadened searches).",
+    )
+    blocks: List[CombinedBlock] = Field(
+        default_factory=list,
+        description="Structured blocks — same interface as Agent C combined_blocks at every level. "
+                    "Use these to build source-specific queries (PubMed field tags, CORE boolean, etc.) "
+                    "without parsing search_query. Geography block absent at Level 3; replaced at Level 2.",
+    )
+    broadened_aspect: str = Field(default="", description="Which block role was modified (e.g. 'geography')")
+    broadened_value: str = Field(default="", description="What the aspect was replaced with; empty at Level 1")
+    rationale: str
+    cochrane_compliant: bool = Field(
+        default=False,
+        description="True when all geographic restriction has been removed (Cochrane-sensitive search)",
+    )
+
+
+class SearchExpansionResponse(BaseModel):
+    """Agent D output — all levels share the same ExpansionLevel structure.
+
+    Level 0 is the anchor (Agent C output). Level 1+ are broadening levels.
+    Level 1 is built deterministically in Python. Level 2+ from LLM proposals.
+    """
+    levels: List[ExpansionLevel] = Field(default_factory=list)
+    geography_broadening_strategy: str = Field(default="none")
+    recommended_starting_level: int = Field(default=1)
+    recommendation_rationale: str = Field(default="")
+    search_filters: Optional["SearchFilters"] = Field(
+        default=None,
+        description="Agent C search filters (publication_years, publication_types, etc.) — applies to all levels",
+    )
+    phrases: List[str] = Field(
+        default_factory=list,
+        description="Agent C exact key phrases — for exact-phrase matching at any level",
+    )
 
 
 
@@ -394,17 +392,12 @@ __all__ = [
     "SearchOptimized",
     "SearchFilters",
     "Terminology",
-    "SearchAspect",
-    "AspectSafety",
-    "DEFAULT_ASPECT_SAFETY",
-    "ExpansionStrategy",
-    "SearchAspectAssessment",
-    "SearchAspectAssessmentResponse",
-    "SearchAspectAssessmentSummary",
-    "SearchExpansionLevel",
-    "SearchExpansionResponse",
     "SearchExpansionContext",
     "SearchExpansionInput",
+    "ExpansionLevelLLMBroadening",
+    "SearchExpansionLLMResponse",
+    "ExpansionLevel",
+    "SearchExpansionResponse",
     "CombinedBlock",
     "VocabularyHint",
     "ConceptEntry",

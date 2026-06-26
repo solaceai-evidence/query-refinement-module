@@ -18,12 +18,13 @@ For server-to-server integrations, refinement workflow endpoints also support `X
 
 This section is the primary reference for building agents or automated integrations. It describes the state machine, decision logic, quick-reply handling, and RAG field mapping needed to drive the full workflow programmatically.
 
-### The three-phase pipeline
+### The four-phase pipeline
 
 ```
 Phase 1 — Discover               GET  /frameworks
 Phase 2 — Refine/clarify (loop)          POST /start  →  loop: POST /answer
 Phase 3 — Synthesize (core)      POST /synthesize  (Agents A → B → C, orchestrated)
+          Full chain             POST /synthesize  with include_expansion=true  (Agents A → B → C → D)
            or call individually:  POST /normalize   (Agent A only)
                                   POST /represent   (Agent B only)
                                   POST /construct   (Agent C only)
@@ -76,6 +77,11 @@ POST /synthesize
   │
   └─ structured_output ──► RAG retrieval (see field mapping below)
                       └──► POST /expand  (optional broadening levels, Agent D)
+
+POST /synthesize  with include_expansion=true
+  │
+  └─ structured_output + expansion_levels + expansion_metadata
+     (full chained A → B → C → D response)
 ```
 
 ### Minimal integration loop (pseudocode)
@@ -110,8 +116,14 @@ while not r.get("ready_for_synthesis"):
 
     r = POST(f"{BASE}/refinement/queries/{query_id}/answer", {"answer": answer})
 
-# Phase 3 — synthesize
+# Phase 3 — synthesize A→B→C
 synthesis = POST(f"{BASE}/refinement/synthesize", {"query_id": query_id})
+
+# Or run the full chained path A→B→C→D in one call
+full_chain = POST(f"{BASE}/refinement/synthesize", {
+    "query_id": query_id,
+    "include_expansion": True
+})
 ```
 
 ### Synthesis agents
@@ -125,7 +137,9 @@ Agent C  POST /construct   Search Construction — statement + concept_graph →
 Agent D  POST /expand      Search Expansion — statement → broadening levels (optional)
 ```
 
-`POST /synthesize` is the **shortest path** — it orchestrates A → B → C in a single call and returns the full `structured_output`. Call the individual endpoints when you need only a subset of the pipeline or want to cache intermediate outputs.
+`POST /synthesize` is the **shortest path** for A → B → C.  
+`POST /synthesize` with `include_expansion=true` is the **shortest chained path** for A → B → C → D.  
+Call the individual endpoints when you need only a subset of the pipeline or want to cache intermediate outputs.
 
 #### Agent A — Normalization
 
@@ -204,22 +218,139 @@ OR  controlled_vocabulary terms  within each block
 AND all blocks together
 ```
 
-Use `controlled_vocabulary` only for indexed sources (PubMed → MeSH, WHO IRIS → DeCS). Use `free_text` alone for unindexed sources (OpenAlex, CORE, ReliefWeb).
+Use `controlled_vocabulary` only for PubMed (MeSH). Use `free_text` alone for all other sources (WHO IRIS, OpenAlex, CORE, ReliefWeb).
 
 #### Agent D — Search Expansion
 
 **Endpoint:** `POST /api/v1/refinement/expand` (standalone, optional)
 
+Agent D generates a Cochrane-compliant recall ladder — progressive broadening levels for use when initial retrieval yields insufficient results. Level 0 (the anchor) **is returned** as `levels[0]` so clients have one uniform structure across all levels.
+
 **Input:**
 
-| Field                          | Source                             | Required                  |
-| ------------------------------ | ---------------------------------- | ------------------------- |
-| `statement`                    | Agent A output (`clarified_query`) | Yes                       |
-| `search_context.concept_graph` | `concept_graph` from Agent B       | No, but improves accuracy |
+| Field                          | Source                    | Required                                |
+| ------------------------------ | ------------------------- | --------------------------------------- |
+| `statement`                    | Agent A `clarified_query` | Yes                                     |
+| `search_context.concept_graph` | Agent B `concept_graph`   | No, but enables full lexical broadening |
 
-**Output:** `search_expansion_levels` — Levels 1–3, progressive broadening retrieval levels. Level 0 (the anchor) is not echoed — the caller already has it as `statement`. Use these levels when initial retrieval yields insufficient results.
+**Top-level response fields:**
+- `levels`
+- `geography_broadening_strategy`
+- `recommended_starting_level`
+- `recommendation_rationale`
+- `search_filters`
+- `phrases`
+- `metadata`
 
-Each level carries a `strategy` field: `lexical` (Level 1 only), `conceptual_single_aspect`, or `conceptual_multi_aspect` (Levels 2–3). The `strategy` field is authoritative — do not infer broadening type from level number alone.
+**Output levels:** `levels` — Levels 0–3 (all sharing the same `ExpansionLevel` structure).
+
+| Level | Strategy                                               | Description                                                                                                                                                                                                  |
+| ----- | ------------------------------------------------------ | ------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------ |
+| 1     | `lexical`                                              | Full synonym + domain-term ring. Every concept block expanded to its OR-union of true_synonyms, abbreviations, spelling_variants, lexical_variants, and domain_terms from Agent B. No conceptual broadening. |
+| 2     | `conceptual_single_aspect`                             | Level 1 ring with one SAFE aspect broadened. Priority: geography first (replaced by contextual analogy or geographic superset), then setting, then population.                                               |
+| 3     | `conceptual_single_aspect` / `conceptual_multi_aspect` | If Level 2 broadened geography, Level 3 removes it entirely (`"geography": "(no restriction)"`) — the Cochrane-compliant globally sensitive search. Otherwise broadens the next SAFE aspect.                 |
+
+Each level object:
+
+```json
+{
+  "level": 1,
+  "label": "Full lexical ring — anchor scope",
+  "strategy": "lexical",
+  "query": "How to improve mental health outcomes in displacement camps in Ethiopia.",
+  "semantic_query": "How to improve mental health outcomes in displacement camps in Ethiopia.",
+  "keyword_query": "mental health displacement camps Ethiopia",
+  "boolean_query": "(mental health OR psychological wellbeing OR MHPSS OR ...) AND ...",
+  "relaxed_aspects": {},
+  "rationale": "Full synonym and domain-term ring for every concept block."
+}
+```
+
+Apply levels in order: run the recommended starting level first; escalate when result count is insufficient.
+
+Example standalone Agent D response for clients:
+
+```json
+{
+  "levels": [
+    {
+      "level": 0,
+      "label": "Anchor query",
+      "query": "How to improve mental health outcomes among children in Qoloji camp, Ethiopia.",
+      "semantic_query": "Studies examining interventions to improve mental health outcomes among children in refugee camp settings in Ethiopia.",
+      "keyword_query": "mental health children refugee camp Ethiopia",
+      "boolean_query": "(mental health OR psychological wellbeing OR MHPSS) AND (children under five OR young children OR U5) AND (refugee camp OR displacement camp OR IDP camp) AND (Qoloji OR Ethiopia)",
+      "controlled_vocabulary": {
+        "MeSH": ["Mental Health", "Child", "Ethiopia"]
+      },
+      "blocks": [
+        {
+          "role": "topic_or_condition",
+          "free_text": ["mental health", "psychological wellbeing", "MHPSS"],
+          "controlled_vocabulary": {"MeSH": ["Mental Health"]}
+        }
+      ],
+      "broadened_aspect": "",
+      "broadened_value": "",
+      "rationale": "Your refined query as-is — exact concepts from your refinement session, no broadening.",
+      "cochrane_compliant": false
+    },
+    {
+      "level": 1,
+      "label": "Full lexical ring",
+      "query": "How to improve mental health outcomes among children in Qoloji camp, Ethiopia.",
+      "semantic_query": "How to improve mental health outcomes among children in Qoloji camp, Ethiopia.",
+      "keyword_query": "mental health psychological wellbeing MHPSS children under five young children refugee camp displacement camp Qoloji Ethiopia",
+      "boolean_query": "(mental health OR psychological wellbeing OR MHPSS OR depression OR anxiety) AND (children under five OR young children OR U5) AND (refugee camp OR displacement camp OR IDP camp) AND (Qoloji OR Ethiopia)",
+      "controlled_vocabulary": {
+        "MeSH": ["Mental Health", "Child", "Ethiopia"]
+      },
+      "blocks": [
+        {
+          "role": "topic_or_condition",
+          "free_text": ["mental health", "psychological wellbeing", "MHPSS", "depression", "anxiety"],
+          "controlled_vocabulary": {"MeSH": ["Mental Health"]}
+        }
+      ],
+      "broadened_aspect": "",
+      "broadened_value": "",
+      "rationale": "Full synonym and domain-term ring for every concept block.",
+      "cochrane_compliant": false
+    }
+  ],
+  "geography_broadening_strategy": "context_proxy",
+  "recommended_starting_level": 2,
+  "recommendation_rationale": "The named camp is too specific for first-pass retrieval; start with a comparable-context search.",
+  "search_filters": {
+    "publication_years": "",
+    "venues": [],
+    "authors": [],
+    "publication_types": [],
+    "fields_of_study": ["Public Health", "Psychology"]
+  },
+  "phrases": ["mental health outcomes", "children under five", "refugee camp Ethiopia"],
+  "metadata": {
+    "status": "completed",
+    "generated_level_count": 3,
+    "used_llm": true,
+    "total_tokens": 1234
+  }
+}
+```
+
+Client consumption guidance:
+
+- Use `recommended_starting_level` as the first retrieval level.
+- Use `levels[n].boolean_query` for sparse/Boolean search engines.
+- Use `levels[n].semantic_query` for vector or semantic retrieval.
+- Use `levels[n].keyword_query` for BM25/simple keyword search.
+- Use `levels[n].blocks` when you need source-specific query rendering without parsing `boolean_query`.
+- Use `search_filters` and `phrases` as cross-level retrieval metadata.
+
+**Cochrane compliance rules enforced by Agent D:**
+- Geography is a search artifact: always broaden or remove progressively. Never keep a specific named location past Level 1.
+- Setting or context is research scope: keep at every level. Never remove (e.g. "displacement camps" stays at Level 3).
+- Named proper-noun locations (e.g. "Qoloji camp") are context proxies: replace with a contextual analogy at Level 2 (e.g. "conflict-affected low- and middle-income countries") before the containment hierarchy.
 
 Calling agents individually in sequence:
 
@@ -241,6 +372,7 @@ search = POST(f"{BASE}/refinement/construct", {
 # Agent D (optional)
 expand = POST(f"{BASE}/refinement/expand", {
     "statement": norm["clarified_query"],
+    "anchor_blocks": search["keyword"]["combined_blocks"],
     "search_context": {"concept_graph": sem["concept_graph"]}
 })
 ```
@@ -253,8 +385,22 @@ so = synthesis["structured_output"]
 
 expand = POST(f"{BASE}/refinement/expand", {
     "statement": synthesis["clarified_query"],
+    "anchor_blocks": so["search_optimized"]["keyword"]["combined_blocks"],
     "search_context": {"concept_graph": so["concept_graph"]}
 })
+```
+
+Or use the full chained path A → B → C → D directly:
+
+```python
+full_chain = POST(f"{BASE}/refinement/synthesize", {
+    "query_id": query_id,
+    "include_expansion": True
+})
+
+levels = full_chain["expansion_levels"]
+meta = full_chain["expansion_metadata"]
+starting_level = meta["recommended_starting_level"]
 ```
 
 ### Quick-reply / examples field
@@ -284,7 +430,7 @@ After `POST /synthesize`, `structured_output` contains all retrieval artifacts:
 | **Primary RAG keyword search**               | `structured_output.search_optimized.keyword.combined_blocks` | Agent C                                   |
 | Boolean anchor query (fallback)              | `structured_output.search_optimized.keyword.structured`      | Agent C                                   |
 | Exact key phrases                            | `structured_output.search_optimized.keyword.phrases`         | Agent C                                   |
-| Controlled vocabulary (MeSH, DeCS)           | `combined_blocks[i].controlled_vocabulary`                   | Agent C                                   |
+| Controlled vocabulary (MeSH — PubMed only)   | `combined_blocks[i].controlled_vocabulary`                   | Agent C                                   |
 | Metadata narrowing filters                   | `structured_output.search_filters`                           | Agent C                                   |
 | Synonym expansion per concept                | `structured_output.concept_graph.<concept>`                  | Agent B                                   |
 | Clarified research statement                 | `clarified_query`                                            | Agent A                                   |
@@ -301,8 +447,7 @@ OR  controlled_vocabulary terms  within each block
 AND all blocks together
 ```
 
-Use `controlled_vocabulary` only for indexed sources (PubMed → MeSH, WHO IRIS → DeCS).  
-Use `free_text` alone for unindexed sources (OpenAlex, CORE, ReliefWeb).
+Use `controlled_vocabulary` only for PubMed (MeSH). Use `free_text` alone for all other sources (WHO IRIS, OpenAlex, CORE, ReliefWeb).
 
 ### Error handling for agents
 
@@ -323,6 +468,362 @@ for attempt in range(3):
         break
     time.sleep(1.5 ** attempt)
 ```
+
+---
+
+### Agent output examples
+
+All examples use the same input query: `"How to improve mental health and substance misuse outcomes in children under 5 and pregnant and lactating women in Qoloji camp, Ethiopia."` This query has geography-as-context-proxy (Qoloji / Ethiopia), a setting block (displacement camp), a population block (two groups), and an intervention block — making it a good test of all agent features.
+
+#### Agent A output
+
+```json
+{
+  "clarified_query": "How to improve mental health and substance misuse outcomes in children under 5 and pregnant and lactating women in Qoloji camp, Ethiopia.",
+  "dimensions_specifications": {
+    "population": "Children under 5 and pregnant and lactating women (PLW)",
+    "intervention": "Mental health and substance misuse interventions",
+    "setting": "Qoloji displacement camp, Somali Region, Ethiopia",
+    "outcomes": null
+  }
+}
+```
+
+Notes:
+- `clarified_query` is the anchor — passed verbatim to Agents B, C, D as `statement`.
+- `[SKIPPED]` dimensions map to `null`.
+- Filler language ("I want to study", "maybe") is removed; meaningful scope content is kept.
+
+#### Agent B output
+
+```json
+{
+  "semantic_statement": "Studies on interventions to improve mental health and substance misuse outcomes — including psychosocial support, mental health programming, and harm reduction — in children under 5 and pregnant and lactating women residing in humanitarian displacement settings. Evidence from refugee and internally displaced persons camps in conflict-affected, low-resource contexts.",
+  "keyword_statement": "mental health substance misuse MHPSS psychosocial interventions children under 5 pregnant lactating women PLW displacement camp refugee camp IDP Ethiopia humanitarian",
+  "concept_graph": {
+    "mental health": {
+      "query_role": "topic_or_condition",
+      "true_synonyms": ["psychological wellbeing", "psychosocial wellbeing", "mental wellbeing"],
+      "abbreviations": ["MHPSS"],
+      "spelling_variants": [],
+      "lexical_variants": [],
+      "domain_terms": ["depression", "anxiety", "PTSD", "psychological distress", "trauma"],
+      "colloquial": ["emotional health"],
+      "controlled_vocabulary_hints": [
+        {"vocabulary_name": "MeSH", "terms": ["Mental Health", "Mental Disorders", "Psychosocial Support Systems"], "confidence": "high"}
+      ]
+    },
+    "substance misuse": {
+      "query_role": "topic_or_condition",
+      "true_synonyms": ["substance use disorder", "substance abuse", "drug misuse"],
+      "abbreviations": ["SUD"],
+      "spelling_variants": [],
+      "lexical_variants": ["misuse*", "abuse*"],
+      "domain_terms": ["alcohol misuse", "drug dependence", "harmful substance use"],
+      "colloquial": ["drug abuse"],
+      "controlled_vocabulary_hints": [
+        {"vocabulary_name": "MeSH", "terms": ["Substance-Related Disorders", "Alcohol-Related Disorders"], "confidence": "high"}
+      ]
+    },
+    "children under 5": {
+      "query_role": "population_or_entity",
+      "true_synonyms": ["under-five children", "young children", "early childhood"],
+      "abbreviations": ["U5"],
+      "spelling_variants": [],
+      "lexical_variants": [],
+      "domain_terms": ["infants", "toddlers", "neonates", "preschool children"],
+      "colloquial": [],
+      "controlled_vocabulary_hints": [
+        {"vocabulary_name": "MeSH", "terms": ["Child, Preschool", "Infant"], "confidence": "high"}
+      ]
+    },
+    "pregnant and lactating women": {
+      "query_role": "population_or_entity",
+      "true_synonyms": ["pregnant women", "lactating women", "breastfeeding mothers"],
+      "abbreviations": ["PLW"],
+      "spelling_variants": [],
+      "lexical_variants": [],
+      "domain_terms": ["perinatal women", "antenatal women", "postnatal women"],
+      "colloquial": [],
+      "controlled_vocabulary_hints": [
+        {"vocabulary_name": "MeSH", "terms": ["Pregnant Women", "Breast Feeding"], "confidence": "high"}
+      ]
+    },
+    "interventions to improve outcomes": {
+      "query_role": "intervention_or_exposure_or_phenomenon",
+      "true_synonyms": ["mental health interventions", "psychosocial interventions", "treatment programmes"],
+      "abbreviations": [],
+      "spelling_variants": [],
+      "lexical_variants": ["treat*", "improv*", "manag*", "support*", "prevent*"],
+      "domain_terms": ["cognitive behavioural therapy", "psychoeducation", "case management", "peer support"],
+      "colloquial": [],
+      "controlled_vocabulary_hints": [
+        {"vocabulary_name": "MeSH", "terms": ["Mental Health Services", "Psychotherapy", "Community Mental Health Services"], "confidence": "medium"}
+      ]
+    },
+    "displacement camp": {
+      "query_role": "setting_or_context",
+      "true_synonyms": ["refugee camp", "IDP camp", "humanitarian camp"],
+      "abbreviations": ["IDP"],
+      "spelling_variants": [],
+      "lexical_variants": [],
+      "domain_terms": ["informal settlements", "transit camps", "collective centres"],
+      "colloquial": [],
+      "controlled_vocabulary_hints": [
+        {"vocabulary_name": "MeSH", "terms": ["Refugees", "Transients and Migrants"], "confidence": "medium"}
+      ]
+    },
+    "Qoloji camp": {
+      "query_role": "geography",
+      "true_synonyms": [],
+      "abbreviations": [],
+      "spelling_variants": [],
+      "lexical_variants": [],
+      "domain_terms": [],
+      "colloquial": [],
+      "controlled_vocabulary_hints": []
+    },
+    "Ethiopia": {
+      "query_role": "geography",
+      "true_synonyms": ["Ethiopian"],
+      "abbreviations": [],
+      "spelling_variants": [],
+      "lexical_variants": [],
+      "domain_terms": [],
+      "colloquial": [],
+      "controlled_vocabulary_hints": [
+        {"vocabulary_name": "MeSH", "terms": ["Ethiopia"], "confidence": "high"}
+      ]
+    }
+  }
+}
+```
+
+Notes:
+- `domain_terms` (depression, PTSD, CBT, etc.) do NOT appear in Agent C's anchor Boolean query — they widen scope and are reserved for Agent D Level 1.
+- Proper noun locations (Qoloji camp, Ethiopia) have empty `domain_terms` by rule — their broadening (e.g. "conflict-affected LMICs") is Agent D's job.
+- Geography and setting are extracted as **separate** concepts because "Qoloji camp, Ethiopia" is location (geography) while "displacement camp" is a type of place (setting_or_context).
+- `colloquial` terms ("drug abuse") never appear in academic database queries.
+
+#### Agent C output
+
+```json
+{
+  "keyword": {
+    "structured": "(mental health OR psychological wellbeing OR psychosocial wellbeing OR mental wellbeing OR MHPSS OR substance misuse* OR substance use* OR substance abuse* OR SUD) AND (children under 5 OR under-five children OR young children OR early childhood OR U5 OR pregnant and lactating women OR pregnant women OR lactating women OR breastfeeding mothers OR PLW) AND (mental health interventions OR psychosocial interventions OR treatment programmes OR treat* OR improv* OR manag* OR support* OR prevent*) AND (displacement camp OR refugee camp OR IDP camp OR humanitarian camp) AND (Qoloji OR Ethiopia OR Ethiopian)",
+    "phrases": [
+      "mental health outcomes",
+      "substance misuse",
+      "children under 5",
+      "pregnant and lactating women",
+      "displacement camp",
+      "psychosocial interventions"
+    ],
+    "terms": {
+      "required": ["mental health", "substance misuse", "displacement camp"],
+      "optional": ["MHPSS", "PLW", "psychosocial", "IDP", "humanitarian", "Ethiopia"],
+      "excluded": []
+    },
+    "combined_blocks": [
+      {
+        "role": "topic_or_condition",
+        "free_text": ["mental health", "psychological wellbeing", "psychosocial wellbeing", "mental wellbeing", "MHPSS", "substance misuse", "substance use disorder", "substance abuse", "drug misuse", "SUD"],
+        "controlled_vocabulary": {
+          "MeSH": ["Mental Health", "Mental Disorders", "Psychosocial Support Systems", "Substance-Related Disorders", "Alcohol-Related Disorders"]
+        }
+      },
+      {
+        "role": "population_or_entity",
+        "free_text": ["children under 5", "under-five children", "young children", "early childhood", "U5", "pregnant and lactating women", "pregnant women", "lactating women", "breastfeeding mothers", "PLW"],
+        "controlled_vocabulary": {
+          "MeSH": ["Child, Preschool", "Infant", "Pregnant Women", "Breast Feeding"]
+        }
+      },
+      {
+        "role": "intervention_or_exposure_or_phenomenon",
+        "free_text": ["mental health interventions", "psychosocial interventions", "treatment programmes", "treat*", "improv*", "manag*", "support*", "prevent*"],
+        "controlled_vocabulary": {
+          "MeSH": ["Mental Health Services", "Psychotherapy", "Community Mental Health Services"]
+        }
+      },
+      {
+        "role": "setting_or_context",
+        "free_text": ["displacement camp", "refugee camp", "IDP camp", "humanitarian camp"],
+        "controlled_vocabulary": {
+          "MeSH": ["Refugees", "Transients and Migrants"]
+        }
+      },
+      {
+        "role": "geography",
+        "free_text": ["Qoloji", "Ethiopia", "Ethiopian"],
+        "controlled_vocabulary": {
+          "MeSH": ["Ethiopia"]
+        }
+      }
+    ]
+  },
+  "search_filters": {
+    "publication_years": "",
+    "venues": [],
+    "authors": [],
+    "publication_types": [],
+    "fields_of_study": ["Medicine", "Public Health"]
+  }
+}
+```
+
+Notes:
+- `combined_blocks` mirrors `keyword.structured` block-for-block in the same order. This invariant must hold — connectors derive source-specific queries from `combined_blocks`, not from `keyword.structured`.
+- 5 blocks are used (not the default 4) because setting_or_context AND geography are both present — they are always kept as separate AND-blocks. Merging them with OR would collapse the query hierarchy and treat "Ethiopia" as an alternative to "refugee camp" instead of a geographic constraint on where the camps are.
+- Wildcards (`misuse*`, `treat*`, `improv*`) are mandatory on verbs and productive nouns. `Qoloji`, `Ethiopia`, `MHPSS`, `PLW`, `IDP`, `SUD` are not wildcarded (proper nouns and abbreviations).
+- `domain_terms` (depression, PTSD, CBT, cognitive behavioural therapy, etc.) are absent from `combined_blocks.free_text` and `keyword.structured`. They appear only in Agent D Level 1.
+
+**Using `combined_blocks` with different databases:**
+
+```
+PubMed:    (free_text[tiab] OR "MeSH term"[MeSH Terms]) for each block → AND all blocks
+WHO IRIS:  free_text terms only (no MeSH tagging) → AND all blocks
+OpenAlex:  free_text terms only → AND all blocks
+CORE:      free_text terms only → AND all blocks
+ReliefWeb: use clarified_query (NL) or keyword_statement from Agent B
+```
+
+#### Agent D output
+
+Agent D takes Agent C's `combined_blocks` and Agent B's `concept_graph` and builds a recall ladder. Level 1 is constructed deterministically in Python by enriching each block's `free_text` with `domain_terms` from the concept graph — **no LLM call for Level 1**. Levels 2 and 3 are built by Python from LLM-proposed geography broadening terms.
+
+Every level has the same structure, making them uniform for downstream consumption:
+
+```json
+{
+  "levels": [
+    {
+      "level": 1,
+      "label": "Full lexical ring",
+      "search_query": "(mental health OR psychological wellbeing OR psychosocial wellbeing OR mental wellbeing OR MHPSS OR depression OR anxiety OR PTSD OR psychological distress OR trauma OR substance misuse OR substance use disorder OR substance abuse OR drug misuse OR SUD OR alcohol misuse OR drug dependence OR harmful substance use) AND (children under 5 OR under-five children OR young children OR early childhood OR U5 OR infants OR toddlers OR neonates OR preschool children OR pregnant and lactating women OR pregnant women OR lactating women OR breastfeeding mothers OR PLW OR perinatal women OR antenatal women OR postnatal women) AND (mental health interventions OR psychosocial interventions OR treatment programmes OR treat* OR improv* OR manag* OR support* OR prevent* OR cognitive behavioural therapy OR psychoeducation OR case management OR peer support) AND (displacement camp OR refugee camp OR IDP camp OR humanitarian camp OR informal settlements OR transit camps OR collective centres) AND (Qoloji OR Ethiopia OR Ethiopian)",
+      "clarified_query": "How to improve mental health and substance misuse outcomes in children under 5 and pregnant and lactating women in Qoloji camp, Ethiopia.",
+      "controlled_vocabulary": {
+        "MeSH": ["Mental Health", "Mental Disorders", "Psychosocial Support Systems", "Substance-Related Disorders", "Child, Preschool", "Infant", "Pregnant Women", "Mental Health Services", "Psychotherapy", "Refugees", "Transients and Migrants", "Ethiopia"]
+      },
+      "broadened_aspect": "",
+      "broadened_value": "",
+      "rationale": "Deterministically built from Agent C combined_blocks enriched with domain_terms from Agent B concept_graph. Adds depression, PTSD, CBT, peer support and other domain terms not present in the Agent C anchor query.",
+      "cochrane_compliant": false
+    },
+    {
+      "level": 2,
+      "label": "Contextual analogy — conflict-affected LMICs",
+      "search_query": "(mental health OR psychological wellbeing OR psychosocial wellbeing OR mental wellbeing OR MHPSS OR depression OR anxiety OR PTSD OR psychological distress OR trauma OR substance misuse OR substance use disorder OR substance abuse OR drug misuse OR SUD OR alcohol misuse OR drug dependence OR harmful substance use) AND (children under 5 OR under-five children OR young children OR early childhood OR U5 OR infants OR toddlers OR neonates OR preschool children OR pregnant and lactating women OR pregnant women OR lactating women OR breastfeeding mothers OR PLW OR perinatal women OR antenatal women OR postnatal women) AND (mental health interventions OR psychosocial interventions OR treatment programmes OR treat* OR improv* OR manag* OR support* OR prevent* OR cognitive behavioural therapy OR psychoeducation OR case management OR peer support) AND (displacement camp OR refugee camp OR IDP camp OR humanitarian camp OR informal settlements OR transit camps OR collective centres) AND (\"conflict-affected low-income countries\" OR \"conflict-affected middle-income countries\" OR \"fragile states\" OR \"post-conflict countries\" OR \"humanitarian crisis countries\")",
+      "clarified_query": "How to improve mental health and substance misuse outcomes in children under 5 and pregnant and lactating women in displacement camps in conflict-affected low- and middle-income countries.",
+      "controlled_vocabulary": {
+        "MeSH": ["Mental Health", "Mental Disorders", "Psychosocial Support Systems", "Substance-Related Disorders", "Child, Preschool", "Infant", "Pregnant Women", "Mental Health Services", "Psychotherapy", "Refugees", "Transients and Migrants"]
+      },
+      "broadened_aspect": "geography",
+      "broadened_value": "conflict-affected low- and middle-income countries",
+      "rationale": "Qoloji camp and Ethiopia are context proxies for a humanitarian displacement crisis. Replacing them with a contextual analogy captures equivalent evidence from South Asia, the Middle East, and Latin America. Ethiopia MeSH heading excluded — it would incorrectly restrict to Ethiopian-indexed literature.",
+      "cochrane_compliant": false
+    },
+    {
+      "level": 3,
+      "label": "No geographic restriction — Cochrane-sensitive search",
+      "search_query": "(mental health OR psychological wellbeing OR psychosocial wellbeing OR mental wellbeing OR MHPSS OR depression OR anxiety OR PTSD OR psychological distress OR trauma OR substance misuse OR substance use disorder OR substance abuse OR drug misuse OR SUD OR alcohol misuse OR drug dependence OR harmful substance use) AND (children under 5 OR under-five children OR young children OR early childhood OR U5 OR infants OR toddlers OR neonates OR preschool children OR pregnant and lactating women OR pregnant women OR lactating women OR breastfeeding mothers OR PLW OR perinatal women OR antenatal women OR postnatal women) AND (mental health interventions OR psychosocial interventions OR treatment programmes OR treat* OR improv* OR manag* OR support* OR prevent* OR cognitive behavioural therapy OR psychoeducation OR case management OR peer support) AND (displacement camp OR refugee camp OR IDP camp OR humanitarian camp OR informal settlements OR transit camps OR collective centres)",
+      "clarified_query": "How to improve mental health and substance misuse outcomes in children under 5 and pregnant and lactating women in displacement camps globally.",
+      "controlled_vocabulary": {
+        "MeSH": ["Mental Health", "Mental Disorders", "Psychosocial Support Systems", "Substance-Related Disorders", "Child, Preschool", "Infant", "Pregnant Women", "Mental Health Services", "Psychotherapy", "Refugees", "Transients and Migrants"]
+      },
+      "broadened_aspect": "geography",
+      "broadened_value": "(no restriction)",
+      "rationale": "Geography block removed entirely. Setting block (displacement camp) is retained — it defines the research scope and must never be removed. This is the Cochrane-compliant globally sensitive search.",
+      "cochrane_compliant": true
+    }
+  ],
+  "geography_broadening_strategy": "context_proxy",
+  "recommended_starting_level": 2,
+  "recommendation_rationale": "Level 1 names Qoloji camp — a specific site appearing in almost no published literature. Level 2 broadens to conflict-affected displacement contexts globally with substantially better coverage while still retaining a meaningful context signal."
+}
+```
+
+Notes:
+- All three levels share the same output structure — downstream consumers (PubMed connectors, WHO IRIS connectors, UI display) iterate the same array uniformly.
+- `controlled_vocabulary` at Level 1 includes all blocks including geography (Ethiopia MeSH). At Levels 2 and 3, geography block MeSH terms are excluded — geographic MeSH headings are search artifacts that should not carry over to a broadened search.
+- `clarified_query` at each level is the NL anchor adapted to that level's geographic scope. Use this for databases that accept NL input (ReliefWeb, WHO IRIS NL mode) and for display in the UI.
+- `cochrane_compliant: true` at Level 3 signals the Cochrane-sensitive search: no geographic restriction, setting retained.
+
+### Applying Agent D levels to external databases
+
+Every `ExpansionLevel` in the `levels` array carries three query forms:
+
+| Field                   | Use for                                                                  |
+| ----------------------- | ------------------------------------------------------------------------ |
+| `search_query`          | Boolean keyword query — submit directly to most databases                |
+| `clarified_query`       | Natural language equivalent — use for display and NL-accepting databases |
+| `controlled_vocabulary` | MeSH headings — enrich PubMed queries only                               |
+
+Start at `recommended_starting_level`. Escalate to the next level if result count falls below your threshold. `cochrane_compliant: true` (Level 3) is the widest search — use it when coverage is the priority.
+
+#### PubMed (MEDLINE)
+
+PubMed supports boolean queries with field tags. You can submit `search_query` as-is — PubMed applies automatic term mapping to untagged terms. For maximum precision, rebuild per block with field tags:
+
+- `free_text` terms → `term[tiab]` (title and abstract)
+- `controlled_vocabulary.MeSH` → `"Heading"[MeSH Terms]`
+
+At Levels 2–3, `controlled_vocabulary` already excludes geography MeSH terms — do not re-add them (a geographic heading would silently re-restrict the search).
+
+**Level 2 example (field-tagged, built from Agent C blocks with geography replaced):**
+
+```
+(mental health[tiab] OR MHPSS[tiab] OR "Mental Health"[MeSH Terms] OR "Mental Disorders"[MeSH Terms])
+AND (children under 5[tiab] OR U5[tiab] OR "Child, Preschool"[MeSH Terms] OR pregnant women[tiab] OR "Pregnant Women"[MeSH Terms])
+AND (treat*[tiab] OR improv*[tiab] OR "Mental Health Services"[MeSH Terms])
+AND (displacement camp[tiab] OR refugee camp[tiab] OR "Refugees"[MeSH Terms])
+AND (conflict-affected low-income countries[tiab] OR fragile states[tiab] OR humanitarian crisis[tiab])
+```
+
+PubMed supports wildcard truncation (`treat*`, `improv*`) up to 600 expansions per term.
+
+#### WHO IRIS
+
+Submit `search_query` directly to the WHO IRIS search endpoint. No controlled vocabulary tagging is needed — use free-text terms only with OR within blocks and AND between blocks.
+
+For natural language access, submit `clarified_query` as the query value instead.
+
+#### ReliefWeb
+
+Use `clarified_query` as the `query.value` field — ReliefWeb's Lucene engine handles natural language queries well and this is the most reliable approach. For structured boolean, `search_query` can be submitted directly:
+
+```python
+requests.post(
+    "https://api.reliefweb.int/v1/reports",
+    json={"query": {"value": level["clarified_query"]}, "limit": 20}
+)
+```
+
+`controlled_vocabulary` is not applicable to ReliefWeb.
+
+#### CORE
+
+Submit `search_query` directly as the `q` parameter in the CORE v3 API:
+
+```python
+requests.post(
+    "https://api.core.ac.uk/v3/search/works",
+    headers={"Authorization": f"Bearer {CORE_API_KEY}"},
+    json={"q": level["search_query"], "limit": 25}
+)
+```
+
+`controlled_vocabulary` is not applicable to CORE.
+
+#### OpenAlex
+
+Build a space-separated keyword string from the most important `free_text` terms (topic/condition and intervention blocks are usually sufficient) and pass it as the `search` parameter:
+
+```
+GET https://api.openalex.org/works?search=mental+health+MHPSS+psychosocial+displacement+camp
+```
+
+For field-scoped precision, use `title.search` and `abstract.search` filters. OpenAlex has a ~4 KB URL limit — use the top terms from each block rather than the full `search_query`. `controlled_vocabulary` is not applicable.
 
 ---
 
@@ -525,25 +1026,15 @@ The `statement` parameter is required and must be provided. Optional parameters:
 
 Returns `SearchExpandResponse` with these fields:
 
-- `search_expansion_levels`: Level 0 plus up to three broader retrieval levels (Levels 1-3)
-- `metadata`: token and generation metadata, including the aspect assessment summary
+- `levels`: list of `ExpansionLevel` objects — Level 1 (deterministic) plus up to two broader levels
+- `geography_broadening_strategy`: `context_proxy`, `containment_hierarchy`, or `none`
+- `recommended_starting_level`: integer (1–3) recommended by the LLM
+- `recommendation_rationale`: rationale for the recommended starting level
+- `metadata`: token and generation metadata
 
-Each level includes a `strategy` field describing how it broadens retrieval: `anchor` (Level 0 only), `lexical` (spelling/morphological variants, no conceptual broadening), `conceptual_single_aspect`, or `conceptual_multi_aspect`. The `strategy` field is authoritative — do not infer broadening type from the level number alone.
+Each level in `levels` has the same structure: `level`, `label`, `search_query`, `clarified_query`, `controlled_vocabulary`, `broadened_aspect`, `broadened_value`, `rationale`, `cochrane_compliant`. Level 1 is always `levels[0]` and is built deterministically in Python — no LLM call. The LLM only proposes geography broadening terms and `clarified_query` for Levels 2–3.
 
-Level 0 is deterministic and always preserves the supplied anchor query:
-
-```json
-{
-	"level": 0,
-	"label": "Exact clarified question",
-	"strategy": "anchor",
-	"search_query": "...same as statement...",
-	"relaxed_aspects": {},
-	"rationale": "Exact clarified query preserved as the review anchor."
-}
-```
-
-The LLM generates only Levels 1-N. The `metadata.status` field reports the outcome: `completed`, `skipped_no_assessable_aspects` (no safe or conditional aspects detected — Level 0 only), or `failed_level_0_only` (generation, parsing, or validation failed — Level 0 only rather than failing the request).
+`metadata.status` is one of: `completed`, `no_geography` (no geography block — Level 1 only returned), or `failed`.
 
 ### Generic external integration snippet
 
@@ -890,7 +1381,7 @@ Notes:
   - `search_optimized` (**Agents B + C**): retrieval-ready search artifacts:
     - `semantic` (**Agent B**): dense embedding query for vector search
     - `keyword.structured` (**Agent C**): Boolean anchor query for sparse/keyword search
-    - `keyword.combined_blocks` (**Agent C**): **primary RAG artifact** — one entry per AND-block with `role`, `free_text` terms, and `controlled_vocabulary` (vocabulary name → headings). Source connectors: OR `free_text` with `controlled_vocabulary` within each block, then AND all blocks. Use `controlled_vocabulary` only for indexed databases (PubMed → MeSH, WHO IRIS → DeCS); use `free_text` alone for unindexed sources.
+    - `keyword.combined_blocks` (**Agent C**): **primary RAG artifact** — one entry per AND-block with `role`, `free_text` terms, and `controlled_vocabulary` (vocabulary name → headings). Source connectors: OR `free_text` with `controlled_vocabulary` within each block, then AND all blocks. Use `controlled_vocabulary` only for PubMed (MeSH); use `free_text` alone for all other sources (WHO IRIS, OpenAlex, CORE, ReliefWeb).
   - `concept_graph` (**Agent B**): per-concept retrieval metadata — pass as `search_context.concept_graph` to `/expand` for Agent D broadening levels. Each concept entry has: `query_role`, `true_synonyms`, `abbreviations`, `spelling_variants`, `lexical_variants`, `domain_terms`, `colloquial`, `controlled_vocabulary_hints`.
   - `search_filters` (**Agent C**): optional narrowing filters — `publication_years`, `venues`, `authors`, and `publication_types` are extracted deterministically from the query text; `fields_of_study` is LLM-generated and constrained to a permitted-values list
   - `terminology` (**Agent B**, legacy): synonym mappings — use `concept_graph` in preference to this for structured retrieval
@@ -900,60 +1391,74 @@ Notes:
 
 #### `POST /api/v1/refinement/expand` (200)
 
+Example using the Qoloji query (see "Agent output examples" above for full Agent D context):
+
 ```json
 {
-	"search_expansion_levels": [
-		{
-			"level": 0,
-			"label": "Exact clarified question",
-			"strategy": "anchor",
-			"search_query": "In adults over 65, compare aspirin versus placebo for stroke prevention.",
-			"relaxed_aspects": {},
-			"rationale": "Exact clarified query preserved as the review anchor."
-		},
+	"levels": [
 		{
 			"level": 1,
-			"label": "Lexical variants",
-			"strategy": "lexical",
-			"search_query": "In adults over 65, compare aspirin or acetylsalicylic acid versus placebo for stroke prevention.",
-			"relaxed_aspects": {},
-			"rationale": "Adds synonym variants without conceptual broadening."
+			"label": "Full lexical ring",
+			"search_query": "(mental health OR psychological wellbeing OR MHPSS OR depression OR anxiety OR PTSD OR substance misuse OR substance use disorder OR SUD) AND (children under 5 OR U5 OR infants OR pregnant women OR PLW OR lactating women) AND (treat* OR improv* OR manag* OR support* OR prevent*) AND (displacement camp OR refugee camp OR IDP camp OR humanitarian setting) AND (Qoloji OR Ethiopia OR Ethiopian)",
+			"clarified_query": "What interventions improve mental health and substance misuse outcomes for children under 5 and pregnant and lactating women in Qoloji camp, Ethiopia?",
+			"controlled_vocabulary": {
+				"MeSH": ["Mental Health", "Substance-Related Disorders", "Child, Preschool", "Pregnant Women", "Refugees", "Ethiopia"]
+			},
+			"broadened_aspect": "",
+			"broadened_value": "",
+			"rationale": "Level 1 built deterministically from Agent C combined_blocks plus domain_terms from Agent B concept graph. All concept blocks AND-joined; synonyms and domain terms OR-grouped per block.",
+			"cochrane_compliant": false
 		},
 		{
 			"level": 2,
-			"label": "Broader older adult population",
-			"strategy": "conceptual_single_aspect",
-			"search_query": "Studies comparing aspirin and placebo for stroke prevention in older adult populations.",
-			"relaxed_aspects": {
-				"population_or_entity": "older adult populations"
+			"label": "Broader geography — contextual analogy",
+			"search_query": "(mental health OR psychological wellbeing OR MHPSS OR depression OR anxiety OR PTSD OR substance misuse OR substance use disorder OR SUD) AND (children under 5 OR U5 OR infants OR pregnant women OR PLW OR lactating women) AND (treat* OR improv* OR manag* OR support* OR prevent*) AND (displacement camp OR refugee camp OR IDP camp OR humanitarian setting) AND (conflict-affected low- and middle-income countries OR humanitarian crisis OR fragile states)",
+			"clarified_query": "What interventions improve mental health and substance misuse outcomes for children under 5 and pregnant and lactating women in conflict-affected low- and middle-income countries?",
+			"controlled_vocabulary": {
+				"MeSH": ["Mental Health", "Substance-Related Disorders", "Child, Preschool", "Pregnant Women", "Refugees"]
 			},
-			"rationale": "Broadens the exact age threshold to improve recall while preserving the intervention, comparator, and outcome."
+			"broadened_aspect": "geography",
+			"broadened_value": "conflict-affected low- and middle-income countries",
+			"rationale": "Qoloji and Ethiopia are context proxies for a humanitarian displacement crisis. Replaced with a contextual analogy covering equivalent crises globally. Geography MeSH terms excluded. Setting block unchanged.",
+			"cochrane_compliant": false
+		},
+		{
+			"level": 3,
+			"label": "No geographic restriction — Cochrane-sensitive search",
+			"search_query": "(mental health OR psychological wellbeing OR MHPSS OR depression OR anxiety OR PTSD OR substance misuse OR substance use disorder OR SUD) AND (children under 5 OR U5 OR infants OR pregnant women OR PLW OR lactating women) AND (treat* OR improv* OR manag* OR support* OR prevent*) AND (displacement camp OR refugee camp OR IDP camp OR humanitarian setting)",
+			"clarified_query": "What interventions improve mental health and substance misuse outcomes for children under 5 and pregnant and lactating women in humanitarian or displacement settings?",
+			"controlled_vocabulary": {
+				"MeSH": ["Mental Health", "Substance-Related Disorders", "Child, Preschool", "Pregnant Women", "Refugees"]
+			},
+			"broadened_aspect": "geography",
+			"broadened_value": "",
+			"rationale": "Geography block removed entirely — Cochrane-compliant sensitive search. Setting block retained: it defines the research scope and must not be removed.",
+			"cochrane_compliant": true
 		}
 	],
+	"geography_broadening_strategy": "context_proxy",
+	"recommended_starting_level": 2,
+	"recommendation_rationale": "Qoloji is a named camp with very limited indexed literature; Level 2 (contextual analogy) provides recall without losing humanitarian displacement framing.",
 	"metadata": {
 		"used_llm": true,
 		"status": "completed",
 		"generated_level_count": 2,
-		"allowed_aspect_count": 3,
-		"aspect_assessment": {
-			"assessed_aspects": ["..."],
-			"safe_aspects": ["population_or_entity"],
-			"conditional_aspects": ["topic_or_condition", "intervention_or_exposure_or_phenomenon"],
-			"avoided_aspects": ["setting_or_context", "geography", "time_scope"]
-		},
-		"prompt_tokens": 500,
-		"completion_tokens": 120,
-		"total_tokens": 620
+		"prompt_tokens": 620,
+		"completion_tokens": 480,
+		"total_tokens": 1100
 	}
 }
 ```
 
 Notes:
 
-- `search_expansion_levels[0].search_query` always equals the supplied `statement` exactly.
-- Levels 1-N are optional search-only broadening variants. They do not update `statement` or redefine the review scope.
-- `relaxed_aspects` keys are always drawn from the fixed six-aspect ontology, never from framework dimension ids.
-- `metadata.status` is one of `completed`, `skipped_no_assessable_aspects`, or `failed_level_0_only`; the latter two return Level 0 only with warning metadata.
+- `levels[0]` is always Level 1, built deterministically in Python from Agent C `combined_blocks` + Agent B `concept_graph`. No LLM call needed for Level 1.
+- Levels 2–3 are built by Python from the LLM's geography broadening proposals — the LLM only proposes `boolean_terms` and `clarified_query` per level.
+- `cochrane_compliant: true` marks levels where the geography block has been removed entirely, consistent with Cochrane Handbook sensitive search guidance.
+- Geography `controlled_vocabulary` (e.g. `Ethiopia[MeSH]`) is excluded at Levels 2 and 3 — MeSH geography tags would re-restrict the broadened search.
+- Setting or context is never removed — it defines the research scope and its removal would change the research question, not improve recall.
+- `geography_broadening_strategy` is one of `context_proxy` (named location proxies a crisis type — contextual analogy preferred), `containment_hierarchy` (true geographic containment — region/continent), or `none` (no geography block detected).
+- `metadata.status` is one of: `completed`, `no_geography` (no geography block — Level 1 only returned), or `failed`.
 
 #### `POST /api/v1/refinement/queries/{query_id}/forward-to-qa` (200)
 
@@ -1126,7 +1631,7 @@ When a query has already been synthesized, `QueryResponse` exposes the canonical
 - `search_optimized`
 - `search_filters`
 - `terminology`
-- `search_expansion_levels`
+- `levels` (Agent D expansion levels)
 - `metadata`
 - `processing_log`
 

@@ -65,17 +65,6 @@ from .schema import (
     DimensionEvaluationResponse,
     SynthesisPromptBuilder,
     QueryRefinementResponse,
-    SearchExpansionPromptBuilder,
-    SearchExpansionResponse,
-    SearchExpansionLevel,
-    SearchExpansionInput,
-    SearchAspect,
-    AspectSafety,
-    DEFAULT_ASPECT_SAFETY,
-    ExpansionStrategy,
-    SearchAspectAssessment,
-    SearchAspectAssessmentResponse,
-    SearchAspectAssessmentSummary,
 )
 from .schema.response import (
     ConceptEntry,
@@ -97,6 +86,23 @@ from .schema.response import (
     KeywordSearch,
     SearchTerms,
     Terminology,
+    CombinedBlock,
+    SearchExpansionInput,
+    SearchExpansionLLMResponse,
+    SearchExpansionResponse,
+    ExpansionLevel,
+)
+from .schema.search_expansion import (
+    build_level0_query,
+    build_level1_query,
+    build_level1_blocks,
+    build_leveln_query,
+    build_leveln_blocks,
+    build_keyword_statement,
+    SearchExpansionPromptBuilder,
+    GEOGRAPHY_ROLES,
+    SETTING_ROLES,
+    POPULATION_ROLES,
 )
 
 from .session_commands import SessionCommands
@@ -1432,10 +1438,16 @@ class QueryRefinementManager:
         model: Optional[str] = None,
         temperature: float = 0.2,
         max_tokens: int = 512,
+        use_structured_output: bool = True,
     ) -> Tuple[Optional[Any], Optional[Dict[str, Any]]]:
         """Single LLM round-trip + JSON extraction + Pydantic parse.
 
         Returns ``(parsed_model_or_None, metadata_dict)``.
+
+        ``use_structured_output=False`` skips the provider's constrained-decoding
+        path (tool use / JSON mode) and parses the raw text response instead.
+        Use this when the model reliably emits well-formed JSON from the system
+        prompt but structured-output schema constraints interfere with generation.
         """
         try:
             result = await self.llm_provider.complete_async(
@@ -1444,7 +1456,7 @@ class QueryRefinementManager:
                 model=model,
                 temperature=temperature,
                 max_tokens=max_tokens,
-                response_format=response_model,
+                response_format=response_model if use_structured_output else None,
                 cache_system_prompt=False,
             )
         except Exception as exc:
@@ -1509,114 +1521,6 @@ class QueryRefinementManager:
             return None, metadata
 
     @staticmethod
-    def _apply_aspect_safety_policy(
-        assessments: List[SearchAspectAssessment],
-    ) -> List[SearchAspectAssessment]:
-        """Assign deterministic safety labels from the fixed policy.
-
-        The LLM never controls safety classification; undetected aspects are
-        marked AVOID so they can never be broadened.
-        """
-        classified: List[SearchAspectAssessment] = []
-        seen: set[SearchAspect] = set()
-        for assessment in assessments:
-            if assessment.aspect in seen:
-                continue
-            seen.add(assessment.aspect)
-            safety = (
-                DEFAULT_ASPECT_SAFETY.get(assessment.aspect, AspectSafety.AVOID)
-                if assessment.detected
-                else AspectSafety.AVOID
-            )
-            classified.append(assessment.model_copy(update={"safety": safety}))
-        # Ensure every fixed aspect has an assessment entry.
-        for aspect in SearchAspect:
-            if aspect not in seen:
-                classified.append(
-                    SearchAspectAssessment(aspect=aspect, detected=False, safety=AspectSafety.AVOID)
-                )
-        return classified
-
-    @staticmethod
-    def _build_assessment_summary(
-        assessments: List[SearchAspectAssessment],
-    ) -> SearchAspectAssessmentSummary:
-        return SearchAspectAssessmentSummary(
-            assessed_aspects=assessments,
-            safe_aspects=[a.aspect for a in assessments if a.safety == AspectSafety.SAFE],
-            conditional_aspects=[a.aspect for a in assessments if a.safety == AspectSafety.CONDITIONAL],
-            avoided_aspects=[a.aspect for a in assessments if a.safety == AspectSafety.AVOID],
-        )
-
-    @staticmethod
-    def _validate_search_expansion_result(
-        result: SearchExpansionResponse,
-        allowed_aspects: Dict[str, AspectSafety],
-    ) -> Optional[str]:
-        """Validate generated Levels 1-N against the allowed aspect policy."""
-        if not isinstance(result.levels, list):
-            return "levels must be a list"
-        if len(result.levels) > 4:
-            return "levels must contain at most four generated levels"
-
-        seen_levels: set[int] = set()
-        previous_level = 0
-        for item in result.levels:
-            if item.level < 1:
-                return f"LLM-generated level must be >= 1: {item.level}"
-            if item.level in seen_levels:
-                return f"duplicate level number: {item.level}"
-            if item.level <= previous_level:
-                return "level numbers must be sorted ascending"
-            seen_levels.add(item.level)
-            previous_level = item.level
-
-            if not item.search_query.strip():
-                return f"level {item.level} search_query is empty"
-            if not item.label.strip():
-                return f"level {item.level} label is empty"
-            if not item.rationale.strip():
-                return f"level {item.level} rationale is empty"
-            if item.strategy == ExpansionStrategy.ANCHOR:
-                return f"level {item.level} must not use the anchor strategy"
-
-            relaxed_aspects = item.relaxed_aspects or {}
-            if len(relaxed_aspects) > 2:
-                return f"level {item.level} relaxes more than two aspects"
-            if len(relaxed_aspects) == 2 and item.strategy == ExpansionStrategy.CONCEPTUAL_SINGLE_ASPECT:
-                return f"level {item.level} relaxes two aspects but uses the single-aspect strategy"
-            invalid_keys = sorted(k for k in relaxed_aspects if k not in allowed_aspects)
-            if invalid_keys:
-                return f"level {item.level} relaxed_aspects contain disallowed aspects: {invalid_keys}"
-            conditional_count = sum(
-                1 for k in relaxed_aspects
-                if allowed_aspects.get(k) == AspectSafety.CONDITIONAL
-            )
-            if len(relaxed_aspects) == 2 and conditional_count > 1:
-                return f"level {item.level} relaxes two conditional aspects; at most one may be conditional"
-
-        return None
-
-    @staticmethod
-    def _build_search_expansion_repair_prompt(
-        user_prompt: str,
-        error: str,
-        previous_output: str = "",
-    ) -> str:
-        parts = [user_prompt]
-        if previous_output:
-            parts.append(f"## Your previous output (invalid)\n\n{previous_output[:900]}")
-        parts.append(
-            "REPAIR: The previous search expansion response was rejected. "
-            "Return one JSON object with a `levels` array containing only Levels 1-N. "
-            "Use only allowed aspect ids in relaxed_aspects, keep levels sorted and unique, "
-            "if you relax two aspects use strategy `conceptual_multi_aspect`, "
-            "relax no more than two aspects per level, and include at most one CONDITIONAL aspect per level. "
-            f"Validation error detail: {error}"
-        )
-        return "\n\n".join(parts)
-
-    @staticmethod
     def _accumulate_metadata(
         base: Optional[Dict[str, Any]],
         extra: Optional[Dict[str, Any]],
@@ -1628,273 +1532,258 @@ class QueryRefinementManager:
             combined[key] = combined.get(key, 0) + extra.get(key, 0)
         return combined
 
-    async def _run_search_aspect_assessment_call(
-        self,
-        search_input: SearchExpansionInput,
-        *,
-        model: Optional[str] = None,
-        temperature: float = 0.2,
-        max_tokens: int = 1536,
-    ) -> tuple[Optional[List[SearchAspectAssessment]], Dict[str, Any]]:
-        """Run the fixed-aspect assessment call and apply the safety policy."""
-        prompt_builder = SearchExpansionPromptBuilder()
-        parsed, metadata = await self._execute_split_call(
-            prompt_builder.get_assessment_system_prompt(),
-            prompt_builder.get_assessment_user_prompt(search_input),
-            SearchAspectAssessmentResponse,
-            "search_aspect_assessment",
-            model=model,
-            temperature=temperature,
-            max_tokens=max_tokens,
-        )
-        if parsed is None or not isinstance(parsed, SearchAspectAssessmentResponse):
-            logger.warning(
-                "Search aspect assessment returned no usable response (type=%s)",
-                type(parsed).__name__,
-            )
-            return None, metadata or {}
-
-        classified = self._apply_aspect_safety_policy(parsed.assessments)
-        detected_count = sum(1 for a in classified if a.detected)
-        logger.info(
-            "Search aspect assessment completed",
-            extra={
-                "detected_aspect_count": detected_count,
-                "total_tokens": (metadata or {}).get("total_tokens", 0),
-            },
-        )
-        self.trace_emitter.emit(
-            "search_aspect_assessment_complete",
-            metadata={
-                "detected_aspect_count": detected_count,
-                "prompt_tokens": (metadata or {}).get("prompt_tokens", 0),
-                "completion_tokens": (metadata or {}).get("completion_tokens", 0),
-                "total_tokens": (metadata or {}).get("total_tokens", 0),
-            },
-        )
-        return classified, metadata or {}
-
-    async def _run_search_expansion_call(
-        self,
-        system_prompt: str,
-        user_prompt: str,
-        allowed_aspects: Dict[str, AspectSafety],
-        *,
-        model: Optional[str] = None,
-        temperature: float = 0.2,
-        max_tokens: int = 1536,
-    ) -> tuple[Optional[SearchExpansionResponse], Dict[str, Any]]:
-        """Run search expansion with contextual validation and one repair attempt."""
-        logger.info(
-            "Search expansion call started",
-            extra={"allowed_aspect_count": len(allowed_aspects), "max_tokens": max_tokens},
-        )
-        t0 = time.monotonic()
-        parsed, metadata = await self._execute_split_call(
-            system_prompt,
-            user_prompt,
-            SearchExpansionResponse,
-            "search_expansion",
-            model=model,
-            temperature=temperature,
-            max_tokens=max_tokens,
-        )
-
-        if parsed is None:
-            logger.warning("Search expansion call returned no parseable response")
-            return None, metadata or {}
-        if not isinstance(parsed, SearchExpansionResponse):
-            logger.warning(
-                "Search expansion call returned unexpected response type: %s",
-                type(parsed).__name__,
-            )
-            return None, metadata or {}
-
-        error = self._validate_search_expansion_result(parsed, allowed_aspects)
-        if error is None:
-            duration_ms = round((time.monotonic() - t0) * 1000)
-            logger.info(
-                "Search expansion call completed",
-                extra={
-                    "duration_ms": duration_ms,
-                    "generated_level_count": len(parsed.levels),
-                    "prompt_tokens": (metadata or {}).get("prompt_tokens", 0),
-                    "completion_tokens": (metadata or {}).get("completion_tokens", 0),
-                    "total_tokens": (metadata or {}).get("total_tokens", 0),
-                },
-            )
-            self.trace_emitter.emit(
-                "search_expansion_complete",
-                metadata={
-                    "duration_ms": duration_ms,
-                    "generated_level_count": len(parsed.levels),
-                    "prompt_tokens": (metadata or {}).get("prompt_tokens", 0),
-                    "completion_tokens": (metadata or {}).get("completion_tokens", 0),
-                    "total_tokens": (metadata or {}).get("total_tokens", 0),
-                },
-            )
-            return parsed, metadata or {}
-
-        logger.warning("Search expansion validation failed: %s", error)
-        self.trace_emitter.emit(
-            "search_expansion_validation_failed",
-            level="warning",
-            metadata={"error": error},
-        )
-        repair_prompt = self._build_search_expansion_repair_prompt(
-            user_prompt,
-            error,
-            parsed.model_dump_json(indent=2),
-        )
-        repaired, repair_meta = await self._execute_split_call(
-            system_prompt,
-            repair_prompt,
-            SearchExpansionResponse,
-            "search_expansion_repair",
-            model=model,
-            temperature=temperature,
-            max_tokens=max_tokens,
-        )
-        combined_meta = self._accumulate_metadata(metadata, repair_meta)
-        if repaired is None:
-            logger.warning("Search expansion repair returned no parseable response")
-            return None, combined_meta
-        if not isinstance(repaired, SearchExpansionResponse):
-            logger.warning(
-                "Search expansion repair returned unexpected response type: %s",
-                type(repaired).__name__,
-            )
-            return None, combined_meta
-
-        repair_error = self._validate_search_expansion_result(repaired, allowed_aspects)
-        if repair_error is None:
-            logger.info(
-                "Search expansion repair succeeded",
-                extra={"generated_level_count": len(repaired.levels)},
-            )
-            self.trace_emitter.emit(
-                "search_expansion_repaired",
-                metadata={"generated_level_count": len(repaired.levels)},
-            )
-            return repaired, combined_meta
-
-        logger.warning("Search expansion repair still invalid: %s", repair_error)
-        self.trace_emitter.emit(
-            "search_expansion_repair_failed",
-            level="warning",
-            metadata={"original_error": error, "repair_error": repair_error},
-        )
-        return None, combined_meta
-
     async def generate_search_expansion_levels(
         self,
         *,
         search_input: SearchExpansionInput,
         model: Optional[str] = None,
         temperature: float = 0.2,
-        max_tokens: int = 1536,
+        max_tokens: int = 2048,
     ) -> tuple[SearchExpansionResponse, Dict[str, Any]]:
-        """Generate retrieval expansion levels from a standalone expansion input.
+        """Agent D — block-aware, Cochrane-compliant search expansion.
 
-        Pipeline: fixed aspect assessment (LLM) -> deterministic safety policy
-        -> allowed-aspect derivation -> expansion generation (LLM) ->
-        validation. Returns Levels 1–N only; Level 0 (the anchor) is the
-        caller's statement and is not echoed. Soft-fails to empty list.
+        Level 1 is built deterministically in Python from Agent C's combined_blocks
+        enriched with domain_terms from Agent B's concept_graph. The LLM is called
+        to propose broadening candidates for Level 2 (and Level 3 when geography is
+        present). Priority order for the block to broaden: geography → setting →
+        population. When none of these blocks exist, only Level 1 is returned.
         """
         start_time = time.monotonic()
-        metadata: Dict[str, Any] = {
-            "used_llm": False,
-            "generated_level_count": 0,
-        }
+        from query_refinement_module.tracing import get_request_id, get_trace_id
 
+        request_id = get_request_id() or "-"
+        trace_id = get_trace_id() or "-"
+        metadata: Dict[str, Any] = {"used_llm": False, "generated_level_count": 0}
         logger.info(
-            "Search expansion generation started",
+            "Starting Agent D search expansion",
             extra={
-                "statement_length": len(search_input.statement),
-                "model": model or "(default)",
-                "temperature": temperature,
-                "max_tokens": max_tokens,
-            },
-        )
-        self.trace_emitter.emit(
-            "search_expansion_start",
-            metadata={
-                "advisory_dimension_count": len(search_input.dimensions_specifications),
-                "model": model or "(default)",
-                "temperature": temperature,
-                "max_tokens": max_tokens,
+                "request_id": request_id,
+                "trace_id": trace_id,
+                "model": model,
+                "anchor_block_count": len(search_input.anchor_blocks),
+                "concept_graph_size": len(search_input.concept_graph),
             },
         )
 
-        assessments, assessment_meta = await self._run_search_aspect_assessment_call(
-            search_input,
-            model=model,
-            temperature=temperature,
-            max_tokens=min(max_tokens, 1536),
+        # ── Level 0: anchor (Agent C output, no domain_terms enrichment) ────────
+        if search_input.keyword_structured:
+            level0_query = search_input.keyword_structured
+            _, level0_cv = build_level0_query(search_input.anchor_blocks)
+        else:
+            level0_query, level0_cv = build_level0_query(search_input.anchor_blocks)
+
+        level0 = ExpansionLevel(
+            level=0,
+            label="Anchor query",
+            search_query=level0_query,
+            clarified_query=search_input.clarified_query,
+            semantic_statement=search_input.semantic_statement,
+            keyword_statement=search_input.keyword_statement or build_keyword_statement(search_input.anchor_blocks),
+            controlled_vocabulary=level0_cv,
+            blocks=list(search_input.anchor_blocks),
+            rationale="Your refined query as-is — exact concepts from your refinement session, no broadening.",
+            cochrane_compliant=False,
         )
-        metadata = self._accumulate_metadata(metadata, assessment_meta)
 
-        if assessments is None:
-            metadata["status"] = "failed"
-            metadata["warning"] = "Aspect assessment failed; no expansion levels generated."
-            metadata["duration_ms"] = round((time.monotonic() - start_time) * 1000)
-            logger.warning("Search expansion failed: aspect assessment returned no results")
-            return SearchExpansionResponse(), metadata
-
-        metadata["used_llm"] = True
-        summary = self._build_assessment_summary(assessments)
-        metadata["aspect_assessment"] = summary.model_dump(mode="json")
-
-        allowed_aspects: Dict[str, AspectSafety] = {
-            a.aspect.value: a.safety
-            for a in assessments
-            if a.detected
-            and a.safety is not None
-            and a.safety != AspectSafety.AVOID
-        }
-        metadata["allowed_aspect_count"] = len(allowed_aspects)
-
-        if not allowed_aspects:
-            metadata["status"] = "skipped_no_assessable_aspects"
-            metadata["duration_ms"] = round((time.monotonic() - start_time) * 1000)
-            logger.info("Search expansion skipped: no detected non-avoided aspects")
-            return SearchExpansionResponse(), metadata
-
-        prompt_builder = SearchExpansionPromptBuilder()
-        result, call_metadata = await self._run_search_expansion_call(
-            prompt_builder.get_system_prompt(),
-            prompt_builder.get_user_prompt(search_input, assessments),
-            allowed_aspects,
-            model=model,
-            temperature=temperature,
-            max_tokens=min(max_tokens, 1536),
+        # ── Level 1: deterministic Python build ───────────────────────────────
+        level1_query, level1_cv = build_level1_query(
+            search_input.anchor_blocks, search_input.concept_graph
         )
-        metadata = self._accumulate_metadata(metadata, call_metadata)
-        metadata["duration_ms"] = round((time.monotonic() - start_time) * 1000)
-
-        if result is None:
+        if not level1_query:
             metadata["status"] = "failed"
-            metadata["warning"] = "Search expansion failed validation or parsing; no levels generated."
+            metadata["warning"] = "No anchor blocks provided; cannot build Level 1."
+            metadata["duration_ms"] = round((time.monotonic() - start_time) * 1000)
             logger.warning(
-                "Search expansion failed after LLM call; returning empty level list",
-                extra={"duration_ms": metadata["duration_ms"]},
+                "Agent D search expansion failed before LLM broadening",
+                extra={
+                    "request_id": request_id,
+                    "trace_id": trace_id,
+                    "duration_ms": metadata["duration_ms"],
+                    "status": metadata["status"],
+                },
             )
             return SearchExpansionResponse(), metadata
 
-        generated_levels = result.levels[:4]
+        level1_blocks = build_level1_blocks(
+            search_input.anchor_blocks, search_input.concept_graph
+        )
+
+        level1 = ExpansionLevel(
+            level=1,
+            label="Full lexical ring",
+            search_query=level1_query,
+            clarified_query=search_input.clarified_query,
+            semantic_statement=search_input.clarified_query,
+            keyword_statement=build_keyword_statement(level1_blocks),
+            controlled_vocabulary=level1_cv,
+            blocks=level1_blocks,
+            rationale="Searches using all the terms from your query, including synonyms, abbreviations, and related phrases. The most focused version of this search.",
+            cochrane_compliant=False,
+        )
+
+        # ── Determine which block to broaden (geography → setting → population) ──
+        geo_blocks = [b for b in search_input.anchor_blocks if b.role in GEOGRAPHY_ROLES]
+        has_geography = bool(geo_blocks)
+
+        if not has_geography:
+            level0.cochrane_compliant = True
+            level1.cochrane_compliant = True  # no geo restriction in play at any level
+
+            setting_blocks = [b for b in search_input.anchor_blocks if b.role in SETTING_ROLES]
+            pop_blocks = [b for b in search_input.anchor_blocks if b.role in POPULATION_ROLES]
+            broadening_candidate = (setting_blocks or pop_blocks or [None])[0]
+
+            if broadening_candidate is None:
+                # Nothing to broaden — Level 1 is the Cochrane-sensitive search
+                metadata["status"] = "completed_no_geography"
+                metadata["generated_level_count"] = 1
+                metadata["duration_ms"] = round((time.monotonic() - start_time) * 1000)
+                logger.info(
+                    "Completed Agent D search expansion",
+                    extra={
+                        "request_id": request_id,
+                        "trace_id": trace_id,
+                        "duration_ms": metadata["duration_ms"],
+                        "generated_level_count": metadata["generated_level_count"],
+                        "status": metadata["status"],
+                        "used_llm": metadata["used_llm"],
+                    },
+                )
+                return SearchExpansionResponse(
+                    levels=[level0, level1],
+                    geography_broadening_strategy="none",
+                    recommended_starting_level=1,
+                    recommendation_rationale="No geographic restriction detected; Level 1 is the Cochrane-sensitive search.",
+                    search_filters=search_input.search_filters,
+                    phrases=search_input.phrases,
+                ), metadata
+
+            broadened_role = broadening_candidate.role
+        else:
+            broadened_role = geo_blocks[0].role
+
+        # ── LLM call: broadening proposals only ───────────────────────────────
+        prompt_builder = SearchExpansionPromptBuilder()
+        system_prompt = prompt_builder.get_system_prompt()
+        user_prompt = prompt_builder.get_user_prompt(search_input, level1_query, broadened_role)
+
+        parsed, call_meta = await self._execute_split_call(
+            system_prompt,
+            user_prompt,
+            SearchExpansionLLMResponse,
+            "search_expansion",
+            model=model,
+            temperature=temperature,
+            max_tokens=max_tokens,
+            use_structured_output=False,  # model emits clean JSON from the prompt
+        )
+        metadata = self._accumulate_metadata(metadata, call_meta)
+
+        if parsed is None or not isinstance(parsed, SearchExpansionLLMResponse):
+            metadata["status"] = "failed"
+            metadata["warning"] = "Agent D LLM call returned no parseable response."
+            metadata["duration_ms"] = round((time.monotonic() - start_time) * 1000)
+            logger.warning(
+                "Agent D search expansion returned no parseable LLM response",
+                extra={
+                    "request_id": request_id,
+                    "trace_id": trace_id,
+                    "duration_ms": metadata["duration_ms"],
+                    "status": metadata["status"],
+                },
+            )
+            return SearchExpansionResponse(
+                levels=[level0, level1],
+                search_filters=search_input.search_filters,
+                phrases=search_input.phrases,
+            ), metadata
+
+        metadata["used_llm"] = True
+
+        # ── Build Level 2 (and Level 3) queries in Python ─────────────────────
+        built_levels: List[ExpansionLevel] = [level1]
+        for llm_level in parsed.levels:
+            if has_geography:
+                # Level 3 removes the geography block: LLM signals this with either
+                # empty boolean_terms OR broadened_value == "(no restriction)".
+                is_removal = (not llm_level.boolean_terms) or (
+                    llm_level.broadened_value == "(no restriction)"
+                )
+            else:
+                # Setting/population broadening: the block is never removed.
+                if not llm_level.boolean_terms:
+                    logger.warning(
+                        "Agent D: LLM returned empty boolean_terms for non-geography "
+                        "broadening at level %d — skipping level",
+                        llm_level.level,
+                    )
+                    continue
+                is_removal = False
+
+            replacement_terms = [] if is_removal else llm_level.boolean_terms
+            replacement_cv = llm_level.controlled_vocabulary_hints if not is_removal else None
+
+            search_query, level_cv = build_leveln_query(
+                search_input.anchor_blocks,
+                search_input.concept_graph,
+                broadened_role,
+                replacement_terms,
+            )
+            if not search_query:
+                continue
+
+            level_blocks = build_leveln_blocks(
+                search_input.anchor_blocks,
+                search_input.concept_graph,
+                broadened_role,
+                replacement_terms,
+                replacement_cv=replacement_cv,
+            )
+
+            built_levels.append(ExpansionLevel(
+                level=llm_level.level,
+                label=llm_level.label,
+                search_query=search_query,
+                clarified_query=llm_level.clarified_query or search_input.clarified_query,
+                semantic_statement=llm_level.clarified_query or search_input.clarified_query,
+                keyword_statement=build_keyword_statement(level_blocks),
+                controlled_vocabulary=level_cv,
+                blocks=level_blocks,
+                broadened_aspect=broadened_role,
+                broadened_value=llm_level.broadened_value,
+                rationale=llm_level.rationale,
+                cochrane_compliant=is_removal if has_geography else True,
+            ))
+
+        # ── Validate recommended_starting_level against generated levels ───────
+        generated_level_numbers = {lv.level for lv in built_levels}
+        rec = parsed.recommended_starting_level
+        if rec not in generated_level_numbers:
+            rec = min(generated_level_numbers) if generated_level_numbers else 1
+
         metadata["status"] = "completed"
-        metadata["generated_level_count"] = len(generated_levels)
-        result.levels = generated_levels
+        metadata["generated_level_count"] = len(built_levels)
+        metadata["duration_ms"] = round((time.monotonic() - start_time) * 1000)
         logger.info(
-            "Search expansion generation completed",
+            "Completed Agent D search expansion",
             extra={
+                "request_id": request_id,
+                "trace_id": trace_id,
                 "duration_ms": metadata["duration_ms"],
-                "returned_level_count": len(result.levels),
-                "generated_level_count": len(generated_levels),
+                "generated_level_count": metadata["generated_level_count"],
+                "status": metadata["status"],
+                "used_llm": metadata["used_llm"],
             },
         )
-        return result, metadata
 
+        return SearchExpansionResponse(
+            levels=[level0] + built_levels,
+            geography_broadening_strategy=parsed.geography_broadening_strategy,
+            recommended_starting_level=rec,
+            recommendation_rationale=parsed.recommendation_rationale,
+            search_filters=search_input.search_filters,
+            phrases=search_input.phrases,
+        ), metadata
 
     @staticmethod
     def _concept_graph_to_terminology(concept_graph: Dict[str, Any]) -> Terminology:
@@ -2175,15 +2064,49 @@ class QueryRefinementManager:
         )
 
         try:
+            agent_a_start = time.monotonic()
+            logger.info(
+                "Starting Agent A normalization",
+                extra={"request_id": request_id, "trace_id": trace_id, "model": model},
+            )
             norm, meta_a = await self._run_normalization(
                 session,
                 model=model,
                 temperature=resolved_temperature,
             )
+            logger.info(
+                "Completed Agent A normalization",
+                extra={
+                    "request_id": request_id,
+                    "trace_id": trace_id,
+                    "duration_ms": round((time.monotonic() - agent_a_start) * 1000, 2),
+                    "clarified_query_length": len(norm.clarified_query),
+                },
+            )
+            agent_b_start = time.monotonic()
+            logger.info(
+                "Starting Agent B semantic representation",
+                extra={"request_id": request_id, "trace_id": trace_id, "model": model},
+            )
             sem, meta_b = await self._run_semantic_representation(
                 norm.clarified_query,
                 model=model,
                 temperature=resolved_temperature,
+            )
+            logger.info(
+                "Completed Agent B semantic representation",
+                extra={
+                    "request_id": request_id,
+                    "trace_id": trace_id,
+                    "duration_ms": round((time.monotonic() - agent_b_start) * 1000, 2),
+                    "concept_graph_size": len(sem.concept_graph),
+                    "semantic_statement_length": len(sem.semantic_statement),
+                },
+            )
+            agent_c_start = time.monotonic()
+            logger.info(
+                "Starting Agent C search construction",
+                extra={"request_id": request_id, "trace_id": trace_id, "model": model},
             )
             construction, meta_c = await self._run_search_construction(
                 statement=norm.clarified_query,
@@ -2192,6 +2115,17 @@ class QueryRefinementManager:
                 temperature=resolved_temperature,
                 max_tokens=resolved_max_tokens,
                 additional_guidance=additional_guidance,
+            )
+            combined_blocks = getattr(construction.keyword, "combined_blocks", None) or []
+            logger.info(
+                "Completed Agent C search construction",
+                extra={
+                    "request_id": request_id,
+                    "trace_id": trace_id,
+                    "duration_ms": round((time.monotonic() - agent_c_start) * 1000, 2),
+                    "combined_block_count": len(combined_blocks),
+                    "has_search_filters": bool(construction.search_filters),
+                },
             )
             aggregated_metadata = self._accumulate_metadata(
                 self._accumulate_metadata(meta_a, meta_b), meta_c
