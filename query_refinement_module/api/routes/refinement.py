@@ -405,84 +405,26 @@ async def expand_search(
     """
     request_id_val = generate_request_id()
     set_request_id(request_id_val)
-    start_time = time.time()
-
-    concept_graph = {}
-    if request.search_context and request.search_context.concept_graph:
-        concept_graph = request.search_context.concept_graph
-
-    logger.info(
-        "API: Generating search expansion levels",
-        extra={
-            "request_id": request_id_val,
-            "user_id": current_user.id,
-            "model_override": request.model,
-            "statement_length": len(request.statement),
-            "anchor_block_count": len(request.anchor_blocks),
-        },
+    workflow_service = RefinementApiService(
+        manager=manager,
+        db=None,
+        session_manager=None,
+        settings_factory=get_settings,
     )
-
-    try:
-        expansion_input = SearchExpansionInput(
-            clarified_query=request.statement,
-            anchor_blocks=request.anchor_blocks,
-            concept_graph=concept_graph,
-            semantic_statement=request.semantic_statement or "",
-            keyword_statement=request.keyword_statement or "",
-            keyword_structured=request.keyword_structured or "",
-            search_filters=request.search_filters,
-            phrases=request.phrases or [],
-        )
-        result, metadata = await manager.generate_search_expansion_levels(
-            search_input=expansion_input,
-            model=request.model,
-        )
-        levels_payload = [level.model_dump(by_alias=True) for level in result.levels]
-        metadata["geography_broadening_strategy"] = result.geography_broadening_strategy
-        metadata["recommended_starting_level"] = result.recommended_starting_level
-        metadata["recommendation_rationale"] = result.recommendation_rationale
-        if result.search_filters:
-            metadata["search_filters"] = (
-                result.search_filters.model_dump()
-                if hasattr(result.search_filters, "model_dump")
-                else result.search_filters
-            )
-        if result.phrases:
-            metadata["phrases"] = result.phrases
-    except Exception as exc:
-        logger.exception(
-            "API: Search expansion generation failed unexpectedly",
-            extra={"request_id": request_id_val, "error": str(exc)},
-        )
-        raise HTTPException(
-            status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
-            detail=f"Failed to generate search expansion levels: {str(exc)}",
-        )
-
-    duration_ms = (time.time() - start_time) * 1000
-    logger.info(
-        "API: Search expansion completed",
-        extra={
-            "request_id": request_id_val,
-            "duration_ms": round(duration_ms, 2),
-            "returned_level_count": len(levels_payload),
-            "generated_level_count": metadata.get("generated_level_count", 0),
-            "status": metadata.get("status"),
-        },
+    payload = await workflow_service.expand_workflow(
+        statement=request.statement,
+        anchor_blocks=request.anchor_blocks,
+        search_context=request.search_context,
+        semantic_statement=request.semantic_statement,
+        keyword_statement=request.keyword_statement,
+        keyword_structured=request.keyword_structured,
+        search_filters=request.search_filters,
+        phrases=request.phrases,
+        model=request.model,
+        current_user=current_user,
+        request_id=request_id_val,
     )
-    return SearchExpandResponse(
-        levels=levels_payload,
-        geography_broadening_strategy=result.geography_broadening_strategy,
-        recommended_starting_level=result.recommended_starting_level,
-        recommendation_rationale=result.recommendation_rationale,
-        search_filters=(
-            result.search_filters.model_dump()
-            if hasattr(result.search_filters, "model_dump")
-            else result.search_filters
-        ) if result.search_filters else None,
-        phrases=result.phrases or None,
-        metadata=metadata,
-    )
+    return SearchExpandResponse(**payload)
 
 
 # ==========================================
@@ -510,49 +452,18 @@ async def normalize_query(
     request_id_val = generate_request_id()
     set_request_id(request_id_val)
 
-    db_query = get_query(db, request.query_id)
-    if not db_query:
-        raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Query not found")
-    if db_query.session.user_id != current_user.id:
-        raise HTTPException(status_code=status.HTTP_403_FORBIDDEN, detail="Access denied")
-
-    framework_name = db_query.session.framework_name
-    if not framework_name:
-        raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail="Framework name not found for session")
-
-    framework = get_framework(framework_name)
-
-    try:
-        async with session_manager.session_lock(request.query_id):
-            session = session_manager.load_session(request.query_id, framework)
-            if not session:
-                session = await asyncio.to_thread(
-                    manager.initialize_sequential,
-                    db_query.original_query,
-                    framework,
-                )
-                db_steps = get_query_refinement_steps(db, request.query_id)
-                _restore_session_from_db_state(session, db_steps)
-
-            if not _is_session_ready_for_synthesis(session):
-                raise HTTPException(
-                    status_code=status.HTTP_409_CONFLICT,
-                    detail="Query is not ready for normalization. Complete all dimensions or use /submit first.",
-                )
-
-            norm, _ = await manager._run_normalization(session)
-    except RuntimeError:
-        raise HTTPException(
-            status_code=status.HTTP_503_SERVICE_UNAVAILABLE,
-            detail="Session is temporarily locked by another request. Please retry in a moment.",
-        )
-
-    return NormalizeQueryResponse(
-        query_id=request.query_id,
-        clarified_query=norm.clarified_query,
-        dimensions_specifications=norm.dimensions_specifications,
-        used_llm=True,
+    workflow_service = RefinementApiService(
+        manager=manager,
+        db=db,
+        session_manager=session_manager,
+        settings_factory=get_settings,
     )
+    payload = await workflow_service.normalize_workflow(
+        query_id=request.query_id,
+        current_user=current_user,
+        request_id=request_id_val,
+    )
+    return NormalizeQueryResponse(**payload)
 
 
 @router.post("/represent", response_model=RepresentQueryResponse)
@@ -574,37 +485,19 @@ async def represent_query(
     request_id_val = generate_request_id()
     set_request_id(request_id_val)
 
-    logger.info(
-        "API: Running Agent B (Semantic Representation)",
-        extra={
-            "request_id": request_id_val,
-            "user_id": current_user.id,
-            "statement_length": len(request.statement),
-        },
+    workflow_service = RefinementApiService(
+        manager=manager,
+        db=None,
+        session_manager=None,
+        settings_factory=get_settings,
     )
-
-    try:
-        sem, _ = await manager._run_semantic_representation(
-            request.statement,
-            model=request.model,
-        )
-    except Exception as exc:
-        logger.exception("API: Agent B failed", extra={"request_id": request_id_val})
-        raise HTTPException(
-            status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
-            detail=f"Semantic representation failed: {exc}",
-        )
-
-    concept_graph_dict = {
-        k: (v.model_dump() if hasattr(v, "model_dump") else v)
-        for k, v in sem.concept_graph.items()
-    }
-    return RepresentQueryResponse(
-        semantic_statement=sem.semantic_statement,
-        keyword_statement=sem.keyword_statement,
-        concept_graph=concept_graph_dict,
-        used_llm=True,
+    payload = await workflow_service.represent_workflow(
+        statement=request.statement,
+        model=request.model,
+        current_user=current_user,
+        request_id=request_id_val,
     )
+    return RepresentQueryResponse(**payload)
 
 
 @router.post("/construct", response_model=ConstructSearchResponse)
@@ -626,37 +519,20 @@ async def construct_search(
     request_id_val = generate_request_id()
     set_request_id(request_id_val)
 
-    logger.info(
-        "API: Running Agent C (Search Construction)",
-        extra={
-            "request_id": request_id_val,
-            "user_id": current_user.id,
-            "statement_length": len(request.statement),
-            "concept_graph_size": len(request.concept_graph),
-        },
+    workflow_service = RefinementApiService(
+        manager=manager,
+        db=None,
+        session_manager=None,
+        settings_factory=get_settings,
     )
-
-    try:
-        construction, _ = await manager._run_search_construction(
-            statement=request.statement,
-            concept_graph=request.concept_graph,
-            model=request.model,
-        )
-    except Exception as exc:
-        logger.exception("API: Agent C failed", extra={"request_id": request_id_val})
-        raise HTTPException(
-            status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
-            detail=f"Search construction failed: {exc}",
-        )
-
-    keyword_dict = construction.keyword.model_dump() if hasattr(construction.keyword, "model_dump") else construction.keyword
-    filters_dict = construction.search_filters.model_dump() if hasattr(construction.search_filters, "model_dump") else construction.search_filters
-
-    return ConstructSearchResponse(
-        keyword=keyword_dict,
-        search_filters=filters_dict,
-        used_llm=True,
+    payload = await workflow_service.construct_workflow(
+        statement=request.statement,
+        concept_graph=request.concept_graph,
+        model=request.model,
+        current_user=current_user,
+        request_id=request_id_val,
     )
+    return ConstructSearchResponse(**payload)
 
 
 @router.post("/synthesize", response_model=SynthesizeQueryResponse)
@@ -771,190 +647,23 @@ async def forward_to_qa_system(
     """
     request_id_val = generate_request_id()
     set_request_id(request_id_val)
-    request_logger = get_logger(__name__, request_id=request_id_val)
-    
-    start_time = time.time()
-    
-    request_logger.info(
-        "API: Forward to QA system request received",
-        extra={
-            "request_id": request_id_val,
-            "user_id": current_user.id,
-            "query_id": query_id,
-            "qa_system_url": request.qa_system_url,
-            "timeout_seconds": request.timeout_seconds,
-        },
+    workflow_service = RefinementApiService(
+        manager=None,
+        db=db,
+        session_manager=None,
+        settings_factory=get_settings,
     )
-    
-    # Verify query exists and belongs to user
-    db_query = get_query(db, query_id=query_id)
-    if not db_query:
-        request_logger.warning(
-            "Query not found",
-            extra={"request_id": request_id_val, "query_id": query_id}
-        )
-        raise HTTPException(
-            status_code=status.HTTP_404_NOT_FOUND,
-            detail=f"Query {query_id} not found"
-        )
-    
-    # Verify ownership
-    if db_query.session.user_id != current_user.id:
-        request_logger.warning(
-            "Unauthorized access attempt",
-            extra={
-                "request_id": request_id_val,
-                "query_id": query_id,
-                "query_owner_id": db_query.session.user_id,
-                "requesting_user_id": current_user.id,
-            }
-        )
-        raise HTTPException(
-            status_code=status.HTTP_403_FORBIDDEN,
-            detail="You don't have permission to access this query"
-        )
-    
-    # Verify refinement is complete
-    if not db_query.refined_query or not db_query.refined_query.strip():
-        request_logger.warning(
-            "Attempted to forward incomplete refinement",
-            extra={
-                "request_id": request_id_val,
-                "query_id": query_id,
-                "has_refined_query": bool(db_query.refined_query),
-            }
-        )
-        raise HTTPException(
-            status_code=status.HTTP_400_BAD_REQUEST,
-            detail="Query refinement is not complete. Please complete the synthesis step first."
-        )
-    
-    # Prepare payload for QA system
-    qa_payload = {
-        "query": db_query.refined_query,
-    }
-    
-    if request.forward_original_query:
-        qa_payload["original_query"] = db_query.original_query
-    
-    if request.include_refinement_metadata:
-        # Gather refinement metadata
-        refinement_steps = get_query_refinement_steps(db, query_id=query_id)
-        qa_payload["refinement_metadata"] = {
-            "framework": db_query.session.framework_name if hasattr(db_query.session, 'framework_name') else None,
-            "total_steps": len(refinement_steps),
-            "dimensions_refined": [step.aspect_id for step in refinement_steps if step.is_refined],
-            "query_id": query_id,
-        }
-    
-    request_logger.info(
-        "Forwarding refined query to external QA system",
-        extra={
-            "request_id": request_id_val,
-            "query_id": query_id,
-            "refined_query_length": len(db_query.refined_query),
-            "payload_keys": list(qa_payload.keys()),
-        }
+    payload = await workflow_service.forward_to_qa_workflow(
+        query_id=query_id,
+        qa_system_url=request.qa_system_url,
+        qa_system_auth=request.qa_system_auth,
+        timeout_seconds=request.timeout_seconds,
+        include_refinement_metadata=request.include_refinement_metadata,
+        forward_original_query=request.forward_original_query,
+        current_user=current_user,
+        request_id=request_id_val,
     )
-    
-    # Forward to external QA system
-    import httpx
-    
-    qa_start_time = time.time()
-    try:
-        async with httpx.AsyncClient(timeout=request.timeout_seconds) as client:
-            headers = request.qa_system_auth or {}
-            headers["Content-Type"] = "application/json"
-            headers["X-Request-ID"] = request_id_val
-            
-            response = await client.post(
-                request.qa_system_url,
-                json=qa_payload,
-                headers=headers
-            )
-            
-            qa_response_time_ms = int((time.time() - qa_start_time) * 1000)
-            
-            # Try to parse JSON response
-            try:
-                qa_response_data = response.json()
-            except Exception:
-                qa_response_data = {"response": response.text}
-            
-            request_logger.info(
-                "Received response from QA system",
-                extra={
-                    "request_id": request_id_val,
-                    "query_id": query_id,
-                    "status_code": response.status_code,
-                    "response_time_ms": qa_response_time_ms,
-                }
-            )
-            
-            # Prepare response
-            result = ForwardToQAResponse(
-                query_id=query_id,
-                refined_query=db_query.refined_query,
-                original_query=db_query.original_query if request.forward_original_query else None,
-                qa_system_url=request.qa_system_url,
-                qa_system_response=qa_response_data,
-                qa_system_status_code=response.status_code,
-                response_time_ms=qa_response_time_ms,
-                refinement_metadata=qa_payload.get("refinement_metadata") if request.include_refinement_metadata else None
-            )
-            
-            total_duration_ms = int((time.time() - start_time) * 1000)
-            request_logger.info(
-                "API: Forward to QA system completed",
-                extra={
-                    "request_id": request_id_val,
-                    "user_id": current_user.id,
-                    "query_id": query_id,
-                    "qa_status_code": response.status_code,
-                    "qa_response_time_ms": qa_response_time_ms,
-                    "total_duration_ms": total_duration_ms,
-                },
-            )
-            
-            return result
-            
-    except httpx.TimeoutException:
-        request_logger.error(
-            "QA system request timed out",
-            extra={
-                "request_id": request_id_val,
-                "query_id": query_id,
-                "timeout_seconds": request.timeout_seconds,
-            }
-        )
-        raise HTTPException(
-            status_code=status.HTTP_504_GATEWAY_TIMEOUT,
-            detail=f"QA system did not respond within {request.timeout_seconds} seconds"
-        )
-    except httpx.RequestError as e:
-        request_logger.error(
-            f"Failed to connect to QA system: {e}",
-            extra={
-                "request_id": request_id_val,
-                "query_id": query_id,
-                "qa_system_url": request.qa_system_url,
-            },
-            exc_info=True
-        )
-        raise HTTPException(
-            status_code=status.HTTP_502_BAD_GATEWAY,
-            detail=f"Failed to connect to QA system: {str(e)}"
-        )
-    except Exception as e:
-        request_logger.error(
-            f"Unexpected error during QA forwarding: {e}",
-            extra={"request_id": request_id_val, "query_id": query_id},
-            exc_info=True
-        )
-        raise HTTPException(
-            status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
-            detail=f"Failed to forward query to QA system: {str(e)}"
-        )
+    return ForwardToQAResponse(**payload)
 
 
 @router.get("/queries/{query_id}/command-history", response_model=CommandHistoryResponse)
@@ -966,81 +675,21 @@ def get_command_history(
 ):
     """
     Retrieve execution history of all commands for a specific query.
-    
-    Returns chronological list of command executions with full context:
-    - Command type and arguments
-    - Success/failure status
-    - Affected dimensions (cleared, invalidated)
-    - Active dimension at time of execution
-    - User and timestamp information
-    
-    Useful for:
-    - Debugging unexpected session states
-    - Understanding user workflow patterns
-    - Troubleshooting cascade delete issues
-    - Compliance and audit trails
-    
-    Args:
-        query_id: Query ID to get command history for
-        limit: Maximum number of commands to return (default: 100)
+
+    Returns chronological list of command executions with full context.
     """
-    from query_refinement_module.db.models.audit_log import AuditLog
-    
-    # Verify query ownership
-    query = get_query(db, query_id)
-    if not query or query.session.user_id != current_user.id:
-        raise HTTPException(
-            status_code=status.HTTP_404_NOT_FOUND,
-            detail="Query not found"
-        )
-    
-    # Query audit logs for command events
-    command_event_types = [
-        AuditEventType.COMMAND_EXECUTE,
-        AuditEventType.COMMAND_BACK,
-        AuditEventType.COMMAND_RESTART,
-        AuditEventType.COMMAND_CLEAR,
-        AuditEventType.COMMAND_SKIP,
-        AuditEventType.COMMAND_DONE,
-        AuditEventType.COMMAND_STATUS,
-        AuditEventType.COMMAND_HELP,
-        AuditEventType.COMMAND_STEPS,
-    ]
-    
-    audit_logs = db.query(AuditLog).filter(
-        AuditLog.resource_type == "query",
-        AuditLog.resource_id == str(query_id),
-        AuditLog.event_type.in_(command_event_types)
-    ).order_by(AuditLog.timestamp.desc()).limit(limit).all()
-    
-    # Build command history entries
-    commands = []
-    for log in reversed(audit_logs):  # Reverse to get chronological order
-        details = log.details or {}
-        commands.append(CommandHistoryEntry(
-            timestamp=log.timestamp.isoformat(),
-            event_id=log.id,
-            command=details.get("command", "unknown"),
-            command_input=details.get("command_input", ""),
-            argument=details.get("argument"),
-            active_dimension=details.get("active_dimension"),
-            success=details.get("success", False),
-            status=log.status or "unknown",
-            force_requested=details.get("force_requested", False),
-            force_confirmation_needed=details.get("force_confirmation_needed", False),
-            cleared_aspects=details.get("cleared_aspects"),
-            invalidated_aspects=details.get("invalidated_aspects"),
-            target_aspect=details.get("target_aspect"),
-            deleted_db_records=details.get("deleted_db_records"),
-            username=log.username or "unknown",
-            request_id=log.request_id
-        ))
-    
-    return CommandHistoryResponse(
-        query_id=query_id,
-        total_commands=len(commands),
-        commands=commands
+    workflow_service = RefinementApiService(
+        manager=None,
+        db=db,
+        session_manager=None,
+        settings_factory=get_settings,
     )
+    payload = workflow_service.get_command_history_payload(
+        query_id=query_id,
+        limit=limit,
+        current_user=current_user,
+    )
+    return CommandHistoryResponse(**payload)
 
 
 @router.get("/queries/{query_id}/inspect-messages", response_model=InspectMessagesResponse)
@@ -1055,41 +704,17 @@ def inspect_messages(
 
     Shows the full message array with roles, content, and message count.
     """
-    query = get_query(db, query_id)
-    if not query or query.user_id != current_user.id:
-        raise HTTPException(
-            status_code=status.HTTP_404_NOT_FOUND,
-            detail="Query not found"
-        )
-
-    session = session_manager.load_session(query_id)
-    if not session:
-        raise HTTPException(
-            status_code=status.HTTP_404_NOT_FOUND,
-            detail="Session not found or expired"
-        )
-
-    active_step = session.get_active_step()
-    if not active_step:
-        raise HTTPException(
-            status_code=status.HTTP_400_BAD_REQUEST,
-            detail="No active dimension to inspect"
-        )
-
-    llm_settings = LLMSettings.from_env(require_model=False)
-    dependency_context = session.get_dependency_context(active_step.refinement_aspect.id)
-    messages = active_step.get_messages(
-        query=session.original_query,
-        dependency_context=dependency_context,
-        terminal_reinforcement_threshold=llm_settings.terminal_reinforcement_threshold
+    workflow_service = RefinementApiService(
+        manager=None,
+        db=db,
+        session_manager=session_manager,
+        settings_factory=get_settings,
     )
-
-    return InspectMessagesResponse(
+    payload = workflow_service.inspect_messages_payload(
         query_id=query_id,
-        current_dimension=active_step.refinement_aspect.id,
-        message_count=len(messages),
-        messages=messages,
+        current_user=current_user,
     )
+    return InspectMessagesResponse(**payload)
 
 
 @router.post("/sessions/abandon", response_model=AbandonSessionResponse)
@@ -1121,100 +746,19 @@ async def abandon_session(
     request_id = generate_request_id()
     set_request_id(request_id)
     
-    start_time = time.time()
-    logger.info(
-        "API: Abandoning session",
-        extra={
-            "request_id": request_id,
-            "user_id": current_user.id,
-            "session_id": request.session_id,
-        },
+    workflow_service = RefinementApiService(
+        manager=None,
+        db=db,
+        session_manager=session_manager,
+        settings_factory=get_settings,
     )
-    
-    try:
-        # Abandon the session in database (includes authorization check)
-        result = abandon_query_session(db, request.session_id, current_user.id)
-        
-        # Clear Redis cache for all queries in this session
-        # Note: We don't have query_ids anymore, but the session is gone
-        # Redis will expire naturally, but we can try to clear known keys
-        # For now, just log that cache should be cleared
-        logger.info(
-            "Session abandoned, Redis cache will expire naturally",
-            extra={
-                "request_id": request_id,
-                "session_id": request.session_id,
-            }
-        )
-        
-        # Log audit event
-        try:
-            audit_service.log_from_request(
-                db=db,
-                request=http_request,
-                event_type=AuditEventType.SESSION_ABANDONED,
-                user=current_user,
-                resource_type="session",
-                resource_id=str(request.session_id),
-                action=f"Abandoned session {request.session_id}",
-                status="success",
-                details={
-                    "deletion_counts": result["deletion_counts"],
-                    "request_id": request_id,
-                }
-            )
-        except Exception as e:
-            logger.error(f"Failed to log audit event: {e}", exc_info=True)
-        
-        duration_ms = (time.time() - start_time) * 1000
-        logger.info(
-            "API: Session abandoned successfully",
-            extra={
-                "request_id": request_id,
-                "user_id": current_user.id,
-                "session_id": request.session_id,
-                "deletion_counts": result["deletion_counts"],
-                "duration_ms": round(duration_ms, 2),
-            },
-        )
-        
-        return AbandonSessionResponse(
-            status="success",
-            session_id=request.session_id,
-            deletion_counts=result["deletion_counts"],
-            message=f"Session {request.session_id} abandoned successfully. "
-                   f"Deleted {result['deletion_counts']['queries']} queries, "
-                   f"{result['deletion_counts']['refinement_steps']} refinement steps."
-        )
-        
-    except ValueError as e:
-        # Session not found or authorization failed
-        logger.warning(
-            f"Failed to abandon session: {e}",
-            extra={
-                "request_id": request_id,
-                "user_id": current_user.id,
-                "session_id": request.session_id,
-            }
-        )
-        raise HTTPException(
-            status_code=status.HTTP_404_NOT_FOUND,
-            detail=str(e)
-        )
-    except Exception as e:
-        logger.error(
-            f"Error abandoning session: {e}",
-            extra={
-                "request_id": request_id,
-                "user_id": current_user.id,
-                "session_id": request.session_id,
-            },
-            exc_info=True
-        )
-        raise HTTPException(
-            status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
-            detail=f"Failed to abandon session: {str(e)}"
-        )
+    payload = await workflow_service.abandon_session_workflow(
+        session_id=request.session_id,
+        current_user=current_user,
+        http_request=http_request,
+        request_id=request_id,
+    )
+    return AbandonSessionResponse(**payload)
 
 
 # ============================================================
@@ -1254,57 +798,22 @@ async def get_query_progress(
             "llm_calls_made": 2
         }
     """
-    from query_refinement_module.services.progress_tracker import get_progress_tracker
-    
     request_id = generate_request_id()
     set_request_id(request_id)
-    
-    # Verify query exists and belongs to user
     query = get_query(db, query_id)
     if not query:
         raise HTTPException(
             status_code=status.HTTP_404_NOT_FOUND,
-            detail=f"Query {query_id} not found"
+            detail=f"Query {query_id} not found",
         )
-    
-    # For queries created via API (with session), verify ownership
-    if query.session_id:
-        from query_refinement_module.db.crud import get_query_session
-        query_session = get_query_session(db, query.session_id)
-        if query_session and query_session.user_id != current_user.id:
-            raise HTTPException(
-                status_code=status.HTTP_403_FORBIDDEN,
-                detail="Not authorized to view this query's progress"
-            )
-    
-    # Get progress from tracker
-    tracker = get_progress_tracker()
-    progress = await tracker.get(query_id)
-    
-    if not progress:
-        # No progress tracked - query might be complete or very old
-        # Return a synthetic progress based on query state
-        from query_refinement_module.models.progress import ProgressStage, ProgressStatus
-        from datetime import datetime
-        
-        # Determine stage from query state
-        if query.refined_query:
-            stage = ProgressStage.COMPLETED
-            message = "Refinement completed"
-            progress_pct = 1.0
-        else:
-            stage = ProgressStage.WAITING_FOR_USER
-            message = "Waiting for user interaction"
-            progress_pct = 0.5
-        
-        progress = ProgressStatus(
-            query_id=query_id,
-            stage=stage,
-            progress=progress_pct,
-            message=message,
-            started_at=query.created_at,
-            updated_at=query.updated_at or query.created_at,
-            elapsed_seconds=(datetime.utcnow() - query.created_at).total_seconds()
-        )
-    
-    return progress
+
+    workflow_service = RefinementApiService(
+        manager=None,
+        db=db,
+        session_manager=None,
+        settings_factory=get_settings,
+    )
+    return await workflow_service.get_query_progress_payload(
+        query_id=query_id,
+        current_user=current_user,
+    )
