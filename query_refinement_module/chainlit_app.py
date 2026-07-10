@@ -2,7 +2,6 @@
 
 from __future__ import annotations
 
-from dataclasses import dataclass
 from typing import Any, Optional
 
 from query_refinement_module.api.dependencies import get_refinement_manager
@@ -19,12 +18,12 @@ except ImportError:  # pragma: no cover - import-safe for environments without C
     cl = None
 
 
-@dataclass
 class ChainlitWorkflowState:
-    framework_name: Optional[str] = None
-    original_query: Optional[str] = None
-    session: Any = None
-    prompt: Optional[InteractivePrompt] = None
+    def __init__(self) -> None:
+        self.framework_name: Optional[str] = None
+        self.original_query: Optional[str] = None
+        self.session: Any = None
+        self.prompt: Optional[InteractivePrompt] = None
 
 
 def _get_interactive_service() -> InteractiveRefinementService:

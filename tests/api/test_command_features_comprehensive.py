@@ -719,8 +719,10 @@ def test_submit_then_synthesize():
         pytest.skip("LLM unavailable during synthesis — skipping LLM-dependent test")
     assert response.status_code == 200
     synth_data = response.json()
-    assert "refined_query" in synth_data
-    assert len(synth_data["refined_query"]) > 0
+    assert "clarified_query" in synth_data
+    assert "integrated_statement" in synth_data
+    assert len(synth_data["clarified_query"]) > 0
+    assert synth_data["clarified_query"] == synth_data["integrated_statement"]
     
     print("✓ Synthesis works after /submit")
 

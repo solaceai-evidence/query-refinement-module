@@ -42,7 +42,35 @@ class FrameworkLoadError(RuntimeError):
 # Module-level cache for loaded frameworks
 _FRAMEWORKS: Dict[str, List[RefinementAspect]] = {}
 _LAST_LOAD_ERROR: Optional[str] = None
+_LAST_LOADED_PATH: Optional[Path] = None
+_LAST_LOADED_MTIME_NS: Optional[int] = None
 _FRAMEWORKS_LOCK = threading.RLock()
+
+
+def _get_framework_path() -> Optional[Path]:
+    framework_path = os.getenv("REFINEMENT_FRAMEWORK_PATH")
+    if not framework_path:
+        return None
+    return Path(framework_path)
+
+
+def _get_framework_mtime_ns(yaml_path: Path) -> Optional[int]:
+    try:
+        return yaml_path.stat().st_mtime_ns
+    except OSError:
+        return None
+
+
+def _framework_cache_is_stale() -> bool:
+    yaml_path = _get_framework_path()
+    if yaml_path is None:
+        return not _FRAMEWORKS
+
+    return (
+        not _FRAMEWORKS
+        or _LAST_LOADED_PATH != yaml_path
+        or _LAST_LOADED_MTIME_NS != _get_framework_mtime_ns(yaml_path)
+    )
 
 
 def _load_frameworks(*, raise_on_error: bool = False) -> Dict[str, List[RefinementAspect]]:
@@ -57,16 +85,15 @@ def _load_frameworks(*, raise_on_error: bool = False) -> Dict[str, List[Refineme
     """
     global _LAST_LOAD_ERROR
     
-    framework_path = os.getenv("REFINEMENT_FRAMEWORK_PATH")
-    if not framework_path:
+    yaml_path = _get_framework_path()
+    if yaml_path is None:
         error_msg = "REFINEMENT_FRAMEWORK_PATH environment variable not set"
         _LAST_LOAD_ERROR = error_msg
         if raise_on_error:
             raise FrameworkLoadError(error_msg)
         logger.warning(error_msg)
         return {}
-    
-    yaml_path = Path(framework_path)
+
     if not yaml_path.exists():
         error_msg = f"Framework file not found: {yaml_path}"
         _LAST_LOAD_ERROR = error_msg
@@ -153,10 +180,14 @@ def reload_from_env(*, raise_on_error: bool = False) -> Dict[str, List[Refinemen
     Returns:
         Dict mapping framework names to lists of RefinementAspect objects
     """
-    global _FRAMEWORKS
+    global _FRAMEWORKS, _LAST_LOADED_PATH, _LAST_LOADED_MTIME_NS
     new = _load_frameworks(raise_on_error=raise_on_error)
     with _FRAMEWORKS_LOCK:
         _FRAMEWORKS = new
+        _LAST_LOADED_PATH = _get_framework_path()
+        _LAST_LOADED_MTIME_NS = (
+            _get_framework_mtime_ns(_LAST_LOADED_PATH) if _LAST_LOADED_PATH else None
+        )
     return _FRAMEWORKS
 
 
@@ -167,9 +198,9 @@ def list_frameworks() -> List[str]:
     Returns:
         List of framework names
     """
-    if not _FRAMEWORKS:
-        reload_from_env()
     with _FRAMEWORKS_LOCK:
+        if _framework_cache_is_stale():
+            reload_from_env()
         return list(_FRAMEWORKS.keys())
 
 
@@ -187,7 +218,9 @@ def get_framework(name: str) -> List[RefinementAspect]:
         KeyError: If framework not found
     """
     with _FRAMEWORKS_LOCK:
-        if not _FRAMEWORKS:
+        if _framework_cache_is_stale():
+            reload_from_env()
+        if name not in _FRAMEWORKS:
             reload_from_env()
         if name not in _FRAMEWORKS:
             available = ", ".join(_FRAMEWORKS.keys()) if _FRAMEWORKS else "none"

@@ -609,12 +609,12 @@ def test_command_force_confirmation():
     token = register_and_login()
     headers = {"Authorization": f"Bearer {token}"}
     
-    # Start a refinement session with framework that has dependencies
+    # Start a refinement session with the active dependency-aware framework
     start_response = requests.post(
         f"{BASE_URL}/refinement/start",
         json={
             "original_query": "effects of aspirin on stroke prevention",
-            "framework_name": "pico_advanced_complete"  # Has dependencies
+            "framework_name": "pico_advanced"
         },
         headers=headers
     )
