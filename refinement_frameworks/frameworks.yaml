@@ -87,6 +87,153 @@ cocopop:
         - statement: "Affected areas"
           issue: No usable geographic or setting anchor.
           example_question: "Which country, region, or setting should the review focus on?"
+        - statement: "Qoloji camp"
+          issue: A single named site can be too narrow for useful retrieval.
+          example_question: "Would you like to broaden this to a displacement camp, district, region, or country?"
+        - statement: "Sub-Saharan Africa"
+          issue: TOO BROAD — continent-level sub-region with no hazard, income, or country anchor; encompasses dozens of countries with distinct health systems and evidence bases.
+          example_question: "Are you focusing on a specific country or sub-region, or is the broader scope intentional?"
+
+  - id: population
+    name: Population
+    description: "The group of individuals or entities whose health outcomes are the focus of the question, defined by demographic characteristics, vulnerability, and inclusion criteria that shape evidence applicability."
+    depends_on:
+      - condition
+      - context
+    specifications: |
+      **Elements to extract silently (always, without asking):**
+      - Population scope: specific named group, or confirmation that the question applies to all populations
+      - Age: range, category, or life stage, if stated
+      - Sex/gender, if stated
+      - Subgroup characteristics, if stated (roles, affiliations, socioeconomic markers, reproductive status, occupational categories)
+
+      **When to ask:**
+      - No population anchor at all (no named group) → ask which group the question focuses on.
+      - Generic placeholder only (e.g., "people", "communities") with no anchor → ask which group.
+
+      **Never ask about:** narrowing or broadening scope, age specificity, sex/gender, subgroup characteristics, ethnicity/race. If stated, extract silently.
+
+      **Complete when:** a population group is named (specific group, broad group, or "all populations"). Accept whatever the user provides.
+
+      **Standardisation:**
+      - "kids" → "children"
+      - "elderly" → "older adults"
+
+      **Output rule:** Use the shortest faithful population phrase. Do not infer or add age, sex, or subgroup characteristics beyond what the user has stated.
+    examples:
+      clear:
+        - statement: "Pregnant women in Rohingya camps in Cox's Bazar"
+          rationale: Population scope (pregnant women) and geographic anchor are explicit.
+        - statement: "Children under 5 in drought-affected households"
+          rationale: Population scope and age category are stated; no unstated details need to be inferred.
+        - statement: "Displaced populations"
+          rationale: Group is named and coherent; acceptable as stated when the topic does not require finer demographic stratification.
+      needs_refinement:
+        - statement: "People"
+          issue: No meaningful population group or anchor.
+          example_question: "Which population group should the review focus on?"
+      partial:
+        - statement: "People affected by neonatal mortality after extreme heat"
+          has: topic implies a specific subgroup (newborns or households with newborns)
+          missing: population anchor — "people affected by" is a generic placeholder; the actual target group is unstated
+          example_question: "Which population should the review focus on?"
+      ambiguous:
+        - statement: "Healthcare workers and patients in flood-affected hospitals"
+          issue: Two unrelated population groups named without a primary focus.
+          example_question: "Which population is the primary focus — healthcare workers or patients?"
+cocopop_v2:
+  - id: condition
+    name: Condition
+    description: "The health condition, disease, symptom cluster, public-health problem, or social issue under study."
+    specifications: |
+      **Elements to extract silently (always, without asking):**
+      - Named condition, disease, symptom cluster, or public-health problem
+      - Climate-health linkage, if stated and it is part of the condition name itself (e.g., "flood-related cholera", "heat stroke"). Do not carry the climate driver into `current` if it is a standalone hazard or setting descriptor — Context owns that.
+      - Temporal qualifier, if stated (e.g., acute phase, post-exposure, seasonal peak)
+
+      **Completeness test — the only check that matters:**
+      A condition is complete if and only if it is searchable: a named condition, condition family, recognised multi-domain scope, or social issue that could retrieve literature. Accept at any granularity. Do not ask for narrowing.
+
+      **When to ask:**
+      - No condition named at all → ask what condition, condition family, or health domain to focus on.
+      - Named term is unsearchable (e.g., "health impacts", "illness", "problems") → ask which condition or domain they mean.
+
+      **Never ask about:** specificity level, subtypes, or granularity. Do not push a user to narrow a named condition, condition family, or multi-domain scope. Accept whatever level the user provides. Also never ask about research question type, investigative focus, or research design (e.g., "Are you interested in prevalence, intervention effectiveness, risk factors?"). Those belong to downstream synthesis agents, not to Condition refinement.
+
+      **Ambiguous only when:** two genuinely unrelated conditions are named with no coherent combined evidence base (e.g., "heat illness and waterborne disease"). If the two conditions are routinely co-studied (e.g., "mental health and substance misuse", "HIV and tuberculosis", "maternal and neonatal health"), accept the combined framing immediately as complete.
+
+      **Output rule:** Keep only the condition in `current`. Remove people-group, place, and service-setting wording unless it is part of the condition name itself.
+    examples:
+      clear:
+        - statement: "Cholera"
+          rationale: Named condition — searchable. Complete immediately.
+        - statement: "Mental health and substance misuse"
+          rationale: Recognised co-studied multi-domain scope — searchable. Complete immediately without asking for further specificity.
+        - statement: "Diabetes during extreme heat events"
+          rationale: Named condition with a climate qualifier; both extractable without asking.
+        - statement: "Common mental disorders"
+          rationale: Coherent condition family with an established evidence base. Complete as stated.
+      needs_refinement:
+        - statement: "Health impacts of sea-level rise"
+          issue: No condition named; "health impacts" is not searchable on its own.
+          example_question: "Which health condition should the review focus on?"
+        - statement: "Illness after climate shocks"
+          issue: '"Illness" is a placeholder with no searchable scope.'
+          example_question: "Which condition or condition family should the review focus on?"
+      ambiguous:
+        - statement: "Heat illness and waterborne disease after flooding"
+          issue: Two genuinely unrelated condition families — different causal pathways, interventions, and evidence bases, not routinely co-studied.
+          example_question: "Which condition is the main focus?"
+      other:
+        - statement: "Diabetes complications in pregnant women during heatwaves"
+          guidance: "Extract `diabetes complications during heatwaves`. Do not copy `pregnant women` into the condition — that belongs in Population."
+
+  - id: context
+    name: Context
+    description: "The geographic, environmental, and implementation setting in which the condition occurs and in which any response or intervention would be applied."
+    depends_on:
+      - condition
+    specifications: |
+      **Elements to extract silently (always, without asking):**
+      - Geographic setting: country, region, or sub-national area. If a named place (camp, city, district, facility) is stated and its country or region is known, extract the full location chain (name + country/region) silently without asking.
+      - Urban/rural/peri-urban classification, if stated. For named camps or displacement settings, the setting type is already established from the name — do not ask for further classification.
+      - If the named place is so narrow that it is unlikely to support useful retrieval on its own (for example, a single camp, facility, village, or local site), ask whether to broaden it to a setting type or higher geography.
+      - Income or resource setting, if stated (e.g., low-resource, LMIC)
+      - Health system level and capacity, if stated
+      - Socioeconomic or political context, if stated (e.g., conflict-affected, displacement camp, post-disaster)
+      - Temporal context, if stated (e.g., acute emergency, recovery phase, chronic/ongoing)
+
+      **When to ask:**
+      - No geographic anchor at all (no named place, country, region, or setting) → ask which country, region, or setting applies.
+      - Named place stated but genuinely ambiguous or unknown → ask which country or region it is in.
+      - Geographic anchor is continent-level or heterogeneous (e.g., "Africa", "developing countries", "Global South") → ask once whether a specific country or sub-region is intended.
+
+      **Never ask about:** urban/rural/peri-urban classification, broadening or narrowing scope, health system level, temporal phase, income setting, socioeconomic context, environmental or climate hazards. If stated, extract silently.
+
+      **Complete when:** a geographic anchor is present (named place, country, region) or global scope is confirmed. Accept whatever specificity level the user provides.
+
+      **Standardisation:**
+      - "developing countries" → "low- and middle-income countries (LMICs)"
+      - "poor countries" → "low-income countries"
+      - "rich countries" → "high-income countries"
+      - "Global South" / "developing world" → resolve to named geographies or income classifications
+
+      **Output rule:** Use the shortest faithful setting phrase that includes the geographic anchor and any extractable capacity or temporal qualifiers.
+    examples:
+      clear:
+        - statement: "Rohingya camps in Cox's Bazar, Bangladesh"
+          rationale: Country-level geography and setting type are both explicit; no additional detail is required.
+        - statement: "Displacement camps in Bangladesh following riverine flooding"
+          rationale: Named setting type (displacement camps), country (Bangladesh), and hazard (riverine flooding) all present — sufficient without requiring rural/urban classification.
+        - statement: "Primary health care facilities with no cold chain in coastal Mozambique, acute phase within 4 weeks of cyclone landfall"
+          rationale: Geographic setting (coastal Mozambique), health system level and capacity constraint (primary care, no cold chain), and temporal context (acute, within 4 weeks) all specified.
+      needs_refinement:
+        - statement: "Affected areas"
+          issue: No usable geographic or setting anchor.
+          example_question: "Which country, region, or setting should the review focus on?"
+        - statement: "Qoloji camp"
+          issue: A single named site can be too narrow for useful retrieval.
+          example_question: "Would you like to broaden this to a displacement camp, district, region, or country?"
         - statement: "Sub-Saharan Africa"
           issue: TOO BROAD — continent-level sub-region with no hazard, income, or country anchor; encompasses dozens of countries with distinct health systems and evidence bases.
           example_question: "Are you focusing on a specific country or sub-region, or is the broader scope intentional?"

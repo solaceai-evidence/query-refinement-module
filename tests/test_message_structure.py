@@ -145,6 +145,23 @@ def test_only_global_directive_is_cached():
         assert msg.get("_cache") is not True, "Only global directive should be cached"
 
 
+def test_cocopop_v2_context_asks_to_broaden_overly_specific_places():
+    """cocopop_v2 should ask when a named setting is too narrow for retrieval."""
+    _load_framework_from_current_yaml()
+    aspects = registry.get_framework("cocopop_v2")
+    context_aspect = next(a for a in aspects if a.id == "context")
+
+    spec = context_aspect.specifications
+    assert "so narrow that it is unlikely to support useful retrieval on its own" in spec
+    assert "broaden it to a setting type or higher geography" in spec
+
+    examples = context_aspect.examples
+    assert examples is not None
+    qoloji = next(ex for ex in examples.needs_refinement if ex.get_text() == "Qoloji camp")
+    assert "too narrow" in (qoloji.issue or "")
+    assert "displacement camp, district, region, or country" in (qoloji.example_question or "")
+
+
 def _build_plain_dimension():
     return RefinementDimension(
         id="population",
