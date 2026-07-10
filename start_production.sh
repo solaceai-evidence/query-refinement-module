@@ -1,8 +1,8 @@
 #!/bin/bash
 # Production startup script for Query Refinement API
 #
-# This script performs pre-flight checks and starts the application safely.
-# It should be run in the production environment before launching the server.
+# This script performs pre-flight checks and starts the API safely.
+# Use docker compose for the full API + Chainlit production stack.
 #
 # Usage:
 #   chmod +x start_production.sh

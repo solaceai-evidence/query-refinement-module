@@ -1665,6 +1665,8 @@ Audit log endpoints require a superuser account.
 
 ## Frontend Logs
 
+These endpoints currently support the legacy React prototype. The default interactive web UI is now the Chainlit app, which relies on server-side logs and API audit events instead of a separate browser log transport.
+
 - `POST /api/v1/logs/frontend`
 - `GET /api/v1/logs/frontend`
 - `GET /api/v1/logs/frontend/stats`

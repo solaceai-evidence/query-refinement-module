@@ -36,12 +36,12 @@ services:
     networks:
       - query-refinement-net
 
-  # Backend API
-  backend:
+  # API
+  api:
     build:
       context: .
       dockerfile: Dockerfile
-    container_name: query-refinement-backend
+    container_name: query-refinement-api
     env_file:
       - .env
     environment:
@@ -79,20 +79,40 @@ services:
           - api
     restart: unless-stopped
 
-  # Frontend (Nginx serving React build)
-  frontend:
+  # Chainlit web UI
+  chainlit:
     build:
-      context: ./frontend
-      dockerfile: Dockerfile.production
-    container_name: query-refinement-frontend
+      context: .
+      dockerfile: Dockerfile
+    container_name: query-refinement-chainlit
+    env_file:
+      - .env
+    environment:
+      DATABASE_URL: postgresql+psycopg2://${POSTGRES_USER:-qruser}:${POSTGRES_PASSWORD:-changeme}@postgres:5432/${POSTGRES_DB:-query_refinement}
+      REDIS_URL: ${REDIS_URL:-redis://redis:6379/0}
     ports:
-      - "${NGINX_HTTP_PORT:-80}:80"
-      - "${NGINX_HTTPS_PORT:-443}:443"
+      - "${CHAINLIT_PORT:-8501}:8501"
     depends_on:
-      - backend
+      postgres:
+        condition: service_healthy
+      redis:
+        condition: service_healthy
     volumes:
-      - ./frontend/nginx.conf:/etc/nginx/nginx.conf:ro
-      - ./nginx/ssl:/etc/nginx/ssl:ro
+      - ./refinement_frameworks:/app/refinement_frameworks:ro
+      - ./logs:/app/logs
+    command: >
+      sh -c "
+        echo 'Waiting for database...' &&
+        sleep 5 &&
+        echo 'Starting Chainlit...' &&
+        python3 -m chainlit run query_refinement_module/chainlit_app.py --host 0.0.0.0 --port 8501
+      "
+    healthcheck:
+      test: ["CMD", "python3", "-c", "import requests; requests.get('http://localhost:8501', timeout=5)"]
+      interval: 30s
+      timeout: 10s
+      retries: 3
+      start_period: 40s
     networks:
       - query-refinement-net
     restart: unless-stopped

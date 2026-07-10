@@ -8,7 +8,7 @@ For a normal production deployment, you will need:
 
 - Docker Engine and the Docker Compose plugin on the server
 - A copy of the production environment file (`.env.prod` for Anthropic Claude, or `.env.prod.selfhosted` for self-hosted inference)
-- Values for the database, AI provider, and website addresses
+- Values for the database, AI provider, and browser addresses
 - A writable location for logs
 
 ## Quick Production Setup
@@ -38,7 +38,7 @@ cp .env.prod.selfhosted .env       # Self-hosted or local inference
 docker compose -f docker-compose.yml -f docker-compose.prod.yml up -d --build
 ```
 
-6. Open the site in a browser and check that the homepage, login page, and API docs load correctly.
+6. Open the Chainlit UI and API docs in a browser and check that both load correctly.
 
 ## Pre-deployment checklist
 
@@ -54,41 +54,41 @@ Before starting, verify the following:
 - `ALLOW_REGISTRATION=false` unless self-signup is needed
 - `ENFORCE_WORKFLOW_LIMIT` is set to the intended operating mode
 - `INTEGRATION_API_KEY` is set if other systems will call the API
-- Host paths exist and are writable: `./logs`, `./logs/nginx`
+- Host paths exist and are writable: `./logs`
 - If port `5432` or `6379` is already in use, override with `POSTGRES_PORT` / `REDIS_PORT` in `.env`
-- Inbound ports `80` and `443` are open; port `8001` is optional for direct API access
+- Inbound port `8501` is open for Chainlit; port `8001` is optional for direct API access
 
 ## What Runs in Production
 
 - `docker-compose.yml` (base services): `postgres`, `redis`, `api`
-- `docker-compose.prod.yml` (production overrides): adds `frontend`, `nginx`
+- `docker-compose.fullstack.yml` (local/full interface stack): adds `chainlit`
+- `docker-compose.prod.yml` (production overrides): adds the TLS/reverse-proxy layer
 
 Routing model:
 
-- Client traffic enters via `nginx` on ports `80/443`
-- API traffic is proxied to `api:8001` under `/api/*`
-- Frontend traffic is proxied from `/` to the frontend container
-- Direct API port `8001` is also published by default for diagnostics
+- Chainlit traffic is served on port `8501`
+- API traffic is available on `:8001`
+- Chainlit and the API share the same database, Redis session store, and framework definitions
 
 ## Prerequisites
 
 - Docker Engine + Docker Compose plugin
 - VM with persistent disk for database/cache volumes
 - Network access to your LLM provider
-- Optional for local development: Python 3.12+, Poetry, Node.js 20+
+- Optional for local development: Python 3.12+, Poetry, Node.js 20+ for the legacy React prototype only
 
 ## LLM Provider Configuration
 
 The API service connects to an LLM provider via LiteLLM. Six pre-filled environment templates are provided:
 
-| Template | Provider | Environment | API key required |
-| -------- | -------- | ------------ | ---------------- |
-| `.env.claude_api` | Anthropic Claude Sonnet 4.6 | Development (cloud) | yes |
-| `.env.cloud` | Other cloud providers (OpenAI, etc.) | Development (cloud) | yes |
-| `.env.local` | Ollama — local models | Development (local) | no |
-| `.env.selfhosted` | vLLM or self-hosted inference | Development / Production | no |
-| `.env.prod` | Anthropic Claude Sonnet 4.6 | Production (cloud) | yes |
-| `.env.prod.selfhosted` | Self-hosted or local inference | Production | no |
+| Template               | Provider                             | Environment              | API key required |
+| ---------------------- | ------------------------------------ | ------------------------ | ---------------- |
+| `.env.claude_api`      | Anthropic Claude Sonnet 4.6          | Development (cloud)      | yes              |
+| `.env.cloud`           | Other cloud providers (OpenAI, etc.) | Development (cloud)      | yes              |
+| `.env.local`           | Ollama — local models                | Development (local)      | no               |
+| `.env.selfhosted`      | vLLM or self-hosted inference        | Development / Production | no               |
+| `.env.prod`            | Anthropic Claude Sonnet 4.6          | Production (cloud)       | yes              |
+| `.env.prod.selfhosted` | Self-hosted or local inference       | Production               | no               |
 
 ### Switching to OpenAI or other cloud providers
 
@@ -102,13 +102,13 @@ cp .env.cloud .env
 
 Key cloud provider settings:
 
-| Variable                | Value           | Notes                                                                          |
-| ----------------------- | --------------- | ------------------------------------------------------------------------------ |
-| `LLM_API_KEY`           | required        | API key for your cloud provider (Anthropic, OpenAI, etc.)                      |
+| Variable                | Value           | Notes                                                                         |
+| ----------------------- | --------------- | ----------------------------------------------------------------------------- |
+| `LLM_API_KEY`           | required        | API key for your cloud provider (Anthropic, OpenAI, etc.)                     |
 | `LLM_MODEL`             | provider/model  | Model identifier (e.g. `openai/gpt-4o`, `anthropic/claude-sonnet-4-6`)        |
-| `LLM_API_BASE`          | *(leave blank)* | Leave blank for official cloud endpoints; set only if using a custom endpoint  |
-| `LLM_MAX_OUTPUT_TOKENS` | `4096`          | Default per-call output ceiling; does not change the model context window      |
-| `LLM_CONTEXT_WINDOW`    | unsupported     | Cloud providers manage context window; do not set this                         |
+| `LLM_API_BASE`          | *(leave blank)* | Leave blank for official cloud endpoints; set only if using a custom endpoint |
+| `LLM_MAX_OUTPUT_TOKENS` | `4096`          | Default per-call output ceiling; does not change the model context window     |
+| `LLM_CONTEXT_WINDOW`    | unsupported     | Cloud providers manage context window; do not set this                        |
 
 ### Switching to Ollama (local models)
 
@@ -158,12 +158,12 @@ cp .env.selfhosted .env
 
 Key self-hosted settings:
 
-| Variable                    | Value                   | Notes                                |
-| --------------------------- | ----------------------- | ------------------------------------ |
-| `LLM_API_BASE`              | `http://<host>:8000/v1` | Point this at your inference server  |
-| `LLM_MODEL`                 | The loaded model name   | Must match the model on your server  |
-| `LLM_API_KEY`               | `EMPTY`                 | Placeholder for local servers        |
-| `LLM_CONSTRAINED_DECODING`  | `true` (vLLM only)      | Enforces JSON schema at token level  |
+| Variable                   | Value                   | Notes                               |
+| -------------------------- | ----------------------- | ----------------------------------- |
+| `LLM_API_BASE`             | `http://<host>:8000/v1` | Point this at your inference server |
+| `LLM_MODEL`                | The loaded model name   | Must match the model on your server |
+| `LLM_API_KEY`              | `EMPTY`                 | Placeholder for local servers       |
+| `LLM_CONSTRAINED_DECODING` | `true` (vLLM only)      | Enforces JSON schema at token level |
 
 > **Warning:** `LLM_CONSTRAINED_DECODING=true` only works with vLLM.
 > Set it to `false` for other self-hosted backends.
@@ -243,9 +243,9 @@ Ownership model:
 
 ### Step 1: Check the server
 
-- Ensure ports `80` and `443` are allowed inbound
+- Ensure port `8501` is allowed inbound if you are exposing Chainlit directly
 - Decide whether port `8001` should be externally reachable; restrict it at the firewall if not needed
-- Create writable directories: `./logs`, `./logs/nginx`
+- Create writable directories: `./logs`
 - If host services already use `5432`/`6379`, set `POSTGRES_PORT`/`REDIS_PORT` in `.env` (for example `5433`/`6380`)
 
 Optional preflight validator:
@@ -258,7 +258,7 @@ bash scripts/validate_deployment.sh
 
 Choose one deployment mode:
 
-#### Mode A: HTTP (API only, no nginx)
+#### Mode A: API only
 
 ```bash
 docker compose -f docker-compose.yml up -d --build
@@ -266,13 +266,13 @@ docker compose -f docker-compose.yml up -d --build
 
 Use this for internal testing or local-only access on port `8001`.
 
-#### Mode B: HTTPS (nginx + TLS, no public domain required)
+#### Mode B: API + Chainlit
 
 ```bash
-docker compose -f docker-compose.yml -f docker-compose.prod.yml up -d --build
+docker compose -f docker-compose.fullstack.yml up -d --build
 ```
 
-Use this when you want TLS termination at nginx but are not exposing a public domain yet. This is useful for direct IP testing with a self-signed certificate.
+Use this when you want the default human-facing UI plus the API, without adding TLS termination.
 
 #### Mode C: HTTPS + domain (recommended for evaluators and integrations)
 
@@ -286,7 +286,7 @@ Use this with DNS and valid certificates (for example, `query-refinement-assista
 
 Run checks for the mode you started:
 
-#### Mode A: HTTP (API only)
+#### Mode A: API only
 
 ```bash
 docker compose -f docker-compose.yml ps
@@ -294,13 +294,11 @@ curl -f http://localhost:8001/ready
 curl -f http://localhost:8001/health
 ```
 
-#### Mode B: HTTPS (no public domain)
+#### Mode B: API + Chainlit
 
 ```bash
-docker compose -f docker-compose.yml -f docker-compose.prod.yml ps
-curl -I http://localhost/health
-curl -f http://localhost/nginx-health
-curl -k -f https://localhost/health
+docker compose -f docker-compose.fullstack.yml ps
+curl -f http://localhost:8501
 curl -f http://localhost:8001/ready
 ```
 
@@ -317,8 +315,7 @@ curl -f http://localhost:8001/ready
 What the checks mean:
 
 - HTTP mode uses API endpoints directly on `:8001`
-- In HTTPS modes, `http://.../health` should return a redirect to HTTPS
-- `/nginx-health` confirms the nginx container is alive
+- Chainlit mode serves the guided dialogue on `:8501`
 - `/ready` confirms API dependency readiness such as the database and Redis
 
 ### Step 4: Run a quick smoke test
@@ -326,7 +323,7 @@ What the checks mean:
 Use the appropriate base URL:
 
 - Mode A (HTTP): `http://localhost:8001`
-- Mode B (HTTPS, local test): `https://localhost`
+- Mode B (API + Chainlit): `http://localhost:8501`
 - Mode C (HTTPS + domain): `https://query-refinement-assistant.cloud`
 
 Examples:
@@ -347,14 +344,13 @@ curl -i -X POST <base-url>/api/v1/refinement/start \
 
 Notes:
 
-- For Mode B, add `-k` to curl commands if using self-signed certs.
 - For Mode C, replace `<base-url>` with `https://query-refinement-assistant.cloud`.
 
 ### Step 5: Watch the logs
 
 ```bash
 docker compose -f docker-compose.yml -f docker-compose.prod.yml logs -f api
-docker compose -f docker-compose.yml -f docker-compose.prod.yml logs -f nginx
+docker compose -f docker-compose.fullstack.yml logs -f chainlit
 ```
 
 ## External Integration Readiness Checklist
@@ -382,7 +378,16 @@ Or use the startup script (checks env, runs migrations, starts Gunicorn):
 
 API default: `http://localhost:8001`
 
-### Frontend
+### Chainlit UI
+
+```bash
+poetry install
+poetry run chainlit run query_refinement_module/chainlit_app.py --host 0.0.0.0 --port 8501
+```
+
+Chainlit default: `http://localhost:8501`
+
+### Legacy React Prototype
 
 ```bash
 cd frontend
@@ -390,7 +395,7 @@ npm install
 npm run dev
 ```
 
-Frontend default: `http://localhost:5173`
+Legacy frontend default: `http://localhost:5173`
 
 ## Migrations
 

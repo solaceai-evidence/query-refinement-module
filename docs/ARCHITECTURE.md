@@ -1,20 +1,42 @@
 # Architecture Guide
 
-This document explains the current backend layering for the refinement system and where external contributors should extend behavior.
+This document explains the current cross-interface layering for the refinement system and where external contributors should extend behavior.
 
 ## Design goals
 
-The refinement backend is organized to keep transport concerns separate from workflow orchestration and to make it obvious where new behavior belongs.
+The refinement system is organized to keep interface concerns separate from workflow orchestration and to make it obvious where new behavior belongs.
 
 The target layering is:
 
 ```text
-HTTP routes
-  -> transport schemas
-  -> application facade
+REST routes / CLI / Chainlit
+  -> interface adapters
+  -> shared interactive + API application services
   -> focused workflow services
   -> core/session logic + persistence + infrastructure
 ```
+
+## Refinement interface map
+
+### 1. Interactive entry points
+
+Files:
+
+- `query_refinement_module/cli.py`
+- `query_refinement_module/chainlit_app.py`
+- `query_refinement_module/application/interactive_refinement_service.py`
+
+Responsibilities:
+
+- Keep CLI and chat UI presentation-specific concerns outside the manager
+- Reuse one shared prompt/answer progression service for human-in-the-loop workflows
+- Share small interface helpers such as numeric example resolution and Agent D input assembly
+
+What should not live here:
+
+- Prompt-generation business rules duplicated per interface
+- Session lifecycle orchestration duplicated per interface
+- Direct manager state-machine calls from UI adapters
 
 ## Refinement backend map
 
@@ -62,6 +84,22 @@ Responsibilities:
 This file should remain thin. If it starts accumulating orchestration logic again, move that logic into one of the focused services below.
 
 ### 4. Focused workflow services
+
+#### Shared interactive workflows
+
+Files:
+
+- `query_refinement_module/application/interactive_refinement_service.py`
+- `query_refinement_module/application/interactive_refinement_helpers.py`
+
+Owns:
+
+- Starting interactive sessions for non-HTTP interfaces
+- Resolving the next prompt from shared session state
+- Submitting one answer or slash command turn
+- Shared numeric example resolution and Agent D expansion-input assembly
+
+Add logic here when a change should affect both CLI and chat-style UIs.
 
 #### Lifecycle workflows
 
@@ -136,7 +174,7 @@ This module contains shared helper functions for rebuilding or advancing session
 
 ### Change the question/answer loop
 
-Start in `query_refinement_module/application/refinement_lifecycle_service.py`.
+Start in `query_refinement_module/application/interactive_refinement_service.py` for CLI or chat behavior, and in `query_refinement_module/application/refinement_lifecycle_service.py` for HTTP session workflows.
 
 Typical examples:
 
@@ -144,6 +182,7 @@ Typical examples:
 - New synthesis readiness rule
 - New persistence side effect after answer submission
 - New reconstruction behavior after cache miss
+- New CLI or Chainlit prompt-transition rule
 
 ### Change Agent A/B/C/D behavior
 
@@ -162,6 +201,7 @@ Start in `query_refinement_module/application/refinement_service_support.py` and
 Use focused validation first, then widen:
 
 - Refinement surface: `poetry run pytest tests/unit/test_refinement_api_service.py tests/api/test_refinement_endpoints.py tests/api/test_frontend_contracts.py tests/api/test_refinement_reconstruction.py tests/api/test_command_history.py tests/api/test_abandon_session.py tests/api/test_progress.py tests/unit/test_refinement_synthesis_readiness.py tests/unit/test_generated_question_persistence.py tests/unit/test_ssrf_guard.py -q`
+- CLI surface: `poetry run pytest tests/unit/test_cli.py -q`
 - Full suite: `poetry run pytest -q`
 
 Preserve compatibility seams when tests patch route-local or facade-local helpers. Several tests intentionally patch those seams instead of the deeper collaborators.

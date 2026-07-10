@@ -11,14 +11,16 @@ import os
 import sys
 from typing import Any, Dict, Optional
 
-from .core import QueryRefinementManager, is_user_command, parse_user_command
+from .application import (
+    InteractiveRefinementService,
+    build_search_expansion_input_from_synthesis,
+    resolve_numeric_examples,
+)
+from .core import QueryRefinementManager, is_user_command
 from .llm_model_defaults import get_model_defaults
 from .logging_utils import configure_file_logging
 from .providers import ConsoleTracing, FileTracingProvider, LiteLLMProvider
 from .schema import registry
-from .schema.response import (
-    SearchExpansionInput,
-)
 from .settings import LLMSettings
 
 load_dotenv(override=False)
@@ -142,105 +144,11 @@ def _accepted_dimensions_from_session(session, fallback_dimensions: Optional[Dic
 
 
 
-def _build_search_expansion_input_from_synthesis(
-    synthesis: Dict[str, Any],
-) -> Optional[SearchExpansionInput]:
-    """Build Agent D input from the synthesis dict.
-
-    Returns None if combined_blocks are unavailable.
-    """
-    clarified_query = synthesis.get("clarified_query")
-    if not clarified_query:
-        return None
-
-    search_optimized = synthesis.get("search_optimized")
-    combined_blocks = None
-    if search_optimized is not None:
-        keyword = getattr(search_optimized, "keyword", None)
-        if keyword is not None:
-            combined_blocks = getattr(keyword, "combined_blocks", None)
-
-    if not combined_blocks:
-        return None
-
-    concept_graph = synthesis.get("concept_graph") or {}
-
-    # Agent B passthrough
-    so = synthesis.get("search_optimized")
-    semantic_statement = getattr(so, "semantic", "") or "" if so else ""
-    keyword_statement_val = synthesis.get("keyword_statement") or ""
-
-    # Agent C passthrough
-    kw = getattr(so, "keyword", None) if so else None
-    keyword_structured = getattr(kw, "structured", "") or "" if kw else ""
-    phrases = list(getattr(kw, "phrases", None) or []) if kw else []
-    search_filters = synthesis.get("search_filters")
-
-    return SearchExpansionInput(
-        clarified_query=clarified_query,
-        anchor_blocks=combined_blocks,
-        concept_graph=concept_graph,
-        semantic_statement=semantic_statement,
-        keyword_statement=keyword_statement_val,
-        keyword_structured=keyword_structured,
-        search_filters=search_filters,
-        phrases=phrases,
-    )
-
-
 def _read_optional_input(prompt: str) -> str:
     try:
         return input(prompt)
     except (EOFError, StopIteration):
         return ""
-
-
-def _resolve_numeric_examples(user_input: str, examples: Optional[list[str]]) -> tuple[str, bool]:
-    """
-    Resolve numeric input to example text.
-
-    If user enters number(s) referencing examples (e.g., "1" or "1, 2" or "1."),
-    convert to the actual example text(s). Otherwise return input as-is.
-
-    Returns:
-        (resolved_input, was_numeric): The resolved text and whether it was numeric input
-    """
-    if not examples:
-        return user_input, False
-
-    import re
-    # Extract just the numeric part from tokens, handling "1", "1.", "1..", etc.
-    numbers = re.findall(r'\d+', user_input.strip())
-
-    if not numbers:
-        return user_input, False
-
-    # Check if input looks like numeric selection: should be mostly digits/dots/spaces/commas/list-words
-    # This heuristic prevents misinterpreting "type 1 diabetes" as numeric reference
-    cleaned = re.sub(r'\b(and|or)\b', '', user_input.strip(), flags=re.IGNORECASE)
-    cleaned = re.sub(r'[\d\s,\.]+', '', cleaned)
-    if cleaned:  # If anything other than digits/spaces/dots/commas/and/or remains
-        return user_input, False
-
-    # Try to resolve each number to an example (1-indexed)
-    resolved = []
-    for num_str in numbers:
-        try:
-            idx = int(num_str) - 1  # Convert 1-indexed to 0-indexed
-            if 0 <= idx < len(examples):
-                resolved.append(examples[idx])
-            else:
-                # Out of range - treat original input as not numeric
-                return user_input, False
-        except (ValueError, IndexError):
-            return user_input, False
-
-    if resolved:
-        # Join multiple selections with a separator
-        result = " | ".join(resolved) if len(resolved) > 1 else resolved[0]
-        return result, True
-
-    return user_input, False
 
 
 def _print_search_expansion_levels(response) -> None:
@@ -299,7 +207,7 @@ async def _run_cli_search_expansion(
     logger.info("CLI: starting Agent D search expansion")
 
     try:
-        expansion_input = _build_search_expansion_input_from_synthesis(synthesis)
+        expansion_input = build_search_expansion_input_from_synthesis(synthesis)
         if expansion_input is None:
             logger.warning(
                 "CLI: Agent D search expansion unavailable because combined_blocks were missing"
@@ -338,6 +246,8 @@ async def run_cli(manager: QueryRefinementManager, framework_name: str, query: s
         print(f"Error: {exc}")
         return
 
+    interactive_service = InteractiveRefinementService(manager)
+
     print("\n" + "="*80)
     print("QUERY REFINEMENT - Sequential On-Demand Mode")
     print("="*80)
@@ -348,7 +258,7 @@ async def run_cli(manager: QueryRefinementManager, framework_name: str, query: s
     
     # Use sequential initialization (no upfront analysis)
     print("\n Initializing session...")
-    session = manager.initialize_sequential(query, framework)
+    session = interactive_service.start_session(original_query=query, refinement_framework=framework)
     print(f"✓ Session ready with {len(session.steps)} aspects to refine\n")
 
     print("="*80)
@@ -360,20 +270,25 @@ async def run_cli(manager: QueryRefinementManager, framework_name: str, query: s
     print("="*80 + "\n")
 
     interrupted = False
+    current_prompt = None
 
     try:
         while True:
             if session.synthesis_requested:
                 break
 
-            # Get next aspect that needs refinement (respects dependencies)
-            step = session.get_next_unrefined_aspect()
-            if not step:
-                # All aspects complete
+            if current_prompt is None:
+                current_prompt = await interactive_service.get_next_prompt(session)
+
+            if current_prompt is None:
                 break
 
-            header = step.refinement_aspect.name
-            aspect_desc = step.refinement_aspect.description or ""
+            step = session.get_active_step()
+            if not step:
+                break
+
+            header = current_prompt.aspect_name
+            aspect_desc = current_prompt.aspect_description
             
             print("\n" + "─"*80)
             print(f" {header.upper()}")
@@ -382,45 +297,15 @@ async def run_cli(manager: QueryRefinementManager, framework_name: str, query: s
             print("─"*80)
 
             # Show dependency context if available
-            context_text = _format_dependency_context(session, step.refinement_aspect.id)
+            context_text = _format_dependency_context(session, current_prompt.aspect_id)
             if context_text:
                 print(f"\n{context_text}\n")
 
-            # Generate initial question for this aspect using unified approach
-            print(" Checking if clarification is needed...\n")
-            try:
-                result = await manager.get_analysis_prompts(
-                    session=session,
-                    aspect_id=step.refinement_aspect.id,
-                    mode='initial'
-                )
-                
-                # Process result
-                status = manager.process_analysis_result(
-                    session=session,
-                    aspect_id=step.refinement_aspect.id,
-                    result=result
-                )
-                
-                if status['complete']:
-                    # Aspect is already clear from the query
-                    print(f"✓ {header} is already clear from your query")
-                    continue
-                
-                # Not complete - show question to user
-                question = result.question
-                
-            except Exception as e:
-                print(f" Error: {e}")
-                print(f"Skipping aspect {header}...")
-                step.was_skipped = True
-                step.is_complete = True
-                continue
-            
+            question = current_prompt.question
             print(f"{question}\n")
             current_examples: Optional[list[str]] = None  # Track examples for numeric resolution
-            if result.examples:
-                current_examples = result.examples
+            if current_prompt.examples:
+                current_examples = current_prompt.examples
                 for i, opt in enumerate(current_examples, 1):
                     print(f"  {i}. {opt}")
                 print()
@@ -441,88 +326,44 @@ async def run_cli(manager: QueryRefinementManager, framework_name: str, query: s
 
                 # Handle commands
                 if is_user_command(user_input):
-                    command_result = parse_user_command(user_input)
-                    payload = session.handle_command(command_result)
-                    print(payload.get("message", ""))
-                    if payload.get("submit") or session.synthesis_requested:
+                    turn_result = await interactive_service.submit_input(
+                        session=session,
+                        user_input=user_input,
+                    )
+                    print(turn_result.message or "")
+                    if turn_result.synthesis_requested or session.synthesis_requested:
                         break
-                    invalidated = payload.get("invalidated", []) or []
+                    invalidated = (turn_result.command_payload or {}).get("invalidated", []) or []
                     if invalidated:
                         print("Revisit: " + ", ".join(invalidated))
-                    # If skip/done was executed, the step is now complete
-                    if step.is_complete:
+                    if turn_result.prompt is not None:
+                        current_prompt = turn_result.prompt
                         break
-                    # If /clear was used, regenerate the question
-                    if payload.get("regenerate_question"):
-                        try:
-                            print("\n Regenerating question...")
-                            # Use unified approach to regenerate
-                            mode = 'followup' if step.conversation_history else 'initial'
-                            analysis_result = await manager.get_analysis_prompts(
-                                session=session,
-                                aspect_id=step.refinement_aspect.id,
-                                mode=mode
-                            )
-
-                            status = manager.process_analysis_result(
-                                session=session,
-                                aspect_id=step.refinement_aspect.id,
-                                result=analysis_result
-                            )
-
-                            if status['complete']:
-                                print(f"✓ {header} is now complete")
-                            else:
-                                question = analysis_result.question
-                                current_examples = analysis_result.examples or []
-                                print(f"\n{question}\n")
-                        except Exception as e:
-                            print(f" Error regenerating question: {e}")
                     continue
 
                 # Record answer (resolve numeric references to examples)
                 if not question:
                     question = step.follow_up_question or f"Please provide details about {header}"
-                resolved_input, was_numeric = _resolve_numeric_examples(user_input, current_examples)
+                resolved_input, was_numeric = resolve_numeric_examples(user_input, current_examples)
                 if was_numeric:
                     print(f"  → Selected: {resolved_input}")
-                step.add_follow_up(question=question, response=resolved_input)
-
-                # Selection from provided options is always complete — skip LLM eval loop
-                if was_numeric:
-                    step.is_complete = True
-                    break
-
-                # Run follow-up analysis
-                print("\n Analyzing your answer...")
+                if not was_numeric:
+                    print("\n Analyzing your answer...")
                 try:
-                    followup_result = await manager.run_followup_until_clear(
-                        session,
-                        aspect_id=step.refinement_aspect.id,
-                        max_rounds=5
+                    turn_result = await interactive_service.submit_input(
+                        session=session,
+                        user_input=resolved_input,
+                        selected_example=was_numeric,
                     )
-
-                    complete = followup_result.get('is_complete', False)
-                    rounds = followup_result.get('rounds', 0)
-
-                    if complete:
-                        print(f"✓ {header} complete after {rounds} round(s)")
-                        step.is_complete = True
-                        break
-                    else:
-                        # Need more clarification
-                        question = step.follow_up_question or f"Can you provide more details about {header}?"
-                        print(f"\n{question}\n")
-                        current_examples = step.quick_replies or []
-                        if current_examples:
-                            for i, opt in enumerate(current_examples, 1):
-                                print(f"  {i}. {opt}")
-                            print()
-
+                    current_prompt = turn_result.prompt
+                    if step.is_complete and not current_prompt:
+                        print(f"✓ {header} complete")
+                    break
                 except Exception as e:
                     print(f" Error during analysis: {e}")
                     print(f"Marking {header} as complete with current answer.")
                     step.is_complete = True
+                    current_prompt = None
                     break
             
             if interrupted:
@@ -536,7 +377,7 @@ async def run_cli(manager: QueryRefinementManager, framework_name: str, query: s
 
             try:
                 logger.info("CLI: starting chained synthesis for Agents A-C")
-                synthesis = await manager.synthesize_refined_query(session)
+                synthesis = await interactive_service.synthesize(session)
             except ValueError as exc:
                 print(f"Error: {exc}")
             except Exception as exc:

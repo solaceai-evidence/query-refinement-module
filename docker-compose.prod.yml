@@ -4,7 +4,7 @@
 # Usage: docker-compose -f docker-compose.yml -f docker-compose.prod.yml up -d
 #
 # Features:
-# - Full stack: Frontend (React) + Backend (FastAPI) + Nginx + PostgreSQL + Redis
+# - Full stack: Chainlit UI + Backend (FastAPI) + Nginx + PostgreSQL + Redis
 # - Nginx reverse proxy with SSL/TLS support
 # - Optimized resource limits and health checks
 # - Async architecture with 50 concurrent LLM calls
@@ -93,18 +93,48 @@ services:
           cpus: '0.25'
           memory: 256M
 
-  # Frontend - React application
-  frontend:
+  # Chainlit UI
+  chainlit:
     build:
-      context: ./frontend
-      dockerfile: Dockerfile.production
-      args:
-        VITE_API_BASE_URL: /api/v1
-        VITE_API_TIMEOUT: "90000"
-    container_name: query-refinement-frontend
+      context: .
+      dockerfile: Dockerfile
+    container_name: query-refinement-chainlit
+    env_file:
+      - .env
     depends_on:
-      api:
+      postgres:
         condition: service_healthy
+      redis:
+        condition: service_healthy
+    environment:
+      ENVIRONMENT: production
+      DEBUG: "false"
+      LOG_LEVEL: INFO
+      LOG_FORMAT: json
+      DATABASE_URL: postgresql+psycopg2://${POSTGRES_USER:-qruser}:${POSTGRES_PASSWORD:-changeme}@postgres:5432/${POSTGRES_DB:-query_refinement}
+      REDIS_URL: ${REDIS_URL:-redis://redis:6379/0}
+      REFINEMENT_FRAMEWORK_PATH: ${REFINEMENT_FRAMEWORK_PATH:-/app/refinement_frameworks/frameworks.yaml}
+      SECRET_KEY: ${SECRET_KEY:?SECRET_KEY must be set in environment or .env file}
+      LLM_MODEL: ${LLM_MODEL:-anthropic/claude-sonnet-4-6}
+      LLM_API_KEY: ${LLM_API_KEY:-}
+      LLM_API_BASE: ${LLM_API_BASE:-}
+      ALLOWED_ORIGINS: ${ALLOWED_ORIGINS:-https://localhost,https://127.0.0.1}
+    command: >
+      sh -c "
+        echo 'Waiting for API dependencies...' &&
+        sleep 5 &&
+        echo 'Starting Chainlit...' &&
+        python3 -m chainlit run query_refinement_module/chainlit_app.py --host 0.0.0.0 --port 8501
+      "
+    healthcheck:
+      test: ["CMD", "python3", "-c", "import requests; requests.get('http://localhost:8501', timeout=5)"]
+      interval: 30s
+      timeout: 10s
+      retries: 3
+      start_period: 40s
+    volumes:
+      - ./refinement_frameworks:/app/refinement_frameworks:ro
+      - ./logs:/app/logs:rw
     networks:
       - query-refinement-network
     restart: unless-stopped
@@ -124,8 +154,8 @@ services:
     depends_on:
       api:
         condition: service_healthy
-      frontend:
-        condition: service_started
+      chainlit:
+        condition: service_healthy
     ports:
       - "${NGINX_HTTP_PORT:-80}:80"
       - "${NGINX_HTTPS_PORT:-443}:443"

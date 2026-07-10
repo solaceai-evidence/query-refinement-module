@@ -9,7 +9,7 @@ A multi-agent LLM pipeline that turns a rough research idea into a structured, s
 - A **concept graph** — structured synonyms, abbreviations, and domain terms per concept
 - Optional **search expansion levels** — progressively broader retrieval variants for fallback recall
 
-The system is framework-agnostic and domain-agnostic. It exposes a REST API for integration into external search and systematic review platforms.
+The system is framework-agnostic and domain-agnostic. It exposes a REST API for integration into external search and systematic review platforms, a Chainlit chat UI for guided refinement, and a CLI for developer workflows.
 
 ---
 
@@ -41,7 +41,7 @@ The system is framework-agnostic and domain-agnostic. It exposes a REST API for 
 
 - Python 3.12+
 - Poetry
-- Node.js 20+ (for the frontend)
+- Node.js 20+ (only if you need the legacy React prototype)
 
 ### Backend
 
@@ -61,7 +61,16 @@ poetry run uvicorn query_refinement_module.api.main:app --reload
 
 Backend: http://localhost:8001 — API docs at `/docs`
 
-### Frontend
+### Chainlit UI
+
+```bash
+poetry install --with dev
+poetry run chainlit run query_refinement_module/chainlit_app.py --host 0.0.0.0 --port 8501
+```
+
+Chainlit: http://localhost:8501
+
+### Legacy React Prototype
 
 ```bash
 cd frontend
@@ -69,7 +78,7 @@ npm install
 npm run dev
 ```
 
-Frontend: http://localhost:5173
+Legacy frontend: http://localhost:5173
 
 ---
 
@@ -89,6 +98,12 @@ docker compose -f docker-compose.yml -f docker-compose.prod.yml up -d
 ```
 
 See [docs/DEPLOYMENT.md](docs/DEPLOYMENT.md) for the full guide including SSL, backups, and migrations.
+
+For a local multi-service run with the API, database, Redis, and the default Chainlit UI:
+
+```bash
+docker compose -f docker-compose.fullstack.yml up -d --build
+```
 
 ---
 
@@ -198,6 +213,7 @@ The refinement backend now follows a layered split:
 - Route adapters in `query_refinement_module/api/routes/refinement.py`
 - Transport models in `query_refinement_module/api/refinement_schemas.py`
 - Application façade in `query_refinement_module/application/refinement_api_service.py`
+- Shared interactive workflow in `query_refinement_module/application/interactive_refinement_service.py`
 - Workflow collaborators in `query_refinement_module/application/`
 
 Use [docs/ARCHITECTURE.md](docs/ARCHITECTURE.md) as the maintainer guide for where to add new endpoint behavior, new agent steps, or cross-cutting workflow rules.
