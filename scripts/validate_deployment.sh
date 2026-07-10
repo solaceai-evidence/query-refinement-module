@@ -119,7 +119,7 @@ fi
 echo ""
 echo "Checking service definitions..."
 services=$(docker compose -f docker-compose.yml -f docker-compose.prod.yml config --services 2>/dev/null)
-expected_services=("postgres" "redis" "api" "frontend" "nginx")
+expected_services=("postgres" "redis" "api" "chainlit" "nginx")
 
 for service in "${expected_services[@]}"; do
     if echo "$services" | grep -q "^${service}$"; then

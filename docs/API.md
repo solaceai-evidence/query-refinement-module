@@ -1663,16 +1663,6 @@ Audit log endpoints require a superuser account.
 - `GET /api/v1/monitoring/llm-health`
 - `GET /api/v1/monitoring/circuit-breakers`
 
-## Frontend Logs
-
-These endpoints currently support the legacy React prototype. The default interactive web UI is now the Chainlit app, which relies on server-side logs and API audit events instead of a separate browser log transport.
-
-- `POST /api/v1/logs/frontend`
-- `GET /api/v1/logs/frontend`
-- `GET /api/v1/logs/frontend/stats`
-- `GET /api/v1/logs/frontend/errors`
-- `GET /api/v1/logs/frontend/trace/{request_id}`
-
 ## Metadata
 
 - `GET /api/version` (unversioned)
@@ -1681,7 +1671,7 @@ These endpoints currently support the legacy React prototype. The default intera
 
 ## User Commands
 
-The frontend and API accept slash commands during refinement:
+The Chainlit UI, CLI, and API accept slash commands during refinement:
 
 - `/back`, `/prev`
 - `/restart`

@@ -88,7 +88,7 @@ class LoginResponse(BaseModel):
     """Schema for the browser login response.
 
     The JWT is delivered as an httpOnly cookie; this body only carries
-    non-sensitive confirmation data needed by the frontend.
+    non-sensitive confirmation data needed by the browser client.
     """
     status: str = "ok"
     username: str

@@ -19,7 +19,6 @@ from query_refinement_module.db.models.query import Query as QueryModel
 from query_refinement_module.db.models.refinement_step import RefinementStep
 from query_refinement_module.db.models.followup_history import FollowUpHistory
 from query_refinement_module.db.models.audit_log import AuditLog, AuditSeverity
-from query_refinement_module.db.models.frontend_log import FrontendLog
 from query_refinement_module.db.session import get_db
 from query_refinement_module.tracing import get_request_id
 
@@ -537,40 +536,6 @@ async def get_evaluation_dashboard(
         .limit(error_limit)\
         .all()
 
-    frontend_errors = db.query(FrontendLog)\
-        .filter(FrontendLog.timestamp >= cutoff_date)\
-        .filter(FrontendLog.level == "error")\
-        .order_by(FrontendLog.timestamp.desc())\
-        .limit(error_limit)\
-        .all()
-
-    network_logs = db.query(FrontendLog)\
-        .filter(FrontendLog.timestamp >= cutoff_date)\
-        .filter(FrontendLog.log_type == "network")\
-        .filter(FrontendLog.network_duration_ms.isnot(None))\
-        .all()
-
-    latency_by_endpoint: Dict[str, List[int]] = {}
-    for entry in network_logs:
-        endpoint = _normalize_endpoint(entry.network_url)
-        if not endpoint:
-            continue
-        latency_by_endpoint.setdefault(endpoint, []).append(entry.network_duration_ms)
-
-    latency_stats = []
-    for endpoint, durations in latency_by_endpoint.items():
-        if not durations:
-            continue
-        latency_stats.append({
-            "endpoint": endpoint,
-            "count": len(durations),
-            "avg_ms": round(sum(durations) / len(durations), 2),
-            "p50_ms": _percentile(durations, 50),
-            "p95_ms": _percentile(durations, 95),
-        })
-
-    latency_stats.sort(key=lambda item: item["count"], reverse=True)
-
     return {
         "workflow_counts": {
             "total_sessions": total_sessions,
@@ -580,11 +545,10 @@ async def get_evaluation_dashboard(
         },
         "recent_errors": {
             "audit": [entry.to_dict() for entry in audit_errors],
-            "frontend": [entry.to_dict() for entry in frontend_errors],
         },
         "latency": {
-            "source": "frontend network logs",
-            "endpoints": latency_stats,
+            "source": "not_collected_in_chainlit_mode",
+            "endpoints": [],
         },
         "period_days": days,
         "request_id": request_id,

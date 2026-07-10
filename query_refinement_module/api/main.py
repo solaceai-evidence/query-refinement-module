@@ -33,7 +33,7 @@ configure_logging(
 logger = logging.getLogger(__name__)
 
 from query_refinement_module.api.routes import (
-    auth, queries, feedback, refinement, audit, frontend_logs, admin, admin_sessions,
+    auth, queries, feedback, refinement, audit, admin, admin_sessions,
     admin_frameworks, admin_analytics, monitoring
 )
 from query_refinement_module.api.exceptions import QueryRefinementException
@@ -276,7 +276,6 @@ app.include_router(queries.router, prefix=API_V1_PREFIX)
 app.include_router(feedback.router, prefix=API_V1_PREFIX)
 app.include_router(refinement.router, prefix=API_V1_PREFIX)
 app.include_router(audit.router, prefix=API_V1_PREFIX)
-app.include_router(frontend_logs.router, prefix=API_V1_PREFIX)
 app.include_router(admin.router, prefix=API_V1_PREFIX)
 # Admin endpoints (versioned for consistency)
 app.include_router(admin_sessions.router, prefix=API_V1_PREFIX)

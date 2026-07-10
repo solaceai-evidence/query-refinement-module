@@ -102,7 +102,7 @@ class Settings(BaseSettings):
     
     # CORS Configuration (environment-specific)
     # Development: localhost origins
-    # Production: Add your frontend domains, e.g., "https://yourdomain.com,https://app.yourdomain.com"
+    # Production: Add your browser client domains, e.g., "https://yourdomain.com,https://app.yourdomain.com"
     allowed_origins_raw: str = Field(
         default="http://localhost:3000,http://localhost:5173,http://localhost:8001",
         description="CORS allowed origins (comma-separated in env: ALLOWED_ORIGINS=https://app.com,https://www.app.com)"

@@ -200,7 +200,7 @@ Start in `query_refinement_module/application/refinement_service_support.py` and
 
 Use focused validation first, then widen:
 
-- Refinement surface: `poetry run pytest tests/unit/test_refinement_api_service.py tests/api/test_refinement_endpoints.py tests/api/test_frontend_contracts.py tests/api/test_refinement_reconstruction.py tests/api/test_command_history.py tests/api/test_abandon_session.py tests/api/test_progress.py tests/unit/test_refinement_synthesis_readiness.py tests/unit/test_generated_question_persistence.py tests/unit/test_ssrf_guard.py -q`
+- Refinement surface: `poetry run pytest tests/unit/test_refinement_api_service.py tests/api/test_refinement_endpoints.py tests/api/test_refinement_reconstruction.py tests/api/test_command_history.py tests/api/test_abandon_session.py tests/api/test_progress.py tests/unit/test_refinement_synthesis_readiness.py tests/unit/test_generated_question_persistence.py tests/unit/test_ssrf_guard.py -q`
 - CLI surface: `poetry run pytest tests/unit/test_cli.py -q`
 - Full suite: `poetry run pytest -q`
 

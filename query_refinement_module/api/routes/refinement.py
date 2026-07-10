@@ -738,7 +738,7 @@ async def abandon_session(
     
     This ensures abandoned sessions don't count toward workflow limits.
     
-    Note: AuditLog and FrontendLog entries are preserved for research.
+    Note: AuditLog entries are preserved for research.
     """
     from query_refinement_module.tracing import generate_request_id, set_request_id
     

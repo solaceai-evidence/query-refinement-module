@@ -75,7 +75,7 @@ Routing model:
 - Docker Engine + Docker Compose plugin
 - VM with persistent disk for database/cache volumes
 - Network access to your LLM provider
-- Optional for local development: Python 3.12+, Poetry, Node.js 20+ for the legacy React prototype only
+- Optional for local development: Python 3.12+, Poetry
 
 ## LLM Provider Configuration
 
@@ -386,16 +386,6 @@ poetry run chainlit run query_refinement_module/chainlit_app.py --host 0.0.0.0 -
 ```
 
 Chainlit default: `http://localhost:8501`
-
-### Legacy React Prototype
-
-```bash
-cd frontend
-npm install
-npm run dev
-```
-
-Legacy frontend default: `http://localhost:5173`
 
 ## Migrations
 

@@ -2,7 +2,7 @@
 End-to-end tracing verification tests for Phase 2.
 
 Tests that request_id and trace_id propagate through:
-1. Frontend API calls
+1. Client API calls
 2. Backend middleware
 3. Database queries
 4. LLM API calls
@@ -149,21 +149,16 @@ class TestEndToEndTracing:
         finally:
             clear_request_id()
     
-    def test_frontend_logger_context_enrichment(self):
-        """Test that frontend logger enriches logs with request context.
-        
-        Note: This tests the JavaScript logger logic conceptually.
-        Actual frontend testing would be done with Jest/Vitest.
+    def test_client_context_enrichment_contract(self):
+        """Document the request-context contract expected by interactive clients.
+
+        Chainlit now owns the web UI, so this remains a client-contract note rather
+        than a browser-logger implementation test.
         """
-        # This is a conceptual test - actual implementation would be in frontend tests
-        # Documenting expected behavior:
-        
-        # 1. API interceptor extracts X-Request-ID from response headers
-        # 2. logger.setRequestContext(requestId, traceId) is called
-        # 3. All subsequent logger calls include request_id and trace_id
-        # 4. logger.clearRequestContext() is called when appropriate
-        
-        # The frontend logger.js implementation supports this flow
+        # Expected client behavior:
+        # 1. Capture X-Request-ID from API responses when available.
+        # 2. Associate request_id and trace_id with subsequent client-side events.
+        # 3. Clear per-request context when a workflow finishes or resets.
         pass
     
     def test_complete_request_flow(self, client, test_request_id):

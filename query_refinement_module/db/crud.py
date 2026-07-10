@@ -977,7 +977,7 @@ def abandon_query_session(db: Session, session_id: int, user_id: int) -> Dict[st
     5. Queries (linked to QuerySession)
     6. QuerySession itself
     
-    Note: AuditLog and FrontendLog entries are preserved for research purposes
+    Note: AuditLog entries are preserved for research purposes
     but marked with session status 'abandoned'.
     
     Args:

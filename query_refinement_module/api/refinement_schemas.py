@@ -75,7 +75,7 @@ class SynthesizeQueryResponse(BaseModel):
     )
     integrated_statement: Optional[str] = Field(
         None,
-        description="Backward-compatible alias for clarified_query retained for existing frontend clients.",
+        description="Backward-compatible alias for clarified_query retained for existing external clients.",
     )
     used_llm: bool = Field(..., description="Always True; LLM was invoked for synthesis")
     structured_output: Optional[Dict[str, Any]] = Field(

@@ -41,7 +41,6 @@ The system is framework-agnostic and domain-agnostic. It exposes a REST API for 
 
 - Python 3.12+
 - Poetry
-- Node.js 20+ (only if you need the legacy React prototype)
 
 ### Backend
 
@@ -69,18 +68,6 @@ poetry run chainlit run query_refinement_module/chainlit_app.py --host 0.0.0.0 -
 ```
 
 Chainlit: http://localhost:8501
-
-### Legacy React Prototype
-
-```bash
-cd frontend
-npm install
-npm run dev
-```
-
-Legacy frontend: http://localhost:5173
-
----
 
 ## Production deployment
 
@@ -190,7 +177,6 @@ query_refinement_module/   Main Python package
   providers/               LLM provider abstraction
   core.py                  Refinement session and synthesis logic
 
-frontend/                  React web application
 refinement_frameworks/     YAML framework definitions
 scripts/                   User management utilities
 tests/                     Automated tests
