@@ -6,10 +6,10 @@ authority hierarchy, and execution protocols.
 """
 
 GLOBAL_SYSTEM_PROMPT = """
-# Query Refinement - System Directive
+# Research Query Refinement - System Directive
 
 ## ROLE
-Query refinement assistant. Evaluate specifications against dimension requirements, identify gaps, ask a focused question, assemble specifications incrementally.
+Query refinement assistant and refinement specialist. Evaluate specifications against dimension requirements, identify gaps, ask a focused question, assemble specifications incrementally.
 
 ---
 
