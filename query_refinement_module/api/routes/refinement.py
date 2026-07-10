@@ -23,8 +23,6 @@ logger = logging.getLogger(__name__)
 
 from query_refinement_module.db.session import get_db
 from query_refinement_module.db.crud import (
-    create_query_session,
-    create_query,
     get_query,
     save_query_refinement_response,
     update_refined_query,
@@ -35,7 +33,6 @@ from query_refinement_module.db.crud import (
     reset_refinement_step,
     abandon_query_session,
     get_user_framework_names,
-    user_has_framework_access,
     update_refinement_step_final_value,
 )
 from query_refinement_module.api.auth import get_current_user_or_integration
@@ -45,6 +42,7 @@ from query_refinement_module.schema.registry import get_framework, list_framewor
 from query_refinement_module.api.session_manager import SessionManager
 from query_refinement_module.audit import audit_service
 from query_refinement_module.db.models.audit_log import AuditEventType
+from query_refinement_module.application.refinement_api_service import RefinementApiService
 from query_refinement_module.application.refinement_workflow import (
     build_next_prompt as workflow_build_next_prompt,
     build_status_payload as workflow_build_status_payload,
@@ -76,7 +74,7 @@ from query_refinement_module.schema.response import (
     SearchExpansionResponse,
 )
 
-from pydantic import BaseModel, ConfigDict, Field, field_validator, AnyHttpUrl
+from pydantic import BaseModel, ConfigDict, Field, field_validator, model_validator, AnyHttpUrl
 
 
 router = APIRouter(prefix="/refinement", tags=["Query Refinement Workflow"])
@@ -429,11 +427,17 @@ class SynthesizeQueryResponse(BaseModel):
         search_context.concept_graph = structured_output["concept_graph"]
     """
     query_id: int = Field(..., description="Database ID of the synthesized query")
-    clarified_query: str = Field(
-        ...,
+    clarified_query: Optional[str] = Field(
+        None,
         description=(
             "Agent A output. Clarified research statement integrating all user-provided "
             "dimension values. Pass as statement to /expand for Agent D broadening levels."
+        ),
+    )
+    integrated_statement: Optional[str] = Field(
+        None,
+        description=(
+            "Backward-compatible alias for clarified_query retained for existing frontend clients."
         ),
     )
     used_llm: bool = Field(..., description="Always True; LLM was invoked for synthesis")
@@ -460,6 +464,21 @@ class SynthesizeQueryResponse(BaseModel):
             "recommendation_rationale, status, used_llm, generated_level_count."
         ),
     )
+
+    @model_validator(mode="before")
+    @classmethod
+    def _sync_statement_aliases(cls, data: Any) -> Any:
+        if not isinstance(data, dict):
+            return data
+
+        clarified_query = data.get("clarified_query")
+        integrated_statement = data.get("integrated_statement")
+
+        if not clarified_query and integrated_statement:
+            data["clarified_query"] = integrated_statement
+        if not integrated_statement and clarified_query:
+            data["integrated_statement"] = clarified_query
+        return data
 
 
 class SearchExpandRequest(BaseModel):
@@ -1195,258 +1214,22 @@ async def start_refinement(
     request_id = generate_request_id()
     set_request_id(request_id)
     
-    start_time = time.time()
-    settings = get_settings()
-    
-    # Check if user can start new workflow
-    if settings.enforce_workflow_limit and not current_user.is_superuser and current_user.has_completed_workflow:
-        raise HTTPException(
-            status_code=status.HTTP_403_FORBIDDEN,
-            detail="You have already completed one refinement workflow. "
-                   "For evaluation purposes, only one workflow per participant is allowed. "
-                   "Thank you for your participation!"
-        )
-
-    if (
-        not current_user.is_superuser
-        and not user_has_framework_access(db, current_user.id, request.framework_name)
-    ):
-        raise HTTPException(
-            status_code=status.HTTP_403_FORBIDDEN,
-            detail=f"You are not authorized to use framework '{request.framework_name}'"
-        )
-    
-    logger.info(
-        "API: Starting refinement workflow",
-        extra={
-            "request_id": request_id,
-            "user_id": current_user.id,
-            "framework_name": request.framework_name,
-            "query_length": len(request.original_query),
-            "source": request.source,
-        },
+    workflow_service = RefinementApiService(
+        manager=manager,
+        db=db,
+        session_manager=session_manager,
+        settings_factory=get_settings,
     )
-    
-    # Get the refinement framework
-    try:
-        framework = get_framework(request.framework_name)
-    except ValueError as e:
-        raise HTTPException(
-            status_code=status.HTTP_404_NOT_FOUND,
-            detail=f"Framework '{request.framework_name}' not found: {str(e)}"
-        )
-    
-    # Initialize the refinement session using sequential mode (no upfront analysis)
-    try:
-        session = await asyncio.to_thread(
-            manager.initialize_sequential,
-            request.original_query,
-            framework,
-        )
-    except ConnectionError as e:
-        raise HTTPException(
-            status_code=status.HTTP_503_SERVICE_UNAVAILABLE,
-            detail=f"Unable to connect to LLM service: {str(e)}"
-        )
-    except TimeoutError as e:
-        raise HTTPException(
-            status_code=status.HTTP_504_GATEWAY_TIMEOUT,
-            detail=f"LLM service request timed out: {str(e)}"
-        )
-    except Exception as e:
-        logger.error(f"Error initializing refinement session: {str(e)}", exc_info=True)
-        
-        # Check for specific LLM errors
-        error_str = str(e).lower()
-        if "credit balance" in error_str or "insufficient" in error_str:
-            raise HTTPException(
-                status_code=status.HTTP_402_PAYMENT_REQUIRED,
-                detail="LLM service credits exhausted. Please configure valid API credentials."
-            )
-        elif "api key" in error_str or "authentication" in error_str:
-            raise HTTPException(
-                status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
-                detail="LLM service authentication error. Please check API configuration."
-            )
-        elif "rate limit" in error_str:
-            raise HTTPException(
-                status_code=status.HTTP_429_TOO_MANY_REQUESTS,
-                detail="LLM service rate limit exceeded. Please try again later."
-            )
-        else:
-            raise HTTPException(
-                status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
-                detail=f"Failed to initialize refinement. LLM service may be unavailable."
-            )
-    
-    # Create database records
-    db_session = create_query_session(db, user_id=current_user.id, framework_name=request.framework_name)
-    db_query = create_query(db, session_id=db_session.id, original_query=request.original_query)
-    
-    # Initialize progress tracking
-    tracker = get_progress_tracker()
-    try:
-        await tracker.create(
-            query_id=str(db_query.id),
-            initial_stage=ProgressStage.EXTRACTING_ASPECTS,
-            initial_message=f"Analyzing query structure with {request.framework_name} framework..."
-        )
-    except Exception as progress_err:
-        # Log but don't fail if progress tracking fails
-        logger.error(f"Failed to create progress tracking: {progress_err}", exc_info=True)
-    
-    # Create refinement steps in database
-    for step in session.steps:
-        create_refinement_step(
-            db,
-            query_id=db_query.id,
-            aspect_name=step.refinement_aspect.name,
-            aspect_id=step.refinement_aspect.id,
-        )
-
-    # ── Fast path: skip all refinements, go straight to synthesis ──────────
-    if request.skip_refinement:
-        from query_refinement_module.db.crud import mark_refinement_step_skipped
-
-        # Mark every in-memory step as skipped so is_complete() returns True
-        for step in session.steps:
-            step.is_complete = True
-            step.was_skipped = True
-        session.synthesis_requested = True
-
-        # Persist the skip in the database for audit / session reconstruction
-        db_steps = get_query_refinement_steps(db, db_query.id)
-        for db_step in db_steps:
-            mark_refinement_step_skipped(db, db_step.id)
-
-        # Save session to Redis so _run_synthesis can load it
-        session_manager.save_session(db_query.id, session)
-
-        await track_progress(
-            query_id=str(db_query.id),
-            stage=ProgressStage.SUGGESTIONS_READY,
-            message="All refinements skipped, proceeding to synthesis"
-        )
-
-        logger.info(
-            "API: Refinement workflow started (skip_refinement=True) – running synthesis inline",
-            extra={
-                "request_id": request_id,
-                "user_id": current_user.id,
-                "session_id": db_session.id,
-                "query_id": db_query.id,
-                "total_aspects": len(session.steps),
-            },
-        )
-
-        synthesis_response = await _run_synthesis(
-            manager=manager,
-            session=session,
-            db=db,
-            db_query=db_query,
-            current_user=current_user,
-            session_manager=session_manager,
-            query_id=db_query.id,
-            request_id=request_id,
-        )
-
-        return StartRefinementResponse(
-            session_id=db_session.id,
-            query_id=db_query.id,
-            summary={
-                "total_aspects": len(session.steps),
-                "aspects_needing_refinement": 0,
-                "aspects_clear": len(session.steps),
-                "is_complete": True,
-            },
-            next_prompt=None,
-            ready_for_synthesis=True,
-            source=request.source,
-            synthesis=synthesis_response,
-        )
-    # ── End fast path ───────────────────────────────────────────────────────
-
-    # Update progress: aspects extracted
-    await track_progress(
-        query_id=str(db_query.id),
-        stage=ProgressStage.ASPECTS_EXTRACTED,
-        message=f"Identified {len(session.steps)} aspects to refine",
-        aspects_count=len(session.steps),
-        details={"framework": request.framework_name}
-    )
-
-    # Update progress: Generating suggestions
-    await track_progress(
-        query_id=str(db_query.id),
-        stage=ProgressStage.GENERATING_SUGGESTIONS,
-        message="Generating refinement suggestions...",
-        turn_number=1,
-        total_turns=len(session.steps)
-    )
-    
-    # Get summary (will show all aspects as not yet analyzed)
-    summary = {
-        "total_aspects": len(session.steps),
-        "aspects_needing_refinement": len([s for s in session.steps if not s.is_complete]),
-        "aspects_clear": len([s for s in session.steps if s.is_complete]),
-        "is_complete": session.is_complete(),
-    }
-    
-    db_steps = get_query_refinement_steps(db, db_query.id)
-    next_prompt = await _build_next_prompt(manager, session, db=db, db_steps=db_steps)
-    _persist_generated_question(db, db_steps, next_prompt)
-    
-    # Check if all aspects are complete (ready for synthesis)
-    ready_for_synthesis = next_prompt is None and session.is_complete()
-    
-    # Update progress: Suggestions ready or waiting for user
-    if next_prompt:
-        suggestions_count = len([s for s in session.steps if not s.is_complete])
-        await track_progress(
-            query_id=str(db_query.id),
-            stage=ProgressStage.SUGGESTIONS_READY,
-            message="Refinement suggestions ready",
-            suggestions_count=suggestions_count
-        )
-        await track_progress(
-            query_id=str(db_query.id),
-            stage=ProgressStage.WAITING_FOR_USER,
-            message=f"Waiting for your input on '{next_prompt.get('name', 'aspect')}'",
-            details={"current_aspect": next_prompt.get('name')}
-        )
-    elif ready_for_synthesis:
-        # All aspects complete, ready for synthesis
-        await track_progress(
-            query_id=str(db_query.id),
-            stage=ProgressStage.SUGGESTIONS_READY,
-            message="All aspects refined, ready for synthesis"
-        )
-    
-    # Save session to Redis for subsequent requests
-    session_manager.save_session(db_query.id, session)
-    
-    duration_ms = (time.time() - start_time) * 1000
-    logger.info(
-        "API: Refinement workflow started successfully",
-        extra={
-            "request_id": request_id,
-            "user_id": current_user.id,
-            "session_id": db_session.id,
-            "query_id": db_query.id,
-            "total_aspects": summary["total_aspects"],
-            "ready_for_synthesis": ready_for_synthesis,
-            "duration_ms": round(duration_ms, 2),
-        },
-    )
-    
-    return StartRefinementResponse(
-        session_id=db_session.id,
-        query_id=db_query.id,
-        summary=summary,
-        next_prompt=next_prompt,
-        ready_for_synthesis=ready_for_synthesis,
+    payload = await workflow_service.start_workflow(
+        original_query=request.original_query,
+        framework_name=request.framework_name,
         source=request.source,
+        skip_refinement=request.skip_refinement,
+        current_user=current_user,
+        request_id=request_id,
+        synthesis_runner=_run_synthesis,
     )
+    return StartRefinementResponse(**payload)
 
 
 @router.post("/queries/{query_id}/answer", response_model=Union[SubmitAnswerResponse, CommandResponse])
@@ -1950,78 +1733,17 @@ async def get_refinement_status(
     request_id = generate_request_id()
     set_request_id(request_id)
     
-    start_time = time.time()
-    logger.info(
-        "API: Getting refinement status",
-        extra={
-            "request_id": request_id,
-            "user_id": current_user.id,
-            "query_id": query_id,
-        },
+    workflow_service = RefinementApiService(
+        manager=manager,
+        db=db,
+        session_manager=session_manager,
+        settings_factory=get_settings,
     )
-    
-    db_query = get_query(db, query_id)
-    if not db_query:
-        raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Query not found")
-    
-    if db_query.session.user_id != current_user.id:
-        raise HTTPException(status_code=status.HTTP_403_FORBIDDEN, detail="Access denied")
-    
-    # Check if query has been synthesized (workflow complete)
-    if db_query.refined_query and db_query.refined_query.strip():
-        logger.info(f"Query {query_id} already synthesized, returning completion status")
-        return GetRefinementStatusResponse(
-            query_id=query_id,
-            original_query=db_query.original_query,
-            refined_query=db_query.refined_query,
-            is_complete=True,
-            current_aspect=None,
-            aspects_summary={},
-            next_prompt=None,
-            ready_for_synthesis=True,
-            aspects=[],
-            conversation_history=[]
-        )
-    
-    # Get framework name from database
-    framework_name = db_query.session.framework_name
-    if not framework_name:
-        raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail="Framework name not found for session")
-    
-    # Load session from Redis cache first (fast)
-    framework = get_framework(framework_name)
-    session = session_manager.load_session(query_id, framework)
-    
-    # Fallback: Reconstruct from database if Redis miss
-    if not session:
-        logger.warning(f"Session not found in Redis for query_id={query_id}, reconstructing from database")
-        session = await asyncio.to_thread(
-            manager.initialize_sequential,
-            db_query.original_query,
-            framework,
-        )
-        
-        # Restore persisted DB state (follow-ups + final values + completion flags)
-        db_steps = get_query_refinement_steps(db, query_id)
-        _restore_session_from_db_state(session, db_steps)
-    
-    summary = manager.get_initialization_summary(session)
-    payload = _build_status_payload(query_id, db_query, session, summary)
-    
-    duration_ms = (time.time() - start_time) * 1000
-    logger.info(
-        "API: Refinement status retrieved",
-        extra={
-            "request_id": request_id,
-            "user_id": current_user.id,
-            "query_id": query_id,
-            "is_complete": session.is_complete(),
-            "current_aspect": payload["current_aspect"],
-            "ready_for_synthesis": payload["ready_for_synthesis"],
-            "duration_ms": round(duration_ms, 2),
-        },
+    payload = await workflow_service.get_status_payload(
+        query_id=query_id,
+        current_user=current_user,
+        request_id=request_id,
     )
-
     return GetRefinementStatusResponse(**payload)
 
 
@@ -2036,62 +1758,16 @@ async def resume_refinement(
     """Resume a refinement workflow and explicitly generate the next prompt when needed."""
     request_id = generate_request_id()
     set_request_id(request_id)
-    start_time = time.time()
-
-    db_query = get_query(db, query_id)
-    if not db_query:
-        raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Query not found")
-
-    if db_query.session.user_id != current_user.id:
-        raise HTTPException(status_code=status.HTTP_403_FORBIDDEN, detail="Access denied")
-
-    framework_name = db_query.session.framework_name
-    if not framework_name:
-        raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail="Framework name not found for session")
-
-    framework = get_framework(framework_name)
-
-    try:
-        async with session_manager.session_lock(query_id):
-            session = session_manager.load_session(query_id, framework)
-
-            if not session:
-                logger.warning("Session not found in Redis for query_id=%d, reconstructing from database", query_id)
-                session = await asyncio.to_thread(
-                    manager.initialize_sequential,
-                    db_query.original_query,
-                    framework,
-                )
-                db_steps = get_query_refinement_steps(db, query_id)
-                _restore_session_from_db_state(session, db_steps)
-            else:
-                db_steps = get_query_refinement_steps(db, query_id)
-
-            if not session.synthesis_requested and _get_active_prompt(session) is None:
-                next_prompt = await _build_next_prompt(manager, session, db=db, db_steps=db_steps)
-                _persist_generated_question(db, db_steps, next_prompt)
-
-            session_manager.save_session(query_id, session)
-    except RuntimeError as exc:
-        logger.warning("Could not acquire session lock for query %d during resume: %s", query_id, exc)
-        raise HTTPException(
-            status_code=status.HTTP_503_SERVICE_UNAVAILABLE,
-            detail="Session is temporarily locked by another request. Please retry in a moment.",
-        )
-
-    summary = manager.get_initialization_summary(session)
-    payload = _build_status_payload(query_id, db_query, session, summary)
-    duration_ms = (time.time() - start_time) * 1000
-    logger.info(
-        "API: Refinement session resumed",
-        extra={
-            "request_id": request_id,
-            "user_id": current_user.id,
-            "query_id": query_id,
-            "current_aspect": payload["current_aspect"],
-            "ready_for_synthesis": payload["ready_for_synthesis"],
-            "duration_ms": round(duration_ms, 2),
-        },
+    workflow_service = RefinementApiService(
+        manager=manager,
+        db=db,
+        session_manager=session_manager,
+        settings_factory=get_settings,
+    )
+    payload = await workflow_service.resume_workflow(
+        query_id=query_id,
+        current_user=current_user,
+        request_id=request_id,
     )
     return ResumeRefinementResponse(**payload)
 
@@ -2345,6 +2021,7 @@ async def _run_synthesis(
     return SynthesizeQueryResponse(
         query_id=query_id,
         clarified_query=clarified_query,
+        integrated_statement=clarified_query,
         used_llm=synthesis_result.get("used_llm", False),
         structured_output=structured_output,
         expansion_levels=expansion_levels,
