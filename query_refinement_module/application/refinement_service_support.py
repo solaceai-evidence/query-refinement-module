@@ -105,7 +105,7 @@ class RefinementServiceSupport:
         if not db_query:
             raise ResourceNotFoundError("Query", query_id)
         if db_query.session.user_id != current_user.id:
-            raise UnauthorizedError("Access denied")
+            raise ResourceNotFoundError("Query", query_id)
         return db_query
 
     async def load_or_reconstruct_session(self, *, query_id: int, db_query, framework):
