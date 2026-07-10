@@ -29,6 +29,8 @@ logger = logging.getLogger(__name__)
 
 @dataclass(slots=True)
 class RefinementServiceSupport:
+    """Shared dependencies and reconstruction helpers for refinement services."""
+
     manager: Any
     db: Any
     session_manager: Any

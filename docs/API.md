@@ -2,6 +2,8 @@
 
 All endpoints are versioned under `/api/v1` unless noted.
 
+For internal architecture and contributor extension points, see [docs/ARCHITECTURE.md](ARCHITECTURE.md).
+
 ## Authentication
 
 - `POST /api/v1/auth/register` (available only when `ALLOW_REGISTRATION=true`; returns 403 when disabled)

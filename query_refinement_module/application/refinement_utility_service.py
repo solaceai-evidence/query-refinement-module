@@ -20,6 +20,8 @@ logger = logging.getLogger(__name__)
 
 
 class RefinementUtilityService:
+    """Owns non-core refinement workflows exposed as auxiliary API endpoints."""
+
     def __init__(self, support: RefinementServiceSupport) -> None:
         self._support = support
 

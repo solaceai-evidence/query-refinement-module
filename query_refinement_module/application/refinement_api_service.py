@@ -1,4 +1,4 @@
-"""Application service for the refinement workflow HTTP entry points."""
+"""Stable facade for refinement application workflows."""
 
 from __future__ import annotations
 
@@ -16,7 +16,12 @@ from .refinement_utility_service import RefinementUtilityService
 
 
 class RefinementApiService:
-    """Shared orchestration service for the refinement API workflow routes."""
+    """Public application-layer entry point for refinement HTTP workflows.
+
+    The facade preserves the route-facing API while delegating behavior to
+    focused collaborators for lifecycle orchestration, agent transforms, and
+    utility workflows.
+    """
 
     def __init__(
         self,
@@ -28,12 +33,6 @@ class RefinementApiService:
         progress_tracker_factory: Callable[[], Any] = get_progress_tracker,
         progress_fn: Callable[..., Awaitable[Any]] = track_progress,
     ) -> None:
-        self._manager = manager
-        self._db = db
-        self._session_manager = session_manager
-        self._settings_factory = settings_factory
-        self._progress_tracker_factory = progress_tracker_factory
-        self._track_progress = progress_fn
         self._support = RefinementServiceSupport(
             manager=manager,
             db=db,

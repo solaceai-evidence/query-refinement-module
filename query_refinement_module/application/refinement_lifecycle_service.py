@@ -44,6 +44,8 @@ logger = logging.getLogger(__name__)
 
 
 class RefinementLifecycleService:
+    """Owns session lifecycle, command handling, and synthesis orchestration."""
+
     def __init__(self, support: RefinementServiceSupport) -> None:
         self._support = support
 

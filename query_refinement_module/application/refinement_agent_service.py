@@ -17,6 +17,8 @@ logger = logging.getLogger(__name__)
 
 
 class RefinementAgentService:
+    """Owns the agent-style transforms that operate on refined statements."""
+
     def __init__(self, support: RefinementServiceSupport) -> None:
         self._support = support
 

@@ -169,6 +169,7 @@ poetry run pytest --cov=query_refinement_module  # with coverage
 ```
 query_refinement_module/   Main Python package
   api/                     HTTP endpoints and middleware
+  application/             Refinement application-layer facade and workflow services
   db/                      Database models and migrations
   schema/                  LLM prompt builders and response schemas
   providers/               LLM provider abstraction
@@ -185,9 +186,21 @@ docs/                      Technical documentation
 
 ## Documentation
 
+- [docs/ARCHITECTURE.md](docs/ARCHITECTURE.md) — Internal architecture, layering, and extension points for contributors
 - [docs/API.md](docs/API.md) — Full API reference for external integrations
 - [docs/DEPLOYMENT.md](docs/DEPLOYMENT.md) — Production deployment, infrastructure, and backups
 - [docs/FRAMEWORKS.md](docs/FRAMEWORKS.md) — How to define custom refinement frameworks
+
+## Contributor orientation
+
+The refinement backend now follows a layered split:
+
+- Route adapters in `query_refinement_module/api/routes/refinement.py`
+- Transport models in `query_refinement_module/api/refinement_schemas.py`
+- Application façade in `query_refinement_module/application/refinement_api_service.py`
+- Workflow collaborators in `query_refinement_module/application/`
+
+Use [docs/ARCHITECTURE.md](docs/ARCHITECTURE.md) as the maintainer guide for where to add new endpoint behavior, new agent steps, or cross-cutting workflow rules.
 
 ## License
 
