@@ -158,7 +158,7 @@ async def test_expand_workflow_returns_expansion_payload():
         def __init__(self, level):
             self.level = level
 
-        def model_dump(self, by_alias=False):
+        def model_dump(self, **kwargs):
             return {"level": self.level, "label": f"Level {self.level}"}
 
     result = SimpleNamespace(

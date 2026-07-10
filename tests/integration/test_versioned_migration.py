@@ -64,8 +64,8 @@ class TestVersionedMigration:
         assert data["current_version"] == "v1"
         assert "v1" in data["supported_versions"]
     
-    def test_frontend_can_use_new_paths(self):
-        """Simulate frontend making requests to new paths."""
+    def test_client_can_use_new_paths(self):
+        """Simulate a client using the versioned API paths."""
         # Simulate login attempt
         response = client.post("/api/v1/auth/login", data={
             "username": "testuser",

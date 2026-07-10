@@ -857,7 +857,7 @@ Refinement workflow endpoints require either `Authorization: Bearer <token>` or 
 
 - `original_query` (string)
 - `framework_name` (string)
-- `source` (optional: `gui` or `api_integration`, defaults to `gui`)
+- `source` (optional: `chainlit` or `api_integration`, defaults to `chainlit`)
 - `skip_refinement` (optional boolean, defaults to `false`) — when `true`, all refinement dimensions are skipped and synthesis is executed immediately as part of the same request. No per-dimension LLM calls are made; the response contains a `synthesis` object with the final result. Intended for API integrations that want a single-call workflow at the cost of refinement quality.
 
 Start response includes: `session_id`, `query_id`, `summary`, optional `next_prompt`, `ready_for_synthesis`, `source`, and optional `synthesis` (populated only when `skip_refinement=true`).
@@ -880,7 +880,7 @@ Returns `StartRefinementResponse` with these fields:
 - `summary`: initialization summary for the new workflow
 - `next_prompt`: the first refinement question, or `null` if the workflow is already complete
 - `ready_for_synthesis`: `true` when no more refinement questions are needed
-- `source`: `gui` or `api_integration`
+- `source`: `chainlit` or `api_integration`
 - `synthesis`: present only when `skip_refinement=true`; contains the same synthesis envelope returned by `/refinement/synthesize`
 
 `summary` is a compact object that reports the overall workflow state. Clients should expect counts such as:

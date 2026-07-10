@@ -26,8 +26,8 @@ class StartRefinementRequest(BaseModel):
         description="Name of the refinement framework to use",
     )
     source: str = Field(
-        default="gui",
-        description="Request origin channel: gui or api_integration",
+        default="chainlit",
+        description="Request origin channel: chainlit or api_integration",
     )
     skip_refinement: bool = Field(
         default=False,
@@ -57,8 +57,8 @@ class StartRefinementRequest(BaseModel):
     @classmethod
     def validate_source(cls, value: str) -> str:
         normalized = (value or "").strip().lower()
-        if normalized not in {"gui", "api_integration"}:
-            raise ValueError("source must be one of: gui, api_integration")
+        if normalized not in {"chainlit", "api_integration"}:
+            raise ValueError("source must be one of: chainlit, api_integration")
         return normalized
 
 

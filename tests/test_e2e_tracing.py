@@ -52,7 +52,7 @@ class TestEndToEndTracing:
         
         assert response.headers["x-request-id"] == test_request_id
     
-    def test_trace_id_propagation(self, client, test_trace_id):
+    def test_trace_id_propagation(self, client):
         """Test that trace_id is added to response headers."""
         response = client.get("/health")
         

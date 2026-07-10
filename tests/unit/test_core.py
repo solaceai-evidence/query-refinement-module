@@ -145,7 +145,7 @@ class _TraceContext:
     def __enter__(self):
         return self
 
-    def __exit__(self, exc_type, exc, tb):  # pragma: no cover - nothing to clean up
+    def __exit__(self, exc_type, exc, _tb):  # pragma: no cover - nothing to clean up
         return False
 
     def add_attribute(self, key: str, value: Any):

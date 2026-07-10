@@ -498,7 +498,7 @@ def on_test_stop(environment, **kwargs):
 
 
 @events.request.add_listener
-def on_request(request_type, name, response_time, response_length, exception, **kwargs):
+def on_request(_request_type, name, _response_time, _response_length, exception, **kwargs):
     """Called for each request (for custom logging)."""
     # Optional: Add custom logging here
     pass

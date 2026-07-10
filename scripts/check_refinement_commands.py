@@ -1,12 +1,14 @@
 import time
+
 import requests
+
 
 BASE_URL = "http://localhost:8001/api/v1"
 
 
 def register_and_login() -> str:
     ts = int(time.time() * 1000)
-    username = f"gui_cmd_{ts}"
+    username = f"command_check_{ts}"
     password = "TestPass123!"
 
     reg = requests.post(
@@ -15,7 +17,7 @@ def register_and_login() -> str:
             "username": username,
             "email": f"{username}@example.com",
             "password": password,
-            "name": f"GUI Cmd {ts}",
+            "name": f"Command Check {ts}",
         },
         timeout=20,
     )
@@ -171,7 +173,7 @@ def main() -> int:
 
     failures = [msg for ok, msg in checks if not ok]
 
-    print("\nGUI command button behavior check")
+    print("\nRefinement command behavior check")
     print("=" * 45)
     for ok, msg in checks:
         print(f"{'PASS' if ok else 'FAIL'}: {msg}")

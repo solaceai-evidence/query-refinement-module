@@ -527,7 +527,7 @@ def test_main_handles_build_manager_error(monkeypatch, capsys):
     monkeypatch.setattr(
         cli,
         "build_manager",
-        lambda enable_tracing=False, trace_dir=None, log_dir=None, parallel_enabled=True: (_ for _ in ()).throw(RuntimeError("fail")),
+        lambda enable_tracing=False, trace_dir=None, log_dir=None, _parallel_enabled=True: (_ for _ in ()).throw(RuntimeError("fail")),
     )
 
     cli.main([])
@@ -554,9 +554,9 @@ def test_main_invokes_run_cli(monkeypatch):
     monkeypatch.setattr(
         cli,
         "build_manager",
-        lambda enable_tracing, trace_dir=None, log_dir=None, parallel_enabled=True: "manager",
+        lambda enable_tracing, trace_dir=None, log_dir=None, _parallel_enabled=True: "manager",
     )
-    async def fake_run_cli(manager, framework, query, parallel_enabled=True):
+    async def fake_run_cli(manager, framework, query, _parallel_enabled=True):
         called.update({"manager": manager, "framework": framework, "query": query})
     monkeypatch.setattr(cli, "run_cli", fake_run_cli)
 

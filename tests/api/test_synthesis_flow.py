@@ -305,10 +305,10 @@ def main():
     print_section("TEST RESULT")
     if is_valid:
         print(f"{Colors.GREEN}{Colors.BOLD}✅ TEST PASSED{Colors.END}")
-        print("Synthesis result is properly formed and would display correctly in the frontend.")
+        print("Synthesis result is properly formed and is ready for the active client interfaces.")
     else:
         print(f"{Colors.RED}{Colors.BOLD}❌ TEST FAILED{Colors.END}")
-        print("Synthesis result has issues that would prevent proper display in the frontend.")
+        print("Synthesis result has issues that would prevent correct rendering in the active client interfaces.")
         sys.exit(1)
 
 if __name__ == "__main__":
