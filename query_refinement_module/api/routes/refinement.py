@@ -24,7 +24,6 @@ logger = logging.getLogger(__name__)
 from query_refinement_module.db.session import get_db
 from query_refinement_module.db.crud import (
     get_query,
-    save_query_refinement_response,
     update_refined_query,
     get_query_refinement_steps,
     abandon_query_session,
@@ -40,25 +39,17 @@ from query_refinement_module.audit import audit_service
 from query_refinement_module.db.models.audit_log import AuditEventType
 from query_refinement_module.application.refinement_api_service import RefinementApiService
 from query_refinement_module.application.refinement_workflow import (
-    build_next_prompt as workflow_build_next_prompt,
-    build_status_payload as workflow_build_status_payload,
-    db_step_matches_aspect as workflow_db_step_matches_aspect,
-    find_db_step_for_aspect as workflow_find_db_step_for_aspect,
-    get_active_prompt as workflow_get_active_prompt,
     is_session_ready_for_synthesis as workflow_is_session_ready_for_synthesis,
-    persist_generated_question as workflow_persist_generated_question,
     restore_session_from_db_state as workflow_restore_session_from_db_state,
 )
 from query_refinement_module.settings import LLMSettings
 from query_refinement_module.core import (
     QueryRefinementManager,
-    UserCommand,
 )
 from query_refinement_module.tracing import generate_request_id, get_logger, set_request_id
 from query_refinement_module.services.progress_tracker import get_progress_tracker, track_progress
 from query_refinement_module.models.progress import ProgressStage
 from query_refinement_module.schema import (
-    DimensionEvaluationResponse,
     QueryRefinementResponse,
     SearchExpansionContext,
 )
@@ -820,346 +811,14 @@ class ForwardToQAResponse(BaseModel):
 # Utility Functions
 # ==========================================
 
-async def _generate_question_with_retry(
-    manager,
-    session,
-    aspect_id: str,
-    mode: str = 'initial',
-    max_retries: int = 1
-):
-    """
-    Generate question with retry logic and exponential backoff.
-    
-    Args:
-        manager: QueryRefinementManager instance
-        session: QueryRefinementSession instance
-        aspect_id: ID of the aspect to generate question for
-        mode: 'initial' or 'followup'
-        max_retries: Maximum number of retry attempts (default: 1)
-    
-    Returns:
-        DimensionEvaluationResponse from LLM
-    
-    Raises:
-        Exception: If all retry attempts fail
-    """
-    last_error = None
-    
-    for attempt in range(max_retries + 1):
-        try:
-            if attempt > 0:
-                # Exponential backoff: 2^attempt seconds
-                delay = 2 ** attempt
-                logger.info(f"Retry attempt {attempt}/{max_retries} after {delay}s delay for aspect {aspect_id}")
-                await asyncio.sleep(delay)
-            
-            result = await manager.get_analysis_prompts(
-                session=session,
-                aspect_id=aspect_id,
-                mode=mode
-            )
-            return result
-            
-        except Exception as e:
-            last_error = e
-            logger.warning(f"LLM call failed (attempt {attempt + 1}/{max_retries + 1}): {e}")
-            
-            if attempt >= max_retries:
-                raise last_error
-    
-    # Should never reach here, but for type safety
-    raise last_error if last_error else Exception("Question generation failed")
-
-
-def _deserialize_refinement_value(value: Optional[str]) -> Optional[Any]:
-    """Deserialize persisted final_value into a native python value when possible."""
-    if value is None:
-        return None
-
-    if not isinstance(value, str):
-        return value
-
-    stripped = value.strip()
-    if not stripped:
-        return value
-
-    if stripped[0] in ["{", "["]:
-        try:
-            return json.loads(stripped)
-        except Exception:
-            return value
-
-    return value
-
-
-def _db_step_matches_aspect(db_step: Any, aspect: Any) -> bool:
-    """Match persisted step rows to framework aspects, preferring stable IDs."""
-    return workflow_db_step_matches_aspect(db_step, aspect)
-
-
-def _find_db_step_for_aspect(db_steps: List[Any], aspect: Any) -> Optional[Any]:
-    """Locate the DB row corresponding to a framework aspect."""
-    return workflow_find_db_step_for_aspect(db_steps, aspect)
-
-
 def _restore_session_from_db_state(session, db_steps: List[Any]) -> None:
     """Restore in-memory session state from persisted DB refinement step rows."""
     workflow_restore_session_from_db_state(session, db_steps)
 
 
-async def _build_next_prompt(manager, session, db=None, db_steps=None) -> Optional[Dict[str, Any]]:
-    """
-    Build the next prompt from the next unrefined aspect in dependency order.
-    
-    Analyzes dimensions with LLM to determine if they're already clear, auto-completing
-    when possible and only asking questions when clarification is truly needed.
-    
-    Uses get_next_unrefined_aspect() for sequential on-demand refinement.
-    """
-    return await workflow_build_next_prompt(manager, session, db=db, db_steps=db_steps)
-
-
-def _persist_generated_question(
-    db,
-    db_steps: List,
-    next_prompt: Optional[Dict[str, Any]],
-) -> None:
-    """Persist a generated question and its quick-reply examples to DB so they survive server restarts."""
-    workflow_persist_generated_question(db, db_steps, next_prompt)
-
-
-def _get_active_prompt(session) -> Optional[Dict[str, Any]]:
-    """Return the currently active question if it already exists in session state."""
-    return workflow_get_active_prompt(session)
-
-
 def _is_session_ready_for_synthesis(session) -> bool:
     """Return True when synthesis can be safely executed for a session."""
     return workflow_is_session_ready_for_synthesis(session)
-
-
-def _build_status_payload(query_id: int, db_query, session, summary: Dict[str, Any]) -> Dict[str, Any]:
-    """Serialize the current workflow state for status-like responses."""
-    return workflow_build_status_payload(query_id, db_query, session, summary)
-
-
-async def _build_command_response(
-    manager,
-    command_type: str,
-    payload: Dict[str, Any],
-    session,
-    force_confirmation_needed: bool = False,
-    db=None,
-    query_id: Optional[int] = None,
-    db_steps: Optional[List] = None,
-) -> CommandResponse:
-    """Build CommandResponse based on command type and execution payload.
-    
-    Args:
-        command_type: The command type (status, back, restart, etc.)
-        payload: Result from session.handle_command()
-        session: QueryRefinementSession instance
-        force_confirmation_needed: Whether force flag is required
-    
-    Returns:
-        CommandResponse with appropriate fields populated
-    """
-    logger.info(f"[_build_command_response] Building response for command: {command_type}")
-    
-    success = payload.get("success", False)
-    message = payload.get("message", "")
-    
-    logger.info(f"[_build_command_response] Command success: {success}, message: {message[:100]}")
-    
-    # Build base response
-    response = CommandResponse(
-        command_type=command_type,
-        success=success,
-        message=message,
-        next_prompt=None,
-        invalidated_aspects=None,
-        synthesis_ready=False,
-        step_summary=None,
-        step_list=None,
-        force_required=None
-    )
-    
-    # If command failed or needs force confirmation, preserve current prompt
-    if not success or force_confirmation_needed:
-        logger.info(f"[_build_command_response] Command failed or needs confirmation, preserving current prompt")
-        response.next_prompt = _get_active_prompt(session) or await _build_next_prompt(manager, session, db=db, db_steps=db_steps)
-        _persist_generated_question(db, db_steps or [], response.next_prompt)
-        if force_confirmation_needed:
-            response.force_required = True
-            response.invalidated_aspects = payload.get("invalidated", [])
-        return response
-    
-    # Command-specific response fields
-    if command_type == UserCommand.STATUS.value:
-        logger.info(f"[_build_command_response] STATUS command - adding step summary")
-        response.step_summary = payload.get("summary")
-        # Read-only command: never trigger an LLM call, use cached prompt only
-        response.next_prompt = _get_active_prompt(session)
-        response.synthesis_ready = _is_session_ready_for_synthesis(session)
-    
-    elif command_type == UserCommand.STEPS.value:
-        logger.info(f"[_build_command_response] STEPS command - building step list")
-        # Serialize steps to JSON-compatible format
-        steps = payload.get("steps", [])
-        active_step = session.get_active_step()
-        if steps:
-            response.step_list = [
-                {
-                    "name": step.refinement_aspect.name,
-                    "aspect_id": step.refinement_aspect.id,
-                    "is_complete": step.is_complete,
-                    "needs_review": step.needs_review,
-                    "was_skipped": step.was_skipped,
-                    "follow_up_count": step.follow_up_count,
-                    "status": (
-                        "completed" if step.is_complete and not step.needs_review else
-                        "needs review" if step.needs_review else
-                        "active" if step == active_step else
-                        "not started"
-                    ),
-                    "is_active": step == active_step
-                }
-                for step in steps
-            ]
-            logger.info(f"[_build_command_response] Built step list with {len(response.step_list)} steps")
-        # Read-only command: never trigger an LLM call, use cached prompt only
-        response.next_prompt = _get_active_prompt(session)
-    
-    elif command_type == UserCommand.HELP.value:
-        logger.info(f"[_build_command_response] HELP command - showing help text")
-        # Read-only command: never trigger an LLM call, use cached prompt only
-        response.next_prompt = _get_active_prompt(session)
-    
-    elif command_type == UserCommand.SUBMIT.value:
-        logger.info(f"[_build_command_response] SUBMIT/END command - marking synthesis ready")
-        response.synthesis_ready = True
-        response.next_prompt = None
-    
-    elif command_type == UserCommand.CLEAR.value:
-        logger.info(f"[_build_command_response] CLEAR command - regenerating question for current aspect")
-        # Clear command - regenerate question for current aspect
-        response.next_prompt = await _build_next_prompt(manager, session, db=db, db_steps=db_steps)
-        _persist_generated_question(db, db_steps or [], response.next_prompt)
-        logger.info(f"[_build_command_response] Next prompt: {'exists' if response.next_prompt else 'None'}")
-        if response.next_prompt:
-            logger.info(f"[_build_command_response]   -> Aspect: {response.next_prompt.get('name')}")
-    
-    elif command_type in {UserCommand.BACK.value, UserCommand.PREVIOUS.value, UserCommand.RESTART.value}:
-        logger.info(f"[_build_command_response] NAVIGATION command ({command_type}) - building next prompt")
-        # Navigation commands - show new active step
-        response.invalidated_aspects = payload.get("invalidated", [])
-        
-        # For back/restart, explicitly generate question for reopened step
-        # Don't allow LLM to auto-complete it again
-        if command_type in {UserCommand.BACK.value, UserCommand.RESTART.value}:
-            reopened_step = session.get_active_step()
-            if reopened_step and not reopened_step.follow_up_question:
-                # Force generate a question (don't auto-complete)
-                from query_refinement_module.schema.prompt_builder import PromptBuilder
-                prompt_builder = PromptBuilder()
-                aspect = reopened_step.refinement_aspect
-                
-                logger.info(f"[NAVIGATION] Generating fresh question for reopened dimension: {aspect.name}")
-                logger.info(f"[NAVIGATION] Conversation history length: {len(reopened_step.conversation_history)}")
-                logger.info(f"[NAVIGATION] Has normalized_value: {reopened_step.normalized_value is not None}")
-                
-                try:
-                    # Build messages for initial question generation
-                    messages = prompt_builder.build_refinement_messages(
-                        dimension=aspect,
-                        query=session.original_query,
-                        conversation_history=[],  # Force empty to ensure fresh question
-                        dependency_context=session.get_dependency_context(aspect.id),
-                        completed_context=session.get_completed_context(aspect.id),
-                        terminal_reinforcement_threshold=getattr(manager, "terminal_reinforcement_threshold", 3),
-                    )
-                    
-                    # Add explicit instruction to ALWAYS ask a clarifying question
-                    if messages and messages[-1].get("role") == "user":
-                        messages[-1]["content"] += "\n\nCRITICAL: The user has navigated back to review this dimension from scratch. The dimension has been completely reset with no previous values. You MUST ask a clarifying question as if this is the very first time asking about this dimension. Do NOT assume anything is already clear - treat this as a fresh initial question."
-                    
-                    logger.info(f"[NAVIGATION] Calling LLM to generate fresh question...")
-                    llm_result = await manager.llm_provider.complete_async(
-                        messages=messages,
-                        temperature=0.0,
-                        response_format=DimensionEvaluationResponse,
-                        cache_system_prompt=True,
-                    )
-
-                    logger.info(f"[NAVIGATION] LLM response received, parsing...")
-                    llm_context = llm_result.context
-                    generated_question = None
-
-                    if isinstance(llm_context, DimensionEvaluationResponse):
-                        generated_question = llm_context.question
-                    elif isinstance(llm_context, dict):
-                        generated_question = llm_context.get("question") or llm_context.get("next_question")
-                    elif isinstance(llm_context, str):
-                        cleaned = llm_context.strip()
-                        if cleaned.startswith("```"):
-                            lines = cleaned.splitlines()
-                            body = lines[1:]
-                            if body and body[-1].startswith("```"):
-                                body = body[:-1]
-                            cleaned = "\n".join(body).strip()
-                        try:
-                            parsed = json.loads(cleaned)
-                            generated_question = parsed.get("question") or parsed.get("next_question")
-                        except Exception:
-                            generated_question = None
-
-                    if generated_question and isinstance(generated_question, str) and generated_question.strip():
-                        reopened_step.follow_up_question = generated_question.strip()
-                        logger.info(f"[NAVIGATION] ✓ Using LLM-generated question: {reopened_step.follow_up_question[:100]}...")
-                    else:
-                        # Fallback if LLM didn't generate a usable question
-                        logger.warning(f"[NAVIGATION] LLM did not generate proper question, using fallback")
-                        reopened_step.follow_up_question = f"Let's review {aspect.name} for your research query. What would you like to specify for this dimension?"
-                except Exception as e:
-                    logger.error(f"[NAVIGATION] Error generating question for reopened step: {e}")
-                    logger.exception(e)  # Full stack trace
-                    # Fallback question - neutral wording since we cleared previous values
-                    reopened_step.follow_up_question = f"Let's review {aspect.name} for your research query. What would you like to specify for this dimension?"
-        
-        response.next_prompt = await _build_next_prompt(manager, session, db=db, db_steps=db_steps)
-        _persist_generated_question(db, db_steps or [], response.next_prompt)
-        logger.info(f"[_build_command_response] Next prompt: {'exists' if response.next_prompt else 'None'}")
-        if response.next_prompt:
-            logger.info(f"[_build_command_response]   -> Aspect: {response.next_prompt.get('name')}")
-    
-    elif command_type in {UserCommand.SKIP.value, UserCommand.DONE.value}:
-        logger.info(f"[_build_command_response] CONTROL command ({command_type}) - advancing to next step")
-        # Control commands - advance to next step with LLM analysis and auto-completion
-        response.next_prompt = await _build_next_prompt(manager, session, db=db, db_steps=db_steps)
-        _persist_generated_question(db, db_steps or [], response.next_prompt)
-        logger.info(f"[_build_command_response] Next prompt: {'exists' if response.next_prompt else 'None'}")
-        if response.next_prompt:
-            has_question = bool(response.next_prompt.get('question'))
-            logger.info(f"[_build_command_response]   -> Aspect: {response.next_prompt.get('name')}, has question: {has_question}")
-            if has_question:
-                logger.info(f"[_build_command_response]   -> Question preview: {response.next_prompt.get('question')[:100]}")
-        else:
-            # No more dimensions - check if ready for synthesis
-            logger.info(f"[_build_command_response]   -> No next prompt, checking if session is complete")
-            if session.is_complete():
-                logger.info(f"[_build_command_response]   -> ✓ All dimensions complete - setting synthesis_ready=True")
-                response.synthesis_ready = True
-            else:
-                logger.warning(f"[_build_command_response]   -> ⚠️ No next prompt but session not complete - unexpected state")
-
-    # Ensure response contract stays explicit for integrations
-    if not response.synthesis_ready:
-        response.synthesis_ready = _is_session_ready_for_synthesis(session)
-    
-    logger.info(f"[_build_command_response] Response built successfully - next_prompt: {'yes' if response.next_prompt else 'no'}, synthesis_ready: {response.synthesis_ready}")
-    return response
-
-
 # ==========================================
 # Refinement Workflow Endpoints
 # ==========================================
@@ -1221,7 +880,6 @@ async def start_refinement(
         skip_refinement=request.skip_refinement,
         current_user=current_user,
         request_id=request_id,
-        synthesis_runner=_run_synthesis,
     )
     return StartRefinementResponse(**payload)
 
@@ -1270,10 +928,11 @@ async def submit_answer(
         current_user=current_user,
         http_request=http_request,
         request_id=request_id,
-        command_response_builder=_build_command_response,
     )
     if isinstance(result, CommandResponse):
         return result
+    if isinstance(result, dict) and "command_type" in result:
+        return CommandResponse(**result)
     return SubmitAnswerResponse(**result)
 
 
@@ -1336,259 +995,6 @@ async def resume_refinement(
 # ==========================================
 # Synthesis helper – shared by /synthesize and skip_refinement fast-path
 # ==========================================
-
-async def _run_synthesis(
-    *,
-    manager: QueryRefinementManager,
-    session,
-    db,
-    db_query,
-    current_user,
-    session_manager: SessionManager,
-    query_id: int,
-    request_id: str,
-    include_expansion: bool = False,
-) -> SynthesizeQueryResponse:
-    """
-    Execute the full synthesis pipeline and return a SynthesizeQueryResponse.
-
-    Called by both the /synthesize endpoint and the skip_refinement fast-path
-    in /start so that both paths stay in sync without code duplication.
-    """
-    tracker = get_progress_tracker()
-
-    await track_progress(
-        query_id=str(query_id),
-        stage=ProgressStage.SYNTHESIZING,
-        message="Synthesizing final refined query...",
-        details={"framework": db_query.session.framework_name},
-    )
-
-    # LLM synthesis call
-    try:
-        await tracker.increment_llm_calls(str(query_id))
-        synthesis_result = await manager.synthesize_refined_query(session)
-    except Exception as _e:
-        await track_progress(
-            query_id=str(query_id),
-            stage=ProgressStage.FAILED,
-            message="Synthesis failed",
-            error=str(_e),
-        )
-        raise HTTPException(
-            status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
-            detail=f"Failed to synthesize query: {str(_e)}",
-        )
-
-    clarified_query = synthesis_result.get("clarified_query", "")
-
-    # Build structured output
-    structured_output = None
-    if synthesis_result.get("dimensions_specifications"):
-        structured_output = {
-            "dimensions_specifications": synthesis_result.get("dimensions_specifications"),
-            "keyword_statement": synthesis_result.get("keyword_statement"),
-            "search_optimized": synthesis_result.get("search_optimized"),
-            "search_filters": synthesis_result.get("search_filters"),
-            "terminology": synthesis_result.get("terminology"),
-            "concept_graph": synthesis_result.get("concept_graph"),
-        }
-    elif clarified_query and (
-        clarified_query.startswith("{") or clarified_query.startswith("`")
-    ):
-        try:
-            import json as _json
-            import re as _re
-
-            json_str = clarified_query
-            if json_str.startswith("`"):
-                lines = json_str.split("\n")
-                if lines[0].startswith("`"):
-                    lines = lines[1:]
-                if lines and lines[-1].strip().startswith("`"):
-                    lines = lines[:-1]
-                json_str = "\n".join(lines)
-
-            if not json_str.rstrip().endswith("}"):
-                logger.error(
-                    "JSON response appears truncated (doesn't end with '}'), likely hit max_tokens limit",
-                    extra={"json_length": len(json_str), "request_id": request_id},
-                )
-                _match = _re.search(r'"clarified_query"\s*:\s*"([^"]+)"', json_str)
-                if _match:
-                    clarified_query = _match.group(1)
-                raise ValueError("JSON response was truncated, increase max_tokens")
-
-            _parsed = _json.loads(json_str)
-            structured_output = {
-                "dimensions_specifications": _parsed.get("dimensions_specifications"),
-                "search_optimized": _parsed.get("search_optimized"),
-                "search_filters": _parsed.get("search_filters"),
-                "terminology": _parsed.get("terminology"),
-                "concept_graph": _parsed.get("concept_graph"),
-            }
-            if _parsed.get("clarified_query"):
-                clarified_query = _parsed["clarified_query"]
-            logger.info(
-                "Successfully parsed JSON from clarified_query string",
-                extra={"has_dimensions": "dimensions" in _parsed},
-            )
-        except (_json.JSONDecodeError, ValueError) as _e:
-            logger.error(
-                f"Failed to parse JSON from clarified_query: {_e}",
-                extra={"error_type": type(_e).__name__},
-            )
-
-    if not clarified_query or not clarified_query.strip():
-        raise HTTPException(
-            status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
-            detail="Synthesis produced empty result. Please try again.",
-        )
-
-    logger.info(
-        "Clarified query before database update",
-        extra={
-            "request_id": request_id,
-            "clarified_query_preview": clarified_query[:200],
-            "clarified_query_length": len(clarified_query),
-        },
-    )
-
-    # Persist the full synthesis payload so the stored query record matches the
-    # API result shown to the user.
-    settings = get_settings()
-    if settings.enforce_workflow_limit and not current_user.is_superuser:
-        current_user.has_completed_workflow = True
-    save_query_refinement_response(
-        db,
-        query_id,
-        {
-            "clarified_query": clarified_query,
-            "dimensions_specifications": (
-                structured_output.get("dimensions_specifications")
-                if structured_output
-                else synthesis_result.get("dimensions_specifications")
-            ),
-            "search_optimized": (
-                structured_output.get("search_optimized")
-                if structured_output
-                else synthesis_result.get("search_optimized")
-            ),
-            "search_filters": (
-                structured_output.get("search_filters")
-                if structured_output
-                else synthesis_result.get("search_filters")
-            ),
-            "terminology": (
-                structured_output.get("terminology")
-                if structured_output
-                else synthesis_result.get("terminology")
-            ),
-            "metadata": synthesis_result.get("metadata"),
-            "processing_log": synthesis_result.get("processing_log"),
-        },
-    )
-    synthesis_metadata = synthesis_result.get("metadata") or {}
-    parallel_timing = synthesis_metadata.get("parallel_timing") or {}
-    post_statement_parallel = parallel_timing.get("post_statement") or {}
-    logger.info(
-        "Database updated with refined query",
-        extra={
-            "request_id": request_id,
-            "query_id": query_id,
-            "db_integrated_statement_length": len(db_query.refined_query) if db_query.refined_query else 0,
-            "synthesis_duration_ms": synthesis_metadata.get("duration_ms", 0),
-            "synthesis_call_count": len(synthesis_metadata.get("call_timings") or {}),
-            "post_statement_overlap_ms": post_statement_parallel.get("overlap_window_ms", 0),
-            "post_statement_fully_overlapped": post_statement_parallel.get("fully_overlapped"),
-        },
-    )
-
-    await track_progress(
-        query_id=str(query_id),
-        stage=ProgressStage.SYNTHESIS_COMPLETE,
-        message="Synthesis completed successfully",
-    )
-
-    # Clean up Redis session (workflow complete)
-    session_manager.delete_session(query_id)
-
-    await track_progress(
-        query_id=str(query_id),
-        stage=ProgressStage.COMPLETED,
-        message="Refinement completed successfully",
-    )
-
-    logger.info(
-        "API: Query synthesis completed",
-        extra={
-            "request_id": request_id,
-            "query_id": query_id,
-            "used_llm": synthesis_result.get("used_llm", False),
-            "clarified_query_length": len(clarified_query),
-            "has_structured_output": structured_output is not None,
-        },
-    )
-
-    expansion_levels = None
-    expansion_metadata = None
-    if include_expansion:
-        so = synthesis_result.get("search_optimized")
-        keyword = getattr(so, "keyword", None) if so else None
-        combined_blocks = getattr(keyword, "combined_blocks", None) if keyword else None
-        concept_graph = synthesis_result.get("concept_graph") or {}
-        if combined_blocks and clarified_query:
-            try:
-                exp_input = SearchExpansionInput(
-                    clarified_query=clarified_query,
-                    anchor_blocks=combined_blocks,
-                    concept_graph=concept_graph,
-                    semantic_statement=getattr(so, "semantic", "") or "",
-                    keyword_statement=synthesis_result.get("keyword_statement") or "",
-                    keyword_structured=getattr(keyword, "structured", "") or "",
-                    search_filters=synthesis_result.get("search_filters"),
-                    phrases=list(getattr(keyword, "phrases", None) or []),
-                )
-                exp_result, exp_meta = await manager.generate_search_expansion_levels(
-                    search_input=exp_input,
-                )
-                expansion_levels = [lv.model_dump(by_alias=True) for lv in exp_result.levels]
-                expansion_metadata = {
-                    "geography_broadening_strategy": exp_result.geography_broadening_strategy,
-                    "recommended_starting_level": exp_result.recommended_starting_level,
-                    "recommendation_rationale": exp_result.recommendation_rationale,
-                    **exp_meta,
-                }
-                logger.info(
-                    "Agent D expansion completed inline",
-                    extra={
-                        "request_id": request_id,
-                        "query_id": query_id,
-                        "generated_level_count": exp_meta.get("generated_level_count", 0),
-                        "status": exp_meta.get("status"),
-                    },
-                )
-            except Exception as exc:
-                logger.warning(
-                    "Agent D expansion failed during synthesize pipeline: %s", exc,
-                    extra={"request_id": request_id, "query_id": query_id},
-                )
-        else:
-            logger.info(
-                "Agent D expansion skipped: combined_blocks unavailable",
-                extra={"request_id": request_id, "query_id": query_id},
-            )
-
-    return SynthesizeQueryResponse(
-        query_id=query_id,
-        clarified_query=clarified_query,
-        integrated_statement=clarified_query,
-        used_llm=synthesis_result.get("used_llm", False),
-        structured_output=structured_output,
-        expansion_levels=expansion_levels,
-        expansion_metadata=expansion_metadata,
-    )
-
 
 def _dimension_value_is_accepted(value: Any) -> bool:
     if value is None:
@@ -1919,56 +1325,18 @@ async def synthesize_refined_query(
         },
     )
 
-    db_query = get_query(db, request.query_id)
-    if not db_query:
-        raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Query not found")
-
-    if db_query.session.user_id != current_user.id:
-        raise HTTPException(status_code=status.HTTP_403_FORBIDDEN, detail="Access denied")
-
-    framework_name = db_query.session.framework_name
-    if not framework_name:
-        raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail="Framework name not found for session")
-
-    framework = get_framework(framework_name)
-
-    try:
-        async with session_manager.session_lock(request.query_id):
-            session = session_manager.load_session(request.query_id, framework)
-
-            if not session:
-                logger.warning("Session not found in Redis for query_id=%d, reconstructing from database", request.query_id)
-                session = await asyncio.to_thread(
-                    manager.initialize_sequential,
-                    db_query.original_query,
-                    framework,
-                )
-                db_steps = get_query_refinement_steps(db, request.query_id)
-                _restore_session_from_db_state(session, db_steps)
-
-            if not _is_session_ready_for_synthesis(session):
-                raise HTTPException(
-                    status_code=status.HTTP_409_CONFLICT,
-                    detail="Query is not ready for synthesis. Complete all dimensions or use /submit first.",
-                )
-
-            response = await _run_synthesis(
-                manager=manager,
-                session=session,
-                db=db,
-                db_query=db_query,
-                current_user=current_user,
-                session_manager=session_manager,
-                query_id=request.query_id,
-                request_id=request_id_val,
-                include_expansion=request.include_expansion,
-            )
-    except RuntimeError as exc:
-        logger.warning("Could not acquire session lock for query %d during synthesis: %s", request.query_id, exc)
-        raise HTTPException(
-            status_code=status.HTTP_503_SERVICE_UNAVAILABLE,
-            detail="Session is temporarily locked by another request. Please retry in a moment.",
-        )
+    workflow_service = RefinementApiService(
+        manager=manager,
+        db=db,
+        session_manager=session_manager,
+        settings_factory=get_settings,
+    )
+    payload = await workflow_service.synthesize_workflow(
+        query_id=request.query_id,
+        include_expansion=request.include_expansion,
+        current_user=current_user,
+        request_id=request_id_val,
+    )
 
     duration_ms = (time.time() - start_time) * 1000
     logger.info(
@@ -1976,12 +1344,12 @@ async def synthesize_refined_query(
         extra={
             "request_id": request_id_val,
             "duration_ms": round(duration_ms, 2),
-            "response_query_id": response.query_id,
-            "response_clarified_query_length": len(response.clarified_query),
-            "response_has_structured_output": response.structured_output is not None,
+            "response_query_id": payload["query_id"],
+            "response_clarified_query_length": len(payload["clarified_query"]),
+            "response_has_structured_output": payload["structured_output"] is not None,
         },
     )
-    return response
+    return SynthesizeQueryResponse(**payload)
 
 
 # ==========================================
