@@ -12,7 +12,6 @@ Key Features:
 - Error handling with detailed context
 """
 import asyncio
-import json
 import logging
 import time
 from fastapi import APIRouter, Body, Depends, HTTPException, status, Request
@@ -28,11 +27,39 @@ from query_refinement_module.db.crud import (
     get_query_refinement_steps,
     abandon_query_session,
     get_user_framework_names,
+    update_refinement_step_generated_examples,
+    update_refinement_step_generated_question,
     update_refinement_step_final_value,
 )
 from query_refinement_module.api.auth import get_current_user_or_integration
 from query_refinement_module.api.config import get_settings
 from query_refinement_module.api.dependencies import get_refinement_manager, get_session_manager
+from query_refinement_module.api.refinement_schemas import (
+    AbandonSessionRequest,
+    AbandonSessionResponse,
+    CommandHistoryEntry,
+    CommandHistoryResponse,
+    CommandResponse,
+    ConstructSearchRequest,
+    ConstructSearchResponse,
+    ForwardToQARequest,
+    ForwardToQAResponse,
+    GetRefinementStatusResponse,
+    InspectMessagesResponse,
+    NormalizeQueryRequest,
+    NormalizeQueryResponse,
+    RepresentQueryRequest,
+    RepresentQueryResponse,
+    ResumeRefinementResponse,
+    SearchExpandRequest,
+    SearchExpandResponse,
+    StartRefinementRequest,
+    StartRefinementResponse,
+    SubmitAnswerRequest,
+    SubmitAnswerResponse,
+    SynthesizeQueryRequest,
+    SynthesizeQueryResponse,
+)
 from query_refinement_module.schema.registry import get_framework, list_frameworks
 from query_refinement_module.api.session_manager import SessionManager
 from query_refinement_module.audit import audit_service
@@ -49,767 +76,60 @@ from query_refinement_module.core import (
 from query_refinement_module.tracing import generate_request_id, get_logger, set_request_id
 from query_refinement_module.services.progress_tracker import get_progress_tracker, track_progress
 from query_refinement_module.models.progress import ProgressStage
-from query_refinement_module.schema import (
-    QueryRefinementResponse,
-    SearchExpansionContext,
-)
 from query_refinement_module.schema.response import (
-    CombinedBlock,
     SearchExpansionInput,
-    SearchExpansionResponse,
 )
-
-from pydantic import BaseModel, ConfigDict, Field, field_validator, model_validator, AnyHttpUrl
 
 
 router = APIRouter(prefix="/refinement", tags=["Query Refinement Workflow"])
 
 
 # ==========================================
-# Request/Response Models
-# ==========================================
-
-class StartRefinementRequest(BaseModel):
-    """Request to start a new refinement workflow."""
-    original_query: str = Field(
-        ..., 
-        min_length=3,
-        max_length=5000,
-        description="The query to refine"
-    )
-    framework_name: str = Field(
-        ..., 
-        min_length=1,
-        max_length=128,
-        description="Name of the refinement framework to use"
-    )
-    source: str = Field(
-        default="gui",
-        description="Request origin channel: gui or api_integration",
-    )
-    skip_refinement: bool = Field(
-        default=False,
-        description="When True, skip all refinement dimensions and go straight to synthesis. "
-                    "No per-dimension LLM calls are made; only the synthesis LLM call is used."
-    )
-
-    @field_validator('original_query')
-    @classmethod
-    def query_not_empty(cls, v: str) -> str:
-        """Validate that query is not just whitespace."""
-        if not v or not v.strip():
-            raise ValueError("Query cannot be empty or just whitespace")
-        if len(v.strip()) < 3:
-            raise ValueError("Query must be at least 3 characters long")
-        return v.strip()
-    
-    @field_validator('framework_name')
-    @classmethod
-    def framework_not_empty(cls, v: str) -> str:
-        """Validate that framework name is not just whitespace."""
-        if not v or not v.strip():
-            raise ValueError("Framework name cannot be empty or just whitespace")
-        return v.strip()
-
-    @field_validator('source')
-    @classmethod
-    def validate_source(cls, v: str) -> str:
-        """Validate supported request sources."""
-        normalized = (v or '').strip().lower()
-        if normalized not in {"gui", "api_integration"}:
-            raise ValueError("source must be one of: gui, api_integration")
-        return normalized
-
-
-class StartRefinementResponse(BaseModel):
-    """Response with session details and initialization summary."""
-    session_id: int = Field(..., description="Database session ID")
-    query_id: int = Field(..., description="Database query ID")
-    summary: Dict[str, Any] = Field(..., description="Initialization analysis summary")
-    next_prompt: Optional[Dict[str, Any]] = Field(
-        None,
-        description=(
-            "Next question for the user. Shape: {aspect_id, name, aspect_name, question, description, examples}. "
-            "`question` is plain prose. `examples` is a list of 0–4 concrete quick-reply strings "
-            "that span the clarification space and can be rendered as clickable buttons."
-        ),
-    )
-    ready_for_synthesis: bool = Field(False, description="True if all aspects are complete and ready for synthesis")
-    source: str = Field(..., description="Request origin channel")
-    synthesis: Optional["SynthesizeQueryResponse"] = Field(
-        None,
-        description="Populated when skip_refinement=True: full synthesis result embedded "
-                    "in the start response so no follow-up /synthesize call is needed."
-    )
-
-
-class SubmitAnswerRequest(BaseModel):
-    """Request to submit an answer to a refinement question."""
-    answer: str = Field(
-        ..., 
-        min_length=1,
-        max_length=2000,
-        description="User's answer to the current question or a command (e.g., /status, /back)"
-    )
-    force: Optional[bool] = Field(
-        False,
-        description="Force navigation commands that invalidate dependent aspects"
-    )
-    
-    @field_validator('answer')
-    @classmethod
-    def answer_not_empty(cls, v: str) -> str:
-        """Validate that answer is not just whitespace."""
-        if not v or not v.strip():
-            raise ValueError("Answer cannot be empty or just whitespace")
-        return v.strip()
-
-
-class SubmitAnswerResponse(BaseModel):
-    """Response after processing user's answer."""
-    refinement_step_id: int = Field(..., description="ID of the refinement step")
-    followup_id: int = Field(..., description="ID of the follow-up entry")
-    is_complete: bool = Field(..., description="Whether the aspect is complete")
-    next_prompt: Optional[Dict[str, Any]] = Field(
-        None,
-        description="Next question if follow-up needed. Includes `examples` list for quick-reply buttons.",
-    )
-    ready_for_synthesis: bool = Field(False, description="True if all aspects are complete and ready for synthesis")
-
-
-class CommandResponse(BaseModel):
-    """Response when user issues a command instead of answering."""
-    command_type: str = Field(..., description="Type of command executed (status, back, skip, etc.)")
-    success: bool = Field(..., description="Whether command executed successfully")
-    message: str = Field(..., description="Human-readable feedback message")
-    next_prompt: Optional[Dict[str, Any]] = Field(
-        None,
-        description="Next question after command execution. Includes `examples` list for quick-reply buttons.",
-    )
-    
-    # Optional fields for specific commands
-    invalidated_aspects: Optional[List[str]] = Field(None, description="Aspects marked for review (/back, /restart)")
-    synthesis_ready: bool = Field(False, description="True if session ready for synthesis (/submit)")
-    step_summary: Optional[Dict[str, Any]] = Field(None, description="Step statistics (/status)")
-    step_list: Optional[List[Dict[str, Any]]] = Field(None, description="All steps with status (/steps)")
-    force_required: Optional[bool] = Field(None, description="True if command requires force=true flag")
-
-
-class GetRefinementStatusResponse(BaseModel):
-    """Current status of a refinement workflow."""
-    query_id: int
-    original_query: str
-    refined_query: Optional[str]
-    is_complete: bool
-    current_aspect: Optional[str]
-    aspects_summary: Dict[str, Any]
-    next_prompt: Optional[Dict[str, Any]] = Field(
-        None,
-        description="Next question for the user. Includes `examples` list for quick-reply buttons.",
-    )
-    ready_for_synthesis: bool = Field(False, description="True if all aspects are complete and ready for synthesis")
-    aspects: List[Dict[str, Any]] = Field(default_factory=list, description="List of aspect summaries")
-    conversation_history: List[Dict[str, Any]] = Field(default_factory=list, description="Full conversation history for UI restoration")
-
-
-class ResumeRefinementResponse(GetRefinementStatusResponse):
-    """Current refinement state after an explicit resume operation."""
-
-
-class SynthesizeQueryRequest(BaseModel):
-    """Request to synthesize the refined query."""
-    query_id: int = Field(..., gt=0, description="ID of the query to synthesize")
-    include_expansion: bool = Field(
-        False,
-        description=(
-            "When true, Agent D (search expansion) runs automatically after A→B→C "
-            "and the results are included in expansion_levels and expansion_metadata. "
-            "Requires Agent C to produce combined_blocks. Adds one LLM call of latency "
-            "when geography or setting blocks are present; Level 1 only otherwise (no LLM)."
-        ),
-    )
-
-
-# ---------------------------------------------------------------------------
-# Individual agent request / response models
-# ---------------------------------------------------------------------------
-
-class NormalizeQueryRequest(BaseModel):
-    """Agent A — Normalization request. Requires a completed refinement session."""
-    query_id: int = Field(..., gt=0, description="ID of a session ready for synthesis")
-
-
-class NormalizeQueryResponse(BaseModel):
-    """
-    Agent A — Normalization response.
-
-    Returns the clean, human-readable research statement without running
-    Agents B or C. The session is NOT marked as synthesized — a subsequent
-    call to POST /synthesize remains valid.
-    """
-    query_id: int
-    clarified_query: str = Field(
-        ...,
-        description=(
-            "Clarified research statement integrating all refined dimension values. "
-            "Human-readable; suitable for display, QA forwarding, or as input to POST /represent."
-        ),
-    )
-    dimensions_specifications: Dict[str, Any] = Field(
-        default_factory=dict,
-        description="Per-dimension id → refined value, assembled deterministically from session state.",
-    )
-    used_llm: bool = Field(True, description="Always True; Agent A was invoked.")
-
-
-class RepresentQueryRequest(BaseModel):
-    """Agent B — Semantic Representation request. Accepts Agent A output directly."""
-    statement: str = Field(
-        ...,
-        min_length=3,
-        description="Clarified research statement from Agent A (POST /normalize → clarified_query).",
-    )
-    model: Optional[str] = Field(None, description="Optional LLM model override")
-
-    @field_validator("statement")
-    @classmethod
-    def _not_empty(cls, v: str) -> str:
-        if not v or not v.strip():
-            raise ValueError("statement cannot be empty")
-        return v.strip()
-
-
-class RepresentQueryResponse(BaseModel):
-    """
-    Agent B — Semantic Representation response.
-
-    Produces two filter-free query strings and a structured concept graph.
-    Both query strings share the same search_filters produced by Agent C (POST /construct).
-    """
-    semantic_statement: str = Field(
-        ...,
-        description=(
-            "Dense embedding query (2-3 sentences, 50-70 words) for vector / semantic search. "
-            "Information-need framing using document-side vocabulary."
-        ),
-    )
-    keyword_statement: str = Field(
-        ...,
-        description=(
-            "Natural-language keyword query (15-35 words) for BM25 / simple keyword search. "
-            "Key concepts and primary synonyms; no Boolean operators; no metadata filters."
-        ),
-    )
-    concept_graph: Dict[str, Any] = Field(
-        default_factory=dict,
-        description=(
-            "Per-concept retrieval metadata. Pass as search_context.concept_graph to "
-            "POST /construct and POST /expand."
-        ),
-    )
-    used_llm: bool = Field(True, description="Always True; Agent B was invoked.")
-
-
-class ConstructSearchRequest(BaseModel):
-    """Agent C — Search Construction request. Accepts Agents A and B output directly."""
-    statement: str = Field(
-        ...,
-        min_length=3,
-        description="Clarified research statement from Agent A (POST /normalize → clarified_query).",
-    )
-    concept_graph: Dict[str, Any] = Field(
-        default_factory=dict,
-        description="Concept graph from Agent B (POST /represent → concept_graph).",
-    )
-    model: Optional[str] = Field(None, description="Optional LLM model override")
-
-    @field_validator("statement")
-    @classmethod
-    def _not_empty(cls, v: str) -> str:
-        if not v or not v.strip():
-            raise ValueError("statement cannot be empty")
-        return v.strip()
-
-
-class ConstructSearchResponse(BaseModel):
-    """
-    Agent C — Search Construction response.
-
-    Produces Boolean keyword query constructions and metadata search filters.
-    Filters apply to both the semantic_statement and keyword_statement from Agent B.
-    """
-    keyword: Dict[str, Any] = Field(
-        ...,
-        description=(
-            "Keyword query artifacts: structured (Boolean), phrases, terms (required/optional/excluded), "
-            "combined_blocks (primary RAG artifact — AND-blocks with free_text and controlled_vocabulary)."
-        ),
-    )
-    search_filters: Dict[str, Any] = Field(
-        ...,
-        description=(
-            "Metadata narrowing filters: publication_years, venues, authors, publication_types, "
-            "fields_of_study. Apply to both semantic and keyword retrieval."
-        ),
-    )
-    used_llm: bool = Field(True, description="Always True; Agent C was invoked.")
-
-
-class SynthesizeQueryResponse(BaseModel):
-    """
-    Full output of the A→B→C synthesis pipeline.
-
-    Pipeline stages and field mapping
-    ----------------------------------
-    Agent A — Normalization
-      clarified_query
-          Clarified research statement.
-      structured_output["dimensions_specifications"]
-          Per-dimension id → value map.
-
-    Agent B — Semantic Representation
-      structured_output["search_optimized"]["semantic"]
-          Dense embedding query (50-75 words) for vector search.
-      structured_output["concept_graph"]
-          Per-concept retrieval metadata: true_synonyms, abbreviations,
-          spelling_variants, lexical_variants, domain_terms, colloquial,
-          controlled_vocabulary_hints (vocabulary_name, terms, confidence).
-      structured_output["terminology"]
-          Primary terms, synonyms, domain-specific, colloquial variants.
-
-    Agent C — Search Construction
-      structured_output["search_optimized"]["keyword"]["structured"]
-          Boolean anchor query (AND-connected OR-blocks).
-      structured_output["search_optimized"]["keyword"]["phrases"]
-          Exact key phrases (2-4 words each).
-      structured_output["search_optimized"]["keyword"]["terms"]
-          required / optional / excluded single-word or compound terms.
-      structured_output["search_optimized"]["keyword"]["combined_blocks"]  ← PRIMARY RAG ARTIFACT
-          One entry per AND-block. Each entry has:
-            role: query_role of the dominant concept in this block
-            free_text: all OR-group terms for this block
-            controlled_vocabulary: vocabulary_name → list of thesaurus headings
-          Source connectors: OR free_text with controlled_vocabulary within each block,
-          then AND all blocks together.
-          Use controlled_vocabulary only for indexed databases (PubMed → MeSH, WHO IRIS → DeCS).
-          Use free_text alone for unindexed sources (OpenAlex, ReliefWeb, CORE).
-      structured_output["search_filters"]
-          Metadata filters: publication_years, venues, publication_types, fields_of_study.
-
-    Agent D — Search Expansion
-      Included when include_expansion=true was set on the request.
-      expansion_levels
-          List of ExpansionLevel objects (same structure as POST /expand → levels).
-          Level 0 is the anchor. Level 1 is always present (deterministic). Levels 2–3 require geography or
-          setting blocks to be present in Agent C output.
-      expansion_metadata
-          geography_broadening_strategy, recommended_starting_level,
-          recommendation_rationale, status, used_llm, generated_level_count.
-
-      To call Agent D separately: POST /expand with
-        statement = clarified_query
-        anchor_blocks = structured_output["search_optimized"]["keyword"]["combined_blocks"]
-        search_context.concept_graph = structured_output["concept_graph"]
-    """
-    query_id: int = Field(..., description="Database ID of the synthesized query")
-    clarified_query: Optional[str] = Field(
-        None,
-        description=(
-            "Agent A output. Clarified research statement integrating all user-provided "
-            "dimension values. Pass as statement to /expand for Agent D broadening levels."
-        ),
-    )
-    integrated_statement: Optional[str] = Field(
-        None,
-        description=(
-            "Backward-compatible alias for clarified_query retained for existing frontend clients."
-        ),
-    )
-    used_llm: bool = Field(..., description="Always True; LLM was invoked for synthesis")
-    structured_output: Optional[Dict[str, Any]] = Field(
-        None,
-        description=(
-            "Structured pipeline output. See class docstring for full field mapping. "
-            "RAG connectors: primary artifact is "
-            "structured_output['search_optimized']['keyword']['combined_blocks']."
-        ),
-    )
-    expansion_levels: Optional[List[Dict[str, Any]]] = Field(
-        None,
-        description=(
-            "Agent D output. Present only when include_expansion=true. "
-            "List of expansion levels in ascending broadening order; Level 0 is the anchor."
-        ),
-    )
-    expansion_metadata: Optional[Dict[str, Any]] = Field(
-        None,
-        description=(
-            "Agent D metadata. Present only when include_expansion=true. "
-            "Includes geography_broadening_strategy, recommended_starting_level, "
-            "recommendation_rationale, status, used_llm, generated_level_count."
-        ),
-    )
-
-    @model_validator(mode="before")
-    @classmethod
-    def _sync_statement_aliases(cls, data: Any) -> Any:
-        if not isinstance(data, dict):
-            return data
-
-        clarified_query = data.get("clarified_query")
-        integrated_statement = data.get("integrated_statement")
-
-        if not clarified_query and integrated_statement:
-            data["clarified_query"] = integrated_statement
-        if not integrated_statement and clarified_query:
-            data["integrated_statement"] = clarified_query
-        return data
-
-
-class SearchExpandRequest(BaseModel):
-    """
-    Agent D — Search Expansion request.
-
-    Generates Cochrane-compliant broadening levels beyond the anchor query.
-    Level 0 (the anchor) is included in the response.
-
-    Typical flow after POST /synthesize:
-      statement            = synthesize_response.clarified_query
-      anchor_blocks        = synthesize_response.structured_output["search_optimized"]["keyword"]["combined_blocks"]
-      concept_graph        = synthesize_response.structured_output["concept_graph"]
-      semantic_statement   = synthesize_response.structured_output["search_optimized"]["semantic"]
-      keyword_statement    = synthesize_response.structured_output["keyword_statement"]
-      keyword_structured   = synthesize_response.structured_output["search_optimized"]["keyword"]["structured"]
-      search_filters       = synthesize_response.structured_output["search_filters"]
-      phrases              = synthesize_response.structured_output["search_optimized"]["keyword"]["phrases"]
-
-    Level 0  anchor        Exact Agent C output — no enrichment.
-    Level 1  deterministic Full lexical ring built in Python — free_text + domain_terms per block. No LLM.
-    Level 2  LLM-assisted  Geography block replaced with contextual analogy or geographic superset.
-    Level 3  LLM-assisted  Geography block removed — Cochrane-compliant globally sensitive search.
-    """
-    model_config = ConfigDict(
-        json_schema_extra={
-            "example": {
-                "statement": "How to improve mental health outcomes among children in Qoloji camp, Ethiopia.",
-                "anchor_blocks": [
-                    {
-                        "role": "topic_or_condition",
-                        "free_text": ["mental health", "psychological wellbeing", "MHPSS"],
-                        "controlled_vocabulary": {"MeSH": ["Mental Health"]},
-                    },
-                    {
-                        "role": "population_or_entity",
-                        "free_text": ["children under five", "young children", "U5"],
-                        "controlled_vocabulary": {"MeSH": ["Child"]},
-                    },
-                    {
-                        "role": "setting_or_context",
-                        "free_text": ["refugee camp", "displacement camp", "IDP camp"],
-                        "controlled_vocabulary": {"MeSH": ["Refugees", "Displaced Persons"]},
-                    },
-                    {
-                        "role": "geography",
-                        "free_text": ["Qoloji", "Ethiopia"],
-                        "controlled_vocabulary": {"MeSH": ["Ethiopia"]},
-                    },
-                ],
-                "search_context": {
-                    "concept_graph": {
-                        "mental health": {
-                            "query_role": "topic_or_condition",
-                            "domain_terms": ["psychosocial wellbeing", "depression", "anxiety"],
-                        }
-                    }
-                },
-                "semantic_statement": "Studies examining interventions to improve mental health outcomes among children in refugee camp settings in Ethiopia.",
-                "keyword_statement": "mental health children refugee camp Ethiopia",
-                "keyword_structured": "(mental health OR psychological wellbeing OR MHPSS) AND (children under five OR young children OR U5) AND (refugee camp OR displacement camp OR IDP camp) AND (Qoloji OR Ethiopia)",
-                "search_filters": {
-                    "publication_years": "",
-                    "venues": [],
-                    "authors": [],
-                    "publication_types": [],
-                    "fields_of_study": ["Public Health", "Psychology"],
-                },
-                "phrases": ["mental health outcomes", "children under five", "refugee camp Ethiopia"],
-            }
-        }
-    )
-    statement: str = Field(
-        ...,
-        description=(
-            "Exact anchor query (unchanged). "
-            "Use POST /normalize → clarified_query or POST /synthesize → clarified_query."
-        ),
-    )
-    anchor_blocks: List[CombinedBlock] = Field(
-        ...,
-        description=(
-            "Agent C combined_blocks from POST /construct → keyword.combined_blocks "
-            "(or POST /synthesize → structured_output.search_optimized.keyword.combined_blocks). "
-            "Level 1 is built deterministically in Python; the LLM is called only for "
-            "geography broadening proposals (Levels 2–3)."
-        ),
-    )
-    search_context: Optional[SearchExpansionContext] = Field(
-        None,
-        description=(
-            "Optional retrieval context. Set search_context.concept_graph to "
-            "POST /represent → concept_graph for domain_term enrichment at Level 1 "
-            "and accurate broadening candidates at Levels 2–3."
-        ),
-    )
-    # Agent B passthrough — used to populate Level 0
-    semantic_statement: Optional[str] = Field(
-        None,
-        description="POST /represent → semantic_statement. Used as Level 0 semantic_statement.",
-    )
-    keyword_statement: Optional[str] = Field(
-        None,
-        description="POST /represent → keyword_statement. Used as Level 0 keyword_statement.",
-    )
-    # Agent C passthrough — used to populate Level 0 and response-level fields
-    keyword_structured: Optional[str] = Field(
-        None,
-        description="POST /construct → keyword.structured. Used as Level 0 search_query.",
-    )
-    search_filters: Optional[Dict[str, Any]] = Field(
-        None,
-        description="POST /construct → search_filters. Passed through to response.",
-    )
-    phrases: Optional[List[str]] = Field(
-        None,
-        description="POST /construct → keyword.phrases. Passed through to response.",
-    )
-    model: Optional[str] = Field(None, description="Optional LLM model override")
-
-    @field_validator("statement")
-    @classmethod
-    def validate_statement(cls, v: str) -> str:
-        if not v or not v.strip():
-            raise ValueError("statement cannot be empty or just whitespace")
-        return v.strip()
-
-
-class SearchExpandResponse(BaseModel):
-    """Agent D — Search Expansion response.
-
-    All levels share the same structure. Level 0 is always levels[0].
-
-    Each level object:
-      level                 int     Level number (0 = anchor, 1 = full lexical ring, 2-3 = broadening)
-      label                 str     Short descriptor
-      boolean_query         str     Generic boolean query for PubMed, WHO IRIS, OpenAlex, CORE
-      query                 str     NL query adapted for this level's scope.
-                                    Use for ReliefWeb, WHO IRIS NL mode, UI display, and semantic fallback.
-      semantic_query        str     Semantic/vector query for this level.
-      keyword_query         str     BM25/simple keyword query for this level.
-      controlled_vocabulary dict    vocabulary_name → term list for database-specific connectors.
-                                    Use MeSH terms with [MeSH Terms] tag for PubMed.
-                                    Geography block CV excluded at Level 2+ by design.
-      broadened_aspect      str     Which block role was modified (e.g. "geography"). Empty at Level 1.
-      broadened_value       str     What the aspect was replaced with. Empty at Level 1.
-      rationale             str     Why this broadening improves Cochrane-compliant recall.
-      cochrane_compliant    bool    true when geographic restriction is fully removed (Level 3).
-
-    Apply levels in order: start with recommended_starting_level and escalate when
-    result count at the current level is insufficient.
-    """
-    model_config = ConfigDict(
-        json_schema_extra={
-            "example": {
-                "levels": [
-                    {
-                        "level": 0,
-                        "label": "Anchor query",
-                        "query": "How to improve mental health outcomes among children in Qoloji camp, Ethiopia.",
-                        "semantic_query": "Studies examining interventions to improve mental health outcomes among children in refugee camp settings in Ethiopia.",
-                        "keyword_query": "mental health children refugee camp Ethiopia",
-                        "boolean_query": "(mental health OR psychological wellbeing OR MHPSS) AND (children under five OR young children OR U5) AND (refugee camp OR displacement camp OR IDP camp) AND (Qoloji OR Ethiopia)",
-                        "controlled_vocabulary": {"MeSH": ["Mental Health", "Child", "Ethiopia"]},
-                        "blocks": [
-                            {
-                                "role": "topic_or_condition",
-                                "free_text": ["mental health", "psychological wellbeing", "MHPSS"],
-                                "controlled_vocabulary": {"MeSH": ["Mental Health"]},
-                            }
-                        ],
-                        "broadened_aspect": "",
-                        "broadened_value": "",
-                        "rationale": "Your refined query as-is — exact concepts from your refinement session, no broadening.",
-                        "cochrane_compliant": False,
-                    },
-                    {
-                        "level": 1,
-                        "label": "Full lexical ring",
-                        "query": "How to improve mental health outcomes among children in Qoloji camp, Ethiopia.",
-                        "semantic_query": "How to improve mental health outcomes among children in Qoloji camp, Ethiopia.",
-                        "keyword_query": "mental health psychological wellbeing MHPSS children under five young children refugee camp displacement camp Qoloji Ethiopia",
-                        "boolean_query": "(mental health OR psychological wellbeing OR MHPSS OR depression OR anxiety) AND (children under five OR young children OR U5) AND (refugee camp OR displacement camp OR IDP camp) AND (Qoloji OR Ethiopia)",
-                        "controlled_vocabulary": {"MeSH": ["Mental Health", "Child", "Ethiopia"]},
-                        "blocks": [
-                            {
-                                "role": "topic_or_condition",
-                                "free_text": ["mental health", "psychological wellbeing", "MHPSS", "depression", "anxiety"],
-                                "controlled_vocabulary": {"MeSH": ["Mental Health"]},
-                            }
-                        ],
-                        "broadened_aspect": "",
-                        "broadened_value": "",
-                        "rationale": "Full synonym and domain-term ring for every concept block.",
-                        "cochrane_compliant": False,
-                    },
-                    {
-                        "level": 2,
-                        "label": "Contextual analogy — conflict-affected settings",
-                        "query": "How to improve mental health outcomes among children in displacement camps in conflict-affected low- and middle-income countries.",
-                        "semantic_query": "How to improve mental health outcomes among children in displacement camps in conflict-affected low- and middle-income countries.",
-                        "keyword_query": "mental health psychological wellbeing MHPSS children under five young children refugee camp displacement camp conflict-affected settings LMICs",
-                        "boolean_query": "(mental health OR psychological wellbeing OR MHPSS OR depression OR anxiety) AND (children under five OR young children OR U5) AND (refugee camp OR displacement camp OR IDP camp) AND (conflict-affected settings OR fragile states OR LMICs)",
-                        "controlled_vocabulary": {"MeSH": ["Mental Health", "Child"]},
-                        "blocks": [
-                            {
-                                "role": "geography",
-                                "free_text": ["conflict-affected settings", "fragile states", "LMICs"],
-                                "controlled_vocabulary": {},
-                            }
-                        ],
-                        "broadened_aspect": "geography",
-                        "broadened_value": "conflict-affected low- and middle-income countries",
-                        "rationale": "Broadens beyond the named location to comparable humanitarian settings.",
-                        "cochrane_compliant": False,
-                    },
-                ],
-                "geography_broadening_strategy": "context_proxy",
-                "recommended_starting_level": 2,
-                "recommendation_rationale": "The named camp is too specific for first-pass retrieval; start with a comparable-context search.",
-                "search_filters": {
-                    "publication_years": "",
-                    "venues": [],
-                    "authors": [],
-                    "publication_types": [],
-                    "fields_of_study": ["Public Health", "Psychology"],
-                },
-                "phrases": ["mental health outcomes", "children under five", "refugee camp Ethiopia"],
-                "metadata": {
-                    "status": "completed",
-                    "generated_level_count": 3,
-                    "used_llm": True,
-                    "total_tokens": 1234,
-                },
-            }
-        }
-    )
-    levels: List[Dict[str, Any]] = Field(
-        ...,
-        description=(
-            "Ordered expansion levels (Level 0 first). "
-            "Each entry: {level, label, query, semantic_query, keyword_query, boolean_query, controlled_vocabulary, "
-            "broadened_aspect, broadened_value, rationale, cochrane_compliant}."
-        ),
-    )
-    geography_broadening_strategy: str = Field(
-        default="none",
-        description="Broadening strategy used for geography when present.",
-    )
-    recommended_starting_level: int = Field(
-        default=1,
-        description="Recommended level to run first following Cochrane-style escalation logic.",
-    )
-    recommendation_rationale: str = Field(
-        default="",
-        description="Why the recommended_starting_level is the best initial retrieval level.",
-    )
-    search_filters: Optional[Dict[str, Any]] = Field(
-        default=None,
-        description="Agent C search filters that apply across all levels.",
-    )
-    phrases: Optional[List[str]] = Field(
-        default=None,
-        description="Agent C key phrases that apply across all levels.",
-    )
-    metadata: Optional[Dict[str, Any]] = Field(
-        None,
-        description=(
-            "Generation metadata: status, generated_level_count, used_llm, total_tokens."
-        ),
-    )
-
-
-class ForwardToQARequest(BaseModel):
-    """Request to forward refined query to external QA system."""
-    qa_system_url: AnyHttpUrl = Field(
-        ...,
-        description="URL of the external question-answering system"
-    )
-    qa_system_auth: Optional[Dict[str, str]] = Field(
-        None,
-        description="Authentication headers for the QA system (e.g., {'Authorization': 'Bearer token'})"
-    )
-    timeout_seconds: int = Field(
-        default=30,
-        ge=5,
-        le=120,
-        description="Request timeout in seconds"
-    )
-    include_refinement_metadata: bool = Field(
-        default=True,
-        description="Include refinement metadata in the request to QA system"
-    )
-    forward_original_query: bool = Field(
-        default=False,
-        description="Also include the original query alongside the refined query"
-    )
-
-    @field_validator("qa_system_url")
-    @classmethod
-    def _no_private_url(cls, v: AnyHttpUrl) -> AnyHttpUrl:
-        """Block RFC-1918, loopback, and link-local targets to prevent SSRF."""
-        import ipaddress
-        host = v.host or ""
-        if host.lower() in {"localhost", "0.0.0.0"}:
-            raise ValueError("Internal/loopback hostnames are not permitted as qa_system_url")
-        try:
-            addr = ipaddress.ip_address(host)
-            if addr.is_private or addr.is_loopback or addr.is_link_local or addr.is_reserved:
-                raise ValueError("Private or internal IP addresses are not permitted as qa_system_url")
-        except ValueError as exc:
-            if "not permitted" in str(exc):
-                raise
-        return v
-
-    @field_validator("qa_system_auth")
-    @classmethod
-    def _safe_auth_headers(cls, v: Optional[Dict[str, str]]) -> Optional[Dict[str, str]]:
-        """Reject hop-by-hop and host-spoofing headers that could alter request semantics."""
-        if not v:
-            return v
-        _FORBIDDEN = frozenset({
-            "host", "content-length", "transfer-encoding",
-            "connection", "te", "trailer", "upgrade",
-        })
-        for key in v:
-            if key.lower() in _FORBIDDEN:
-                raise ValueError(f"Header '{key}' is not permitted in qa_system_auth")
-        return v
-
-
-class ForwardToQAResponse(BaseModel):
-    """Response from forwarding to external QA system."""
-    query_id: int
-    refined_query: str
-    original_query: Optional[str] = None
-    qa_system_url: str
-    qa_system_response: Dict[str, Any]
-    qa_system_status_code: int
-    response_time_ms: int
-    refinement_metadata: Optional[Dict[str, Any]] = None
-
-
-# ==========================================
 # Utility Functions
 # ==========================================
+
+def _persist_generated_question(
+    db,
+    db_steps: List[Any],
+    next_prompt: Optional[Dict[str, Any]],
+) -> None:
+    """Compatibility wrapper retained for unit tests that import the route helper directly."""
+    if not next_prompt or not db:
+        return
+
+    aspect_id = next_prompt.get("aspect_id")
+    aspect_name = next_prompt.get("name")
+    question = next_prompt.get("question")
+    if (not aspect_id and not aspect_name) or not question:
+        return
+
+    db_step = next(
+        (
+            step
+            for step in db_steps
+            if (aspect_id and getattr(step, "aspect_id", None) == aspect_id)
+            or (
+                not getattr(step, "aspect_id", None)
+                and aspect_name
+                and getattr(step, "aspect_name", None) == aspect_name
+            )
+        ),
+        None,
+    )
+    if not db_step:
+        return
+
+    try:
+        update_refinement_step_generated_question(db, db_step.id, question)
+    except Exception as exc:
+        logger.warning("Could not persist generated_question for '%s': %s", aspect_id or aspect_name, exc)
+
+    examples = next_prompt.get("examples") or []
+    if examples:
+        try:
+            update_refinement_step_generated_examples(db, db_step.id, examples)
+        except Exception as exc:
+            logger.warning("Could not persist generated_examples for '%s': %s", aspect_id or aspect_name, exc)
 
 def _restore_session_from_db_state(session, db_steps: List[Any]) -> None:
     """Restore in-memory session state from persisted DB refinement step rows."""
@@ -819,6 +139,69 @@ def _restore_session_from_db_state(session, db_steps: List[Any]) -> None:
 def _is_session_ready_for_synthesis(session) -> bool:
     """Return True when synthesis can be safely executed for a session."""
     return workflow_is_session_ready_for_synthesis(session)
+
+
+async def _build_command_response(
+    manager,
+    command_type: str,
+    payload: Dict[str, Any],
+    session,
+    force_confirmation_needed: bool = False,
+    db=None,
+    query_id: Optional[int] = None,
+    db_steps: Optional[List[Any]] = None,
+) -> CommandResponse:
+    """Compatibility adapter for unit tests; delegates to the application service."""
+    workflow_service = RefinementApiService(
+        manager=manager,
+        db=db,
+        session_manager=None,
+        settings_factory=get_settings,
+        progress_tracker_factory=get_progress_tracker,
+        progress_fn=track_progress,
+    )
+    response_payload = await workflow_service._build_command_response_payload(
+        command_type=command_type,
+        payload=payload,
+        session=session,
+        force_confirmation_needed=force_confirmation_needed,
+        query_id=query_id if db is not None else None,
+    )
+    return CommandResponse(**response_payload)
+
+
+async def _run_synthesis(
+    *,
+    manager: QueryRefinementManager,
+    session,
+    db,
+    db_query,
+    current_user,
+    session_manager: SessionManager,
+    query_id: int,
+    request_id: str,
+    include_expansion: bool = False,
+) -> SynthesizeQueryResponse:
+    """Compatibility adapter for unit tests; delegates to the application service."""
+    workflow_service = RefinementApiService(
+        manager=manager,
+        db=db,
+        session_manager=session_manager,
+        settings_factory=get_settings,
+        progress_tracker_factory=get_progress_tracker,
+        progress_fn=track_progress,
+    )
+    payload = await workflow_service._run_synthesis(
+        session=session,
+        db_query=db_query,
+        current_user=current_user,
+        query_id=query_id,
+        request_id=request_id,
+        include_expansion=include_expansion,
+    )
+    return SynthesizeQueryResponse(**payload)
+
+
 # ==========================================
 # Refinement Workflow Endpoints
 # ==========================================
@@ -1574,37 +957,6 @@ async def forward_to_qa_system(
         )
 
 
-# ==========================================
-# Command History Endpoint
-# ==========================================
-
-class CommandHistoryEntry(BaseModel):
-    """Single command execution record."""
-    timestamp: str
-    event_id: int
-    command: str
-    command_input: str
-    argument: Optional[str] = None
-    active_dimension: Optional[str] = None
-    success: bool
-    status: str
-    force_requested: bool
-    force_confirmation_needed: bool
-    cleared_aspects: Optional[List[str]] = None
-    invalidated_aspects: Optional[List[str]] = None
-    target_aspect: Optional[str] = None
-    deleted_db_records: Optional[int] = None
-    username: str
-    request_id: Optional[str] = None
-
-
-class CommandHistoryResponse(BaseModel):
-    """Response containing command execution history for a query."""
-    query_id: int
-    total_commands: int
-    commands: List[CommandHistoryEntry]
-
-
 @router.get("/queries/{query_id}/command-history", response_model=CommandHistoryResponse)
 def get_command_history(
     query_id: int,
@@ -1691,18 +1043,6 @@ def get_command_history(
     )
 
 
-# ==========================================
-# Debug Endpoint - Inspect Messages
-# ==========================================
-
-class InspectMessagesResponse(BaseModel):
-    """Response showing the actual messages sent to the LLM."""
-    query_id: int
-    current_dimension: Optional[str] = None
-    message_count: int
-    messages: List[Dict[str, Any]]
-
-
 @router.get("/queries/{query_id}/inspect-messages", response_model=InspectMessagesResponse)
 def inspect_messages(
     query_id: int,
@@ -1750,23 +1090,6 @@ def inspect_messages(
         message_count=len(messages),
         messages=messages,
     )
-
-
-# ==========================================
-# Session Abandonment Endpoint
-# ==========================================
-
-class AbandonSessionRequest(BaseModel):
-    """Request to abandon/delete a session and all its data."""
-    session_id: int = Field(..., gt=0, description="ID of the session to abandon")
-
-
-class AbandonSessionResponse(BaseModel):
-    """Response with deletion details."""
-    status: str = Field(..., description="Status of the operation")
-    session_id: int = Field(..., description="ID of the abandoned session")
-    deletion_counts: Dict[str, int] = Field(..., description="Count of deleted records by type")
-    message: str = Field(..., description="Human-readable message")
 
 
 @router.post("/sessions/abandon", response_model=AbandonSessionResponse)
