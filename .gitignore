@@ -257,3 +257,10 @@ QueryRefinementPaper*
 
 # Local settings
 .env
+
+# Local data snapshots, scratch DBs and run logs (never commit: may contain user data)
+*.db.*
+*.sqlite
+logs/
+.env_*
+.env copy*

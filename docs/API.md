@@ -1686,17 +1686,16 @@ The Chainlit UI, CLI, and API accept slash commands during refinement:
 
 Admin endpoints require a superuser account.
 
-- Core admin routes use: `/api/v1/admin/...`
-- Additional admin route groups are exposed under: `/api/v1/api/admin/...`
+- All admin routes are served under `/api/v1/admin/...`
 
 Current split:
 
-- Sessions: `/api/v1/api/admin/sessions/...`
-- Frameworks: `/api/v1/api/admin/frameworks/...`
-- Analytics: `/api/v1/api/admin/analytics/...`
+- Sessions: `/api/v1/admin/sessions/...`
+- Frameworks: `/api/v1/admin/frameworks/...`
+- Analytics: `/api/v1/admin/analytics/...`
 
 Notable analytics endpoint:
 
-- `GET /api/v1/api/admin/analytics/dashboard`
+- `GET /api/v1/admin/analytics/dashboard`
 
 If you are building a new integration, prefer non-admin workflow routes under `/api/v1/refinement/*`, `/api/v1/queries/*`, and `/api/v1/webhooks/*` unless superuser-level operations are required.

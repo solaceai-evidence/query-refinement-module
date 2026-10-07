@@ -102,15 +102,17 @@ def get_audit_logs(
     # Build query
     query = db.query(AuditLog)
     
-    # Users can only see their own logs (unless admin - TODO: implement admin check)
-    query = query.filter(AuditLog.user_id == current_user.id)
+    # Superusers can see all logs; everyone else only sees their own
+    is_superuser = bool(getattr(current_user, "is_superuser", False))
+    if not is_superuser:
+        query = query.filter(AuditLog.user_id == current_user.id)
     
     # Apply filters
     if event_type:
         query = query.filter(AuditLog.event_type == event_type)
     if severity:
         query = query.filter(AuditLog.severity == severity)
-    if user_id and user_id == current_user.id:  # Security: Only own user_id
+    if user_id and (is_superuser or user_id == current_user.id):
         query = query.filter(AuditLog.user_id == user_id)
     if resource_type:
         query = query.filter(AuditLog.resource_type == resource_type)

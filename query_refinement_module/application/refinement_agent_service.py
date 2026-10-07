@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 import logging
+import os
 import time
 from typing import Any, Dict, Optional
 
@@ -21,6 +22,26 @@ class RefinementAgentService:
 
     def __init__(self, support: RefinementServiceSupport) -> None:
         self._support = support
+
+    def _check_model_override(self, model: Optional[str]) -> Optional[str]:
+        """Only allow the configured model or those listed in LLM_ALLOWED_MODEL_OVERRIDES."""
+        if not model:
+            return None
+        allowed = {
+            name.strip()
+            for name in os.getenv("LLM_ALLOWED_MODEL_OVERRIDES", "").split(",")
+            if name.strip()
+        }
+        provider = getattr(self._support.manager, "llm_provider", None)
+        default_model = getattr(provider, "_default_model", None)
+        if default_model:
+            allowed.add(default_model)
+        if model not in allowed:
+            raise QueryRefinementException(
+                f"Model override '{model}' is not permitted on this server",
+                status_code=400,
+            )
+        return model
 
     async def normalize_workflow(
         self,
@@ -81,6 +102,7 @@ class RefinementAgentService:
         current_user,
         request_id: str,
     ) -> Dict[str, Any]:
+        model = self._check_model_override(model)
         logger.info(
             "API: Running Agent B (Semantic Representation)",
             extra={
@@ -122,6 +144,7 @@ class RefinementAgentService:
         current_user,
         request_id: str,
     ) -> Dict[str, Any]:
+        model = self._check_model_override(model)
         logger.info(
             "API: Running Agent C (Search Construction)",
             extra={
@@ -168,6 +191,7 @@ class RefinementAgentService:
         current_user,
         request_id: str,
     ) -> Dict[str, Any]:
+        model = self._check_model_override(model)
         start_time = time.time()
         concept_graph = {}
         if search_context and search_context.concept_graph:

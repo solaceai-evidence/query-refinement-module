@@ -31,7 +31,7 @@ from query_refinement_module.tracing import get_request_id
 import os
 from pathlib import Path
 
-router = APIRouter(prefix="/api/admin/frameworks", tags=["admin", "frameworks"])
+router = APIRouter(prefix="/admin/frameworks", tags=["admin", "frameworks"])
 
 
 class FrameworkAccessRequest(BaseModel):

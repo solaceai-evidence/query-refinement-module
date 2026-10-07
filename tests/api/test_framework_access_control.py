@@ -79,7 +79,7 @@ class TestFrameworkAccessAdminEndpoints:
         headers = {"Authorization": f"Bearer {superuser_token}"}
 
         assign_response = client.post(
-            f"/api/v1/api/admin/frameworks/users/{regular_user.id}/access",
+            f"/api/v1/admin/frameworks/users/{regular_user.id}/access",
             json={"framework_name": framework_name},
             headers=headers,
         )
@@ -88,7 +88,7 @@ class TestFrameworkAccessAdminEndpoints:
         assert framework_name in assigned["framework_names"]
 
         list_response = client.get(
-            f"/api/v1/api/admin/frameworks/users/{regular_user.id}/access",
+            f"/api/v1/admin/frameworks/users/{regular_user.id}/access",
             headers=headers,
         )
         assert list_response.status_code == 200
@@ -96,7 +96,7 @@ class TestFrameworkAccessAdminEndpoints:
         assert framework_name in listed["framework_names"]
 
         revoke_response = client.delete(
-            f"/api/v1/api/admin/frameworks/users/{regular_user.id}/access/{framework_name}",
+            f"/api/v1/admin/frameworks/users/{regular_user.id}/access/{framework_name}",
             headers=headers,
         )
         assert revoke_response.status_code == 200
@@ -113,7 +113,7 @@ class TestFrameworkAccessAdminEndpoints:
         headers = {"Authorization": f"Bearer {regular_user_token}"}
 
         response = client.post(
-            f"/api/v1/api/admin/frameworks/users/{regular_user.id}/access",
+            f"/api/v1/admin/frameworks/users/{regular_user.id}/access",
             json={"framework_name": framework_name},
             headers=headers,
         )

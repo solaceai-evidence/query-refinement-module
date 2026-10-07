@@ -127,7 +127,10 @@ async def test_represent_workflow_serializes_concept_graph():
             concept_graph={"copd": _ConceptNode()},
         ), None
 
-    manager = SimpleNamespace(_run_semantic_representation=_run_semantic_representation)
+    manager = SimpleNamespace(
+        _run_semantic_representation=_run_semantic_representation,
+        llm_provider=SimpleNamespace(_default_model="test-model"),
+    )
     workflow_service = RefinementApiService(
         manager=manager,
         db=None,

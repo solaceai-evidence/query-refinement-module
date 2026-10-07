@@ -2,9 +2,13 @@
 
 from __future__ import annotations
 
+import asyncio
+import ipaddress
 import logging
+import socket
 import time
 from typing import Any, Dict
+from urllib.parse import urlparse
 
 from query_refinement_module.api.exceptions import QueryRefinementException, ResourceNotFoundError, UnauthorizedError
 from query_refinement_module.audit import audit_service
@@ -17,6 +21,21 @@ from .refinement_service_support import RefinementServiceSupport
 
 
 logger = logging.getLogger(__name__)
+
+
+async def _ensure_public_host(url: str) -> None:
+    """Reject URLs whose hostname resolves to a private, loopback or reserved address."""
+    host = urlparse(str(url)).hostname or ""
+    try:
+        infos = await asyncio.get_running_loop().getaddrinfo(host, None, type=socket.SOCK_STREAM)
+    except socket.gaierror as exc:
+        raise QueryRefinementException(f"Could not resolve QA system host '{host}'", status_code=400) from exc
+    for info in infos:
+        addr = ipaddress.ip_address(info[4][0])
+        if addr.is_private or addr.is_loopback or addr.is_link_local or addr.is_reserved or addr.is_multicast:
+            raise QueryRefinementException(
+                "QA system URL resolves to a private or internal address", status_code=400
+            )
 
 
 class RefinementUtilityService:
@@ -45,7 +64,15 @@ class RefinementUtilityService:
                 status_code=400,
             )
 
-        qa_payload = {"refined_query": db_query.refined_query}
+        qa_payload = {
+            "refined_query": db_query.refined_query,
+            "structured_output": {
+                "dimensions_specifications": db_query.dimensions_specifications,
+                "search_optimized": db_query.search_optimized,
+                "search_filters": db_query.search_filters,
+                "search_expansion_levels": db_query.search_expansion_levels,
+            },
+        }
         if forward_original_query:
             qa_payload["original_query"] = db_query.original_query
 
@@ -54,16 +81,18 @@ class RefinementUtilityService:
             qa_payload["refinement_metadata"] = {
                 "framework": db_query.session.framework_name if hasattr(db_query.session, "framework_name") else None,
                 "total_steps": len(refinement_steps),
-                "dimensions_refined": [step.aspect_id for step in refinement_steps if step.is_refined],
+                "dimensions_refined": [step.aspect_id for step in refinement_steps if step.is_complete],
+                "dimensions_skipped": [step.aspect_id for step in refinement_steps if step.was_skipped],
                 "query_id": query_id,
             }
 
         import httpx
 
+        await _ensure_public_host(qa_system_url)
         qa_start_time = time.time()
         try:
             async with httpx.AsyncClient(timeout=timeout_seconds) as client:
-                headers = qa_system_auth or {}
+                headers = dict(qa_system_auth or {})
                 headers["Content-Type"] = "application/json"
                 headers["X-Request-ID"] = request_id
                 response = await client.post(

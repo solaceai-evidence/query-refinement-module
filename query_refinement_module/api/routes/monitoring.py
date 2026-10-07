@@ -8,11 +8,16 @@ from typing import Dict, Any
 
 from fastapi import APIRouter, Depends, HTTPException, status
 from query_refinement_module.api.dependencies import get_llm_provider
+from query_refinement_module.api.routes.admin import require_superuser
 from query_refinement_module.providers import LiteLLMProvider
 
 logger = logging.getLogger(__name__)
 
-router = APIRouter(prefix="/monitoring", tags=["Monitoring"])
+router = APIRouter(
+    prefix="/monitoring",
+    tags=["Monitoring"],
+    dependencies=[Depends(require_superuser)],
+)
 
 
 @router.get("/circuit-breakers")

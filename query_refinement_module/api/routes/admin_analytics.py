@@ -22,7 +22,7 @@ from query_refinement_module.db.models.audit_log import AuditLog, AuditSeverity
 from query_refinement_module.db.session import get_db
 from query_refinement_module.tracing import get_request_id
 
-router = APIRouter(prefix="/api/admin/analytics", tags=["admin", "analytics"])
+router = APIRouter(prefix="/admin/analytics", tags=["admin", "analytics"])
 
 
 def _percentile(values: Iterable[int], percentile: float) -> Optional[float]:

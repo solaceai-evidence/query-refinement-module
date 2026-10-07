@@ -95,9 +95,9 @@ def test_admin_sessions_smoke():
     print(f"✓ Query created (ID: {query_id})")
     
     # Step 5: Test cache metrics endpoint
-    print("\n[5/8] Testing GET /api/admin/sessions/cache-metrics...")
+    print("\n[5/8] Testing GET /api/v1/admin/sessions/cache-metrics...")
     response = requests.get(
-        f"{BASE_URL}/api/admin/sessions/cache-metrics",
+        f"{BASE_URL}/admin/sessions/cache-metrics",
         headers=headers
     )
     if response.status_code == 403:
@@ -112,9 +112,9 @@ def test_admin_sessions_smoke():
         print(f"   - Hit rate: {metrics.get('hit_rate', 0)}%")
     
     # Step 6: Test cache status endpoint
-    print(f"\n[6/8] Testing GET /api/admin/sessions/{query_id}/cache-status...")
+    print(f"\n[6/8] Testing GET /api/v1/admin/sessions/{query_id}/cache-status...")
     response = requests.get(
-        f"{BASE_URL}/api/admin/sessions/{query_id}/cache-status",
+        f"{BASE_URL}/admin/sessions/{query_id}/cache-status",
         headers=headers
     )
     if response.status_code == 403:
@@ -129,9 +129,9 @@ def test_admin_sessions_smoke():
         print(f"   - Size: {status.get('size_kb')}KB")
     
     # Step 7: Test active sessions endpoint
-    print(f"\n[7/8] Testing GET /api/admin/sessions/active-sessions...")
+    print(f"\n[7/8] Testing GET /api/v1/admin/sessions/active-sessions...")
     response = requests.get(
-        f"{BASE_URL}/api/admin/sessions/active-sessions",
+        f"{BASE_URL}/admin/sessions/active-sessions",
         headers=headers
     )
     if response.status_code == 403:
@@ -146,9 +146,9 @@ def test_admin_sessions_smoke():
                 print(f"   - Query {sess['query_id']}: TTL={sess['ttl_seconds']}s")
     
     # Step 8: Test reconstruction log endpoint
-    print(f"\n[8/8] Testing GET /api/admin/sessions/{query_id}/reconstruction-log...")
+    print(f"\n[8/8] Testing GET /api/v1/admin/sessions/{query_id}/reconstruction-log...")
     response = requests.get(
-        f"{BASE_URL}/api/admin/sessions/{query_id}/reconstruction-log",
+        f"{BASE_URL}/admin/sessions/{query_id}/reconstruction-log",
         headers=headers
     )
     if response.status_code == 403:

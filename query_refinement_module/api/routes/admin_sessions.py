@@ -20,7 +20,7 @@ from query_refinement_module.db import crud
 from query_refinement_module.schema.registry import get_framework
 from query_refinement_module.tracing import get_request_id
 
-router = APIRouter(prefix="/api/admin/sessions", tags=["admin", "sessions"])
+router = APIRouter(prefix="/admin/sessions", tags=["admin", "sessions"])
 settings = get_settings()
 
 
