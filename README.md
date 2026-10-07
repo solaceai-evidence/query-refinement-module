@@ -15,23 +15,28 @@ The system is framework-agnostic and domain-agnostic. It exposes a REST API for 
 
 ## Using the web application
 
-1. Log in at the application URL provided to you.
-2. Select a refinement framework, if more that one framework are available.
+1. Log in at the application URL with the account you were given.
+2. Pick a refinement framework from the buttons. You only see the frameworks assigned to your account.
 3. Enter your initial research question or statement.
-4. Answer the guided questions. Each comes with example answers you can click or type your own. You can skip, go back, or finish early at any time.
-5. Review the clarified research statement and search query artifacts produced at the end.
-6. Complete the feedback survey (if evaluating the web app).
+4. Answer the guided questions. Each one comes with suggested answers: click one, type its number, or write your own. The buttons under each question let you go back, skip, finish a dimension or finish early. Restart, clear and finish early ask for confirmation first. A progress panel shows which dimensions have been captured.
+5. Review the refined question, structured statement, semantic and keyword statements, Boolean search construction and search expansion levels. Open **Search details** for per-concept terms and the full expansion queries.
+6. Download the structured output as **JSON** (for downstream tools) or a **Markdown** report. Both include the full refinement trace.
+7. Optionally complete the short feedback survey and choose whether your data may be retained for research.
+
+Every session is stored with its full question/answer and command history. If you close the page part-way through, you will be offered **Resume** the next time you log in.
 
 ### Commands during the dialogue
 
-| Command   | What it does                                |
-| --------- | ------------------------------------------- |
-| `/skip`   | Skip the current question                   |
-| `/back`   | Return to the previous question             |
-| `/done`   | Accept your current answer and move on      |
-| `/status` | See how many questions remain               |
-| `/submit` | Finish early and generate the refined query |
-| `/help`   | List all commands                           |
+| Command                      | What it does                                                |
+| ---------------------------- | ----------------------------------------------------------- |
+| `/back` (`/prev`)            | Return to the previous dimension                            |
+| `/skip`                      | Skip the current dimension                                  |
+| `/done`                      | Accept what you have for this dimension and move on         |
+| `/clear`                     | Clear the answer for the current dimension                  |
+| `/restart`                   | Start the refinement again from the first dimension         |
+| `/submit` (`/end`)           | Finish early and generate the refined query                 |
+| `/status`, `/steps`, `/help` | Show progress, the list of dimensions, and help             |
+| `/frameworks`                | Choose a different framework (chat UI only)                 |
 
 ---
 
@@ -48,8 +53,7 @@ The system is framework-agnostic and domain-agnostic. It exposes a REST API for 
 poetry install --with dev
 
 # Copy the template for your LLM provider:
-cp .env.claude_api .env        # Anthropic Claude (recommended, cloud)
-cp .env.cloud .env              # Other cloud providers (OpenAI, etc.)
+cp .env.cloud .env              # Cloud providers (Anthropic Claude recommended, OpenAI, etc.)
 cp .env.local .env              # Ollama — local models
 cp .env.selfhosted .env         # Self-hosted inference (vLLM, etc.)
 
@@ -62,8 +66,15 @@ Backend: http://localhost:8001 — API docs at `/docs`
 
 ### Chainlit UI
 
+The chat UI runs the same persisted workflow as the API in-process: same database, session store, access control and audit trail. Login is required.
+
 ```bash
-poetry install --with dev
+# One-off: set a signing secret for chat logins in .env
+poetry run chainlit create-secret        # copy the CHAINLIT_AUTH_SECRET line into .env
+
+# Create an account and grant it a framework (see "User management" below)
+poetry run python scripts/create_user.py --username alice --framework pico_advanced
+
 poetry run chainlit run query_refinement_module/chainlit_app.py --host 0.0.0.0 --port 8501
 ```
 

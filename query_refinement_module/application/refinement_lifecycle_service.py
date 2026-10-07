@@ -78,6 +78,17 @@ class RefinementLifecycleService:
 
         db_session = create_query_session(self._support.db, user_id=current_user.id, framework_name=framework_name)
         db_query = create_query(self._support.db, session_id=db_session.id, original_query=original_query)
+        audit_service.log(
+            db=self._support.db,
+            event_type=AuditEventType.REFINEMENT_START,
+            user_id=current_user.id,
+            username=getattr(current_user, "username", None),
+            resource_type="query",
+            resource_id=str(db_query.id),
+            action=f"Started refinement with framework '{framework_name}'",
+            details={"framework": framework_name, "source": source, "session_id": db_session.id},
+            request_id=request_id,
+        )
 
         tracker = self._support.progress_tracker_factory()
         try:
@@ -411,9 +422,11 @@ class RefinementLifecycleService:
         if not active_step:
             raise QueryRefinementException("No active refinement step", status_code=400)
 
+        # Capture the question being answered now; the LLM call below replaces follow_up_question
+        answered_question = active_step.follow_up_question or active_step.refinement_aspect.name
         active_step.conversation_history.append(
             {
-                "question": active_step.follow_up_question or active_step.refinement_aspect.name,
+                "question": answered_question,
                 "response": user_input,
             }
         )
@@ -458,7 +471,7 @@ class RefinementLifecycleService:
         db_followup = create_followup(
             self._support.db,
             refinement_step_id=db_step.id,
-            question=active_step.follow_up_question or active_step.refinement_aspect.name,
+            question=answered_question,
             answer=user_input,
         )
         followup_id = db_followup.id
@@ -482,10 +495,11 @@ class RefinementLifecycleService:
                 "aspect_name": active_step.refinement_aspect.name,
                 "question": active_step.follow_up_question or fallback_question,
                 "description": active_step.refinement_aspect.description or "",
+                "examples": getattr(active_step, "quick_replies", []),
             }
         else:
             next_prompt = await build_next_prompt(self._support.manager, session, db=self._support.db, db_steps=db_steps)
-            persist_generated_question(self._support.db, db_steps, next_prompt)
+        persist_generated_question(self._support.db, db_steps, next_prompt)
 
         self._support.session_manager.save_session(query_id, session)
         ready_for_synthesis = next_prompt is None and session.is_complete()
@@ -799,6 +813,22 @@ class RefinementLifecycleService:
             },
         )
 
+        audit_service.log(
+            db=self._support.db,
+            event_type=AuditEventType.REFINEMENT_COMPLETE,
+            user_id=current_user.id,
+            username=getattr(current_user, "username", None),
+            resource_type="query",
+            resource_id=str(query_id),
+            action="Synthesized structured query",
+            details={
+                "framework": db_query.session.framework_name,
+                "synthesis_requested_early": bool(getattr(session, "synthesis_requested", False)),
+                "skipped_dimensions": [step.refinement_aspect.id for step in getattr(session, "steps", []) if step.was_skipped],
+                "dimensions_captured": sorted((structured_output or {}).get("dimensions_specifications") or {}),
+            },
+            request_id=request_id,
+        )
         await self._support.progress_fn(query_id=str(query_id), stage=ProgressStage.SYNTHESIS_COMPLETE, message="Synthesis completed successfully")
         self._support.session_manager.delete_session(query_id)
         await self._support.progress_fn(query_id=str(query_id), stage=ProgressStage.COMPLETED, message="Refinement completed successfully")

@@ -34,3 +34,26 @@ async def test_inmemory_session_manager_exposes_session_lock():
         assert manager._get_session_lock(123).locked() is True
 
     assert manager._get_session_lock(123).locked() is False
+
+
+def test_session_roundtrip_preserves_quick_replies():
+    from query_refinement_module.schema.models import RefinementAspect
+    from query_refinement_module.session_models import AspectRefinementState, RefinementSession
+
+    aspect = RefinementAspect(id="population", name="Population", description="Who is studied")
+    session = RefinementSession(original_query="exercise for copd")
+    session._complete_framework = [aspect]
+    session.steps.append(
+        AspectRefinementState(
+            refinement_aspect=aspect,
+            follow_up_question="Which adults?",
+            quick_replies=["Adults 40-65", "Adults 65+"],
+        )
+    )
+    manager = InMemorySessionManager(session_ttl_seconds=60)
+
+    manager.save_session(7, session)
+    loaded = manager.load_session(7, refinement_framework=[aspect])
+
+    assert loaded.steps[0].quick_replies == ["Adults 40-65", "Adults 65+"]
+    assert loaded.steps[0].follow_up_question == "Which adults?"

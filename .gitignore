@@ -264,3 +264,7 @@ QueryRefinementPaper*
 logs/
 .env_*
 .env copy*
+
+# Chainlit runtime artefacts
+.chainlit/translations/
+.files/

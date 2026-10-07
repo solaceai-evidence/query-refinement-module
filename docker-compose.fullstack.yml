@@ -90,6 +90,7 @@ services:
     environment:
       DATABASE_URL: postgresql+psycopg2://${POSTGRES_USER:-qruser}:${POSTGRES_PASSWORD:-changeme}@postgres:5432/${POSTGRES_DB:-query_refinement}
       REDIS_URL: ${REDIS_URL:-redis://redis:6379/0}
+      CHAINLIT_AUTH_SECRET: ${CHAINLIT_AUTH_SECRET:?CHAINLIT_AUTH_SECRET must be set (generate with: chainlit create-secret)}
     ports:
       - "${CHAINLIT_PORT:-8501}:8501"
     depends_on:

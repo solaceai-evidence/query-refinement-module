@@ -68,7 +68,9 @@ This keeps the completeness rule close to the domain logic instead of forcing ev
 
 ## user_context Block
 
-The `user_context` block is an optional first entry in a framework. It controls how the LLM adapts questions and feedback for the intended audience. It is copied to every dimension in the framework by the registry loader.
+> **Legacy / not currently applied.** User context is now expressed as a questioning style in the global system prompt. The registry ignores `user_context` blocks, which are kept in `frameworks.yaml` only as reference material (e.g. audience constraints).
+
+The `user_context` block was an optional first entry in a framework describing the intended audience.
 
 | Field           | Type            | Description                                                                   |
 | --------------- | --------------- | ----------------------------------------------------------------------------- |

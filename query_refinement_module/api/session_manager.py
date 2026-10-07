@@ -47,6 +47,7 @@ def _serialize_step_state(step: AspectRefinementState) -> Dict[str, Any]:
         "needs_refinement_rationale": step.reasoning,
         "refinement_question": step.follow_up_question,
         "refinement_aspect_value": step.normalized_value,
+        "quick_replies": list(step.quick_replies or []),
     }
 
 
@@ -95,6 +96,7 @@ def deserialize_session_state(
             reasoning=step_data.get("needs_refinement_rationale"),
             follow_up_question=step_data.get("refinement_question"),
             normalized_value=step_data.get("refinement_aspect_value"),
+            quick_replies=list(step_data.get("quick_replies") or []),
         )
 
         session.steps.append(step)

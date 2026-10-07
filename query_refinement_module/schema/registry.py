@@ -124,6 +124,10 @@ def _load_frameworks(*, raise_on_error: bool = False) -> Dict[str, List[Refineme
                 if not isinstance(item, dict):
                     logger.warning(f"Skipping non-dict item in framework '{framework_name}'")
                     continue
+                if set(item) == {"user_context"}:
+                    # Legacy block; user context now lives in the global system prompt
+                    logger.debug(f"Ignoring legacy user_context block in framework '{framework_name}'")
+                    continue
 
                 try:
                     aspect = RefinementAspect(**item)

@@ -16,3 +16,8 @@ __pycache__/
 .env.*
 
 frontend/node_modules/
+# Local databases and snapshots (may contain user data)
+*.db
+*.db.*
+*.sqlite
+.files/

@@ -1,15 +1,26 @@
-"""Chainlit entry point for the shared interactive refinement workflow."""
+"""Chainlit chat UI for schema-guided query refinement.
+
+The UI is a thin layer over ``ChainlitRefinementAdapter``, which runs the same
+persisted workflow as the REST API. Chat state only holds identifiers; the
+database and session manager hold the workflow itself, so every session is
+access-controlled, audited, traceable and resumable.
+"""
 
 from __future__ import annotations
 
-from typing import Any, Optional
+import json
+from contextlib import asynccontextmanager
+from typing import Any, Dict, List, Optional, Set
 
-from query_refinement_module.api.dependencies import get_refinement_manager
-from query_refinement_module.application import InteractivePrompt, InteractiveRefinementService
-from query_refinement_module.application.interactive_refinement_helpers import (
-    build_search_expansion_input_from_synthesis,
-    resolve_numeric_examples,
+from query_refinement_module.api.exceptions import QueryRefinementException
+from query_refinement_module.application.chainlit_adapter import ChainlitRefinementAdapter
+from query_refinement_module.application.feedback_survey import (
+    SurveyResponses,
+    apply_survey_answer,
+    build_survey_steps,
+    survey_items,
 )
+from query_refinement_module.application.interactive_refinement_helpers import resolve_numeric_examples
 from query_refinement_module.schema import registry
 
 try:
@@ -18,212 +29,716 @@ except ImportError:  # pragma: no cover - import-safe for environments without C
     cl = None
 
 
-class ChainlitWorkflowState:
-    def __init__(self) -> None:
+# (command, label) in the order shown under each question
+COMMAND_BUTTONS = [
+    ("/back", "◀ Back"),
+    ("/skip", "Skip"),
+    ("/done", "Done with this"),
+    ("/submit", "Finish & synthesize"),
+    ("/status", "Status"),
+    ("/steps", "Steps"),
+    ("/help", "Help"),
+    ("/clear", "Clear answer"),
+    ("/restart", "Restart"),
+]
+
+CONFIRM_COMMANDS = {
+    "/restart": "Restart refinement from the first dimension? Answers given so far will be cleared.",
+    "/clear": "Clear the current answer for this dimension?",
+    "/submit": "Finish now and synthesize with the information captured so far?",
+}
+
+EXAMPLE_LABEL_MAX = 80
+
+
+class ChatState:
+    """Per-chat identifiers; the workflow itself lives in the DB and session store.
+
+    A plain class rather than a dataclass: Chainlit loads this file without
+    registering it in ``sys.modules``, which breaks ``@dataclass``.
+    """
+
+    def __init__(self, user_id: int) -> None:
+        self.user_id = user_id
         self.framework_name: Optional[str] = None
-        self.original_query: Optional[str] = None
-        self.session: Any = None
-        self.prompt: Optional[InteractivePrompt] = None
+        self.query_id: Optional[int] = None
+        self.session_id: Optional[int] = None
+        self.prompt: Optional[Dict[str, Any]] = None
+        self.feedback_done: Set[int] = set()
+        self.live_actions: List[Any] = []
+        # Active feedback survey: {"steps": [...], "index": int, "responses": SurveyResponses}
+        self.survey: Optional[Dict[str, Any]] = None
 
 
-def _get_interactive_service() -> InteractiveRefinementService:
-    return InteractiveRefinementService(get_refinement_manager())
+# ----------------------------------------------------------------------
+# Pure formatting helpers
+# ----------------------------------------------------------------------
 
-
-def _framework_names() -> list[str]:
-    names = registry.list_frameworks()
-    return sorted(names)
-
-
-def _framework_help_text() -> str:
-    names = _framework_names()
-    if not names:
-        return "No refinement frameworks are available. Check REFINEMENT_FRAMEWORK_PATH and restart the app."
-    joined = "\n".join(f"- {name}" for name in names)
-    return (
-        "## Query Refinement Chat\n\n"
-        "Choose a refinement framework by sending its name.\n\n"
-        f"Available frameworks:\n{joined}\n\n"
-        "After that, send your research question to begin the guided refinement dialogue."
-    )
-
-
-def _format_prompt(prompt: InteractivePrompt) -> str:
-    lines = [f"## {prompt.aspect_name}"]
-    if prompt.aspect_description:
-        lines.append(prompt.aspect_description)
-    if prompt.dependency_context:
-        lines.append("")
-        lines.append("Context already captured:")
-        for item in prompt.dependency_context.values():
-            lines.append(f"- {item['name']}: {item['value']}")
+def format_prompt(prompt: Dict[str, Any]) -> str:
+    lines = [f"### {prompt.get('name') or prompt.get('aspect_name') or 'Next question'}"]
+    if prompt.get("description"):
+        lines.append(f"_{prompt['description']}_")
     lines.append("")
-    lines.append(prompt.question)
-    if prompt.examples:
+    lines.append(prompt.get("question") or "")
+    examples = prompt.get("examples") or []
+    if examples:
         lines.append("")
-        lines.append("Examples:")
-        for index, example in enumerate(prompt.examples, start=1):
-            lines.append(f"{index}. {example}")
-    lines.append("")
-    lines.append("You can also use /help, /status, /back, /skip, /done, or /submit.")
+        lines.append("**Suggested answers** (click one, type its number, or write your own):")
+        lines.extend(f"{index}. {example}" for index, example in enumerate(examples, start=1))
     return "\n".join(lines)
 
 
-def _render_synthesis_markdown(
-    synthesis: dict[str, Any],
-    expansion_response: Any = None,
-) -> str:
-    search_optimized = synthesis.get("search_optimized")
-    semantic_statement = getattr(search_optimized, "semantic", "") if search_optimized else ""
-    keyword = getattr(search_optimized, "keyword", None) if search_optimized else None
-    boolean_query = getattr(keyword, "structured", "") if keyword else ""
+def format_step_list(steps: List[Dict[str, Any]]) -> str:
+    icons = {"completed": "✅", "active": "▶️", "needs review": "⚠️", "not started": "○"}
+    lines = ["**Refinement steps**"]
+    for index, step in enumerate(steps, start=1):
+        status = "skipped" if step.get("was_skipped") else step.get("status", "")
+        icon = "⏭️" if status == "skipped" else icons.get(status, "○")
+        lines.append(f"{index}. {icon} {step.get('name')} — {status}")
+    return "\n".join(lines)
 
-    lines = [
-        "## Refined Query",
-        f"**Clarified query**\n{synthesis.get('clarified_query', '')}",
-        f"**Semantic statement**\n{semantic_statement}",
-        f"**Keyword statement**\n{synthesis.get('keyword_statement', '')}",
-        f"**Boolean search construction**\n{boolean_query}",
+
+def format_command_result(payload: Dict[str, Any]) -> str:
+    parts = []
+    if payload.get("step_list"):
+        parts.append(format_step_list(payload["step_list"]))
+    elif payload.get("message"):
+        parts.append(payload["message"])
+    summary = payload.get("step_summary")
+    if isinstance(summary, dict) and not payload.get("message"):
+        parts.append("\n".join(f"- {key.replace('_', ' ')}: {value}" for key, value in summary.items()))
+    return "\n\n".join(parts) or f"/{payload.get('command_type')} done."
+
+
+def task_state(aspect: Dict[str, Any]) -> str:
+    """Map an aspect status payload to a TaskStatus name."""
+    if aspect.get("was_skipped"):
+        return "DONE"
+    return {
+        "completed": "DONE",
+        "active": "RUNNING",
+        "needs review": "FAILED",
+    }.get(aspect.get("status", ""), "READY")
+
+
+def task_title(aspect: Dict[str, Any]) -> str:
+    suffix = " (skipped)" if aspect.get("was_skipped") else (" (needs review)" if aspect.get("status") == "needs review" else "")
+    return f"{aspect.get('name')}{suffix}"
+
+
+def role_label(role: str) -> str:
+    """Turn a query_role id such as 'intervention_or_exposure' into 'Intervention / exposure'."""
+    words = (role or "concept").replace("_or_", " / ").replace("_", " ")
+    return words[:1].upper() + words[1:]
+
+
+def _section(title: str, body: Optional[str]) -> Optional[str]:
+    return f"**{title}**\n{body}" if body else None
+
+
+def render_synthesis_markdown(synthesis: Dict[str, Any]) -> str:
+    structured = synthesis.get("structured_output") or {}
+    search_optimized = structured.get("search_optimized") or {}
+    keyword = search_optimized.get("keyword") or {}
+    filters = structured.get("search_filters") or {}
+    dimensions = structured.get("dimensions_specifications") or {}
+
+    sections = [
+        "## Refined research question",
+        synthesis.get("clarified_query") or "",
     ]
+    if dimensions:
+        sections.append(
+            "**Structured statement**\n"
+            + "\n".join(f"- **{name}**: {value}" for name, value in dimensions.items() if value)
+        )
+    sections.append(_section("Semantic search statement", search_optimized.get("semantic")))
+    sections.append(_section("Keyword statement", structured.get("keyword_statement")))
+    if keyword.get("structured"):
+        sections.append(f"**Boolean search construction**\n```text\n{keyword['structured']}\n```")
 
-    filters = synthesis.get("search_filters")
-    if filters:
-        publication_years = getattr(filters, "publication_years", None)
-        publication_types = getattr(filters, "publication_types", None)
-        if publication_years or publication_types:
-            lines.append("**Suggested filters**")
-            if publication_years:
-                lines.append(f"- Years: {publication_years}")
-            if publication_types:
-                lines.append(f"- Types: {', '.join(publication_types)}")
+    filter_lines = []
+    if filters.get("publication_years"):
+        filter_lines.append(f"- Years: {filters['publication_years']}")
+    if filters.get("publication_types"):
+        filter_lines.append(f"- Types: {', '.join(filters['publication_types'])}")
+    if filter_lines:
+        sections.append("**Suggested filters**\n" + "\n".join(filter_lines))
 
-    if expansion_response and getattr(expansion_response, "levels", None):
-        lines.append("**Search expansion levels**")
-        if getattr(expansion_response, "recommended_starting_level", None):
-            lines.append(
-                f"- Recommended starting level: {expansion_response.recommended_starting_level}"
-            )
-        for level in expansion_response.levels:
-            lines.append(f"- Level {level.level} ({level.label}): {level.search_query}")
+    levels = synthesis.get("expansion_levels") or []
+    if levels:
+        meta = synthesis.get("expansion_metadata") or {}
+        level_lines = [f"- Level {level.get('level')}: {level.get('label')}" for level in levels]
+        if meta.get("recommended_starting_level") is not None:
+            level_lines.append(f"\nRecommended starting level: **{meta['recommended_starting_level']}**")
+            if meta.get("recommendation_rationale"):
+                level_lines.append(f"_{meta['recommendation_rationale']}_")
+        sections.append("**Search expansion levels** (full queries in the side panel)\n" + "\n".join(level_lines))
 
-    return "\n\n".join(lines)
+    return "\n\n".join(section for section in sections if section)
 
 
-async def _generate_expansion(synthesis: dict[str, Any]) -> Any:
-    manager = get_refinement_manager()
-    search_input = build_search_expansion_input_from_synthesis(synthesis)
-    if search_input is None:
+def render_concept_blocks(synthesis: Dict[str, Any]) -> Optional[str]:
+    structured = synthesis.get("structured_output") or {}
+    keyword = (structured.get("search_optimized") or {}).get("keyword") or {}
+    blocks = keyword.get("combined_blocks") or []
+    if not blocks:
         return None
-    expansion_response, _ = await manager.generate_search_expansion_levels(search_input=search_input)
-    return expansion_response
+    lines = ["# Concept blocks", ""]
+    for index, block in enumerate(blocks, start=1):
+        lines.append(f"## {index}. {role_label(block.get('role', 'concept'))}")
+        if block.get("free_text"):
+            lines.append("Free text: " + " OR ".join(block["free_text"]))
+        for vocabulary, terms in (block.get("controlled_vocabulary") or {}).items():
+            if terms:
+                lines.append(f"{vocabulary}: " + "; ".join(terms))
+        lines.append("")
+    return "\n".join(lines)
 
 
-async def _send_message(content: str) -> None:
-    await cl.Message(content=content).send()
+def render_expansion_levels(synthesis: Dict[str, Any]) -> Optional[str]:
+    levels = synthesis.get("expansion_levels") or []
+    if not levels:
+        return None
+    lines = ["# Search expansion levels", ""]
+    for level in levels:
+        lines.append(f"## Level {level.get('level')}: {level.get('label')}")
+        if level.get("query"):
+            lines.append(f"_{level['query']}_")
+        lines.append(f"```text\n{level.get('boolean_query', '')}\n```")
+        lines.append("")
+    return "\n".join(lines)
 
 
-async def _handle_framework_selection(state: ChainlitWorkflowState, text: str) -> None:
-    names = _framework_names()
-    if text not in names:
-        await _send_message(
-            f"Unknown framework '{text}'.\n\n{_framework_help_text()}"
-        )
-        return
-    state.framework_name = text
-    await _send_message(
-        f"Framework set to **{text}**. Send your initial research question to start refinement."
+def build_markdown_export(export: Dict[str, Any]) -> str:
+    lines = [
+        f"# Query refinement — query {export['query_id']}",
+        "",
+        f"- Framework: {export.get('framework')}",
+        f"- Exported: {export.get('exported_at')}",
+        f"- Original question: {export.get('original_query')}",
+        "",
+        render_synthesis_markdown(export.get("synthesis") or {}),
+        "",
+        "## Refinement trace",
+    ]
+    for step in export.get("refinement_trace") or []:
+        status = "skipped" if step.get("was_skipped") else ("complete" if step.get("is_complete") else "incomplete")
+        lines.append(f"### {step.get('aspect_name')} ({status})")
+        for turn in step.get("turns") or []:
+            lines.append(f"- **Q:** {turn.get('question')}")
+            lines.append(f"  **A:** {turn.get('answer')}")
+        if step.get("final_value"):
+            lines.append(f"- **Accepted value:** {step['final_value']}")
+        lines.append("")
+    for extra in (render_concept_blocks(export.get("synthesis") or {}), render_expansion_levels(export.get("synthesis") or {})):
+        if extra:
+            # demote headings one level inside the report
+            lines.append("\n".join("#" + line if line.startswith("#") else line for line in extra.splitlines()))
+    return "\n".join(lines)
+
+
+def help_text() -> str:
+    return (
+        "**Controls** — use the buttons under each question, or type:\n"
+        "- `/back` (`/prev`) revisit the previous dimension\n"
+        "- `/skip` skip this dimension\n"
+        "- `/done` accept what you have for this dimension and move on\n"
+        "- `/clear` clear the answer for this dimension\n"
+        "- `/restart` start the refinement again\n"
+        "- `/submit` (`/end`) finish now and synthesize\n"
+        "- `/status`, `/steps`, `/help` show progress and help\n"
+        "- `/frameworks` choose a different framework"
     )
 
 
-async def _start_refinement_session(state: ChainlitWorkflowState, text: str) -> None:
-    framework = registry.get_framework(state.framework_name)
-    service = _get_interactive_service()
-    state.original_query = text
-    state.session = service.start_session(original_query=text, refinement_framework=framework)
-    state.prompt = await service.get_next_prompt(state.session)
-    if state.prompt is None:
-        synthesis = await service.synthesize(state.session)
-        expansion = await _generate_expansion(synthesis)
-        await _send_message(_render_synthesis_markdown(synthesis, expansion))
-        state.session = None
-        return
-    await _send_message(_format_prompt(state.prompt))
-
-
-async def _continue_refinement(state: ChainlitWorkflowState, text: str) -> None:
-    service = _get_interactive_service()
-    current_examples = state.prompt.examples if state.prompt else None
-    resolved_input, was_numeric = resolve_numeric_examples(text, current_examples)
-    turn_result = await service.submit_input(
-        session=state.session,
-        user_input=resolved_input,
-        selected_example=was_numeric,
-    )
-
-    if turn_result.message:
-        await _send_message(turn_result.message)
-
-    next_prompt = turn_result.prompt
-    if next_prompt is None and not state.session.synthesis_requested:
-        next_prompt = await service.get_next_prompt(state.session)
-
-    state.prompt = next_prompt
-    if state.session.synthesis_requested or next_prompt is None:
-        synthesis = await service.synthesize(state.session)
-        expansion = await _generate_expansion(synthesis)
-        await _send_message(_render_synthesis_markdown(synthesis, expansion))
-        state.session = None
-        state.prompt = None
-        await _send_message(
-            f"Send another research question to start a new **{state.framework_name}** session, or send a different framework name to switch frameworks."
-        )
-        return
-
-    await _send_message(_format_prompt(next_prompt))
-
+# ----------------------------------------------------------------------
+# Chainlit handlers
+#
+# Action callbacks never await AskActionMessage/AskUserMessage: in Chainlit
+# 2.x that leaves the UI stuck in a "running" state. Confirmations and the
+# feedback survey are therefore driven by follow-up actions and messages.
+# ----------------------------------------------------------------------
 
 if cl is not None:
+
+    def _state() -> Optional[ChatState]:
+        return cl.user_session.get("chat_state")
+
+    async def _send(content: str, *, actions=None, elements=None) -> Any:
+        message = cl.Message(content=content, actions=actions or [], elements=elements or [])
+        await message.send()
+        return message
+
+    async def _send_with_actions(state: ChatState, content: str, actions: List[Any], *, elements=None) -> None:
+        """Send a message whose buttons are retired as soon as the user moves on."""
+        await _clear_live_actions(state)
+        await _send(content, actions=actions, elements=elements)
+        state.live_actions = list(actions)
+
+    async def _echo_user(content: str) -> None:
+        user = cl.user_session.get("user")
+        await cl.Message(content=content, author=getattr(user, "identifier", "You"), type="user_message").send()
+
+    class _Handled(Exception):
+        """Raised after an error has already been shown to the user."""
+
+    @asynccontextmanager
+    async def _workflow():
+        """Yield an adapter and the DB-bound user; report workflow errors in chat."""
+        state = _state()
+        try:
+            with ChainlitRefinementAdapter.open() as adapter:
+                yield adapter, adapter.get_user(state.user_id)
+        except QueryRefinementException as exc:
+            await _send(f"⚠️ {exc.message}")
+            raise _Handled() from exc
+
+    async def _clear_live_actions(state: ChatState) -> None:
+        for action in state.live_actions:
+            try:
+                await action.remove()
+            except Exception:  # pragma: no cover - action may already be gone
+                pass
+        state.live_actions = []
+
+    async def _ask_confirmation(state: ChatState, question: str, intent: Dict[str, Any]) -> None:
+        """Ask a yes/no question; ``on_confirm`` carries out ``intent`` on yes."""
+        await _send_with_actions(
+            state,
+            question,
+            [
+                cl.Action(name="confirm", payload={**intent, "ok": True}, label="Yes, continue"),
+                cl.Action(name="confirm", payload={"ok": False}, label="Cancel"),
+            ],
+        )
+
+    @cl.action_callback("confirm")
+    async def on_confirm(action) -> None:
+        state = _state()
+        if state is None:
+            return
+        await _clear_live_actions(state)
+        intent = action.payload
+        if not intent.get("ok"):
+            await _send("Cancelled.")
+            if state.prompt:
+                await _show_prompt(state, state.prompt)
+            return
+        if intent.get("kind") == "command":
+            await _submit(state, intent["command"], force=bool(intent.get("force")))
+        elif intent.get("kind") == "switch_framework":
+            await _select_framework(state, intent["framework"])
+
+    # ---------------- login, framework selection and resume ----------------
+
+    @cl.data_layer
+    def no_chainlit_data_layer():
+        # Chainlit would otherwise build its own data layer from DATABASE_URL.
+        # The app database (via the adapter) is the system of record instead.
+        return None
+
+    @cl.password_auth_callback
+    async def auth_callback(username: str, password: str):
+        with ChainlitRefinementAdapter.open() as adapter:
+            user = adapter.authenticate(username, password)
+            if user is None:
+                return None
+            return cl.User(
+                identifier=user.username,
+                metadata={"user_id": user.id, "role": "admin" if user.is_superuser else "user"},
+            )
+
+    async def _send_framework_picker(state: ChatState, frameworks: List[str]) -> None:
+        if not frameworks:
+            await _send("No refinement frameworks are assigned to your account. Please contact an administrator.")
+            return
+        actions = [cl.Action(name="select_framework", payload={"framework": name}, label=name) for name in frameworks]
+        await _send_with_actions(state, "**Choose a refinement framework** to structure your question:", actions)
+
+    def _resume_payload(resumable: Dict[str, Any]) -> Dict[str, Any]:
+        return {
+            "query_id": resumable["query_id"],
+            "session_id": resumable["session_id"],
+            "framework": resumable["framework_name"],
+        }
+
     @cl.on_chat_start
     async def on_chat_start() -> None:
         registry.reload_from_env(raise_on_error=False)
-        cl.user_session.set("workflow_state", ChainlitWorkflowState())
-        await _send_message(_framework_help_text())
+        user = cl.user_session.get("user")
+        if user is None or "user_id" not in (user.metadata or {}):
+            await _send("Login is required. Set `CHAINLIT_AUTH_SECRET` and restart the app.")
+            return
 
+        state = ChatState(user_id=user.metadata["user_id"])
+        cl.user_session.set("chat_state", state)
+        try:
+            async with _workflow() as (adapter, db_user):
+                if adapter.workflow_limit_reached(db_user):
+                    await _send("You have already completed a refinement workflow. Thank you for your participation!")
+                    return
+                frameworks = adapter.list_frameworks(db_user)
+                resumable = adapter.find_resumable_query(db_user)
+        except _Handled:
+            return
+
+        await _send(
+            f"## Query refinement\n\nWelcome, **{user.identifier}**. I'll help you turn a free-text question "
+            "into a structured, search-ready statement through a short guided dialogue.\n\n" + help_text()
+        )
+        if resumable and resumable["framework_name"] in frameworks:
+            payload = _resume_payload(resumable)
+            actions = [
+                cl.Action(name="resume_query", payload=payload, label="Resume it"),
+                cl.Action(name="discard_query", payload=payload, label="Discard and start fresh"),
+            ]
+            await _send_with_actions(
+                state,
+                f"You have an unfinished query using **{resumable['framework_name']}**:\n\n> {resumable['original_query']}",
+                actions,
+            )
+            return
+        await _send_framework_picker(state, frameworks)
+
+    async def _select_framework(state: ChatState, framework_name: str) -> None:
+        await _clear_live_actions(state)
+        state.framework_name = framework_name
+        state.query_id = state.session_id = None
+        state.prompt = None
+        cl.user_session.set("task_list", None)
+        await _send(f"Framework set to **{framework_name}**. Now send your initial research question.")
+
+    @cl.action_callback("select_framework")
+    async def on_select_framework(action) -> None:
+        state = _state()
+        if state is None:
+            return
+        framework = action.payload["framework"]
+        if state.query_id is not None:
+            await _ask_confirmation(
+                state,
+                f"Leave the current refinement and switch to **{framework}**? You can resume it later.",
+                {"kind": "switch_framework", "framework": framework},
+            )
+            return
+        await _select_framework(state, framework)
+
+    @cl.action_callback("resume_query")
+    async def on_resume(action) -> None:
+        state = _state()
+        await _clear_live_actions(state)
+        try:
+            async with _workflow() as (adapter, user):
+                payload = await adapter.resume(user, query_id=action.payload["query_id"])
+        except _Handled:
+            return
+        state.framework_name = action.payload["framework"]
+        state.query_id = action.payload["query_id"]
+        state.session_id = action.payload["session_id"]
+        await _send(f"Resumed your **{state.framework_name}** refinement.")
+        await _after_turn(state, payload)
+
+    @cl.action_callback("discard_query")
+    async def on_discard(action) -> None:
+        state = _state()
+        await _clear_live_actions(state)
+        try:
+            async with _workflow() as (adapter, user):
+                await adapter.abandon(user, session_id=action.payload["session_id"])
+                frameworks = adapter.list_frameworks(user)
+        except _Handled:
+            return
+        await _send("Discarded the unfinished query.")
+        await _send_framework_picker(state, frameworks)
+
+    # ---------------- refinement turns ----------------
+
+    async def _start(state: ChatState, text: str) -> None:
+        await _clear_live_actions(state)
+        async with cl.Step(name="Analysing your question", type="run"):
+            try:
+                async with _workflow() as (adapter, user):
+                    payload = await adapter.start(user, framework_name=state.framework_name, original_query=text)
+            except _Handled:
+                return
+        state.query_id = payload["query_id"]
+        state.session_id = payload["session_id"]
+        cl.user_session.set("task_list", None)
+        await _after_turn(state, payload)
+
+    async def _submit(state: ChatState, text: str, *, force: bool = False) -> None:
+        await _clear_live_actions(state)
+        async with cl.Step(name="Thinking", type="run"):
+            try:
+                async with _workflow() as (adapter, user):
+                    payload = await adapter.submit(user, query_id=state.query_id, text=text, force=force)
+            except _Handled:
+                return
+        if payload.get("force_required"):
+            await _ask_confirmation(
+                state,
+                payload.get("message") or "This will invalidate dependent answers. Continue?",
+                {"kind": "command", "command": text, "force": True},
+            )
+            return
+        await _after_turn(state, payload)
+
+    async def _request_command(state: ChatState, command: str) -> None:
+        """Run a command, asking for confirmation first when it is destructive."""
+        if command in CONFIRM_COMMANDS:
+            await _ask_confirmation(state, CONFIRM_COMMANDS[command], {"kind": "command", "command": command})
+            return
+        await _submit(state, command)
+
+    async def _show_prompt(state: ChatState, prompt: Dict[str, Any]) -> None:
+        state.prompt = prompt
+        actions = [
+            cl.Action(name="example", payload={"text": example}, label=_truncate(example))
+            for example in (prompt.get("examples") or [])
+        ]
+        actions += [cl.Action(name="command", payload={"command": cmd}, label=label) for cmd, label in COMMAND_BUTTONS]
+        await _send_with_actions(state, format_prompt(prompt), actions)
+
+    async def _after_turn(state: ChatState, payload: Dict[str, Any]) -> None:
+        if "command_type" in payload:
+            await _send(format_command_result(payload))
+
+        if payload.get("ready_for_synthesis") or payload.get("synthesis_ready"):
+            await _synthesize(state)
+            return
+
+        if payload.get("next_prompt"):
+            await _show_prompt(state, payload["next_prompt"])
+        await _refresh_progress(state)
+
+    def _truncate(text: str) -> str:
+        return text if len(text) <= EXAMPLE_LABEL_MAX else text[: EXAMPLE_LABEL_MAX - 1] + "…"
+
+    async def _refresh_progress(state: ChatState) -> None:
+        if state.query_id is None:
+            return
+        try:
+            async with _workflow() as (adapter, user):
+                status = await adapter.status(user, query_id=state.query_id)
+        except _Handled:
+            return
+        aspects = status.get("aspects") or []
+        if not aspects:
+            return
+        task_list = cl.user_session.get("task_list") or cl.TaskList()
+        task_list.tasks = [cl.Task(title=task_title(a), status=getattr(cl.TaskStatus, task_state(a))) for a in aspects]
+        done = sum(1 for a in aspects if task_state(a) == "DONE")
+        task_list.status = f"{done}/{len(aspects)} dimensions captured"
+        await task_list.send()
+        cl.user_session.set("task_list", task_list)
+
+    async def _synthesize(state: ChatState) -> None:
+        await _clear_live_actions(state)
+        query_id = state.query_id
+        async with cl.Step(name="Synthesizing structured statement and search strategy", type="run"):
+            try:
+                async with _workflow() as (adapter, user):
+                    synthesis = await adapter.synthesize(user, query_id=query_id)
+                    export = adapter.build_export(user, query_id=query_id, synthesis=synthesis)
+            except _Handled:
+                return
+
+        task_list = cl.user_session.get("task_list")
+        if task_list is not None:
+            for task in task_list.tasks:
+                task.status = cl.TaskStatus.DONE
+            task_list.status = "Synthesis complete"
+            await task_list.send()
+
+        elements = [
+            cl.File(
+                name=f"query-refinement-{query_id}.json",
+                content=json.dumps(export, indent=2, ensure_ascii=False).encode("utf-8"),
+                mime="application/json",
+                display="inline",
+            ),
+            cl.File(
+                name=f"query-refinement-{query_id}.md",
+                content=build_markdown_export(export).encode("utf-8"),
+                mime="text/markdown",
+                display="inline",
+            ),
+        ]
+        details = "\n\n".join(part for part in (render_concept_blocks(synthesis), render_expansion_levels(synthesis)) if part)
+        if details:
+            elements.append(cl.Text(name="Search details", content=details, display="side"))
+
+        await _send(
+            render_synthesis_markdown(synthesis)
+            + "\n\n📎 Download the structured output (JSON, for downstream tools) or a readable report (Markdown) below."
+            + ("\n\nOpen **Search details** for per-concept search terms and the full expansion queries." if details else ""),
+            elements=elements,
+        )
+        state.query_id = state.session_id = None
+        state.prompt = None
+
+        actions = [cl.Action(name="new_query", payload={}, label="Refine another question")]
+        if query_id not in state.feedback_done:
+            actions.insert(0, cl.Action(
+                name="start_feedback",
+                payload={"query_id": query_id, "framework": state.framework_name},
+                label="Give feedback (2 min)",
+            ))
+        await _send_with_actions(state, "What next?", actions)
+
+    @cl.action_callback("example")
+    async def on_example(action) -> None:
+        state = _state()
+        if state is None or state.query_id is None:
+            return
+        await _echo_user(action.payload["text"])
+        await _submit(state, action.payload["text"])
+
+    @cl.action_callback("command")
+    async def on_command(action) -> None:
+        state = _state()
+        if state is None or state.query_id is None:
+            return
+        await _echo_user(action.payload["command"])
+        await _request_command(state, action.payload["command"])
+
+    @cl.action_callback("new_query")
+    async def on_new_query(action) -> None:
+        state = _state()
+        await _clear_live_actions(state)
+        if state.framework_name:
+            await _send(f"Send another research question to refine with **{state.framework_name}**, or pick a different framework.")
+        try:
+            async with _workflow() as (adapter, user):
+                frameworks = adapter.list_frameworks(user)
+        except _Handled:
+            return
+        await _send_framework_picker(state, frameworks)
+
+    # ---------------- feedback survey (step-by-step) ----------------
+
+    async def _survey_ask(state: ChatState) -> None:
+        survey = state.survey
+        step = survey["steps"][survey["index"]]
+        progress = f"_Question {survey['index'] + 1} of {len(survey['steps'])}_\n\n"
+        if step["kind"] == "text":
+            await _clear_live_actions(state)
+            await _send(progress + step["question"])
+            return
+        actions = [cl.Action(name="survey_answer", payload={"value": value}, label=label) for value, label in step["options"]]
+        if step.get("skippable"):
+            actions.append(cl.Action(name="survey_answer", payload={"value": None}, label="Skip"))
+        await _send_with_actions(state, progress + step["question"], actions)
+
+    async def _survey_record(state: ChatState, value: Any) -> None:
+        survey = state.survey
+        apply_survey_answer(survey["responses"], survey["steps"][survey["index"]], value)
+        survey["index"] += 1
+        if survey["index"] < len(survey["steps"]):
+            await _survey_ask(state)
+            return
+
+        responses = survey["responses"]
+        state.survey = None
+        await _clear_live_actions(state)
+        try:
+            async with _workflow() as (adapter, user):
+                adapter.save_feedback(
+                    user,
+                    query_id=responses.query_id,
+                    rating=responses.rating,
+                    comments=responses.comments(),
+                    metadata=responses.to_metadata(),
+                    consent=bool(responses.consent),
+                )
+        except _Handled:
+            return
+        state.feedback_done.add(responses.query_id)
+        await _send_with_actions(
+            state,
+            "Thank you — your feedback has been recorded.",
+            [cl.Action(name="new_query", payload={}, label="Refine another question")],
+        )
+
+    @cl.action_callback("start_feedback")
+    async def on_start_feedback(action) -> None:
+        state = _state()
+        query_id = action.payload["query_id"]
+        if state is None or query_id in state.feedback_done or state.survey is not None:
+            return
+        framework = action.payload.get("framework")
+        state.survey = {
+            "steps": build_survey_steps(framework),
+            "index": 0,
+            "responses": SurveyResponses(framework_name=framework, query_id=query_id),
+        }
+        await _clear_live_actions(state)
+        await _send(f"### Feedback\n{survey_items(framework)['intro']}")
+        await _survey_ask(state)
+
+    @cl.action_callback("survey_answer")
+    async def on_survey_answer(action) -> None:
+        state = _state()
+        if state is None or state.survey is None:
+            return
+        await _echo_user(action.label)
+        await _survey_record(state, action.payload.get("value"))
+
+    # ---------------- free-text input ----------------
 
     @cl.on_message
-    async def on_message(message: "cl.Message") -> None:
-        state: ChainlitWorkflowState = cl.user_session.get("workflow_state")
+    async def on_message(message) -> None:
+        state = _state()
         if state is None:
-            state = ChainlitWorkflowState()
-            cl.user_session.set("workflow_state", state)
+            await _send("Please reload the page and log in.")
+            return
 
         text = (message.content or "").strip()
+
+        if state.survey is not None:
+            step = state.survey["steps"][state.survey["index"]]
+            if step["kind"] == "text":
+                await _survey_record(state, text)
+            else:
+                await _send("Please choose one of the options above (or **Skip**).")
+            return
+
         if not text:
-            await _send_message("Send a framework name or a research question.")
+            await _send("Send a research question, an answer, or a command such as `/help`.")
             return
 
         if text == "/frameworks":
-            await _send_message(_framework_help_text())
+            try:
+                async with _workflow() as (adapter, user):
+                    frameworks = adapter.list_frameworks(user)
+            except _Handled:
+                return
+            await _send_framework_picker(state, frameworks)
             return
 
-        if state.session is None and text in _framework_names():
-            state.framework_name = None
-
-        if state.framework_name is None:
-            await _handle_framework_selection(state, text)
+        if state.query_id is None:
+            try:
+                async with _workflow() as (adapter, user):
+                    frameworks = adapter.list_frameworks(user)
+            except _Handled:
+                return
+            if text in frameworks:
+                await _select_framework(state, text)
+                return
+            if state.framework_name is None:
+                await _send("Please choose a framework first.")
+                await _send_framework_picker(state, frameworks)
+                return
+            if text.startswith("/"):
+                await _send("Commands apply during refinement. Send a research question to begin.")
+                return
+            await _start(state, text)
             return
 
-        if state.session is None:
-            await _start_refinement_session(state, text)
+        if text.lower() in CONFIRM_COMMANDS:
+            await _request_command(state, text.lower())
             return
-
-        await _continue_refinement(state, text)
-
-
-else:
-    async def on_chat_start() -> None:  # pragma: no cover
-        raise RuntimeError("Chainlit is not installed. Add the optional dependency to run the chat UI.")
-
-
-    async def on_message(message) -> None:  # pragma: no cover
-        raise RuntimeError("Chainlit is not installed. Add the optional dependency to run the chat UI.")
+        examples = (state.prompt or {}).get("examples")
+        resolved, _ = resolve_numeric_examples(text, examples)
+        await _submit(state, resolved)

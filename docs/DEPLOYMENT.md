@@ -69,6 +69,9 @@ Routing model:
 - Chainlit traffic is served on port `8501`
 - API traffic is available on `:8001`
 - Chainlit and the API share the same database, Redis session store, and framework definitions
+- Chainlit calls the refinement services in-process (no HTTP hop), so chat sessions get the same access control, persistence, audit trail and resume behaviour as API clients
+- `CHAINLIT_AUTH_SECRET` is required for the Chainlit service (generate with `chainlit create-secret`); chat users log in with the same accounts as the API (`scripts/create_user.py`)
+- Chainlit's own thread-history data layer is deliberately disabled; the application database is the system of record
 
 ## Prerequisites
 

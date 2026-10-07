@@ -113,6 +113,7 @@ services:
       LOG_FORMAT: json
       DATABASE_URL: postgresql+psycopg2://${POSTGRES_USER:-qruser}:${POSTGRES_PASSWORD:-changeme}@postgres:5432/${POSTGRES_DB:-query_refinement}
       REDIS_URL: ${REDIS_URL:-redis://redis:6379/0}
+      CHAINLIT_AUTH_SECRET: ${CHAINLIT_AUTH_SECRET:?CHAINLIT_AUTH_SECRET must be set (generate with: chainlit create-secret)}
       REFINEMENT_FRAMEWORK_PATH: ${REFINEMENT_FRAMEWORK_PATH:-/app/refinement_frameworks/frameworks.yaml}
       SECRET_KEY: ${SECRET_KEY:?SECRET_KEY must be set in environment or .env file}
       LLM_MODEL: ${LLM_MODEL:-anthropic/claude-sonnet-4-6}

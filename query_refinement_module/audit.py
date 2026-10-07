@@ -194,7 +194,7 @@ class AuditService:
     def log_from_request(
         self,
         db: Session,
-        request: Request,
+        request: Optional[Request],
         event_type: str,
         user: Optional[Any] = None,
         severity: str = AuditSeverity.INFO,
@@ -230,11 +230,14 @@ class AuditService:
         user_id = user.id if user else None
         username = user.username if user else None
         
-        # Extract request metadata
-        ip_address = self._get_client_ip(request)
-        user_agent = request.headers.get("user-agent")
-        endpoint = str(request.url.path)
-        http_method = request.method
+        # Extract request metadata (absent for in-process callers such as the Chainlit UI)
+        if request is None:
+            ip_address = user_agent = endpoint = http_method = None
+        else:
+            ip_address = self._get_client_ip(request)
+            user_agent = request.headers.get("user-agent")
+            endpoint = str(request.url.path)
+            http_method = request.method
         
         return self.log(
             db=db,
