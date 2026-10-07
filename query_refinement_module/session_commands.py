@@ -90,6 +90,7 @@ class SessionCommands:
             step.refinement_aspect.name 
             for step in self.session.steps[active_idx:]
         ]
+        cleared_aspect_ids = [step.refinement_aspect.id for step in self.session.steps[active_idx:]]
         
         # Truncate session.steps - remove current and all subsequent dimensions
         self.session.steps = self.session.steps[:active_idx]
@@ -137,6 +138,7 @@ class SessionCommands:
             "step_index": active_idx - 1,
             "step": prev_step,
             "cleared_aspects": cleared_aspects,
+            "cleared_aspect_ids": cleared_aspect_ids,
         }
     
     def restart(self) -> Dict[str, Any]:
@@ -146,6 +148,7 @@ class SessionCommands:
             step.refinement_aspect.name
             for step in self.session.steps
         ]
+        cleared_aspect_ids = [step.refinement_aspect.id for step in self.session.steps]
         cleared_count = len(self.session.steps)
         
         # Clear all steps
@@ -172,6 +175,7 @@ class SessionCommands:
             "success": True,
             "message": f"Session restarted. All {cleared_count} refinement dimension(s) cleared.",
             "cleared_aspects": cleared_aspects,
+            "cleared_aspect_ids": cleared_aspect_ids,
         }
     
     def skip_current(self) -> Dict[str, Any]:
@@ -254,15 +258,19 @@ class SessionCommands:
         active = self.session.get_active_step()
         summary = self.session.get_step_summary()
         
-        # Calculate remaining refinement dimensions
+        # Every framework dimension gets a step at session start, so "remaining"
+        # means steps still needing an answer, not steps not yet created.
         total_aspects = len(self.session.refinement_framework)
         processed_count = len(self.session.steps)
-        remaining_count = total_aspects - processed_count
+        remaining_count = sum(
+            1 for step in self.session.steps
+            if step.needs_review or not (step.is_complete or step.was_skipped)
+        )
         
         # Build basic status message
         status_lines = [
             "Session Status:",
-            f"  Processed: {summary['completed']}/{processed_count} complete",
+            f"  Completed: {summary['completed']}/{processed_count} dimensions ({remaining_count} remaining)",
             f"  Follow-ups asked: {summary['total_follow_ups']}",
         ]
         
@@ -271,7 +279,7 @@ class SessionCommands:
             status_tag = " (needs review)" if active.needs_review else ""
             status_lines.append(f"  Current: Step {active_idx} - {active.refinement_aspect.name}{status_tag}")
         else:
-            if processed_count == total_aspects:
+            if remaining_count == 0:
                 status_lines.append("  Current: All refinement dimensions processed")
             else:
                 status_lines.append(f"  Current: Ready for next refinement dimension ({remaining_count} remaining)")
@@ -293,7 +301,7 @@ class SessionCommands:
                 status = "active"
                 status_icon = "▶"
             else:
-                status = "in_progress"
+                status = "not_started"
                 status_icon = "◌"
             
             # Get assembled value
@@ -345,16 +353,19 @@ class SessionCommands:
         total_aspects = len(self.session.refinement_framework)
         processed_count = len(self.session.steps)
         
-        lines = [f"Processed Steps ({processed_count}/{total_aspects} total refinement dimensions):"]
+        done = sum(1 for step in self.session.steps if step.was_skipped or (step.is_complete and not step.needs_review))
+        lines = [f"Refinement steps ({done}/{total_aspects} done):"]
         for i, step in enumerate(self.session.steps, 1):
             if step.was_skipped:
                 status = "skipped"
+            elif step.needs_review:
+                status = "needs review"
             elif step.is_complete:
                 status = "completed"
             elif step == active:
                 status = "active"
             else:
-                status = "in progress"
+                status = "not started"
             
             followups = f" ({step.follow_up_count} follow-ups)" if step.follow_up_count > 0 else ""
             lines.append(f"  {i}. [{status}] {step.refinement_aspect.name}{followups}")

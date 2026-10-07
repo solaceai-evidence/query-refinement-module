@@ -407,7 +407,7 @@ def test_session_back_restart_status_and_list():
     assert status["summary"]["total_steps"] == 1  # step_b was truncated
 
     step_list = session.handle_command(CommandResult(command=UserCommand.STEPS))
-    assert "Processed Steps" in step_list["message"]
+    assert "Refinement steps" in step_list["message"]
 
     restart = session.handle_command(CommandResult(command=UserCommand.RESTART))
     assert restart["success"]

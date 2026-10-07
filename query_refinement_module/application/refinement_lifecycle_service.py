@@ -923,22 +923,67 @@ class RefinementLifecycleService:
             pass
         return structured_output, current_query
 
+    def _archive_step_history(self, *, query_id: int, db_steps, command_type: str) -> None:
+        """Copy answers that a navigation command is about to delete into the audit log.
+
+        /back, /restart and /clear reset working state, but the record of what
+        the user said must stay reconstructable for traceability.
+        """
+        archived = [
+            {
+                "aspect_id": step.aspect_id,
+                "aspect_name": step.aspect_name,
+                "final_value": step.final_value,
+                "is_complete": step.is_complete,
+                "was_skipped": step.was_skipped,
+                "turns": [
+                    {"question": f.question, "answer": f.answer, "at": f.created_at.isoformat() if f.created_at else None}
+                    for f in sorted(step.followup_history, key=lambda item: item.id)
+                ],
+            }
+            for step in db_steps
+            if step.followup_history or step.final_value or step.was_skipped
+        ]
+        if not archived:
+            return
+        audit_service.log(
+            db=self._support.db,
+            event_type=AuditEventType.REFINEMENT_STEP,
+            resource_type="query",
+            resource_id=str(query_id),
+            action=f"Archived {len(archived)} superseded dimension(s) before /{command_type}",
+            details={"command": command_type, "superseded": archived},
+        )
+
     async def _persist_command_side_effects(self, *, query_id: int, command_type: str, session, command_payload: Dict[str, Any], pre_command_active_step) -> None:
-        if command_type not in {UserCommand.BACK.value, UserCommand.PREVIOUS.value, UserCommand.RESTART.value, UserCommand.SKIP.value, UserCommand.DONE.value, UserCommand.SUBMIT.value}:
+        if command_type not in {UserCommand.BACK.value, UserCommand.PREVIOUS.value, UserCommand.RESTART.value, UserCommand.SKIP.value, UserCommand.DONE.value, UserCommand.SUBMIT.value, UserCommand.CLEAR.value}:
             return
 
         if command_type in {UserCommand.BACK.value, UserCommand.PREVIOUS.value, UserCommand.RESTART.value}:
-            cleared_aspects = command_payload.get("cleared_aspects", [])
-            if cleared_aspects:
-                delete_refinement_steps_by_aspects(self._support.db, query_id=query_id, aspect_names=cleared_aspects)
+            cleared_ids = command_payload.get("cleared_aspect_ids") or []
+            cleared_names = command_payload.get("cleared_aspects") or []
+            reopened_step = session.get_active_step() if command_type != UserCommand.RESTART.value else None
+            db_steps = get_query_refinement_steps(self._support.db, query_id)
+            affected = [
+                step for step in db_steps
+                if (step.aspect_id in cleared_ids if cleared_ids else step.aspect_name in cleared_names)
+                or (reopened_step is not None and step is find_db_step_for_aspect(db_steps, reopened_step.refinement_aspect))
+            ]
+            self._archive_step_history(query_id=query_id, db_steps=affected, command_type=command_type)
 
-            if command_type in {UserCommand.BACK.value, UserCommand.PREVIOUS.value}:
-                reopened_step = session.get_active_step()
-                if reopened_step:
-                    db_steps = get_query_refinement_steps(self._support.db, query_id)
-                    db_step = find_db_step_for_aspect(db_steps, reopened_step.refinement_aspect)
-                    if db_step:
-                        reset_refinement_step(self._support.db, step_id=db_step.id, clear_followup_history=True)
+            if cleared_ids or cleared_names:
+                delete_refinement_steps_by_aspects(
+                    self._support.db,
+                    query_id=query_id,
+                    aspect_ids=cleared_ids or None,
+                    aspect_names=None if cleared_ids else cleared_names,
+                )
+
+            if reopened_step:
+                db_steps = get_query_refinement_steps(self._support.db, query_id)
+                db_step = find_db_step_for_aspect(db_steps, reopened_step.refinement_aspect)
+                if db_step:
+                    reset_refinement_step(self._support.db, step_id=db_step.id, clear_followup_history=True)
 
         if command_type == UserCommand.CLEAR.value:
             active_step = session.get_active_step()
@@ -946,6 +991,7 @@ class RefinementLifecycleService:
                 db_steps = get_query_refinement_steps(self._support.db, query_id)
                 db_step = find_db_step_for_aspect(db_steps, active_step.refinement_aspect)
                 if db_step:
+                    self._archive_step_history(query_id=query_id, db_steps=[db_step], command_type=command_type)
                     reset_refinement_step(self._support.db, step_id=db_step.id, clear_followup_history=True)
 
         if command_type in {UserCommand.SKIP.value, UserCommand.DONE.value}:

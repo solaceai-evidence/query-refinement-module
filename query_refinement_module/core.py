@@ -1538,7 +1538,8 @@ class QueryRefinementManager:
         if not extra:
             return combined
         for key in ("prompt_tokens", "completion_tokens", "total_tokens"):
-            combined[key] = combined.get(key, 0) + extra.get(key, 0)
+            # Providers may report usage as None when they omit it
+            combined[key] = (combined.get(key) or 0) + (extra.get(key) or 0)
         return combined
 
     async def generate_search_expansion_levels(

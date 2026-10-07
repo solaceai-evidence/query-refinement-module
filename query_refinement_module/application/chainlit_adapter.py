@@ -245,8 +245,29 @@ class ChainlitRefinementAdapter:
             "original_query": query.original_query,
             "synthesis": synthesis,
             "refinement_trace": self.build_trace(user, query_id=query_id),
+            "superseded_answers": self.superseded_answers(query_id=query_id),
             "command_history": command_history.get("commands", command_history),
         }
+
+    def superseded_answers(self, *, query_id: int) -> List[Dict[str, Any]]:
+        """Answers replaced via /back, /restart or /clear, archived in the audit log."""
+        from query_refinement_module.db.models.audit_log import AuditLog
+
+        logs = (
+            self.db.query(AuditLog)
+            .filter(
+                AuditLog.event_type == AuditEventType.REFINEMENT_STEP,
+                AuditLog.resource_type == "query",
+                AuditLog.resource_id == str(query_id),
+            )
+            .order_by(AuditLog.id)
+            .all()
+        )
+        return [
+            {"command": (log.details or {}).get("command"), "at": log.timestamp.isoformat() if log.timestamp else None,
+             "dimensions": (log.details or {}).get("superseded", [])}
+            for log in logs
+        ]
 
     def save_feedback(
         self,
