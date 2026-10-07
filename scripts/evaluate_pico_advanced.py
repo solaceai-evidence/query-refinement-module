@@ -40,7 +40,6 @@ _early_parser.add_argument("--env-file", default=None)
 _early_args, _ = _early_parser.parse_known_args()
 _env_path = Path(_early_args.env_file) if _early_args.env_file else ROOT / ".env"
 load_dotenv(_env_path, override=False)
-os.environ.setdefault("PROMPT_VARIANT", "open_llm")
 
 import asyncio
 
@@ -110,7 +109,7 @@ class SynthesisCheck:
     required_dim_ids: list[str]
     required_terms_in_integrated: list[str]   # all must appear (case-insensitive)
     required_fields: list[str] = field(default_factory=lambda: [
-        "integrated_statement",
+        "clarified_query",
         "dimensions_specifications",
         "search_optimized",
         "search_filters",
@@ -268,7 +267,11 @@ def build_scenarios() -> list[Scenario]:
                     key_terms=["GAD-7", "12 weeks"],
                 ),
                 "study_type": DimExpectation(
-                    complete=True, current="randomised controlled trials"
+                    complete=True,
+                    # frameworks.yaml (pico_advanced/study_type) instructs a follow-up about
+                    # secondary study types when only primary types are given
+                    check_complete=False,
+                    current="randomised controlled trials",
                 ),
             },
             synthesis_check=SynthesisCheck(
@@ -345,12 +348,18 @@ def extract_json(text: str) -> dict[str, Any]:
         return json.loads(_fix_unescaped_quotes(blob))
 
 
+def _spelling_key(text: str) -> str:
+    """Fold British/American spelling (randomised/randomized) so it is not counted as an error."""
+    return re.sub(r"is(e|ed|ing|ation)\b", r"iz\1", text)
+
+
 def _compare_refinement(
     actual: dict[str, Any], expected: DimExpectation
 ) -> tuple[bool, list[str]]:
     failures: list[str] = []
-    required_keys = {"complete", "current", "question"}
-    if set(actual.keys()) != required_keys:
+    # DimensionEvaluationResponse: examples were added for quick-reply buttons
+    required_keys = {"complete", "current", "question", "examples"}
+    if not {"complete", "current", "question"} <= set(actual.keys()) or not set(actual.keys()) <= required_keys:
         failures.append(f"json-shape expected {sorted(required_keys)} got {sorted(actual.keys())}")
     if expected.check_complete and actual.get("complete") != expected.complete:
         failures.append(
@@ -363,7 +372,7 @@ def _compare_refinement(
                 failures.append(f"current missing required term {term!r} (got {actual.get('current')!r})")
     else:
         expected_current = expected.current.strip().lower()
-        if actual_current != expected_current:
+        if _spelling_key(actual_current) != _spelling_key(expected_current):
             failures.append(
                 f"current expected {expected.current!r} got {actual.get('current')!r}"
             )
@@ -384,10 +393,10 @@ def _compare_synthesis(
                 break
             obj = obj[p]
 
-    integrated = actual.get("integrated_statement", "") or ""
+    integrated = actual.get("clarified_query", "") or actual.get("integrated_statement", "") or ""
     for term in check.required_terms_in_integrated:
         if term.lower() not in integrated.lower():
-            failures.append(f"integrated_statement missing term {term!r}")
+            failures.append(f"clarified_query missing term {term!r}")
 
     dim_specs = actual.get("dimensions_specifications") or {}
     for dim_id in check.required_dim_ids:
@@ -550,23 +559,12 @@ def run_scenario(
 
         manager = QueryRefinementManager(llm_provider=provider)
 
-        synthesis_response, _ = asyncio.run(
-            manager._run_split_synthesis(
-                session,
-                canonical_dimensions={
-                    entry["id"]: entry["value"] if entry.get("value") else "[SKIPPED]"
-                    for entry in completed_context
-                },
-                accepted_dimensions={
-                    entry["id"]: entry["value"]
-                    for entry in completed_context
-                    if entry.get("value") and entry["value"] != "[SKIPPED]"
-                },
-                deterministic_filters=manager._assemble_deterministic_search_filters(session),
-                temperature=0.0,
-            )
-        )
-        parsed = synthesis_response.model_dump()
+        # _run_split_synthesis was replaced by the chained A->B->C pipeline
+        synthesis_result = asyncio.run(manager.synthesize_refined_query(session, temperature=0.0))
+        parsed = {
+            key: (value.model_dump() if hasattr(value, "model_dump") else value)
+            for key, value in synthesis_result.items()
+        }
 
         if scenario.synthesis_check:
             passed, failures = _compare_synthesis(parsed, scenario.synthesis_check)

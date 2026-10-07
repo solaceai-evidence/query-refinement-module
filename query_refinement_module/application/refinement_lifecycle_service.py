@@ -800,8 +800,9 @@ class RefinementLifecycleService:
                 "terminology": synthesis_result.get("terminology"),
                 "concept_graph": synthesis_result.get("concept_graph"),
             }
-            if synthesis_result.get("search_quality"):
-                structured_output["search_quality"] = synthesis_result["search_quality"]
+            for optional_key in ("search_quality", "dimension_labels"):
+                if synthesis_result.get(optional_key):
+                    structured_output[optional_key] = synthesis_result[optional_key]
         elif clarified_query and (clarified_query.startswith("{") or clarified_query.startswith("`")):
             structured_output, clarified_query = self._extract_structured_output_from_query_string(
                 clarified_query=clarified_query,

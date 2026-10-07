@@ -5,7 +5,7 @@ Tests the complete refinement + synthesis pipeline:
   1. Dimension refinement — all 3 cocopop dims in dependency order
      (condition → context → population), each receiving the real
      completed_context from prior dims.
-  2. Synthesis — all completed dims passed through _run_split_synthesis(),
+  2. Synthesis — all completed dims passed through synthesize_refined_query(),
      response validated for structural correctness and key-term coverage.
 
 Run:
@@ -53,7 +53,6 @@ _early_parser.add_argument("--env-file", default=None)
 _early_args, _ = _early_parser.parse_known_args()
 _env_path = Path(_early_args.env_file) if _early_args.env_file else ROOT / ".env"
 load_dotenv(_env_path, override=False)
-os.environ.setdefault("PROMPT_VARIANT", "open_llm")
 
 from query_refinement_module.core import QueryRefinementManager
 from query_refinement_module.providers import LiteLLMProvider
@@ -155,7 +154,7 @@ class SynthesisCheck:
     required_dim_ids: list[str]
     required_terms_in_integrated: list[str]  # all must appear (case-insensitive)
     required_fields: list[str] = field(default_factory=lambda: [
-        "integrated_statement",
+        "clarified_query",
         "dimensions_specifications",
         "search_optimized",
         "search_filters",
@@ -472,12 +471,18 @@ def extract_json(text: str) -> dict[str, Any]:
 # Comparison helpers
 # ---------------------------------------------------------------------------
 
+def _spelling_key(text: str) -> str:
+    """Fold British/American spelling (randomised/randomized) so it is not counted as an error."""
+    return re.sub(r"is(e|ed|ing|ation)\b", r"iz\1", text)
+
+
 def _compare_refinement(
     actual: dict[str, Any], expected: DimExpectation, *, dim_id: str
 ) -> tuple[bool, list[str]]:
     failures: list[str] = []
-    required_keys = {"complete", "current", "question"}
-    if set(actual.keys()) != required_keys:
+    # DimensionEvaluationResponse: examples were added for quick-reply buttons
+    required_keys = {"complete", "current", "question", "examples"}
+    if not {"complete", "current", "question"} <= set(actual.keys()) or not set(actual.keys()) <= required_keys:
         failures.append(
             f"json-shape expected {sorted(required_keys)} got {sorted(actual.keys())}"
         )
@@ -494,7 +499,7 @@ def _compare_refinement(
                 )
     else:
         expected_current = expected.current.strip().lower()
-        if actual_current != expected_current:
+        if _spelling_key(actual_current) != _spelling_key(expected_current):
             failures.append(
                 f"current expected {expected.current!r} got {actual.get('current')!r}"
             )
@@ -525,10 +530,10 @@ def _compare_synthesis(
                 break
             obj = obj[p]
 
-    integrated = actual.get("integrated_statement", "") or ""
+    integrated = actual.get("clarified_query", "") or actual.get("integrated_statement", "") or ""
     for term in check.required_terms_in_integrated:
         if term.lower() not in integrated.lower():
-            failures.append(f"integrated_statement missing term {term!r}")
+            failures.append(f"clarified_query missing term {term!r}")
 
     dim_specs = actual.get("dimensions_specifications") or {}
     for dim_id in check.required_dim_ids:
@@ -593,18 +598,20 @@ def run_scenario(
         )
 
         try:
+            # num_ctx is an Ollama option; other providers reject unknown parameters
+            ollama_only = {"num_ctx": num_ctx} if str(getattr(provider, "_default_model", "")).startswith("ollama") else {}
             completion = provider.complete(
                 messages=messages,
                 max_tokens=max_tokens_refinement,
                 temperature=0.0,
-                num_ctx=num_ctx,
+                **ollama_only,
             )
             parsed = extract_json(completion.context)
 
             if exp is not None:
                 passed, failures = _compare_refinement(parsed, exp, dim_id=dim_id)
             else:
-                passed = set(parsed.keys()) == {"complete", "current", "question"}
+                passed = {"complete", "current", "question"} <= set(parsed.keys())
                 failures = [] if passed else [f"unexpected shape: {list(parsed.keys())}"]
 
             question_diagnostics = _infer_question_triggers(dim_id, parsed.get("question", ""))
@@ -709,23 +716,12 @@ def run_scenario(
 
         manager = QueryRefinementManager(llm_provider=provider)
 
-        synthesis_response, _ = asyncio.run(
-            manager._run_split_synthesis(
-                session,
-                canonical_dimensions={
-                    entry["id"]: entry["value"] if entry.get("value") else "[SKIPPED]"
-                    for entry in completed_context
-                },
-                accepted_dimensions={
-                    entry["id"]: entry["value"]
-                    for entry in completed_context
-                    if entry.get("value") and entry["value"] != "[SKIPPED]"
-                },
-                deterministic_filters=manager._assemble_deterministic_search_filters(session),
-                temperature=0.0,
-            )
-        )
-        parsed_synthesis = synthesis_response.model_dump()
+        # _run_split_synthesis was replaced by the chained A->B->C pipeline
+        synthesis_result = asyncio.run(manager.synthesize_refined_query(session, temperature=0.0))
+        parsed_synthesis = {
+            key: (value.model_dump() if hasattr(value, "model_dump") else value)
+            for key, value in synthesis_result.items()
+        }
 
         if scenario.synthesis_check:
             passed, failures = _compare_synthesis(parsed_synthesis, scenario.synthesis_check)

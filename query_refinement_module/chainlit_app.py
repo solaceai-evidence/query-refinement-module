@@ -148,10 +148,12 @@ def render_synthesis_markdown(synthesis: Dict[str, Any]) -> str:
         synthesis.get("clarified_query") or "",
     ]
     if dimensions:
-        sections.append(
-            "**Structured statement**\n"
-            + "\n".join(f"- **{name}**: {value}" for name, value in dimensions.items() if value)
-        )
+        labels = structured.get("dimension_labels") or {}
+        lines = [f"- **{labels.get(key, key)}**: {value}" for key, value in dimensions.items() if value]
+        skipped = [labels.get(key, key) for key, value in dimensions.items() if not value]
+        if skipped:
+            lines.append(f"- _Not specified: {', '.join(skipped)}_")
+        sections.append("**Structured statement**\n" + "\n".join(lines))
     sections.append(_section("Semantic search statement", search_optimized.get("semantic")))
     sections.append(_section("Keyword statement", structured.get("keyword_statement")))
     if keyword.get("structured"):

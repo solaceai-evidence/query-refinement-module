@@ -2146,7 +2146,9 @@ class QueryRefinementManager:
             )
             synthesis_response = QueryRefinementResponse(
                 clarified_query=norm.clarified_query,
-                dimensions_specifications=norm.dimensions_specifications,
+                # Contract (docs/API.md): keyed by dimension id and assembled from
+                # session state, never echoed back by the LLM
+                dimensions_specifications=self._assemble_dimensions_specifications(session) or {},
                 search_optimized=SearchOptimized(
                     semantic=sem.semantic_statement,
                     keyword=construction.keyword,
@@ -2218,6 +2220,7 @@ class QueryRefinementManager:
                 k: (v.model_dump() if hasattr(v, "model_dump") else v)
                 for k, v in sem.concept_graph.items()
             },
+            "dimension_labels": {step.refinement_aspect.id: step.refinement_aspect.name for step in session.steps},
             "search_quality": search_quality,
             "processing_log": {"search_quality": search_quality},
         }
