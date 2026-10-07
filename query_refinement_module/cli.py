@@ -361,10 +361,8 @@ async def run_cli(manager: QueryRefinementManager, framework_name: str, query: s
                     break
                 except Exception as e:
                     print(f" Error during analysis: {e}")
-                    print(f"Marking {header} as complete with current answer.")
-                    step.is_complete = True
-                    current_prompt = None
-                    break
+                    print(f" {header} is still open — please send your answer again, or use /skip or /done.")
+                    continue
             
             if interrupted:
                 break

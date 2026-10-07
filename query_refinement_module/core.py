@@ -108,6 +108,14 @@ from .schema.search_expansion import (
 
 from .schema.search_quality import assess_search, repair_search, user_source_text
 from .session_commands import SessionCommands
+
+
+class LLMUnavailableError(ConnectionError):
+    """The LLM provider could not produce a response (outage, timeout, open circuit, auth).
+
+    Subclasses ConnectionError so API callers map it to 503 rather than treating
+    a failed call as a valid (empty) model answer.
+    """
 from .session_models import AspectRefinementState, RefinementSession
 
 # Module logger - use get_logger() in functions for request context
@@ -465,12 +473,11 @@ class QueryRefinementManager:
                         break
                         
             except ValueError as e:
-                # LLM error - mark as complete but do NOT overwrite conversation history
-                # with an error string, as add_follow_up() would corrupt normalized_value
-                # (the user's real answer is already in history from before this call).
+                # Invalid model output. Never treat a failed evaluation as a completed
+                # dimension: keep it open and let the caller report the failure.
                 logger.error(f"LLM error in followup for {step.refinement_aspect.id}: {e}")
-                step.is_complete = True
-                break
+                step.is_complete = False
+                raise
 
         duration_ms = (time.time() - start_time) * 1000
         logger.info(
@@ -990,7 +997,7 @@ class QueryRefinementManager:
             
             return response_text, None
             
-        except Exception as exc:  # pragma: no cover
+        except Exception as exc:
             self._last_llm_metadata = {}
             logger.exception(
                 "LLM call failed while processing aspect %s on attempt %d: %s",
@@ -1007,7 +1014,7 @@ class QueryRefinementManager:
                     "error": str(exc),
                 }
             )
-            return "", f"LLM error: {exc}"
+            raise LLMUnavailableError(f"LLM service unavailable: {exc}") from exc
 
     @dataclass
     class _ValidationResult:

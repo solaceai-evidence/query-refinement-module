@@ -165,7 +165,7 @@ async def test_submit_input_marks_step_complete_when_followup_finishes():
 
     assert session.step.is_complete is True
     assert result.prompt is None
-    assert manager.followup_calls == [("aspect", 5)]
+    assert manager.followup_calls == [("aspect", 1)]
 
 
 @pytest.mark.asyncio
@@ -179,3 +179,23 @@ async def test_submit_input_handles_command_without_regenerating_help_prompt():
     assert result.message == "help text"
     assert result.prompt is None
     assert result.synthesis_requested is False
+
+@pytest.mark.asyncio
+async def test_submit_input_rolls_back_answer_when_llm_unavailable():
+    from query_refinement_module.core import LLMUnavailableError
+    from query_refinement_module.schema.models import RefinementAspect
+    from query_refinement_module.session_models import RefinementSession
+
+    class _FailingManager:
+        async def run_followup_until_clear(self, session, aspect_id=None, max_rounds=1):
+            raise LLMUnavailableError("provider down")
+
+    session = RefinementSession(original_query="exercise for copd")
+    step = session.add_step(RefinementAspect(id="population", name="Population", description="Who"))
+    step.follow_up_question = "Which adults?"
+
+    with pytest.raises(LLMUnavailableError):
+        await InteractiveRefinementService(_FailingManager()).submit_input(session=session, user_input="Adults over 40")
+
+    assert step.conversation_history == []
+    assert step.is_complete is False

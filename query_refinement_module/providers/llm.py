@@ -39,6 +39,25 @@ def _estimate_tokens_from_text(char_count: int) -> int:
     return max(1, ceil(char_count / 4))
 
 
+
+def _transient_llm_errors() -> tuple:
+    """Exception types that indicate a provider outage or network failure.
+
+    LiteLLM's timeout/connection/5xx errors subclass openai.APIError, not the
+    builtin TimeoutError/ConnectionError, so they must be listed explicitly.
+    Rate limits are deliberately excluded: they are throttling, not outages.
+    """
+    errors = [TimeoutError, ConnectionError, asyncio.TimeoutError]
+    if litellm is not None:
+        for name in ("Timeout", "APIConnectionError", "InternalServerError", "ServiceUnavailableError", "BadGatewayError"):
+            error_type = getattr(litellm, name, None)
+            if isinstance(error_type, type):
+                errors.append(error_type)
+    return tuple(dict.fromkeys(errors))
+
+
+TRANSIENT_LLM_ERRORS = _transient_llm_errors()
+
 class LiteLLMProvider(LLMProviderInterface):
     """Generic LLM provider backed by `litellm` for multi-vendor support with circuit breaker protection."""
 
@@ -114,12 +133,7 @@ class LiteLLMProvider(LLMProviderInterface):
             # Define exceptions that should trigger circuit breaker
             # Excludes: RateLimitExceeded (temporary throttling)
             # Includes: TimeoutError, ConnectionError, 5xx errors, etc.
-            cb_config.counted_exceptions = (
-                TimeoutError,
-                ConnectionError,
-                RuntimeError,  # LiteLLM uses RuntimeError for API errors
-                # Note: RateLimitExceeded is explicitly NOT included
-            )
+            cb_config.counted_exceptions = TRANSIENT_LLM_ERRORS  # RateLimitExceeded deliberately excluded
             
             self._circuit_breaker_registry = CircuitBreakerRegistry(cb_config)
             
@@ -456,9 +470,8 @@ class LiteLLMProvider(LLMProviderInterface):
                                 "trace_id": trace_id,
                             }
                         )
-                        raise RuntimeError(
-                            f"LLM provider '{provider_name}' is temporarily unavailable. {str(cb_error)}"
-                        ) from cb_error
+                        # Re-raise as-is so the retry loop fails fast instead of backing off
+                        raise
                 else:
                     # No circuit breaker - direct call
                     response = await make_llm_call()
@@ -582,6 +595,15 @@ class LiteLLMProvider(LLMProviderInterface):
                     
                     # Use async sleep instead of blocking time.sleep
                     await asyncio.sleep(retry_after)
+                    continue
+
+                if self._is_transient_error(e) and attempt < max_retries:
+                    delay = base_delay * (2 ** attempt)
+                    logger.warning(
+                        "Transient LLM error (%s), retrying after %s seconds (attempt %d/%d)",
+                        type(e).__name__, delay, attempt + 1, max_retries,
+                    )
+                    await asyncio.sleep(delay)
                     continue
                 
                 # For rate limit errors on final attempt, raise RateLimitExceeded
@@ -810,6 +832,15 @@ class LiteLLMProvider(LLMProviderInterface):
                     # Sync method: use time.sleep directly (no event loop required)
                     time.sleep(retry_after)
                     continue
+
+                if self._is_transient_error(e) and attempt < max_retries:
+                    delay = base_delay * (2 ** attempt)
+                    logger.warning(
+                        "Transient LLM error (%s), retrying after %s seconds (attempt %d/%d)",
+                        type(e).__name__, delay, attempt + 1, max_retries,
+                    )
+                    time.sleep(delay)
+                    continue
                 
                 # For rate limit errors on final attempt, raise RateLimitExceeded
                 if is_rate_limit_error:
@@ -868,21 +899,29 @@ class LiteLLMProvider(LLMProviderInterface):
         )
     
     def _is_rate_limit_error(self, error: Exception) -> bool:
-        """Check if an exception is a rate limit error."""
+        """Check if an exception is a rate limit error (throttling, not an outage)."""
+        rate_limit_type = getattr(litellm, "RateLimitError", None) if litellm is not None else None
+        if isinstance(rate_limit_type, type) and isinstance(error, rate_limit_type):
+            return True
+        if isinstance(error, TRANSIENT_LLM_ERRORS):
+            return False
         error_str = str(error).lower()
         error_type = type(error).__name__.lower()
-        
-        # Check for common rate limit indicators
-        rate_limit_indicators = [
-            "rate limit",
-            "ratelimit",
-            "429",
-            "quota exceeded",
-            "too many requests",
-            "503",  # Service unavailable (often temporary)
-        ]
-        
+        rate_limit_indicators = ["rate limit", "ratelimit", "429", "quota exceeded", "too many requests"]
         return any(indicator in error_str or indicator in error_type for indicator in rate_limit_indicators)
+
+    @staticmethod
+    def _is_transient_error(error: Exception) -> bool:
+        """Timeouts, connection failures and 5xx responses are worth retrying."""
+        if isinstance(error, CircuitBreakerOpen):
+            return False  # the breaker already decided: fail fast
+        if isinstance(error, TRANSIENT_LLM_ERRORS):
+            return True
+        status = getattr(error, "status_code", None)
+        if isinstance(status, int) and 500 <= status <= 504:
+            return True
+        message = str(error).lower()
+        return any(marker in message for marker in ("503", "502", "504", "service unavailable", "temporarily unavailable", "bad gateway", "timed out"))
     
     def _extract_retry_after(self, error: Exception) -> Optional[float]:
         """Extract retry_after duration from error message or headers."""

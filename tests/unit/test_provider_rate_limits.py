@@ -112,13 +112,13 @@ def test_provider_uses_exponential_backoff_when_no_retry_after(mock_litellm_modu
     assert sleep_calls[1] == 2.0
 
 
-def test_provider_handles_503_service_unavailable():
-    """Test that 503 errors are detected as rate limit errors."""
+def test_provider_treats_503_as_transient_outage_not_rate_limit():
+    """503 is a provider outage: retried as transient and counted by the circuit breaker."""
     provider = LiteLLMProvider(default_model="gpt-3.5-turbo")
-    
-    # Error message must contain "503" to be detected
+
     error = MockLiteLLMError("Service unavailable: 503", status_code=503)
-    assert provider._is_rate_limit_error(error)
+    assert not provider._is_rate_limit_error(error)
+    assert provider._is_transient_error(error)
 
 
 def test_provider_raises_non_rate_limit_errors_immediately(mock_litellm_module):
@@ -234,7 +234,8 @@ def test_provider_disables_cloud_rate_limits_for_openai_compatible_api_base():
     )
 
     assert provider._rate_limiter is None
-    assert provider._is_rate_limit_error(Exception("Service temporarily unavailable: 503"))
+    assert not provider._is_rate_limit_error(Exception("Service temporarily unavailable: 503"))
+    assert provider._is_transient_error(Exception("Service temporarily unavailable: 503"))
     assert provider._is_rate_limit_error(MockLiteLLMError("RateLimitError occurred"))
     
     # Should not detect non-rate-limit errors
@@ -393,3 +394,29 @@ async def test_provider_rate_limiter_acquire_called_on_complete_async(mock_litel
     await provider.complete_async("hello")
 
     assert len(acquire_calls) == 1
+
+
+def test_circuit_breaker_counts_litellm_outage_errors():
+    """LiteLLM's timeout/5xx types subclass openai.APIError, not TimeoutError, so they must be listed."""
+    import litellm
+    from query_refinement_module.providers.llm import TRANSIENT_LLM_ERRORS
+
+    provider = LiteLLMProvider(default_model="gpt-3.5-turbo", enable_circuit_breaker=True)
+    counted = provider._circuit_breaker_registry.default_config.counted_exceptions
+    assert counted == TRANSIENT_LLM_ERRORS
+
+    timeout = litellm.Timeout(message="timed out", model="m", llm_provider="openai")
+    assert isinstance(timeout, counted)
+    assert provider._is_transient_error(timeout)
+    assert not provider._is_rate_limit_error(timeout)
+
+
+def test_provider_retries_transient_errors_then_succeeds(mock_litellm_module):
+    provider = LiteLLMProvider(default_model="gpt-3.5-turbo", enable_circuit_breaker=False)
+    success = mock_litellm_module.completion.return_value
+    mock_litellm_module.completion.side_effect = [ConnectionError("connection reset"), success]
+
+    with patch("query_refinement_module.providers.llm.time.sleep"):
+        provider.complete("Test prompt")
+
+    assert mock_litellm_module.completion.call_count == 2

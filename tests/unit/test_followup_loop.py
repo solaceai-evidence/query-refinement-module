@@ -68,6 +68,13 @@ async def test_followup_loop_respects_max_rounds():
 
 @pytest.mark.asyncio
 async def test_followup_loop_handles_llm_error():
+    """An LLM failure must surface as LLMUnavailableError and leave the dimension open.
+
+    Previously the loop marked the dimension complete, so a provider outage
+    silently accepted whatever the user had typed so far.
+    """
+    from query_refinement_module.core import LLMUnavailableError
+
     aspect = make_aspect()
     responses = [Exception("LLM error")]
     class ErrorLLMProvider(DummyLLMProvider):
@@ -77,16 +84,12 @@ async def test_followup_loop_handles_llm_error():
     manager = QueryRefinementManager(llm)
     session = RefinementSession("query")
     step = session.add_step(aspect)
-    # Should mark step complete without polluting conversation_history with an error string
-    # (adding an error entry would corrupt normalized_value via extract_and_store_value)
-    result = await manager.run_followup_until_clear(session)
-    assert result["is_complete"]
-    # History should NOT contain a "[Validation error: ...]" entry that would overwrite
-    # the user's real normalized_value
-    assert not any(
-        "Validation error" in qa.get("response", "")
-        for qa in step.conversation_history
-    )
+
+    with pytest.raises(LLMUnavailableError):
+        await manager.run_followup_until_clear(session)
+
+    assert step.is_complete is False
+    assert not any("Validation error" in qa.get("response", "") for qa in step.conversation_history)
 
 @pytest.mark.asyncio
 async def test_followup_loop_respects_user_command_skip(monkeypatch):

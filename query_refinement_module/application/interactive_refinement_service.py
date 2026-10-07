@@ -103,6 +103,12 @@ class InteractiveRefinementService:
             )
 
         question = self._get_step_question(step) or f"Please provide details about {step.refinement_aspect.name}"
+        history = getattr(step, "conversation_history", None)
+        snapshot = (
+            len(history) if isinstance(history, list) else None,
+            getattr(step, "normalized_value", None),
+            getattr(step, "was_skipped", False),
+        )
         step.add_follow_up(question=question, response=user_input)
 
         if selected_example:
@@ -112,11 +118,23 @@ class InteractiveRefinementService:
                 synthesis_requested=session.synthesis_requested,
             )
 
-        followup_result = await self._manager.run_followup_until_clear(
-            session,
-            aspect_id=step.refinement_aspect.id,
-            max_rounds=5,
-        )
+        try:
+            # One evaluation per user answer (as in the API); re-asking the model
+            # without new input only adds latency and cost.
+            followup_result = await self._manager.run_followup_until_clear(
+                session,
+                aspect_id=step.refinement_aspect.id,
+                max_rounds=1,
+            )
+        except Exception:
+            # Undo the recorded answer so a retry does not duplicate it
+            history_length, normalized_value, was_skipped = snapshot
+            if history_length is not None:
+                del step.conversation_history[history_length:]
+            step.normalized_value = normalized_value
+            step.was_skipped = was_skipped
+            step.is_complete = False
+            raise
 
         if followup_result.get("is_complete", False):
             step.is_complete = True

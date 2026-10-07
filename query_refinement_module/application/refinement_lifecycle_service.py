@@ -25,6 +25,8 @@ from query_refinement_module.db.crud import (
 )
 from query_refinement_module.db.models.audit_log import AuditEventType
 from query_refinement_module.models.progress import ProgressStage
+from query_refinement_module.providers.circuit_breaker import CircuitBreakerOpen
+from query_refinement_module.providers.llm import TRANSIENT_LLM_ERRORS
 from query_refinement_module.schema import DimensionEvaluationResponse
 from query_refinement_module.schema.prompt_builder import PromptBuilder
 from query_refinement_module.schema.response import SearchExpansionInput
@@ -451,10 +453,17 @@ class RefinementLifecycleService:
                 aspect_id=active_step.refinement_aspect.id,
                 result=analysis_result,
             )
-        except ConnectionError as exc:
-            raise QueryRefinementException(f"Unable to connect to LLM service: {str(exc)}", status_code=503) from exc
         except TimeoutError as exc:
-            raise QueryRefinementException(f"LLM service request timed out: {str(exc)}", status_code=504) from exc
+            raise QueryRefinementException(
+                "The language model did not respond in time. Your answer was not saved — please send it again.",
+                status_code=504,
+            ) from exc
+        except ConnectionError as exc:
+            logger.warning("LLM unavailable while processing answer for query %s: %s", query_id, exc)
+            raise QueryRefinementException(
+                "The language model service is temporarily unavailable. Your answer was not saved — please send it again in a moment.",
+                status_code=503,
+            ) from exc
         except Exception as exc:
             raise QueryRefinementException(f"Failed to process answer: {str(exc)}", status_code=500) from exc
 
@@ -773,6 +782,11 @@ class RefinementLifecycleService:
                 message="Synthesis failed",
                 error=str(exc),
             )
+            if isinstance(exc, (ConnectionError, CircuitBreakerOpen, *TRANSIENT_LLM_ERRORS)):
+                raise QueryRefinementException(
+                    "The language model service is temporarily unavailable. Your answers are saved — please try finishing again in a moment.",
+                    status_code=503,
+                ) from exc
             raise QueryRefinementException(f"Failed to synthesize query: {str(exc)}", status_code=500) from exc
 
         clarified_query = synthesis_result.get("clarified_query", "")
