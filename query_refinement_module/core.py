@@ -46,6 +46,7 @@ This module includes comprehensive logging and tracing support:
 """
 
 import asyncio
+import os
 import time
 from datetime import datetime, timezone
 import json
@@ -105,6 +106,7 @@ from .schema.search_expansion import (
     POPULATION_ROLES,
 )
 
+from .schema.search_quality import assess_search, repair_search, user_source_text
 from .session_commands import SessionCommands
 from .session_models import AspectRefinementState, RefinementSession
 
@@ -1890,6 +1892,7 @@ class QueryRefinementManager:
         temperature: float = 0.2,
         max_tokens: Optional[int] = None,
         additional_guidance: Optional[str] = None,
+        original_question: str = "",
     ) -> Tuple[SearchConstructionResponse, Dict[str, Any]]:
         """Agent C: build anchor keyword search + filters from statement and concept_graph."""
         builder = SearchConstructionPromptBuilder()
@@ -1903,6 +1906,7 @@ class QueryRefinementManager:
                 statement=statement,
                 concept_graph=concept_graph_dict,
                 additional_guidance=additional_guidance or "",
+                original_question=original_question,
             ),
             model=model,
             temperature=temperature,
@@ -2115,7 +2119,9 @@ class QueryRefinementManager:
                 temperature=resolved_temperature,
                 max_tokens=resolved_max_tokens,
                 additional_guidance=additional_guidance,
+                original_question=session.original_query,
             )
+            search_quality = self._validate_and_repair_search(session, construction, sem.concept_graph)
             combined_blocks = getattr(construction.keyword, "combined_blocks", None) or []
             logger.info(
                 "Completed Agent C search construction",
@@ -2204,9 +2210,47 @@ class QueryRefinementManager:
                 k: (v.model_dump() if hasattr(v, "model_dump") else v)
                 for k, v in sem.concept_graph.items()
             },
+            "search_quality": search_quality,
+            "processing_log": {"search_quality": search_quality},
         }
 
         return result_dict
+
+    def _validate_and_repair_search(
+        self,
+        session: RefinementSession,
+        construction: SearchConstructionResponse,
+        concept_graph: Dict[str, Any],
+    ) -> Dict[str, Any]:
+        """Check the anchor Boolean query and drop blocks that only cost recall.
+
+        Mutates ``construction.keyword`` when a repair is applied. Dropping an
+        AND-block can only broaden the search, so repairs never lose records the
+        original query would have found.
+        """
+        keyword = construction.keyword
+        graph = {k: (v.model_dump() if hasattr(v, "model_dump") else v) for k, v in (concept_graph or {}).items()}
+        blocks = [b.model_dump() if hasattr(b, "model_dump") else dict(b) for b in (keyword.combined_blocks or [])]
+        source = user_source_text(session.original_query, self._assemble_dimensions_specifications(session) or {})
+
+        raw = assess_search(keyword.structured, blocks, source_text=source, concept_graph=graph)
+        repairs: List[Dict[str, Any]] = []
+        if os.getenv("SEARCH_REPAIR_ENABLED", "true").strip().lower() not in {"0", "false", "no", "off"}:
+            structured, kept_blocks, repairs = repair_search(keyword.structured, blocks, source_text=source)
+            if repairs:
+                keyword.structured = structured
+                keyword.combined_blocks = [type(keyword.combined_blocks[0]).model_validate(b) for b in kept_blocks]
+                blocks = kept_blocks
+        final = assess_search(keyword.structured, blocks, source_text=source, concept_graph=graph) if repairs else raw
+
+        self.trace_emitter.emit(
+            "search_validation",
+            level="info" if final["search_ready"] else "warning",
+            metadata={"raw_issue_count": raw["issue_count"], "repairs": repairs, "final_issue_count": final["issue_count"]},
+        )
+        if repairs:
+            logger.info("Search repaired: %s", [(r["reason"], r["role"]) for r in repairs])
+        return {"raw": raw, "repairs": repairs, "final": final}
 
     def get_initialization_summary(self, session: RefinementSession) -> Dict[str, Any]:
         """

@@ -66,7 +66,12 @@ A natural-language keyword query optimised for BM25 or simple keyword retrieval.
 
 ## concept_graph
 
-Extract 6-8 core concepts from the input. Prioritize in order: primary subject or topic, key entities or groups, primary phenomena or interventions, contextual factors, then remaining concepts by centrality.
+Extract the core concepts actually present in the input — typically 3-6. Do not pad the graph to reach a count. Prioritize in order: primary subject or topic, key entities or groups, primary phenomena or interventions, contextual factors, then remaining concepts by centrality.
+
+Do NOT create concepts for:
+- generic evaluative or question-type words (effective, effectiveness, efficacy, help, benefit, impact, improve, work) — they describe the kind of question, not a searchable topic;
+- phrases that express the absence of a restriction (all ages, any setting, no restriction, regardless of);
+- a restatement of another concept ("patients with X", "X population" when X is already a concept).
 
 The key for each entry is the canonical form of the concept as it appears in the input.
 

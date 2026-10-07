@@ -156,6 +156,7 @@ def render_synthesis_markdown(synthesis: Dict[str, Any]) -> str:
     sections.append(_section("Keyword statement", structured.get("keyword_statement")))
     if keyword.get("structured"):
         sections.append(f"**Boolean search construction**\n```text\n{keyword['structured']}\n```")
+    sections.append(render_search_validation(synthesis))
 
     filter_lines = []
     if filters.get("publication_years"):
@@ -176,6 +177,37 @@ def render_synthesis_markdown(synthesis: Dict[str, Any]) -> str:
         sections.append("**Search expansion levels** (full queries in the side panel)\n" + "\n".join(level_lines))
 
     return "\n\n".join(section for section in sections if section)
+
+
+_REPAIR_REASONS = {
+    "redundant": "it only restated another concept",
+    "ungrounded": "it was not based on anything you said",
+}
+
+
+def render_search_validation(synthesis: Dict[str, Any]) -> Optional[str]:
+    """Summarise the deterministic search checks and any automatic repairs."""
+    quality = (synthesis.get("structured_output") or {}).get("search_quality")
+    if not quality:
+        return None
+    final = quality.get("final") or {}
+    lines = []
+    for repair in quality.get("repairs") or []:
+        reason = _REPAIR_REASONS.get(repair.get("reason"), repair.get("reason"))
+        lines.append(f"- Removed the *{role_label(repair.get('role') or 'concept')}* block because {reason}; this can only widen the search.")
+    problems = []
+    if final.get("syntax_problems"):
+        problems.append("syntax: " + ", ".join(final["syntax_problems"]))
+    if not final.get("aligned", True):
+        problems.append("concept blocks do not match the Boolean query")
+    if final.get("ungrounded_blocks"):
+        problems.append(f"{len(final['ungrounded_blocks'])} block(s) not obviously grounded in your question — please check")
+    if final.get("leaked_terms"):
+        problems.append("broader or informal terms in the core query: " + ", ".join(t for v in final["leaked_terms"].values() for t in v))
+    lines.extend(f"- ⚠️ {problem}" for problem in problems)
+    status = "✅ Passed all checks" if final.get("search_ready") else "⚠️ Review suggested"
+    checks = "syntax, block alignment, redundancy, grounding in your input, term leakage"
+    return f"**Search validation** — {status} ({checks}; {final.get('block_count', '?')} concept blocks)" + ("\n" + "\n".join(lines) if lines else "")
 
 
 def render_concept_blocks(synthesis: Dict[str, Any]) -> Optional[str]:

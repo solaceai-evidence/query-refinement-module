@@ -143,12 +143,13 @@ class SearchConstructionPromptBuilder:
         statement: str,
         concept_graph: Dict[str, Any],
         additional_guidance: str = "",
+        original_question: str = "",
     ) -> str:
         graph_json = json.dumps(concept_graph, ensure_ascii=False, indent=2)
-        parts = [
-            f"## Statement\n\n{statement}",
-            f"## Concept Graph\n\n{graph_json}",
-        ]
+        parts = [f"## Statement\n\n{statement}"]
+        if original_question:
+            parts.append(f"## User's Original Question\n\n{original_question}")
+        parts.append(f"## Concept Graph\n\n{graph_json}")
         if additional_guidance:
             parts.append(f"## Additional Guidance\n\n{additional_guidance.strip()}")
         return "\n\n---\n\n".join(parts) + "\n"

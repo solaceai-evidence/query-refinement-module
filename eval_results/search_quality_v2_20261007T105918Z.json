@@ -1,0 +1,1233 @@
+{
+  "label": "v2",
+  "created_at": "20261007T105918Z",
+  "model": "anthropic/claude-sonnet-4-6",
+  "repeat": 2,
+  "summary": {
+    "runs": 20,
+    "errors": 0,
+    "mean_blocks_raw": 3.05,
+    "mean_blocks_final": 3.05,
+    "raw_search_ready_rate": 0.95,
+    "final_search_ready_rate": 0.95,
+    "runs_with_redundant_block_raw": 0.0,
+    "runs_with_ungrounded_block_raw": 0.05,
+    "runs_with_leaked_terms_raw": 0.0,
+    "runs_with_syntax_problems_raw": 0.0,
+    "runs_repaired": 0.0,
+    "unrestricted_in_statement_rate": 0.0,
+    "mean_coverage": 0.75,
+    "mean_seconds": 27.9
+  },
+  "runs": [
+    {
+      "id": "copd_exercise_unrestricted",
+      "framework": "pico_advanced",
+      "seconds": 22.7,
+      "clarified_query": "Does exercise help adults with chronic obstructive pulmonary disease (COPD)?",
+      "structured": "(chronic obstructive pulmonary disease OR chronic obstructive lung disease OR chronic airflow obstruction OR COPD) AND (exercise* OR physical exercise OR physical activity OR physical training OR exercise-based)",
+      "block_roles": [
+        "topic_or_condition",
+        "intervention_or_exposure_or_phenomenon"
+      ],
+      "concept_count": 5,
+      "raw_report": {
+        "block_count": 2,
+        "and_group_count": 2,
+        "aligned": true,
+        "syntax_problems": [],
+        "redundant_blocks": [],
+        "ungrounded_blocks": [],
+        "leaked_terms": {},
+        "terms_per_block": [
+          4,
+          6
+        ],
+        "empty_blocks": [],
+        "block_roles": [
+          "topic_or_condition",
+          "intervention_or_exposure_or_phenomenon"
+        ],
+        "issue_count": 0,
+        "search_ready": true
+      },
+      "repairs": [],
+      "final_report": {
+        "block_count": 2,
+        "and_group_count": 2,
+        "aligned": true,
+        "syntax_problems": [],
+        "redundant_blocks": [],
+        "ungrounded_blocks": [],
+        "leaked_terms": {},
+        "terms_per_block": [
+          4,
+          6
+        ],
+        "empty_blocks": [],
+        "block_roles": [
+          "topic_or_condition",
+          "intervention_or_exposure_or_phenomenon"
+        ],
+        "issue_count": 0,
+        "search_ready": true
+      },
+      "unrestricted_in_statement": false,
+      "coverage": 0.67
+    },
+    {
+      "id": "copd_exercise_unrestricted",
+      "framework": "pico_advanced",
+      "seconds": 24.9,
+      "clarified_query": "Does exercise help adults with chronic obstructive pulmonary disease (COPD)?",
+      "structured": "(chronic obstructive pulmonary disease OR chronic obstructive lung disease OR chronic airflow obstruction OR COPD) AND (exercis* OR physical exercise OR exercise training OR physical activity)",
+      "block_roles": [
+        "topic_or_condition",
+        "intervention_or_exposure_or_phenomenon"
+      ],
+      "concept_count": 6,
+      "raw_report": {
+        "block_count": 2,
+        "and_group_count": 2,
+        "aligned": true,
+        "syntax_problems": [],
+        "redundant_blocks": [],
+        "ungrounded_blocks": [],
+        "leaked_terms": {},
+        "terms_per_block": [
+          4,
+          6
+        ],
+        "empty_blocks": [],
+        "block_roles": [
+          "topic_or_condition",
+          "intervention_or_exposure_or_phenomenon"
+        ],
+        "issue_count": 0,
+        "search_ready": true
+      },
+      "repairs": [],
+      "final_report": {
+        "block_count": 2,
+        "and_group_count": 2,
+        "aligned": true,
+        "syntax_problems": [],
+        "redundant_blocks": [],
+        "ungrounded_blocks": [],
+        "leaked_terms": {},
+        "terms_per_block": [
+          4,
+          6
+        ],
+        "empty_blocks": [],
+        "block_roles": [
+          "topic_or_condition",
+          "intervention_or_exposure_or_phenomenon"
+        ],
+        "issue_count": 0,
+        "search_ready": true
+      },
+      "unrestricted_in_statement": false,
+      "coverage": 0.67
+    },
+    {
+      "id": "copd_rehab_population_skipped",
+      "framework": "pico_advanced",
+      "seconds": 35.9,
+      "clarified_query": "Pulmonary rehabilitation programmes including exercise training compared to usual care for chronic obstructive pulmonary disease (COPD), measuring exercise capacity and health-related quality of life, based on randomised controlled trials.",
+      "structured": "(chronic obstructive pulmonary disease OR chronic obstructive lung disease OR chronic airflow obstruction OR COPD OR obstructive pulmonary OR obstructive airway disease) AND (pulmonary rehabilitat* OR respiratory rehabilitat* OR lung rehabilitat* OR PR OR pulmonary rehabilitative OR rehabilitative programme* OR exercise training OR physical training OR exercise therapy OR physical exercise programme*)",
+      "block_roles": [
+        "topic_or_condition",
+        "intervention_or_exposure_or_phenomenon"
+      ],
+      "concept_count": 7,
+      "raw_report": {
+        "block_count": 2,
+        "and_group_count": 2,
+        "aligned": true,
+        "syntax_problems": [],
+        "redundant_blocks": [],
+        "ungrounded_blocks": [],
+        "leaked_terms": {},
+        "terms_per_block": [
+          6,
+          10
+        ],
+        "empty_blocks": [],
+        "block_roles": [
+          "topic_or_condition",
+          "intervention_or_exposure_or_phenomenon"
+        ],
+        "issue_count": 0,
+        "search_ready": true
+      },
+      "repairs": [],
+      "final_report": {
+        "block_count": 2,
+        "and_group_count": 2,
+        "aligned": true,
+        "syntax_problems": [],
+        "redundant_blocks": [],
+        "ungrounded_blocks": [],
+        "leaked_terms": {},
+        "terms_per_block": [
+          6,
+          10
+        ],
+        "empty_blocks": [],
+        "block_roles": [
+          "topic_or_condition",
+          "intervention_or_exposure_or_phenomenon"
+        ],
+        "issue_count": 0,
+        "search_ready": true
+      },
+      "unrestricted_in_statement": false,
+      "coverage": 1.0
+    },
+    {
+      "id": "copd_rehab_population_skipped",
+      "framework": "pico_advanced",
+      "seconds": 30.3,
+      "clarified_query": "Pulmonary rehabilitation programmes including exercise training compared to usual care for chronic obstructive pulmonary disease (COPD), measuring exercise capacity and health-related quality of life, based on randomised controlled trials.",
+      "structured": "(COPD OR chronic obstructive pulmonary disease OR chronic obstructive lung disease OR chronic airflow obstruction) AND (pulmonary rehabilitat* OR respiratory rehabilitat* OR lung rehabilitat* OR PR OR pulmonary rehabilitative OR rehabilitative programme*)",
+      "block_roles": [
+        "topic_or_condition",
+        "intervention_or_exposure_or_phenomenon"
+      ],
+      "concept_count": 6,
+      "raw_report": {
+        "block_count": 2,
+        "and_group_count": 2,
+        "aligned": true,
+        "syntax_problems": [],
+        "redundant_blocks": [],
+        "ungrounded_blocks": [],
+        "leaked_terms": {},
+        "terms_per_block": [
+          4,
+          6
+        ],
+        "empty_blocks": [],
+        "block_roles": [
+          "topic_or_condition",
+          "intervention_or_exposure_or_phenomenon"
+        ],
+        "issue_count": 0,
+        "search_ready": true
+      },
+      "repairs": [],
+      "final_report": {
+        "block_count": 2,
+        "and_group_count": 2,
+        "aligned": true,
+        "syntax_problems": [],
+        "redundant_blocks": [],
+        "ungrounded_blocks": [],
+        "leaked_terms": {},
+        "terms_per_block": [
+          4,
+          6
+        ],
+        "empty_blocks": [],
+        "block_roles": [
+          "topic_or_condition",
+          "intervention_or_exposure_or_phenomenon"
+        ],
+        "issue_count": 0,
+        "search_ready": true
+      },
+      "unrestricted_in_statement": false,
+      "coverage": 1.0
+    },
+    {
+      "id": "mindfulness_students_unrestricted",
+      "framework": "pico_advanced",
+      "seconds": 24.8,
+      "clarified_query": "Are mindfulness-based interventions effective for anxiety in university students?",
+      "structured": "(mindfulness-based intervention* OR mindfulness-based program* OR mindfulness-based therap* OR mindfulness-based practice* OR MBI OR MBIs OR mindfulness intervention* OR mindfulness training*) AND (university students OR college students OR higher education students OR tertiary students OR postsecondary students) AND (anxiety OR anxiety symptoms OR anxiety disorder* OR anxious OR anxiousness OR anxiety levels)",
+      "block_roles": [
+        "intervention_or_exposure_or_phenomenon",
+        "population_or_entity",
+        "outcome"
+      ],
+      "concept_count": 3,
+      "raw_report": {
+        "block_count": 3,
+        "and_group_count": 3,
+        "aligned": true,
+        "syntax_problems": [],
+        "redundant_blocks": [],
+        "ungrounded_blocks": [],
+        "leaked_terms": {},
+        "terms_per_block": [
+          12,
+          5,
+          7
+        ],
+        "empty_blocks": [],
+        "block_roles": [
+          "intervention_or_exposure_or_phenomenon",
+          "population_or_entity",
+          "outcome"
+        ],
+        "issue_count": 0,
+        "search_ready": true
+      },
+      "repairs": [],
+      "final_report": {
+        "block_count": 3,
+        "and_group_count": 3,
+        "aligned": true,
+        "syntax_problems": [],
+        "redundant_blocks": [],
+        "ungrounded_blocks": [],
+        "leaked_terms": {},
+        "terms_per_block": [
+          12,
+          5,
+          7
+        ],
+        "empty_blocks": [],
+        "block_roles": [
+          "intervention_or_exposure_or_phenomenon",
+          "population_or_entity",
+          "outcome"
+        ],
+        "issue_count": 0,
+        "search_ready": true
+      },
+      "unrestricted_in_statement": false,
+      "coverage": 1.0
+    },
+    {
+      "id": "mindfulness_students_unrestricted",
+      "framework": "pico_advanced",
+      "seconds": 25.6,
+      "clarified_query": "Are mindfulness-based interventions effective for anxiety in university students?",
+      "structured": "(mindfulness-based intervention* OR mindfulness-based program* OR mindfulness-based therap* OR mindfulness-based practice* OR MBI OR MBIs OR mindfulness intervention* OR mindfulness training*) AND (university students OR college students OR higher education students OR tertiary students OR postsecondary students) AND (anxiety OR anxiety symptoms OR anxiety disorders OR anxious* OR anxiousness)",
+      "block_roles": [
+        "intervention_or_exposure_or_phenomenon",
+        "population_or_entity",
+        "outcome"
+      ],
+      "concept_count": 3,
+      "raw_report": {
+        "block_count": 3,
+        "and_group_count": 3,
+        "aligned": true,
+        "syntax_problems": [],
+        "redundant_blocks": [],
+        "ungrounded_blocks": [],
+        "leaked_terms": {},
+        "terms_per_block": [
+          13,
+          5,
+          5
+        ],
+        "empty_blocks": [],
+        "block_roles": [
+          "intervention_or_exposure_or_phenomenon",
+          "population_or_entity",
+          "outcome"
+        ],
+        "issue_count": 0,
+        "search_ready": true
+      },
+      "repairs": [],
+      "final_report": {
+        "block_count": 3,
+        "and_group_count": 3,
+        "aligned": true,
+        "syntax_problems": [],
+        "redundant_blocks": [],
+        "ungrounded_blocks": [],
+        "leaked_terms": {},
+        "terms_per_block": [
+          13,
+          5,
+          5
+        ],
+        "empty_blocks": [],
+        "block_roles": [
+          "intervention_or_exposure_or_phenomenon",
+          "population_or_entity",
+          "outcome"
+        ],
+        "issue_count": 0,
+        "search_ready": true
+      },
+      "unrestricted_in_statement": false,
+      "coverage": 1.0
+    },
+    {
+      "id": "vte_fully_specified",
+      "framework": "pico_advanced",
+      "seconds": 35.0,
+      "clarified_query": "Randomised controlled trials comparing direct oral anticoagulants versus low molecular weight heparin for prevention of venous thromboembolism in adults undergoing elective total hip or knee replacement, with outcomes of symptomatic venous thromboembolism and major bleeding.",
+      "structured": "(venous thromboembolism OR venous thrombosis OR thromboembolism OR VTE OR thromboembolic*) AND (total hip arthroplasty OR total knee arthroplasty OR hip and knee arthroplasty OR THA OR TKA OR THR OR TKR OR arthroplasty OR joint replacement) AND (DOAC OR NOAC OR direct oral anticoagulant* OR novel oral anticoagulant* OR non-vitamin K antagonist oral anticoagulant* OR low molecular weight heparin OR low-molecular-weight heparin OR low molecular-weight heparin OR fractionated heparin OR LMWH)",
+      "block_roles": [
+        "topic_or_condition",
+        "population_or_entity",
+        "intervention_or_exposure_or_phenomenon"
+      ],
+      "concept_count": 6,
+      "raw_report": {
+        "block_count": 3,
+        "and_group_count": 3,
+        "aligned": true,
+        "syntax_problems": [],
+        "redundant_blocks": [],
+        "ungrounded_blocks": [],
+        "leaked_terms": {},
+        "terms_per_block": [
+          5,
+          9,
+          10
+        ],
+        "empty_blocks": [],
+        "block_roles": [
+          "topic_or_condition",
+          "population_or_entity",
+          "intervention_or_exposure_or_phenomenon"
+        ],
+        "issue_count": 0,
+        "search_ready": true
+      },
+      "repairs": [],
+      "final_report": {
+        "block_count": 3,
+        "and_group_count": 3,
+        "aligned": true,
+        "syntax_problems": [],
+        "redundant_blocks": [],
+        "ungrounded_blocks": [],
+        "leaked_terms": {},
+        "terms_per_block": [
+          5,
+          9,
+          10
+        ],
+        "empty_blocks": [],
+        "block_roles": [
+          "topic_or_condition",
+          "population_or_entity",
+          "intervention_or_exposure_or_phenomenon"
+        ],
+        "issue_count": 0,
+        "search_ready": true
+      },
+      "unrestricted_in_statement": false,
+      "coverage": 0.6
+    },
+    {
+      "id": "vte_fully_specified",
+      "framework": "pico_advanced",
+      "seconds": 35.4,
+      "clarified_query": "Randomised controlled trials comparing direct oral anticoagulants versus low molecular weight heparin for prevention of venous thromboembolism in adults undergoing elective total hip or knee replacement, with outcomes of symptomatic venous thromboembolism and major bleeding.",
+      "structured": "(venous thromboembolism OR venous thrombosis OR thromboembolism OR VTE OR thromboembolic* OR thrombotic*) AND (total hip arthroplasty OR total knee arthroplasty OR hip and knee arthroplasty OR THA OR TKA OR THR OR TKR OR arthroplasty OR joint replacement) AND (DOAC OR NOAC OR novel oral anticoagulant* OR non-vitamin K antagonist oral anticoagulant* OR oral anticoagulation OR low molecular weight heparin OR low-molecular-weight heparin OR low molecular-weight heparin OR LMWH)",
+      "block_roles": [
+        "topic_or_condition",
+        "population_or_entity",
+        "intervention_or_exposure_or_phenomenon"
+      ],
+      "concept_count": 6,
+      "raw_report": {
+        "block_count": 3,
+        "and_group_count": 3,
+        "aligned": true,
+        "syntax_problems": [],
+        "redundant_blocks": [],
+        "ungrounded_blocks": [],
+        "leaked_terms": {},
+        "terms_per_block": [
+          6,
+          9,
+          9
+        ],
+        "empty_blocks": [],
+        "block_roles": [
+          "topic_or_condition",
+          "population_or_entity",
+          "intervention_or_exposure_or_phenomenon"
+        ],
+        "issue_count": 0,
+        "search_ready": true
+      },
+      "repairs": [],
+      "final_report": {
+        "block_count": 3,
+        "and_group_count": 3,
+        "aligned": true,
+        "syntax_problems": [],
+        "redundant_blocks": [],
+        "ungrounded_blocks": [],
+        "leaked_terms": {},
+        "terms_per_block": [
+          6,
+          9,
+          9
+        ],
+        "empty_blocks": [],
+        "block_roles": [
+          "topic_or_condition",
+          "population_or_entity",
+          "intervention_or_exposure_or_phenomenon"
+        ],
+        "issue_count": 0,
+        "search_ready": true
+      },
+      "unrestricted_in_statement": false,
+      "coverage": 0.6
+    },
+    {
+      "id": "peer_tutoring_education",
+      "framework": "pico_advanced",
+      "seconds": 24.5,
+      "clarified_query": "Does peer tutoring improve mathematics attainment in primary school pupils?",
+      "structured": "(peer tutor* OR peer-mediated instruction OR peer-assisted learning OR peer teaching OR PAL OR PALS OR peer tutored) AND (elementary school students OR primary school children OR primary school students OR elementary school children OR primary-aged children OR elementary-aged pupils) AND (mathematics achievement OR mathematical attainment OR math attainment OR math achievement OR maths attainment OR mathematical performance OR mathematics outcomes)",
+      "block_roles": [
+        "intervention_or_exposure_or_phenomenon",
+        "population_or_entity",
+        "outcome"
+      ],
+      "concept_count": 3,
+      "raw_report": {
+        "block_count": 3,
+        "and_group_count": 3,
+        "aligned": true,
+        "syntax_problems": [],
+        "redundant_blocks": [],
+        "ungrounded_blocks": [],
+        "leaked_terms": {},
+        "terms_per_block": [
+          7,
+          6,
+          7
+        ],
+        "empty_blocks": [],
+        "block_roles": [
+          "intervention_or_exposure_or_phenomenon",
+          "population_or_entity",
+          "outcome"
+        ],
+        "issue_count": 0,
+        "search_ready": true
+      },
+      "repairs": [],
+      "final_report": {
+        "block_count": 3,
+        "and_group_count": 3,
+        "aligned": true,
+        "syntax_problems": [],
+        "redundant_blocks": [],
+        "ungrounded_blocks": [],
+        "leaked_terms": {},
+        "terms_per_block": [
+          7,
+          6,
+          7
+        ],
+        "empty_blocks": [],
+        "block_roles": [
+          "intervention_or_exposure_or_phenomenon",
+          "population_or_entity",
+          "outcome"
+        ],
+        "issue_count": 0,
+        "search_ready": true
+      },
+      "unrestricted_in_statement": false,
+      "coverage": 0.8
+    },
+    {
+      "id": "peer_tutoring_education",
+      "framework": "pico_advanced",
+      "seconds": 23.4,
+      "clarified_query": "Does peer tutoring improve mathematics attainment in primary school pupils?",
+      "structured": "(peer tutor* OR peer-assisted learning OR peer teaching OR student tutor* OR PAL OR PALS OR peer-tutored) AND (elementary school students OR primary school students OR elementary school children OR primary school children OR primary school pupils) AND (mathematics achievement OR math attainment OR mathematical attainment OR mathematical achievement OR maths attainment OR mathematical performance OR mathematics performance OR mathematics)",
+      "block_roles": [
+        "intervention_or_exposure_or_phenomenon",
+        "population_or_entity",
+        "outcome"
+      ],
+      "concept_count": 3,
+      "raw_report": {
+        "block_count": 3,
+        "and_group_count": 3,
+        "aligned": true,
+        "syntax_problems": [],
+        "redundant_blocks": [],
+        "ungrounded_blocks": [],
+        "leaked_terms": {},
+        "terms_per_block": [
+          7,
+          5,
+          8
+        ],
+        "empty_blocks": [],
+        "block_roles": [
+          "intervention_or_exposure_or_phenomenon",
+          "population_or_entity",
+          "outcome"
+        ],
+        "issue_count": 0,
+        "search_ready": true
+      },
+      "repairs": [],
+      "final_report": {
+        "block_count": 3,
+        "and_group_count": 3,
+        "aligned": true,
+        "syntax_problems": [],
+        "redundant_blocks": [],
+        "ungrounded_blocks": [],
+        "leaked_terms": {},
+        "terms_per_block": [
+          7,
+          5,
+          8
+        ],
+        "empty_blocks": [],
+        "block_roles": [
+          "intervention_or_exposure_or_phenomenon",
+          "population_or_entity",
+          "outcome"
+        ],
+        "issue_count": 0,
+        "search_ready": true
+      },
+      "unrestricted_in_statement": false,
+      "coverage": 0.8
+    },
+    {
+      "id": "depression_prevalence_cocopop",
+      "framework": "cocopop",
+      "seconds": 28.9,
+      "clarified_query": "Prevalence of depression in older adults aged 60 and over in primary care in low- and middle-income countries.",
+      "structured": "(depression OR depressive disorder OR depressive illness OR major depression OR MDD OR depressive OR depressed) AND (older adults OR elderly OR aged OR older people OR older persons OR seniors OR aging population OR ageing population) AND (primary care OR primary health care OR general practice OR family medicine OR primary healthcare OR PHC) AND (LMICs OR LMIC OR low- and middle-income countries OR low and middle income countries OR developing countries OR resource-limited countries)",
+      "block_roles": [
+        "topic_or_condition",
+        "population_or_entity",
+        "setting_or_context",
+        "geography"
+      ],
+      "concept_count": 5,
+      "raw_report": {
+        "block_count": 4,
+        "and_group_count": 4,
+        "aligned": true,
+        "syntax_problems": [],
+        "redundant_blocks": [],
+        "ungrounded_blocks": [],
+        "leaked_terms": {},
+        "terms_per_block": [
+          7,
+          8,
+          6,
+          6
+        ],
+        "empty_blocks": [],
+        "block_roles": [
+          "topic_or_condition",
+          "population_or_entity",
+          "setting_or_context",
+          "geography"
+        ],
+        "issue_count": 0,
+        "search_ready": true
+      },
+      "repairs": [],
+      "final_report": {
+        "block_count": 4,
+        "and_group_count": 4,
+        "aligned": true,
+        "syntax_problems": [],
+        "redundant_blocks": [],
+        "ungrounded_blocks": [],
+        "leaked_terms": {},
+        "terms_per_block": [
+          7,
+          8,
+          6,
+          6
+        ],
+        "empty_blocks": [],
+        "block_roles": [
+          "topic_or_condition",
+          "population_or_entity",
+          "setting_or_context",
+          "geography"
+        ],
+        "issue_count": 0,
+        "search_ready": true
+      },
+      "unrestricted_in_statement": false,
+      "coverage": 0.67
+    },
+    {
+      "id": "depression_prevalence_cocopop",
+      "framework": "cocopop",
+      "seconds": 29.2,
+      "clarified_query": "Prevalence of depression in older adults aged 60 and over in primary care in low- and middle-income countries.",
+      "structured": "(depression OR depressive disorder OR depressive illness OR major depression OR MDD OR depressive) AND (older adults OR elderly OR aged OR older people OR older persons OR senior adults OR aging population OR ageing population) AND (primary care OR primary health care OR general practice OR family medicine OR first-level care OR PHC) AND (low- and middle-income countries OR developing countries OR developing nations OR low-resource settings OR resource-limited settings OR LMICs OR LMIC OR low and middle income countries)",
+      "block_roles": [
+        "topic_or_condition",
+        "population_or_entity",
+        "setting_or_context",
+        "geography"
+      ],
+      "concept_count": 5,
+      "raw_report": {
+        "block_count": 4,
+        "and_group_count": 4,
+        "aligned": true,
+        "syntax_problems": [],
+        "redundant_blocks": [],
+        "ungrounded_blocks": [],
+        "leaked_terms": {},
+        "terms_per_block": [
+          6,
+          8,
+          6,
+          8
+        ],
+        "empty_blocks": [],
+        "block_roles": [
+          "topic_or_condition",
+          "population_or_entity",
+          "setting_or_context",
+          "geography"
+        ],
+        "issue_count": 0,
+        "search_ready": true
+      },
+      "repairs": [],
+      "final_report": {
+        "block_count": 4,
+        "and_group_count": 4,
+        "aligned": true,
+        "syntax_problems": [],
+        "redundant_blocks": [],
+        "ungrounded_blocks": [],
+        "leaked_terms": {},
+        "terms_per_block": [
+          6,
+          8,
+          6,
+          8
+        ],
+        "empty_blocks": [],
+        "block_roles": [
+          "topic_or_condition",
+          "population_or_entity",
+          "setting_or_context",
+          "geography"
+        ],
+        "issue_count": 0,
+        "search_ready": true
+      },
+      "unrestricted_in_statement": false,
+      "coverage": 0.67
+    },
+    {
+      "id": "long_covid_unrestricted_cocopop",
+      "framework": "cocopop",
+      "seconds": 19.7,
+      "clarified_query": "How common is long COVID (post-COVID-19 condition)?",
+      "structured": "(long COVID OR post-COVID-19 condition OR post-acute sequelae of COVID-19 OR post-acute COVID-19 syndrome OR long-haul COVID OR chronic COVID OR PASC OR PCC OR post-COVID) AND (prevalence OR frequency OR occurrence OR burden OR prevalent)",
+      "block_roles": [
+        "topic_or_condition",
+        "outcome"
+      ],
+      "concept_count": 3,
+      "raw_report": {
+        "block_count": 2,
+        "and_group_count": 2,
+        "aligned": true,
+        "syntax_problems": [],
+        "redundant_blocks": [],
+        "ungrounded_blocks": [
+          1
+        ],
+        "leaked_terms": {},
+        "terms_per_block": [
+          9,
+          5
+        ],
+        "empty_blocks": [],
+        "block_roles": [
+          "topic_or_condition",
+          "outcome"
+        ],
+        "issue_count": 1,
+        "search_ready": false
+      },
+      "repairs": [],
+      "final_report": {
+        "block_count": 2,
+        "and_group_count": 2,
+        "aligned": true,
+        "syntax_problems": [],
+        "redundant_blocks": [],
+        "ungrounded_blocks": [
+          1
+        ],
+        "leaked_terms": {},
+        "terms_per_block": [
+          9,
+          5
+        ],
+        "empty_blocks": [],
+        "block_roles": [
+          "topic_or_condition",
+          "outcome"
+        ],
+        "issue_count": 1,
+        "search_ready": false
+      },
+      "unrestricted_in_statement": false,
+      "coverage": 0.67
+    },
+    {
+      "id": "long_covid_unrestricted_cocopop",
+      "framework": "cocopop",
+      "seconds": 19.8,
+      "clarified_query": "How common is long COVID (post-COVID-19 condition)?",
+      "structured": "(long COVID OR post-COVID-19 condition OR post-acute sequelae of COVID-19 OR post-acute COVID-19 syndrome OR long-haul COVID OR chronic COVID OR PASC OR PCC OR post-COVID OR long-COVID) AND (COVID-19 OR coronavirus disease 2019 OR SARS-CoV-2 infection OR COVID OR coronavirus infection)",
+      "block_roles": [
+        "topic_or_condition",
+        "setting_or_context"
+      ],
+      "concept_count": 3,
+      "raw_report": {
+        "block_count": 2,
+        "and_group_count": 2,
+        "aligned": true,
+        "syntax_problems": [],
+        "redundant_blocks": [],
+        "ungrounded_blocks": [],
+        "leaked_terms": {},
+        "terms_per_block": [
+          10,
+          5
+        ],
+        "empty_blocks": [],
+        "block_roles": [
+          "topic_or_condition",
+          "setting_or_context"
+        ],
+        "issue_count": 0,
+        "search_ready": true
+      },
+      "repairs": [],
+      "final_report": {
+        "block_count": 2,
+        "and_group_count": 2,
+        "aligned": true,
+        "syntax_problems": [],
+        "redundant_blocks": [],
+        "ungrounded_blocks": [],
+        "leaked_terms": {},
+        "terms_per_block": [
+          10,
+          5
+        ],
+        "empty_blocks": [],
+        "block_roles": [
+          "topic_or_condition",
+          "setting_or_context"
+        ],
+        "issue_count": 0,
+        "search_ready": true
+      },
+      "unrestricted_in_statement": false,
+      "coverage": 0.67
+    },
+    {
+      "id": "email_monitoring_legal",
+      "framework": "legal_research",
+      "seconds": 28.6,
+      "clarified_query": "Under European Union (GDPR) law, can employers monitor employee emails with respect to workplace email surveillance and employee privacy?",
+      "structured": "(employer email monitoring OR workplace email surveillance OR employee email monitoring OR monitoring of employee communications OR monitoring* OR surveillance*) AND (GDPR OR General Data Protection Regulation OR EU data protection law OR Regulation EU 2016/679) AND (employee privacy OR worker privacy OR employee right to privacy OR privacy of employees OR privacy rights) AND (European Union OR EU)",
+      "block_roles": [
+        "topic_or_condition",
+        "setting_or_context",
+        "outcome",
+        "geography"
+      ],
+      "concept_count": 5,
+      "raw_report": {
+        "block_count": 4,
+        "and_group_count": 4,
+        "aligned": true,
+        "syntax_problems": [],
+        "redundant_blocks": [],
+        "ungrounded_blocks": [],
+        "leaked_terms": {},
+        "terms_per_block": [
+          6,
+          4,
+          5,
+          2
+        ],
+        "empty_blocks": [],
+        "block_roles": [
+          "topic_or_condition",
+          "setting_or_context",
+          "outcome",
+          "geography"
+        ],
+        "issue_count": 0,
+        "search_ready": true
+      },
+      "repairs": [],
+      "final_report": {
+        "block_count": 4,
+        "and_group_count": 4,
+        "aligned": true,
+        "syntax_problems": [],
+        "redundant_blocks": [],
+        "ungrounded_blocks": [],
+        "leaked_terms": {},
+        "terms_per_block": [
+          6,
+          4,
+          5,
+          2
+        ],
+        "empty_blocks": [],
+        "block_roles": [
+          "topic_or_condition",
+          "setting_or_context",
+          "outcome",
+          "geography"
+        ],
+        "issue_count": 0,
+        "search_ready": true
+      },
+      "unrestricted_in_statement": false,
+      "coverage": 1.0
+    },
+    {
+      "id": "email_monitoring_legal",
+      "framework": "legal_research",
+      "seconds": 29.2,
+      "clarified_query": "Under European Union (EU) General Data Protection Regulation (GDPR), can employers monitor employee emails with respect to workplace email surveillance and employee privacy?",
+      "structured": "(employee email monitoring OR workplace email surveillance OR employer email monitoring OR monitoring of employee electronic communications OR email monitoring OR email surveillance OR monitored communications) AND (workplace surveillance OR employee monitoring OR workplace monitoring OR occupational surveillance OR monitoring employees OR surveilling workers) AND (GDPR OR General Data Protection Regulation OR EU data protection law OR European data protection regulation)",
+      "block_roles": [
+        "topic_or_condition",
+        "intervention_or_exposure_or_phenomenon",
+        "setting_or_context"
+      ],
+      "concept_count": 6,
+      "raw_report": {
+        "block_count": 3,
+        "and_group_count": 3,
+        "aligned": true,
+        "syntax_problems": [],
+        "redundant_blocks": [],
+        "ungrounded_blocks": [],
+        "leaked_terms": {},
+        "terms_per_block": [
+          7,
+          6,
+          4
+        ],
+        "empty_blocks": [],
+        "block_roles": [
+          "topic_or_condition",
+          "intervention_or_exposure_or_phenomenon",
+          "setting_or_context"
+        ],
+        "issue_count": 0,
+        "search_ready": true
+      },
+      "repairs": [],
+      "final_report": {
+        "block_count": 3,
+        "and_group_count": 3,
+        "aligned": true,
+        "syntax_problems": [],
+        "redundant_blocks": [],
+        "ungrounded_blocks": [],
+        "leaked_terms": {},
+        "terms_per_block": [
+          7,
+          6,
+          4
+        ],
+        "empty_blocks": [],
+        "block_roles": [
+          "topic_or_condition",
+          "intervention_or_exposure_or_phenomenon",
+          "setting_or_context"
+        ],
+        "issue_count": 0,
+        "search_ready": true
+      },
+      "unrestricted_in_statement": false,
+      "coverage": 1.0
+    },
+    {
+      "id": "social_media_mph",
+      "framework": "mph_dissertation",
+      "seconds": 28.9,
+      "clarified_query": "A cross-sectional analysis investigating the association between daily social media use and depressive symptoms in adolescents aged 13-18 in the UK, using the Millennium Cohort Study, with depressive symptoms as the outcome.",
+      "structured": "(social media use OR social networking site use OR social media engagement OR social media exposure OR SMU OR SNS use OR social media usage OR social media activity) AND (adolescent* OR teenager* OR youth OR young people) AND (Millennium Cohort Study OR MCS)",
+      "block_roles": [
+        "intervention_or_exposure_or_phenomenon",
+        "population_or_entity",
+        "setting_or_context"
+      ],
+      "concept_count": 6,
+      "raw_report": {
+        "block_count": 3,
+        "and_group_count": 3,
+        "aligned": true,
+        "syntax_problems": [],
+        "redundant_blocks": [],
+        "ungrounded_blocks": [],
+        "leaked_terms": {},
+        "terms_per_block": [
+          8,
+          6,
+          2
+        ],
+        "empty_blocks": [],
+        "block_roles": [
+          "intervention_or_exposure_or_phenomenon",
+          "population_or_entity",
+          "setting_or_context"
+        ],
+        "issue_count": 0,
+        "search_ready": true
+      },
+      "repairs": [],
+      "final_report": {
+        "block_count": 3,
+        "and_group_count": 3,
+        "aligned": true,
+        "syntax_problems": [],
+        "redundant_blocks": [],
+        "ungrounded_blocks": [],
+        "leaked_terms": {},
+        "terms_per_block": [
+          8,
+          6,
+          2
+        ],
+        "empty_blocks": [],
+        "block_roles": [
+          "intervention_or_exposure_or_phenomenon",
+          "population_or_entity",
+          "setting_or_context"
+        ],
+        "issue_count": 0,
+        "search_ready": true
+      },
+      "unrestricted_in_statement": false,
+      "coverage": 0.6
+    },
+    {
+      "id": "social_media_mph",
+      "framework": "mph_dissertation",
+      "seconds": 28.7,
+      "clarified_query": "A cross-sectional analysis investigating the association between daily social media use and depressive symptoms in adolescents aged 13-18 in the UK, using the Millennium Cohort Study, with depressive symptoms as the outcome.",
+      "structured": "(social media use OR social networking site use OR social network use OR social media engagement OR SMU OR SNS use OR social media usage OR social media exposure) AND (adolescent* OR teenager* OR youth OR young people) AND (Millennium Cohort Study OR MCS)",
+      "block_roles": [
+        "intervention_or_exposure_or_phenomenon",
+        "population_or_entity",
+        "other"
+      ],
+      "concept_count": 6,
+      "raw_report": {
+        "block_count": 3,
+        "and_group_count": 3,
+        "aligned": true,
+        "syntax_problems": [],
+        "redundant_blocks": [],
+        "ungrounded_blocks": [],
+        "leaked_terms": {},
+        "terms_per_block": [
+          8,
+          6,
+          2
+        ],
+        "empty_blocks": [],
+        "block_roles": [
+          "intervention_or_exposure_or_phenomenon",
+          "population_or_entity",
+          "other"
+        ],
+        "issue_count": 0,
+        "search_ready": true
+      },
+      "repairs": [],
+      "final_report": {
+        "block_count": 3,
+        "and_group_count": 3,
+        "aligned": true,
+        "syntax_problems": [],
+        "redundant_blocks": [],
+        "ungrounded_blocks": [],
+        "leaked_terms": {},
+        "terms_per_block": [
+          8,
+          6,
+          2
+        ],
+        "empty_blocks": [],
+        "block_roles": [
+          "intervention_or_exposure_or_phenomenon",
+          "population_or_entity",
+          "other"
+        ],
+        "issue_count": 0,
+        "search_ready": true
+      },
+      "unrestricted_in_statement": false,
+      "coverage": 0.6
+    },
+    {
+      "id": "cholera_camps_humanitarian",
+      "framework": "solaceai",
+      "seconds": 30.8,
+      "clarified_query": "What water, sanitation and hygiene (WASH) interventions work to reduce cholera in refugee camps in East Africa among children under 5?",
+      "structured": "(cholera OR Vibrio cholerae infection OR cholera infection OR cholerae) AND (WASH OR water sanitation and hygiene OR water sanitation hygiene programme*) AND (children under five OR children under 5 OR under-five children OR children aged 0-4 OR U5) AND (refugee camp* OR displacement camp* OR refugee settlement* OR internally displaced persons camps OR IDP camps) AND (East Africa OR Eastern Africa)",
+      "block_roles": [
+        "topic_or_condition",
+        "intervention_or_exposure_or_phenomenon",
+        "population_or_entity",
+        "setting_or_context",
+        "geography"
+      ],
+      "concept_count": 5,
+      "raw_report": {
+        "block_count": 5,
+        "and_group_count": 5,
+        "aligned": true,
+        "syntax_problems": [],
+        "redundant_blocks": [],
+        "ungrounded_blocks": [],
+        "leaked_terms": {},
+        "terms_per_block": [
+          4,
+          3,
+          5,
+          5,
+          2
+        ],
+        "empty_blocks": [],
+        "block_roles": [
+          "topic_or_condition",
+          "intervention_or_exposure_or_phenomenon",
+          "population_or_entity",
+          "setting_or_context",
+          "geography"
+        ],
+        "issue_count": 0,
+        "search_ready": true
+      },
+      "repairs": [],
+      "final_report": {
+        "block_count": 5,
+        "and_group_count": 5,
+        "aligned": true,
+        "syntax_problems": [],
+        "redundant_blocks": [],
+        "ungrounded_blocks": [],
+        "leaked_terms": {},
+        "terms_per_block": [
+          4,
+          3,
+          5,
+          5,
+          2
+        ],
+        "empty_blocks": [],
+        "block_roles": [
+          "topic_or_condition",
+          "intervention_or_exposure_or_phenomenon",
+          "population_or_entity",
+          "setting_or_context",
+          "geography"
+        ],
+        "issue_count": 0,
+        "search_ready": true
+      },
+      "unrestricted_in_statement": false,
+      "coverage": 0.6
+    },
+    {
+      "id": "cholera_camps_humanitarian",
+      "framework": "solaceai",
+      "seconds": 31.5,
+      "clarified_query": "What water, sanitation and hygiene (WASH) interventions work to reduce cholera in refugee camps in East Africa among children under 5?",
+      "structured": "(cholera OR Vibrio cholerae infection OR cholera infection OR cholerae) AND (WASH OR water sanitation and hygiene OR water sanitation hygiene programme* OR water and sanitation) AND (children under five OR children under 5 OR under-five children OR children aged 0-4 OR U5 OR under-five OR under five years OR young children) AND (refugee camp* OR displacement camp* OR refugee settlement* OR camp setting* OR camp-based) AND (East Africa OR Eastern Africa)",
+      "block_roles": [
+        "topic_or_condition",
+        "intervention_or_exposure_or_phenomenon",
+        "population_or_entity",
+        "setting_or_context",
+        "geography"
+      ],
+      "concept_count": 5,
+      "raw_report": {
+        "block_count": 5,
+        "and_group_count": 5,
+        "aligned": true,
+        "syntax_problems": [],
+        "redundant_blocks": [],
+        "ungrounded_blocks": [],
+        "leaked_terms": {},
+        "terms_per_block": [
+          4,
+          4,
+          8,
+          5,
+          2
+        ],
+        "empty_blocks": [],
+        "block_roles": [
+          "topic_or_condition",
+          "intervention_or_exposure_or_phenomenon",
+          "population_or_entity",
+          "setting_or_context",
+          "geography"
+        ],
+        "issue_count": 0,
+        "search_ready": true
+      },
+      "repairs": [],
+      "final_report": {
+        "block_count": 5,
+        "and_group_count": 5,
+        "aligned": true,
+        "syntax_problems": [],
+        "redundant_blocks": [],
+        "ungrounded_blocks": [],
+        "leaked_terms": {},
+        "terms_per_block": [
+          4,
+          4,
+          8,
+          5,
+          2
+        ],
+        "empty_blocks": [],
+        "block_roles": [
+          "topic_or_condition",
+          "intervention_or_exposure_or_phenomenon",
+          "population_or_entity",
+          "setting_or_context",
+          "geography"
+        ],
+        "issue_count": 0,
+        "search_ready": true
+      },
+      "unrestricted_in_statement": false,
+      "coverage": 0.4
+    }
+  ]
+}

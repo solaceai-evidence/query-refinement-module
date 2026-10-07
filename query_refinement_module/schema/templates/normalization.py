@@ -33,6 +33,7 @@ Rules:
 9. Preserve compound multi-word concepts intact; do not split them into components.
 10. If all dimensions are [SKIPPED], normalize the original input alone.
 11. Do not add any content not present in the inputs.
+12. A dimension value that only states the absence of a restriction (e.g. "all ages", "any setting", "no restriction", "not specified", "all adults with X, no restriction") adds no constraint. Keep any real content it carries ("adults with X") but do not write the unrestricted part ("all", "any", "with no restriction", "of all ages, genders") into clarified_query. Record the value unchanged in dimensions_specifications.
 
 ## dimensions_specifications
 

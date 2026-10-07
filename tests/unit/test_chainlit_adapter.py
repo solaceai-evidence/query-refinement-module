@@ -208,3 +208,18 @@ def test_survey_steps_cover_all_items_and_record_answers():
     assert responses.consent is True
     assert responses.free_text == {"most_helpful": None, "improvements": None, "other": None}
     assert responses.to_metadata()["pico_advanced_survey_v1"]["felt_in_control"] == 3
+
+
+def test_render_search_validation_reports_repairs_and_status():
+    from query_refinement_module.chainlit_app import render_search_validation
+
+    synthesis = {"structured_output": {"search_quality": {
+        "repairs": [{"action": "drop_block", "reason": "redundant", "role": "population_or_entity", "terms": ["COPD patients"]}],
+        "final": {"search_ready": True, "block_count": 2, "aligned": True, "syntax_problems": [], "ungrounded_blocks": [], "leaked_terms": {}},
+    }}}
+
+    text = render_search_validation(synthesis)
+
+    assert "Passed all checks" in text
+    assert "Removed the *Population / entity* block" in text
+    assert render_search_validation({"structured_output": {}}) is None

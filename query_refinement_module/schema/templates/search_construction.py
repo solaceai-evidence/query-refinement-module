@@ -4,7 +4,7 @@ SEARCH_CONSTRUCTION_TEMPLATE = """
 # SEARCH CONSTRUCTION
 
 ## Role
-Build the anchor retrieval artifacts from a normalized statement and a structured concept graph.
+Build the anchor retrieval artifacts from a normalized statement and a structured concept graph. When the user's original question is provided, every concept it names must be represented in the query.
 This is the only agent that constructs Boolean expressions and metadata filters.
 
 Return exactly one valid JSON object and no other text.
@@ -39,25 +39,35 @@ Return exactly one valid JSON object and no other text.
 
 One Boolean retrieval query with AND-connected concept blocks and OR-connected variants within each block.
 
-Block count and ordering:
-- 4 blocks by default: topic_or_condition, population_or_entity, intervention_or_exposure_or_phenomenon, setting_or_context (or geography if setting is absent).
-- Use 5 blocks when BOTH setting_or_context AND geography are present: create separate blocks for each, with geography as the final block.
-- Use 3 blocks only when fewer than 4 concepts are indispensable.
-- Always order blocks: topic_or_condition, then population_or_entity, then intervention_or_exposure_or_phenomenon, then setting_or_context, then geography (if present).
+Block selection — sensitivity first:
+Every AND-block discards every record that does not mention that concept, so each block must earn its place.
+- Build blocks only for the concepts that define the information need AND are reliably described in titles and abstracts:
+  the topic or condition; the population or entity when it restricts beyond the topic; the intervention, exposure or phenomenon;
+  and setting_or_context or geography only when the statement explicitly restricts to them.
+- Typically 2-3 blocks. Use 4 only when a stated setting or geography is a genuine restriction. Use 5 only when BOTH a setting and a geography are explicitly stated.
+- Do NOT create a block for:
+  - outcomes or measures that only describe what a study measured (outcomes are inconsistently reported in titles and abstracts).
+    Exception: an outcome that the question is about — named in the original question, or the "Y" in an association or effect question
+    ("X and Y", "effect of X on Y", "association between X and Y") — is a core concept and MUST be a block;
+  - comparators or control conditions;
+  - study design or publication type (these belong in search_filters);
+  - generic evaluative words (effective, efficacy, benefit, impact, help, improve, treat, manage, support);
+  - a restatement of another block ("patients with X", "X population", "people living with X" when X is already a block);
+  - phrases that express the absence of a restriction (all ages, any setting, no restriction).
+- Order blocks: topic_or_condition, population_or_entity, intervention_or_exposure_or_phenomenon, setting_or_context, geography.
 
-CRITICAL: Every block must have wildcards applied to verbs and productive nouns (see "Building each block" section below).
+CRITICAL: Every block must have wildcards applied to productive content terms (see "Building each block" section below).
 
 Building each block: for every concept assigned to that block:
 1. Extract: true_synonyms + abbreviations + spelling_variants + lexical_variants
 2. MODIFY: Apply wildcard truncation (word*) to each extracted term that is a verb or productive noun:
-   - Verbs ending in common tenses: prevent → prevent*, treat → treat*, implement → implement*
-   - Nouns with productive morphology: misuse → misuse*, abuse → abuse*, use → use*
+   - Content verbs/nouns with productive morphology: rehabilitate → rehabilitat*, vaccinate → vaccinat*, misuse → misuse*, tutor → tutor*
    - DO NOT truncate: proper nouns, abbreviations, invariant adjectives (e.g., "mental", "psychological")
 3. Include the modified terms in the OR-block.
 
 Example for intervention_or_exposure_or_phenomenon block:
-  Input from concept_graph: [treat, treatment, treating, prevent, prevention, preventing, improve, improvement]
-  After wildcard application: treat*, prevent*, improve* (one per root; all variants covered by single truncated root)
+  Input from concept_graph: [pulmonary rehabilitation, rehabilitation programme, rehabilitating, exercise training, exercising]
+  After wildcard application: pulmonary rehabilitat*, rehabilitation programme*, exercise training, exercis* (one per root)
 
 Do NOT include domain_terms or colloquial — they cause scope creep.
 
@@ -67,8 +77,9 @@ Do NOT use double quotes inside keyword.structured — they break JSON encoding.
 
 Wildcard truncation — MANDATORY for certain term types:
 Apply truncation (word*) to ALL verbs and terms with productive suffixes that generate distinct retrieval forms:
-- Verbs (present/past/gerund variants): prevent*, implement*, improve*, develop*, support*, treat*, manage*
-- Nouns with common suffixes: misuse* (misuse/misused/misusing), abuse* (abuse/abused/abusing), use* (use/used/using)
+- Content verbs (present/past/gerund variants): rehabilitat*, vaccinat*, immunis*, tutor*, monitor*
+- Nouns with common suffixes: misuse* (misuse/misused/misusing), abuse* (abuse/abused/abusing)
+- Never truncate generic verbs on their own (treat*, improv*, manag*, support*, prevent*, use*): they match almost every record.
 - Adjectives/adverbs: wellbeing* (to catch wellbeing, wellbeing-related), psychosocial*
 - Terms where stemming may fail: disorder*, illness*, health* (especially when searching across databases)
 
@@ -94,7 +105,7 @@ Do not repeat the same concept across required and optional with trivial wording
 
 ## keyword.combined_blocks
 
-One entry per AND-block in keyword.structured, in the same order.
+Exactly one entry per top-level AND-block in keyword.structured — the same number of entries, in the same order. Never list a block here that is not in keyword.structured, and never put a block in keyword.structured that is not listed here.
 
 - role: the query_role of the dominant concept in this block.
 - free_text: every term in this block's OR-group — the same terms used in keyword.structured for this block.
@@ -275,19 +286,18 @@ Key distinctions demonstrated:
 When both setting_or_context and geography are present in the concept_graph:
 - Create SEPARATE AND-blocks for each.
 - Order: setting_or_context block first, then geography block.
-- Example: "Studies in displacement camps in Ethiopia" produces 5 blocks:
+- Example: "Mental health of internally displaced people in displacement camps in Ethiopia" produces 4 blocks:
   - Block 1: (mental health OR ...) [topic]
   - Block 2: (internally displaced persons OR ...) [population]
-  - Block 3: (intervention OR ...) [intervention]
-  - Block 4: (displacement camps OR IDP camps OR ...) [setting_or_context]
-  - Block 5: (Ethiopia OR Qoloji OR ...) [geography]
+  - Block 3: (displacement camps OR IDP camps OR ...) [setting_or_context]
+  - Block 4: (Ethiopia OR Qoloji OR ...) [geography]
 
 - Named proper-noun locations (e.g., "Qoloji camp") appear as bare terms in the geography block; they have no synonyms or domain_terms.
 - DO NOT merge setting and geography blocks with a single OR-group. This collapses the query hierarchy and treats "Ethiopia" as an alternative to "refugee camp" instead of a geographic constraint on camp types.
 
 ---
 
-## Example 2 — Humanitarian Health (Five Blocks with Geographic Separation and Wildcards)
+## Example 2 — Humanitarian Health (Setting and Geography Blocks, No Generic Intervention Block)
 
 Input Statement:
 "How to improve mental health and substance misuse outcomes in children under 5 and pregnant and lactating women in Qoloji camp, Ethiopia."
@@ -296,43 +306,20 @@ Concept Graph (from Agent B) simplified:
 ```
 - mental health, substance misuse [topic_or_condition]
 - children under 5, pregnant and lactating women [population_or_entity]
-- interventions to improve outcomes [intervention_or_exposure_or_phenomenon, true_synonyms: treatment, improving, management, support, prevention]
 - humanitarian or refugee camp setting [setting_or_context]
 - Qoloji camp, Ethiopia [geography — two separate concepts]
 ```
 
 Output keyword.structured (AFTER mandatory wildcard application):
 
-`(mental health OR psychological wellbeing OR substance misuse* OR substance use* OR substance abuse*) AND (children under five OR pregnant women OR lactating women OR pregnant and lactating women) AND (mental health interventions OR treat* OR improv* OR manag* OR support* OR prevent*) AND (refugee camp OR displacement camp OR IDP camp OR humanitarian context) AND (Qoloji OR Ethiopia)`
-
-Wildcard application example for Block 3 (intervention):
-```
-Input from concept_graph true_synonyms:
-  treatment, improving, management, support, prevention
-
-Step 1: Identify morphological roots
-  - treat (treatment, treat, treats, treating, treated)
-  - improv (improve, improving, improvement, improved)
-  - manag (manage, managing, management, manager)
-  - support (support, supporting, supported, supports)
-  - prevent (prevention, prevent, preventing, prevents)
-
-Step 2: Apply truncation to roots
-  - treat → treat*
-  - improv → improv*
-  - manag → manag*
-  - support → support*
-  - prevent → prevent*
-
-Result: (treat* OR improv* OR manag* OR support* OR prevent*)
-```
+`(mental health OR psychological wellbeing OR substance misuse* OR substance use* OR substance abuse*) AND (children under five OR pregnant women OR lactating women OR pregnant and lactating women) AND (refugee camp* OR displacement camp* OR IDP camp* OR humanitarian setting*) AND (Qoloji OR Ethiopia)`
 
 Key distinctions demonstrated:
-- **5 AND-blocks**: setting_or_context and geography SEPARATE (not merged).
-- **BLOCK 3 wildcards (MANDATORY)**: treat*, improv*, manag*, support*, prevent* ← CRITICAL FOR RECALL
-- **Block 1 wildcards**: substance misuse* (covers: misuse, misused), substance use* (covers: use, used, using)
+- **No intervention block**: "how to improve" names no specific intervention. A block of generic verbs (treat*, improv*, support*, prevent*) would match almost every record yet still exclude studies that use other wording — omit it.
+- **4 AND-blocks**: setting_or_context and geography are both explicitly stated, so each gets its own block (not merged).
+- **Block 1 wildcards**: substance misuse* (covers: misuse, misused), substance use* (covers: use, used, using).
 - **Proper nouns**: Qoloji, Ethiopia remain unwildcarded (no morphological variants).
-- **Abbreviations**: MHPSS, IDP remain unwildcarded.
+- **Abbreviations**: IDP remains unwildcarded.
 
 ---
 
@@ -341,7 +328,9 @@ Key distinctions demonstrated:
 - Do NOT use double quotes inside keyword.structured — they break JSON encoding. Use bare terms only.
 - domain_terms and colloquial must NOT appear in keyword.structured. They are reserved for search expansion levels.
 - When geography and setting_or_context are both present, create separate AND-blocks in strict order: setting_or_context first, geography last. Never merge them into a single OR-block.
-- MANDATORY: Apply truncation (word*) to all verbs and terms with productive morphological suffixes. Do NOT omit wildcards from verbs like prevent*, implement*, treat*, manage*, improve*, or from nouns like misuse*, abuse*, use*.
+- MANDATORY: Apply truncation (word*) to content terms with productive morphological suffixes (e.g. misuse*, abuse*, rehabilitat*, vaccinat*). Never build a block from generic verbs alone (treat*, improv*, manag*, support*, prevent*).
+- Prefer fewer blocks: when in doubt whether a concept should be a block, leave it out — the expansion stage can add precision, but recall lost to an unnecessary AND-block cannot be recovered.
+- keyword.combined_blocks must mirror the top-level AND-blocks of keyword.structured one-to-one.
 - Do not invent venues, authors, years, or publication types not stated in the inputs.
 - Use empty values ("", [], {}) when evidence is insufficient — do not infer.
 """.strip()
