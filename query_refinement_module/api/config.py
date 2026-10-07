@@ -104,7 +104,7 @@ class Settings(BaseSettings):
     # Development: localhost origins
     # Production: Add your browser client domains, e.g., "https://yourdomain.com,https://app.yourdomain.com"
     allowed_origins_raw: str = Field(
-        default="http://localhost:3000,http://localhost:5173,http://localhost:8001",
+        default="http://localhost:8501,http://localhost:8001",  # Chainlit UI, API docs
         description="CORS allowed origins (comma-separated in env: ALLOWED_ORIGINS=https://app.com,https://www.app.com)"
     )
 

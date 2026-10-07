@@ -22,15 +22,30 @@ REST routes / CLI / Chainlit
 
 Files:
 
-- `query_refinement_module/cli.py`
-- `query_refinement_module/chainlit_app.py`
-- `query_refinement_module/application/interactive_refinement_service.py`
+- `query_refinement_module/chainlit_app.py` — the web chat UI (the only browser interface)
+- `query_refinement_module/application/chainlit_adapter.py` — binds the chat UI to `RefinementApiService`
+- `query_refinement_module/application/feedback_survey.py` — post-synthesis survey items and stored format
+- `query_refinement_module/cli.py` + `query_refinement_module/application/interactive_refinement_service.py` — developer CLI
+
+The two interactive paths differ in persistence:
+
+- **Chainlit** runs the same persisted workflow as the REST API, in-process (no HTTP hop):
+  password login against app users, per-user framework access, database rows for
+  every session/answer, audit events, the Redis/in-memory session store and resume.
+  The chat state only holds identifiers. Chainlit's own data layer is disabled.
+- **CLI** uses `InteractiveRefinementService` on an in-memory session (optional
+  file traces via `--trace`); nothing is written to the database.
 
 Responsibilities:
 
 - Keep CLI and chat UI presentation-specific concerns outside the manager
-- Reuse one shared prompt/answer progression service for human-in-the-loop workflows
+- Route the chat UI through the API application services so web sessions get the same guarantees as API clients
 - Share small interface helpers such as numeric example resolution and Agent D input assembly
+
+Chainlit 2.x constraints (see `chainlit_app.py`):
+
+- Never await `AskActionMessage`/`AskUserMessage` inside an action callback — it leaves the UI stuck in a running state; use follow-up actions instead
+- No `@dataclass` in the app module — Chainlit loads it without registering it in `sys.modules`
 
 What should not live here:
 
@@ -174,7 +189,7 @@ This module contains shared helper functions for rebuilding or advancing session
 
 ### Change the question/answer loop
 
-Start in `query_refinement_module/application/interactive_refinement_service.py` for CLI or chat behavior, and in `query_refinement_module/application/refinement_lifecycle_service.py` for HTTP session workflows.
+Start in `query_refinement_module/application/refinement_lifecycle_service.py` for API and Chainlit sessions (both run the persisted workflow), and in `query_refinement_module/application/interactive_refinement_service.py` for the CLI.
 
 Typical examples:
 
@@ -187,6 +202,10 @@ Typical examples:
 ### Change Agent A/B/C/D behavior
 
 Start in `query_refinement_module/application/refinement_agent_service.py` or in the underlying manager/core layer, depending on whether the change is orchestration or model logic.
+
+### Change search validation
+
+`query_refinement_module/schema/search_quality.py` holds the deterministic checks run after Agent C (syntax, block alignment, redundant and ungrounded blocks, term leakage) and the repair step, which only ever drops AND-blocks. `QueryRefinementManager._validate_and_repair_search` in `core.py` wires it into synthesis; results are returned as `search_quality` and persisted in `processing_log`. Set `SEARCH_REPAIR_ENABLED=false` to report without repairing. Measure prompt or check changes with `scripts/evaluate_search_quality.py` and compare runs with `scripts/compare_search_quality.py`.
 
 ### Change prompt generation or prompt persistence
 

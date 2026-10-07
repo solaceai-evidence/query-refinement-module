@@ -243,14 +243,6 @@ hooks/__pycache__/
 
 
 
-# Frontend
-frontend/node_modules/
-frontend/dist/
-frontend/.env
-frontend/.env.local
-frontend/.env.production.local
-frontend/.vite/
-!frontend/.env.example
 
 # Research paper
 QueryRefinementPaper*

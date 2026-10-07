@@ -19,7 +19,7 @@ The system is framework-agnostic and domain-agnostic. It exposes a REST API for 
 2. Pick a refinement framework from the buttons. You only see the frameworks assigned to your account.
 3. Enter your initial research question or statement.
 4. Answer the guided questions. Each one comes with suggested answers: click one, type its number, or write your own. The buttons under each question let you go back, skip, finish a dimension or finish early. Restart, clear and finish early ask for confirmation first. A progress panel shows which dimensions have been captured.
-5. Review the refined question, structured statement, semantic and keyword statements, Boolean search construction and search expansion levels. Open **Search details** for per-concept terms and the full expansion queries.
+5. Review the refined question, structured statement, semantic and keyword statements, Boolean search construction and search expansion levels. A **Search validation** line reports the automatic checks on the Boolean query (syntax, block alignment, redundant or ungrounded concepts) and any block that was removed. Open **Search details** for per-concept terms and the full expansion queries.
 6. Download the structured output as **JSON** (for downstream tools) or a **Markdown** report. Both include the full refinement trace.
 7. Optionally complete the short feedback survey and choose whether your data may be retained for research.
 

@@ -86,7 +86,7 @@ services:
       INTEGRATION_SERVICE_USERNAME: ${INTEGRATION_SERVICE_USERNAME:-api_integration_service}
       
       # CORS (comma-separated origins)
-      ALLOWED_ORIGINS: ${ALLOWED_ORIGINS:-http://localhost:3000,http://localhost:8001}
+      ALLOWED_ORIGINS: ${ALLOWED_ORIGINS:-http://localhost:8501,http://localhost:8001}
       
       # LLM Configuration
       REFINEMENT_FRAMEWORK_PATH: ${REFINEMENT_FRAMEWORK_PATH:-/app/refinement_frameworks/frameworks.yaml}
