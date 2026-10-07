@@ -1,0 +1,30 @@
+name: Tests
+
+on:
+  push:
+    branches: [main]
+  pull_request:
+  workflow_dispatch:
+
+jobs:
+  test:
+    runs-on: ubuntu-latest
+    timeout-minutes: 20
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+
+      - name: Install Poetry
+        run: pipx install poetry
+
+      - name: Install dependencies
+        run: poetry install --with dev --no-interaction
+
+      # No LLM, Redis or database credentials are needed: the suite uses
+      # mocks, in-memory SQLite and the in-memory session store. Tests that
+      # need a live API server or LLM skip themselves.
+      - name: Run tests
+        run: poetry run pytest tests/unit tests/integration tests/api tests/test_*.py -q
